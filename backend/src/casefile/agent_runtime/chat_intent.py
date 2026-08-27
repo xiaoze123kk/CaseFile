@@ -106,6 +106,7 @@ def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | No
     manifest = build_edit_target_manifest(request)
     explicit_object_ids = _explicit_object_ids(request, message)
     destructive = any(marker in message for marker in _DESTRUCTIVE_ACTION_MARKERS)
+    creating = any(marker in message for marker in _CREATE_ACTION_MARKERS)
     if destructive and len(explicit_object_ids) != 1:
         return "general_mutation_delete_target_ambiguous"
     if destructive:
@@ -126,7 +127,7 @@ def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | No
     vague_value = any(marker in message for marker in _VAGUE_VALUE_MARKERS)
     if explicit_object_ids and not manifest.targets and not destructive and vague_value:
         return "general_mutation_field_ambiguous"
-    if manifest.ambiguous and len(explicit_object_ids) > 1:
+    if not creating and manifest.ambiguous and len(explicit_object_ids) > 1:
         return "general_mutation_target_ambiguous"
     if manifest.targets and vague_value:
         return "general_mutation_value_missing"
@@ -817,6 +818,41 @@ def apply_route_suggestion_policy(
         candidate=result.candidate.model_copy(update={"suggestions": []}),
     )
 
+
+def suppress_general_mutation_finalizer_suggestions(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Discard legacy field suggestions when General Mutation owns the PatchSet."""
+
+    route = request.route
+    suggestions = result.candidate.suggestions
+    if (
+        route is None
+        or not suggestions
+        or not any(
+            code.startswith("rule_capability:general_mutation_")
+            or (
+                code.startswith("rule_safety:")
+                and route_suggestion_policy(route) == "deny"
+            )
+            for code in route.reason_codes
+        )
+    ):
+        return result
+    request.emit(
+        "model.general_mutation_suggestions_suppressed",
+        "validating",
+        {
+            "reason_code": "general_mutation_is_authoritative",
+            "suppressed_count": len(suggestions),
+        },
+    )
+    return replace(
+        result,
+        candidate=result.candidate.model_copy(update={"suggestions": []}),
+    )
+
 __all__ = [
     "apply_route_suggestion_policy",
     "ALLOWED_PRESET_IDS",
@@ -835,6 +871,7 @@ __all__ = [
     "route_public_payload",
     "route_result_summary",
     "route_suggestion_policy",
+    "suppress_general_mutation_finalizer_suggestions",
     "task_understanding_for_rule",
     "task_understanding_from_output",
 ]

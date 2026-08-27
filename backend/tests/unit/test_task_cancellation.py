@@ -82,10 +82,14 @@ def test_cancel_task_endpoint_returns_accepted_and_delegates() -> None:
     app.dependency_overrides[get_actor_user_id] = lambda: 17
     app.dependency_overrides[get_session] = object
 
-    with patch.object(WorkflowService, "cancel_task", return_value=expected) as cancel_task:
+    with (
+        patch.object(WorkflowService, "require_generic_task_access") as require_access,
+        patch.object(WorkflowService, "cancel_task", return_value=expected) as cancel_task,
+    ):
         with TestClient(app) as client:
             response = client.post("/api/v1/projects/42/tasks/9/cancel")
 
     assert response.status_code == 202
     assert response.json() == expected
+    require_access.assert_called_once_with(17, 42, 9)
     cancel_task.assert_called_once_with(17, 42, 9)

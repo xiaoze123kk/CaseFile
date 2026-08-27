@@ -46,7 +46,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V9_VERSION,
+    CHAT_CONTEXT_PROMPT_V10_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
@@ -96,6 +96,7 @@ from casefile.agent_runtime.query_rewrite import (
 )
 from casefile.application.agent_mutation import (
     GeneralMutationBindingError,
+    append_repair_companions,
     bind_general_mutation_plan,
     general_mutation_impact_hash,
 )
@@ -113,14 +114,30 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.domain.verification_engine import VerificationEngine
-from casefile.worker.support import (
-    _json_hash,
-    _merge_numeric_usage,
-    _network_retries,
-    _required_object,
-    _required_provider_binding,
-    _required_string,
+from casefile.worker.closure_repair import (
+    execute_chat_closure_repair,
+    execute_mutation_closure_repair,
 )
+from casefile.worker.execution import ChatRuntimeConfig, WorkerEventPorts
+from casefile.worker.failures import (
+    merge_numeric_usage as _merge_numeric_usage,
+)
+from casefile.worker.failures import (
+    network_retries as _network_retries,
+)
+from casefile.worker.failures import (
+    safe_error_message as _safe_error_message,
+)
+from casefile.worker.input_contracts import (
+    json_hash as _json_hash,
+)
+from casefile.worker.input_contracts import (
+    required_object as _required_object,
+)
+from casefile.worker.input_contracts import (
+    required_string as _required_string,
+)
+from casefile.worker.provider_resolution import required_provider_binding
 
 DEFAULT_CONTEXT_HARD_INPUT_TOKENS = 128_000
 
@@ -432,12 +449,20 @@ chat_intent_event_payload = _chat_intent_event_payload
 chat_rewrite_event_payload = _chat_rewrite_event_payload
 
 
-class ChatTaskExecutorMixin:
-    session_factory: sessionmaker[Session]
-    config: Any
+class _ChatComponent:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        config: ChatRuntimeConfig,
+        events: WorkerEventPorts,
+    ) -> None:
+        self.session_factory = session_factory
+        self.config = config
+        self._events = events
 
     def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        raise NotImplementedError
+        self._events.emit(task_run_id, event_type, stage, payload)
 
     def _emit_after_completion(
         self,
@@ -446,7 +471,20 @@ class ChatTaskExecutorMixin:
         stage: str,
         payload: dict[str, Any],
     ) -> None:
-        raise NotImplementedError
+        self._events.emit_after_completion(task_run_id, event_type, stage, payload)
+
+
+class ChatRequestRuntime(_ChatComponent):
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        config: ChatRuntimeConfig,
+        events: WorkerEventPorts,
+        context_runtime: ChatContextRuntime,
+    ) -> None:
+        super().__init__(session_factory, config=config, events=events)
+        self._context_runtime = context_runtime
 
     def _load_chat_request(
         self,
@@ -505,7 +543,7 @@ class ChatTaskExecutorMixin:
             message=message,
             editable_fields_by_collection=chat_editable_fields_by_collection(),
             input_hash=task.input_hash,
-            model_id=_required_provider_binding(task)[1],
+            model_id=required_provider_binding(task)[1],
             api_key=api_key,
             max_turns=int(task.budget_jsonb.get("max_turns", 12)),
             emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
@@ -517,12 +555,16 @@ class ChatTaskExecutorMixin:
             toolset_version=task.toolset_version,
             context_policy_version=context_policy_version,
             thread_id=task.agent_thread_id,
-            thread_evidence_resolver=lambda evidence_id: self._resolve_thread_evidence(
-                task.agent_thread_id,
-                evidence_id,
+            thread_evidence_resolver=lambda evidence_id: (
+                self._context_runtime._resolve_thread_evidence(
+                    task.agent_thread_id,
+                    evidence_id,
+                )
             ),
         )
 
+
+class ChatMutationRuntime(_ChatComponent):
     def _execute_general_mutation(
         self,
         task: TaskRun,
@@ -555,11 +597,7 @@ class ChatTaskExecutorMixin:
             },
         )
         route = request.route
-        route_intent = (
-            None
-            if route is None
-            else route.execution_profile.get("primary_intent")
-        )
+        route_intent = None if route is None else route.execution_profile.get("primary_intent")
         reason_code: str | None = None
         failure_layer = "routing"
         if route is not None and route_suggestion_policy(route) == "deny":
@@ -588,6 +626,7 @@ class ChatTaskExecutorMixin:
                 {"reason_code": reason_code, "failure_layer": failure_layer},
             )
             return ({"status": "blocked"} if mode == "suggest" else None), {}
+
         request_budget_reason = general_mutation_request_budget_reason(request.message)
         if request_budget_reason is not None:
             emit(
@@ -677,7 +716,7 @@ class ChatTaskExecutorMixin:
             planned = provider.plan_general_mutation(
                 GeneralMutationPlannerRequest(
                     task_run_id=task.id,
-                    model_id=_required_provider_binding(task)[1],
+                    model_id=required_provider_binding(task)[1],
                     api_key=api_key,
                     casefile=request.casefile,
                     message=request.message,
@@ -849,6 +888,78 @@ class ChatTaskExecutorMixin:
             )
             return ({"status": "blocked"} if mode == "suggest" else None), {}
 
+    def _resolve_mutation_and_repair(
+        self,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+        result: CaseFileChatResult,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+        general_mutation_envelope, general_mutation_usage = self._execute_general_mutation(
+            task,
+            request,
+            provider,
+            api_key,
+        )
+        if general_mutation_envelope is None:
+            repair_envelope, repair_usage = execute_chat_closure_repair(
+                task,
+                result,
+                provider=provider,
+                api_key=api_key,
+                mode=self.config.closure_repair_mode,
+                emit=lambda event_type, stage, payload: self._emit(
+                    task.id, event_type, stage, payload
+                ),
+            )
+        elif "bound" in general_mutation_envelope:
+            repair_envelope, repair_usage, repair_result = execute_mutation_closure_repair(
+                task,
+                general_mutation_envelope["bound"].mutation_set,
+                provider=provider,
+                api_key=api_key,
+                mode=self.config.closure_repair_mode,
+                emit=lambda event_type, stage, payload: self._emit(
+                    task.id, event_type, stage, payload
+                ),
+            )
+            if (
+                self.config.closure_repair_mode == "suggest"
+                and repair_result is not None
+                and repair_result.repaired
+            ):
+                repaired_bound = append_repair_companions(
+                    general_mutation_envelope["bound"],
+                    task.input_jsonb["casefile"],
+                    [item.as_dict() for item in repair_result.companion_operations],
+                )
+                repaired_simulation = VerificationEngine(
+                    profile="fast",
+                    closure_policy_version=repaired_bound.mutation_set.closure_policy_version,
+                ).simulate_mutation_set(
+                    task.input_jsonb["casefile"],
+                    repaired_bound.mutation_set,
+                )
+                if not repaired_simulation.can_apply:
+                    raise RuntimeError("Repaired General Mutation proof diverged")
+                general_mutation_envelope = {
+                    **general_mutation_envelope,
+                    "primary_bound": general_mutation_envelope["bound"],
+                    "bound": repaired_bound,
+                    "simulation": repaired_simulation,
+                    "impact_hash": general_mutation_impact_hash(repaired_simulation),
+                }
+        else:
+            repair_envelope, repair_usage = None, {}
+        return (
+            general_mutation_envelope,
+            repair_envelope,
+            _merge_numeric_usage(repair_usage, general_mutation_usage),
+        )
+
+
+class ChatContextRuntime(_ChatComponent):
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
         """Reuse the latest route decision on retry; never classify twice."""
 
@@ -1040,8 +1151,8 @@ class ChatTaskExecutorMixin:
                 routing=chat_routing_payload_as_dict(request),
                 prebuilt_input=executor_input,
                 extra_input=extra_input,
-                provider=_required_provider_binding(task)[0],
-                model_id=_required_provider_binding(task)[1],
+                provider=required_provider_binding(task)[0],
+                model_id=required_provider_binding(task)[1],
                 hard_input_tokens=hard_input_tokens,
             )
         except ContextEngineError as error:
@@ -1053,7 +1164,7 @@ class ChatTaskExecutorMixin:
                     "policy_version": request.context_policy_version,
                     "reason_code": "hard_input_cap_exceeded",
                     "hard_input_tokens": hard_input_tokens,
-                    "detail": str(error),
+                    "detail": _safe_error_message(error, (request.api_key or "",)),
                 },
             )
             raise
@@ -1097,7 +1208,7 @@ class ChatTaskExecutorMixin:
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
-            CHAT_CONTEXT_PROMPT_V9_VERSION
+            CHAT_CONTEXT_PROMPT_V10_VERSION
             if policy_v6
             else (
                 CHAT_CONTEXT_PROMPT_V6_VERSION
@@ -1122,6 +1233,7 @@ class ChatTaskExecutorMixin:
             "casefile-chat-v13",
             "casefile-chat-v14",
             "casefile-chat-v15",
+            "casefile-chat-v16",
         }:
             raise RuntimeError(
                 "Context policy "
@@ -1336,7 +1448,7 @@ class ChatTaskExecutorMixin:
                     prompt_version=CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
                     input_hash=str(input_data["input_hash"]),
                     input_data=input_data,
-                    model_id=_required_provider_binding(task)[1],
+                    model_id=required_provider_binding(task)[1],
                     api_key=api_key,
                     network_retries=_network_retries(task),
                     max_turns=1,
@@ -1424,10 +1536,12 @@ class ChatTaskExecutorMixin:
                 {
                     "reason_code": "thread_memory_compaction_error",
                     "reason": type(error).__name__,
-                    "detail": str(error),
+                    "detail": _safe_error_message(error, (api_key,)),
                 },
             )
 
+
+class ChatCompletionRuntime(_ChatComponent):
     def _complete_chat(
         self,
         task_run_id: int,
@@ -1494,8 +1608,111 @@ class ChatTaskExecutorMixin:
             )
 
 
+class ChatTaskExecutor:
+    """Compatibility façade over focused Chat Worker components."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        config: ChatRuntimeConfig,
+        events: WorkerEventPorts,
+    ) -> None:
+        self._context = ChatContextRuntime(session_factory, config=config, events=events)
+        self._requests = ChatRequestRuntime(
+            session_factory,
+            config=config,
+            events=events,
+            context_runtime=self._context,
+        )
+        self._mutation = ChatMutationRuntime(session_factory, config=config, events=events)
+        self._completion = ChatCompletionRuntime(session_factory, config=config, events=events)
+
+    def _load_chat_request(self, task: TaskRun, api_key: str) -> CaseFileChatRequest:
+        return self._requests._load_chat_request(task, api_key)
+
+    def _execute_general_mutation(
+        self,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        return self._mutation._execute_general_mutation(task, request, provider, api_key)
+
+    def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
+        return self._context._load_previous_chat_routing(task_run_id)
+
+    def _resolve_mutation_and_repair(
+        self,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+        result: CaseFileChatResult,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+        return self._mutation._resolve_mutation_and_repair(
+            task,
+            request,
+            result,
+            provider,
+            api_key,
+        )
+
+    def _emit_chat_routing_events(
+        self,
+        task_run_id: int,
+        request: CaseFileChatRequest,
+    ) -> None:
+        self._context._emit_chat_routing_events(task_run_id, request)
+
+    def _emit_chat_context_events(
+        self,
+        task_run_id: int,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+    ) -> CaseFileChatRequest:
+        return self._context._emit_chat_context_events(task_run_id, task, request)
+
+    def _maybe_compact_chat_thread(
+        self,
+        task: TaskRun,
+        provider: AgentProvider,
+        api_key: str,
+        *,
+        model_requested_compaction: bool,
+    ) -> None:
+        self._context._maybe_compact_chat_thread(
+            task,
+            provider,
+            api_key,
+            model_requested_compaction=model_requested_compaction,
+        )
+
+    def _complete_chat(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: CaseFileChatResult,
+        *,
+        route: RouteDecision | None = None,
+        repair_envelope: dict[str, Any] | None = None,
+        repair_usage: dict[str, Any] | None = None,
+        general_mutation_envelope: dict[str, Any] | None = None,
+    ) -> None:
+        self._completion._complete_chat(
+            task_run_id,
+            attempt_id,
+            result,
+            route=route,
+            repair_envelope=repair_envelope,
+            repair_usage=repair_usage,
+            general_mutation_envelope=general_mutation_envelope,
+        )
+
+
 __all__ = [
-    "ChatTaskExecutorMixin",
+    "ChatTaskExecutor",
     "chat_intent_event_payload",
     "chat_rewrite_event_payload",
     "resolve_chat_route",

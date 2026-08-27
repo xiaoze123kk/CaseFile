@@ -151,9 +151,7 @@ def test_runner_suppresses_denied_route_suggestions_before_completion() -> None:
     request = replace(
         _request_for_task(question_task),
         route=fallback_route(reason_codes=("confidence_gate_sensitive",)),
-        emit=lambda event_type, stage, payload: events.append(
-            (event_type, stage, payload)
-        ),
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
     )
 
     execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(
@@ -176,15 +174,11 @@ def test_runner_suppresses_denied_route_suggestions_before_completion() -> None:
 
 
 def test_runner_repairs_a_non_audit_suggestion_rejected_by_server_gate() -> None:
-    task = next(
-        item for item in build_outcome_tasks() if item.task_id == "golden-edit-description"
-    )
+    task = next(item for item in build_outcome_tasks() if item.task_id == "golden-edit-description")
     invalid_suggestion = task.reference_candidate.suggestions[0].model_copy(
         update={"value_json": "```not-json```"}
     )
-    invalid = task.reference_candidate.model_copy(
-        update={"suggestions": [invalid_suggestion]}
-    )
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [invalid_suggestion]})
     provider = SequenceProvider([_result(invalid, 1), _result(task.reference_candidate, 1)])
 
     execution = ChatExecutionRunner(provider).run(resolve_task_route(task))
@@ -220,9 +214,7 @@ def test_runner_suppresses_structured_clean_noop_hallucination() -> None:
             "suggestions": [],
         }
     )
-    hallucinated = task.reference_candidate.__class__.model_validate(
-        hallucinated_payload
-    )
+    hallucinated = task.reference_candidate.__class__.model_validate(hallucinated_payload)
     provider = SequenceProvider([_result(hallucinated, 1)])
 
     execution = ChatExecutionRunner(provider).run(
@@ -234,9 +226,7 @@ def test_runner_suppresses_structured_clean_noop_hallucination() -> None:
 
 
 def test_runner_rejects_duplicate_or_extra_edit_targets() -> None:
-    task = next(
-        item for item in build_outcome_tasks() if item.task_id == "golden-multi-field-edit"
-    )
+    task = next(item for item in build_outcome_tasks() if item.task_id == "golden-multi-field-edit")
     candidate = task.reference_candidate.model_copy(
         update={"suggestions": [*task.reference_candidate.suggestions] * 2}
     )
@@ -253,9 +243,7 @@ def test_runner_rejects_duplicate_or_extra_edit_targets() -> None:
 
 
 def test_runner_repairs_missing_edit_target_with_exact_delta() -> None:
-    task = next(
-        item for item in build_outcome_tasks() if item.task_id == "golden-multi-field-edit"
-    )
+    task = next(item for item in build_outcome_tasks() if item.task_id == "golden-multi-field-edit")
     valid = task.reference_candidate
     incomplete = valid.model_copy(update={"suggestions": valid.suggestions[:1]})
     provider = SequenceProvider([_result(incomplete, 1), _result(valid, 1)])
@@ -273,9 +261,7 @@ def test_runner_repairs_missing_edit_target_with_exact_delta() -> None:
 
 def test_runner_repairs_incomplete_audit_evidence() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     valid = task.reference_candidate
     broken_finding = valid.audit_findings[0].model_copy(
@@ -301,9 +287,7 @@ def test_runner_repairs_incomplete_audit_evidence() -> None:
 
 def test_v14_audit_rejects_suggestion_with_unsafe_frozen_simulation() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v14")
     suggestion = task.reference_candidate.suggestions[0]
@@ -333,9 +317,7 @@ def test_v14_audit_rejects_suggestion_with_unsafe_frozen_simulation() -> None:
         validate_chat_candidate(request, result)
 
     assert caught.value.code == "audit_suggestion_simulation_failed"
-    assert caught.value.repair_plan.remove == (
-        f"{suggestion.object_id}:{suggestion.path}",
-    )
+    assert caught.value.repair_plan.remove == (f"{suggestion.object_id}:{suggestion.path}",)
 
 
 def _safe_simulation_ledger(request, suggestions):  # type: ignore[no-untyped-def]
@@ -365,9 +347,7 @@ def _safe_simulation_ledger(request, suggestions):  # type: ignore[no-untyped-de
 
 def test_v15_server_gate_proves_safe_patch_without_tool_simulation() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     proposed = task.reference_candidate.suggestions[0].model_copy(
@@ -391,9 +371,7 @@ def test_v15_server_gate_proves_safe_patch_without_tool_simulation() -> None:
 
 def test_v15_server_gate_quotes_plain_text_and_discards_redundant_target() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     first = task.reference_candidate.suggestions[0].model_copy(
@@ -415,9 +393,7 @@ def test_v15_server_gate_quotes_plain_text_and_discards_redundant_target() -> No
 
 def test_v15_server_gate_rejects_unsafe_patch_then_repairs() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     unsafe = task.reference_candidate.suggestions[0].model_copy(update={"path": "/id"})
@@ -436,9 +412,7 @@ def test_v15_server_gate_rejects_unsafe_patch_then_repairs() -> None:
 
 def test_v15_empty_suggestions_with_repairable_finding_enters_repair_plan() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     missing = task.reference_candidate.model_copy(update={"suggestions": []})
@@ -455,9 +429,7 @@ def test_v15_empty_suggestions_with_repairable_finding_enters_repair_plan() -> N
 
 def test_v15_dedupes_same_endpoint_findings_and_rebinds_suggestion() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     first = task.reference_candidate.audit_findings[0]
@@ -481,9 +453,7 @@ def test_v15_dedupes_same_endpoint_findings_and_rebinds_suggestion() -> None:
 
 def test_v15_adds_event_suggestion_to_the_event_reference_slot() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-vanishing-route"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-vanishing-route"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     finding = task.reference_candidate.audit_findings[0].model_copy(
@@ -500,24 +470,20 @@ def test_v15_adds_event_suggestion_to_the_event_reference_slot() -> None:
 
 def test_v15_accepts_one_event_id_for_a_same_event_field_conflict() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-vanishing-route"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-vanishing-route"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
 
-    execution = ChatExecutionRunner(
-        SequenceProvider([_result(task.reference_candidate, 1)])
-    ).run(request)
+    execution = ChatExecutionRunner(SequenceProvider([_result(task.reference_candidate, 1)])).run(
+        request
+    )
 
     assert execution.result.candidate.audit_findings[0].evidence_event_ids == ["evt_departure"]
 
 
 def test_v15_autofills_connected_deterministic_pair_evidence() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-restart-loop"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-restart-loop"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     finding = task.reference_candidate.audit_findings[0].model_copy(
@@ -534,9 +500,7 @@ def test_v15_autofills_connected_deterministic_pair_evidence() -> None:
 
 def test_v15_unbinds_suggestion_from_a_manual_review_finding() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     manual = task.reference_candidate.audit_findings[0].model_copy(
@@ -551,9 +515,7 @@ def test_v15_unbinds_suggestion_from_a_manual_review_finding() -> None:
 
 def test_v15_dedupes_manual_finding_suggestions_before_unbinding() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     manual = task.reference_candidate.audit_findings[0].model_copy(
@@ -582,9 +544,7 @@ def test_v15_dedupes_manual_finding_suggestions_before_unbinding() -> None:
 
 def test_v15_keeps_one_minimal_suggestion_per_finding() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     extra = task.reference_candidate.suggestions[0].model_copy(
@@ -606,9 +566,7 @@ def test_v15_keeps_one_minimal_suggestion_per_finding() -> None:
 
 def test_v15_manual_only_deterministic_pair_requires_an_unbound_repair() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-fractured-alliance"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     manual = task.reference_candidate.audit_findings[0].model_copy(
@@ -631,9 +589,7 @@ def test_v15_manual_only_deterministic_pair_requires_an_unbound_repair() -> None
 
 def test_v15_repair_expectation_replaces_an_unrelated_safe_target() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-restart-loop"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-restart-loop"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     unrelated = task.reference_candidate.suggestions[0].model_copy(
@@ -658,9 +614,7 @@ def test_v15_repair_expectation_replaces_an_unrelated_safe_target() -> None:
 
 def test_v15_target_locked_repair_materializes_only_the_server_locked_target() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-restart-loop"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-restart-loop"
     )
     events: list[tuple[str, str, dict]] = []
     request = replace(
@@ -681,9 +635,7 @@ def test_v15_target_locked_repair_materializes_only_the_server_locked_target() -
         value_json=expected.value_json,
         reason=expected.reason,
     )
-    provider = SequenceProvider(
-        [_result(invalid, 1), _result(invalid, 1), _result(hard_output, 1)]
-    )
+    provider = SequenceProvider([_result(invalid, 1), _result(invalid, 1), _result(hard_output, 1)])
 
     execution = ChatExecutionRunner(provider).run(request)
 
@@ -729,9 +681,7 @@ def test_v15_target_locked_repair_materializes_only_the_server_locked_target() -
 
 def test_v15_target_locked_repair_still_fails_closed_when_its_value_is_invalid() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-restart-loop"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-restart-loop"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     unrelated = task.reference_candidate.suggestions[0].model_copy(
@@ -772,9 +722,7 @@ def test_v15_target_locked_repair_still_fails_closed_when_its_value_is_invalid()
 
 def test_v15_third_semantic_repair_rescues_the_same_locked_target() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-restart-loop"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-restart-loop"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     unrelated = task.reference_candidate.suggestions[0].model_copy(
@@ -812,9 +760,9 @@ def test_v15_third_semantic_repair_rescues_the_same_locked_target() -> None:
     assert execution.attempts == 4
     assert len(provider.requests) == 4
     identity = ("object_id", "path", "finding_ref")
-    assert {
-        key: provider.requests[2].target_locked_repair[key] for key in identity
-    } == {key: provider.requests[3].target_locked_repair[key] for key in identity}
+    assert {key: provider.requests[2].target_locked_repair[key] for key in identity} == {
+        key: provider.requests[3].target_locked_repair[key] for key in identity
+    }
     assert provider.requests[3].target_locked_repair["previous_failure"] == {
         "value_json": "null",
         "reason_code": "simulation_failed",
@@ -828,9 +776,7 @@ def test_v15_third_semantic_repair_rescues_the_same_locked_target() -> None:
 
 def test_v15_target_locked_repair_rejects_non_json_output_after_final_rescue() -> None:
     task = next(
-        item
-        for item in build_outcome_tasks()
-        if item.task_id == "golden-audit-restart-loop"
+        item for item in build_outcome_tasks() if item.task_id == "golden-audit-restart-loop"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
     unrelated = task.reference_candidate.suggestions[0].model_copy(
@@ -897,9 +843,7 @@ def test_repair_plan_keeps_a_required_target_when_an_invalid_value_is_removed() 
 
 
 def test_runner_moves_known_event_out_of_object_slot() -> None:
-    task = next(
-        item for item in build_outcome_tasks() if item.task_id == "golden-analysis-inspect"
-    )
+    task = next(item for item in build_outcome_tasks() if item.task_id == "golden-analysis-inspect")
     candidate = task.reference_candidate.model_copy(
         update={"referenced_object_ids": ["ent_lucy", "evt_restart"]}
     )
@@ -912,9 +856,7 @@ def test_runner_moves_known_event_out_of_object_slot() -> None:
 
 
 def test_runner_autofills_unique_event_reference_when_slot_is_empty() -> None:
-    task = next(
-        item for item in build_outcome_tasks() if item.task_id == "golden-event-question"
-    )
+    task = next(item for item in build_outcome_tasks() if item.task_id == "golden-event-question")
     candidate = task.reference_candidate.model_copy(update={"referenced_event_ids": []})
     provider = SequenceProvider([_result(candidate, 1)])
 
@@ -944,3 +886,15 @@ def test_v13_artifacts_are_present_in_the_bound_executor_payload() -> None:
 
     assert bound.assembled_input is not None
     assert "audit_evidence_bundle" in bound.assembled_input["validation"]
+
+
+def test_general_mutation_authority_omits_legacy_edit_manifest() -> None:
+    task = next(item for item in build_outcome_tasks() if item.task_id == "golden-edit-description")
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v16")
+
+    prepared = prepare_chat_request_artifacts(
+        request,
+        general_mutation_authoritative=True,
+    )
+
+    assert "edit_target_manifest" not in prepared.validation

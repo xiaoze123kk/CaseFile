@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Self
 
+from casefile_contracts import PublicRoutingInterpretation
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from casefile.application.commands import ProjectCreate
@@ -223,49 +224,34 @@ class AgentMessageCreateRequest(StrictRequest):
 
 
 class AgentRoutingFeedbackRequest(StrictRequest):
-    correct_intent: (
-        Literal[
-            "question",
-            "analysis",
-            "explain_issue",
-            "edit_request",
-            "validate_request",
-            "unsupported_action",
-            "clarify",
-            "out_of_scope",
-        ]
-        | None
-    ) = None
+    interpretation: PublicRoutingInterpretation | None = None
     note: str | None = Field(default=None, max_length=2_000)
 
     @model_validator(mode="after")
     def has_feedback(self) -> Self:
-        if self.correct_intent is None and (self.note is None or not self.note.strip()):
-            raise ValueError("correct_intent or note is required")
+        if self.interpretation is None and (self.note is None or not self.note.strip()):
+            raise ValueError("interpretation or note is required")
         return self
 
 
 class AgentPatchApplyRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
-    operation_ids: list[int] | None = None
-    confirmed_impact_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
-    target_finding_ids: list[int] | None = None
-    accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
-    debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)
+    change_ids: list[int] | None = Field(default=None, max_length=200)
+    confirmation_token: str | None = Field(default=None, min_length=1, max_length=256)
+    accepted_warning_ids: list[str] = Field(default_factory=list, max_length=100)
+    confirmation_note: str | None = Field(default=None, max_length=2_000)
 
     @model_validator(mode="after")
-    def unique_operation_ids(self) -> Self:
-        if self.operation_ids is not None and len(set(self.operation_ids)) != len(
-            self.operation_ids
+    def valid_public_confirmation(self) -> Self:
+        if self.change_ids is not None and len(set(self.change_ids)) != len(
+            self.change_ids
         ):
-            raise ValueError("operation_ids must be unique")
-        if len(set(self.accepted_debt_finding_keys)) != len(self.accepted_debt_finding_keys):
-            raise ValueError("accepted_debt_finding_keys must be unique")
-        if self.accepted_debt_finding_keys and not (self.debt_acceptance_reason or "").strip():
-            raise ValueError("debt_acceptance_reason is required")
+            raise ValueError("change_ids must be unique")
+        if len(set(self.accepted_warning_ids)) != len(self.accepted_warning_ids):
+            raise ValueError("accepted_warning_ids must be unique")
+        if self.accepted_warning_ids and not (self.confirmation_note or "").strip():
+            raise ValueError("confirmation_note is required")
         return self
 
 
@@ -281,19 +267,20 @@ class AgentPatchRedoRequest(AgentPatchUndoRequest):
 class AgentPatchSimulateRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     base_revision: int = Field(ge=1)
-    operation_ids: list[int] | None = None
-    target_finding_ids: list[int] | None = None
-    accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
-    debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)
+    change_ids: list[int] | None = Field(default=None, max_length=200)
+    accepted_warning_ids: list[str] = Field(default_factory=list, max_length=100)
+    confirmation_note: str | None = Field(default=None, max_length=2_000)
 
     @model_validator(mode="after")
-    def unique_operation_ids(self) -> Self:
-        if self.operation_ids is not None and len(set(self.operation_ids)) != len(
-            self.operation_ids
+    def valid_public_confirmation(self) -> Self:
+        if self.change_ids is not None and len(set(self.change_ids)) != len(
+            self.change_ids
         ):
-            raise ValueError("operation_ids must be unique")
-        if len(set(self.accepted_debt_finding_keys)) != len(self.accepted_debt_finding_keys):
-            raise ValueError("accepted_debt_finding_keys must be unique")
+            raise ValueError("change_ids must be unique")
+        if len(set(self.accepted_warning_ids)) != len(self.accepted_warning_ids):
+            raise ValueError("accepted_warning_ids must be unique")
+        if self.accepted_warning_ids and not (self.confirmation_note or "").strip():
+            raise ValueError("confirmation_note is required")
         return self
 
 

@@ -93,7 +93,7 @@ try {
     $temporaryRuntimeSchemaRoot = Join-Path $temporaryRoot "runtime-schemas"
     New-Item -ItemType Directory -Path $temporaryRuntimeSchemaRoot -Force | Out-Null
     foreach ($schemaDirectory in @(
-        "brief", "brief-intake", "casefile", "compiler", "task", "validation"
+        "brief", "brief-intake", "casefile", "chat", "compiler", "task", "validation"
     )) {
         Copy-Item -LiteralPath (Join-Path $rootSchemaRoot $schemaDirectory) `
             -Destination $temporaryRuntimeSchemaRoot -Recurse

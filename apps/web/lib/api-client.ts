@@ -1,4 +1,16 @@
-import type { CaseFile, CoreMetadata, NarrativeIR } from "@casefile/contracts";
+import type {
+  CaseFile,
+  CoreMetadata,
+  NarrativeIR,
+  PublicAgentEvent,
+  PublicAgentMessage,
+  PublicAgentMessageReceipt,
+  PublicAgentRun,
+  PublicPatchResponse,
+  PublicPatchReviewResult,
+  PublicRoutingFeedbackReceipt,
+  PublicRoutingInterpretation,
+} from "@casefile/contracts";
 
 export interface LegacyTemporalPositionV1 {
   start: string;
@@ -435,7 +447,6 @@ export interface TaskView {
     | BriefIntakeSynthesizeResult
     | BriefStrategyOptionsResult
     | GenerationCandidateSummary
-    | AgentChatTaskResult
     | null;
   error_code: string | null;
   failure: TaskFailure | null;
@@ -499,82 +510,6 @@ export interface AgentChatRoutingHint {
   preset_id?: string;
 }
 
-export type AgentRoutingCorrectIntent =
-  | "question"
-  | "analysis"
-  | "explain_issue"
-  | "edit_request"
-  | "validate_request"
-  | "logic_audit"
-  | "unsupported_action"
-  | "clarify"
-  | "out_of_scope";
-
-export interface AgentRoutingFeedbackResult {
-  message_id: number;
-  task_run_id: number;
-  acknowledged: true;
-}
-
-export interface AgentChatRoutingSummary {
-  router_version?: string;
-  route_hash?: string;
-  route_source?: string;
-  intent?: string | null;
-  rewrite_strategy?: string;
-  suggestion_policy?: string;
-  suppressed_count?: number;
-  tool_metrics?: Record<string, unknown>;
-}
-
-export interface AgentAuditFindingView {
-  finding_id: string;
-  kind: AgentAuditFindingKind;
-  severity: AgentAuditFindingSeverity;
-  title: string;
-  statement: string;
-  needs_manual_review: boolean;
-  evidence_object_ids: string[];
-  evidence_event_ids: string[];
-  evidence_validation_issue_ids: string[];
-  impact_refs?: Array<{
-    object_type?: string;
-    object_id?: string;
-  }>;
-}
-
-export type AgentAuditFindingKind =
-  | "dangling_ref"
-  | "contradiction"
-  | "temporal"
-  | "motivation_gap"
-  | "scope_gap";
-
-export type AgentAuditFindingSeverity = "S1" | "S2" | "S3";
-
-export interface AgentChatTaskResult {
-  answer: string;
-  referenced_object_ids: string[];
-  referenced_event_ids: string[];
-  referenced_validation_issue_ids: string[];
-  suggested_view: AgentSuggestedView | null;
-  patch_set_id: number | null;
-  stale: boolean;
-  audit_findings?: AgentAuditFindingView[];
-  verification_run_id?: number | null;
-  routing?: AgentChatRoutingSummary;
-  tool_metrics?: Record<string, unknown>;
-}
-
-export type AgentSuggestedView =
-  | "timeline"
-  | "relations"
-  | "reasoning"
-  | "map"
-  | "export"
-  | "compile"
-  | "evidence";
-
 export interface AgentThreadView {
   thread_id: number;
   title: string;
@@ -584,128 +519,6 @@ export interface AgentThreadView {
   last_message_at: string | null;
   created_at: string | null;
   updated_at: string | null;
-}
-
-export interface AgentPatchOperationView {
-  operation_id: number;
-  operation_key: string;
-  ordinal: number;
-  object_id: string | null;
-  object_type: string | null;
-  target_collection?: string;
-  operation_type: "add" | "remove" | "replace" | "field_update" | "create_object" | "update_field" | "delete_object";
-  field_path: string;
-  expected_object_revision: number | null;
-  old_value: unknown;
-  new_value: unknown;
-  reason: string;
-  decision: string | null;
-  reviewed_at: string | null;
-  finding_ids?: number[];
-}
-
-export interface AgentPatchSetView {
-  patch_set_id: number;
-  thread_id: number;
-  source_message_id: number;
-  task_run_id: number | null;
-  base_draft_revision: number;
-  closure_policy_version?: string;
-  mutation_mode?: "normal" | "restructure";
-  baseline_hash?: string | null;
-  candidate_hash?: string | null;
-  reason_summary: string | null;
-  status: "pending" | "stale" | "applied" | "undone" | "rejected";
-  is_stale: boolean;
-  applied_from_revision: number | null;
-  applied_to_revision: number | null;
-  undone_to_revision: number | null;
-  operations: AgentPatchOperationView[];
-  validation_warning: boolean;
-  validator_issues: Record<string, unknown>[];
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export interface AgentPatchSimulationView {
-  valid: boolean;
-  can_apply: boolean;
-  reason_code: string | null;
-  closure_policy_version?: string;
-  baseline_hash?: string;
-  candidate_hash?: string;
-  fixed_finding_keys: string[];
-  introduced_finding_keys?: string[];
-  worsened_finding_keys?: string[];
-  residual_target_finding_keys?: string[];
-  authorization_required_finding_keys?: string[];
-  residual_finding_keys?: string[];
-  new_finding_keys?: string[];
-  pending_recheck_finding_keys?: string[];
-  structure_lock_conflicts?: string[];
-  impact?: { collections: string[]; counts: Record<string, number>; full_rebuild: boolean; reasons: string[] };
-  normalized_mutation: {
-    mutation_set_id: string;
-    mode: "normal" | "restructure";
-    actor: "author" | "agent" | "import" | "system";
-    operation_ids: string[];
-    mechanical_operations: Array<{
-      operation_id: string;
-      operation_type: "update_field";
-      reason_code: string;
-      object_id: string;
-      field_path: string;
-      old_value: unknown;
-      new_value: unknown;
-    }>;
-  } | null;
-  impact_cone: {
-    root_object_ids: string[];
-    direct_object_ids: string[];
-    transitive_object_ids: string[];
-    affected_resolution_ids: string[];
-    dependency_paths: string[][];
-    cycles: Array<{ relation: string; object_ids: string[] }>;
-  } | null;
-}
-
-export interface AgentPatchSimulationResult {
-  patch_set_id: number;
-  draft_id: number;
-  base_revision: number;
-  can_apply: boolean;
-  simulation: AgentPatchSimulationView;
-}
-
-export interface AgentMessageView {
-  message_id: number;
-  thread_id: number;
-  sequence_no: number;
-  role: "user" | "assistant" | "system";
-  status: "pending" | "completed" | "failed";
-  content: string | null;
-  task: TaskView | null;
-  referenced_object_ids: string[];
-  referenced_event_ids: string[];
-  referenced_validation_issue_ids: string[];
-  suggested_view: AgentSuggestedView | null;
-  patch_set: AgentPatchSetView | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-export interface AgentSendMessageView {
-  thread: AgentThreadView;
-  user_message: AgentMessageView;
-  assistant_message: AgentMessageView;
-  task: TaskView;
-}
-
-export interface AgentPatchApplyResult extends AgentPatchSetView {
-  draft_revision: number;
-  pre_apply_verification_run_id?: number | null;
-  post_apply_verification_run_id?: number | null;
-  simulation?: AgentPatchSimulationView;
 }
 
 export interface DraftView {
@@ -1003,6 +816,81 @@ export async function streamTaskEvents(
   }
 }
 
+const PUBLIC_AGENT_EVENT_NAMES = new Set<PublicAgentEvent["event"]>([
+  "run.accepted",
+  "run.activity",
+  "run.context",
+  "run.verification",
+  "run.completed",
+  "run.failed",
+  "run.cancelled",
+]);
+
+function publicAgentEvent(value: unknown): PublicAgentEvent | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as { event?: unknown; sequence?: unknown };
+  if (
+    typeof candidate.event !== "string" ||
+    !PUBLIC_AGENT_EVENT_NAMES.has(candidate.event as PublicAgentEvent["event"]) ||
+    typeof candidate.sequence !== "number"
+  ) {
+    return null;
+  }
+  return value as PublicAgentEvent;
+}
+
+export async function streamAgentRunEvents(
+  actorId: number,
+  projectId: number,
+  runId: number,
+  onEvent: (event: PublicAgentEvent) => void,
+  signal: AbortSignal,
+  lastEventId = 0,
+): Promise<number> {
+  const response = await fetch(
+    `${API_ROOT}/projects/${projectId}/agent/runs/${runId}/stream`,
+    {
+      headers: {
+        Accept: "text/event-stream",
+        "Last-Event-ID": String(lastEventId),
+        "X-CaseFile-User-Id": String(actorId),
+      },
+      signal,
+    },
+  );
+  if (!response.ok || !response.body) {
+    throw new Error(`Agent 连接失败（HTTP ${response.status}）`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let cursor = lastEventId;
+  let buffer = "";
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    buffer += decoder.decode(result.value, { stream: true }).replaceAll("\r\n", "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const data = frame
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice(6))
+        .join("\n");
+      if (data) {
+        const event = publicAgentEvent(JSON.parse(data) as unknown);
+        if (event !== null) {
+          cursor = Math.max(cursor, event.sequence);
+          onEvent(event);
+        }
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+  return cursor;
+}
+
 export async function listProjects(actorId: number) {
   return apiRequest<ProjectView[]>("/projects", { actorId });
 }
@@ -1058,7 +946,7 @@ export async function rerunVerification(
   draftRevision: number,
   provider: ProviderName = "deepseek",
 ) {
-  return apiRequest<AgentSendMessageView>(
+  return apiRequest<Record<string, unknown>>(
     `/projects/${projectId}/verification-runs/rerun`,
     {
       actorId,
@@ -1161,7 +1049,7 @@ export async function listAgentMessages(
   threadId: number,
   afterSequence = 0,
 ) {
-  return apiRequest<AgentMessageView[]>(
+  return apiRequest<PublicAgentMessage[]>(
     `/projects/${projectId}/agent/threads/${threadId}/messages?after_sequence=${afterSequence}`,
     { actorId },
   );
@@ -1178,7 +1066,7 @@ export async function sendAgentMessage(
   focus?: AgentChatFocus,
   routingHint?: AgentChatRoutingHint,
 ) {
-  return apiRequest<AgentSendMessageView>(
+  return apiRequest<PublicAgentMessageReceipt>(
     `/projects/${projectId}/agent/threads/${threadId}/messages`,
     {
       actorId,
@@ -1200,19 +1088,53 @@ export async function sendAgentRoutingFeedback(
   projectId: number,
   threadId: number,
   messageId: number,
-  correctIntent?: AgentRoutingCorrectIntent,
+  interpretation?: PublicRoutingInterpretation,
   note?: string,
 ) {
-  return apiRequest<AgentRoutingFeedbackResult>(
+  return apiRequest<PublicRoutingFeedbackReceipt>(
     `/projects/${projectId}/agent/threads/${threadId}/messages/${messageId}/routing-feedback`,
     {
       actorId,
       method: "POST",
       body: {
-        ...(correctIntent === undefined ? {} : { correct_intent: correctIntent }),
+        ...(interpretation === undefined ? {} : { interpretation }),
         ...(note === undefined || note.trim() === "" ? {} : { note: note.trim() }),
       },
     },
+  );
+}
+
+export async function getAgentRun(
+  actorId: number,
+  projectId: number,
+  runId: number,
+) {
+  return apiRequest<PublicAgentRun>(
+    `/projects/${projectId}/agent/runs/${runId}`,
+    { actorId },
+  );
+}
+
+export async function cancelAgentRun(
+  actorId: number,
+  projectId: number,
+  runId: number,
+) {
+  return apiRequest<PublicAgentRun>(
+    `/projects/${projectId}/agent/runs/${runId}/cancel`,
+    { actorId, method: "POST" },
+  );
+}
+
+export async function listAgentRunEvents(
+  actorId: number,
+  projectId: number,
+  runId: number,
+  afterSequence = 0,
+) {
+  return apiRequest<PublicAgentEvent[]>(
+    `/projects/${projectId}/agent/runs/${runId}/events?after_sequence=${afterSequence}`,
+    { actorId },
   );
 }
 
@@ -1222,12 +1144,12 @@ export async function applyAgentPatchSet(
   patchSetId: number,
   draftId: number,
   expectedRevision: number,
-  operationIds: number[] | null,
-  targetFindingIds?: number[],
-  acceptedDebtFindingKeys: string[] = [],
-  debtAcceptanceReason?: string,
+  changeIds: number[] | null,
+  confirmationToken?: string,
+  acceptedWarningIds: string[] = [],
+  confirmationNote?: string,
 ) {
-  return apiRequest<AgentPatchApplyResult>(
+  return apiRequest<PublicPatchResponse>(
     `/projects/${projectId}/agent/patch-sets/${patchSetId}/apply`,
     {
       actorId,
@@ -1235,10 +1157,14 @@ export async function applyAgentPatchSet(
       body: {
         expected_draft_id: draftId,
         expected_revision: expectedRevision,
-        ...(operationIds === null ? {} : { operation_ids: operationIds }),
-        ...(targetFindingIds === undefined ? {} : { target_finding_ids: targetFindingIds }),
-        accepted_debt_finding_keys: acceptedDebtFindingKeys,
-        ...(debtAcceptanceReason === undefined ? {} : { debt_acceptance_reason: debtAcceptanceReason }),
+        ...(changeIds === null ? {} : { change_ids: changeIds }),
+        ...(confirmationToken === undefined
+          ? {}
+          : { confirmation_token: confirmationToken }),
+        accepted_warning_ids: acceptedWarningIds,
+        ...(confirmationNote === undefined
+          ? {}
+          : { confirmation_note: confirmationNote }),
       },
     },
   );
@@ -1250,21 +1176,21 @@ export async function simulateAgentPatchSet(
   patchSetId: number,
   draftId: number,
   baseRevision: number,
-  operationIds: number[] | null,
-  targetFindingIds?: number[],
-  acceptedDebtFindingKeys: string[] = [],
-  debtAcceptanceReason?: string,
+  changeIds: number[] | null,
+  acceptedWarningIds: string[] = [],
+  confirmationNote?: string,
 ) {
-  return apiRequest<AgentPatchSimulationResult>(`/projects/${projectId}/agent/patch-sets/${patchSetId}/simulate`, {
+  return apiRequest<PublicPatchReviewResult>(`/projects/${projectId}/agent/patch-sets/${patchSetId}/simulate`, {
     actorId,
     method: "POST",
     body: {
       expected_draft_id: draftId,
       base_revision: baseRevision,
-      ...(operationIds === null ? {} : { operation_ids: operationIds }),
-      ...(targetFindingIds === undefined ? {} : { target_finding_ids: targetFindingIds }),
-      accepted_debt_finding_keys: acceptedDebtFindingKeys,
-      ...(debtAcceptanceReason === undefined ? {} : { debt_acceptance_reason: debtAcceptanceReason }),
+      ...(changeIds === null ? {} : { change_ids: changeIds }),
+      accepted_warning_ids: acceptedWarningIds,
+      ...(confirmationNote === undefined
+        ? {}
+        : { confirmation_note: confirmationNote }),
     },
   });
 }
@@ -1276,7 +1202,7 @@ export async function undoAgentPatchSet(
   draftId: number,
   expectedRevision: number,
 ) {
-  return apiRequest<AgentPatchApplyResult>(
+  return apiRequest<PublicPatchResponse>(
     `/projects/${projectId}/agent/patch-sets/${patchSetId}/undo`,
     {
       actorId,
@@ -1296,7 +1222,7 @@ export async function redoAgentPatchSet(
   draftId: number,
   expectedRevision: number,
 ) {
-  return apiRequest<AgentPatchApplyResult>(
+  return apiRequest<PublicPatchResponse>(
     `/projects/${projectId}/agent/patch-sets/${patchSetId}/redo`,
     {
       actorId,

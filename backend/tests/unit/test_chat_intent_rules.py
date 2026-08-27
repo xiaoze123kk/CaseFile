@@ -9,6 +9,7 @@ from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
     build_edit_target_manifest,
+    general_mutation_abstention_reason,
     normalize_routing_hint,
     resolve_rule_route,
     task_understanding_for_rule,
@@ -260,6 +261,64 @@ def test_create_routes_to_edit_only_when_general_mutation_capability_is_enabled(
     assert rule.primary_intent == "edit_request"
     assert rule.profile == "edit_request.edit"
     assert rule.reason_code == "rule_capability:general_mutation_create"
+
+
+def test_create_event_with_multiple_existing_references_is_not_an_ambiguous_update() -> None:
+    request = replace(
+        make_chat_request(
+            message=(
+                "新增事件“系统第八次自检”：2042年6月2日9:00准时发生在主实验室，"
+                "参与者是备用控制系统，林研究员观察到它。"
+            ),
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={
+            "locations": [{"id": "loc_lab", "name": "主实验室"}],
+            "entities": [
+                {"id": "ent_backup_system", "name": "备用控制系统"},
+                {"id": "ent_researcher", "name": "林研究员"},
+            ],
+        },
+        editable_fields_by_collection={
+            "events": (
+                "title",
+                "truth_status",
+                "time",
+                "participant_refs",
+                "location_ref",
+                "observed_by_refs",
+            )
+        },
+    )
+
+    route = resolve_rule_route(request, allow_general_mutation_create=True)
+
+    assert route is not None
+    assert route.route_source == "rule_capability"
+    assert route.primary_intent == "edit_request"
+    assert route.reason_code == "rule_capability:general_mutation_create"
+    assert general_mutation_abstention_reason(request) is None
+
+
+def test_create_with_explicit_alternative_references_still_requires_clarification() -> None:
+    request = replace(
+        make_chat_request(
+            message="新增一个事件，参与者是林研究员或者备用控制系统。",
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={
+            "entities": [
+                {"id": "ent_backup_system", "name": "备用控制系统"},
+                {"id": "ent_researcher", "name": "林研究员"},
+            ]
+        },
+        editable_fields_by_collection={"events": ("participant_refs",)},
+    )
+
+    assert (
+        general_mutation_abstention_reason(request)
+        == "general_mutation_target_ambiguous"
+    )
 
 
 def test_known_object_editable_field_routes_to_update_capability() -> None:

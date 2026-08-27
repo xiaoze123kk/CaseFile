@@ -76,6 +76,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v13",
         "casefile-chat-v14",
         "casefile-chat-v15",
+        "casefile-chat-v16",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -307,9 +308,14 @@ def _with_chat_repair_feedback(
     if not request.repair_feedback:
         return instructions
     lines = "".join(f"- {item}\n" for item in request.repair_feedback)
+    repair_scope = (
+        "只执行下列最小修复"
+        if request.prompt_version == "casefile-chat-v16"
+        else "只修正引用槽"
+    )
     return (
         instructions.rstrip("\n")
-        + "\n\n系统校验修复要求（最高优先级，必须逐项满足；只修正引用槽，"
+        + f"\n\n系统校验修复要求（最高优先级，必须逐项满足；{repair_scope}，"
         "不得改写已通过的正文结论）：\n"
         + lines
     )
@@ -334,19 +340,33 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
     """Resolve the no-tool finalizer output schema for a v14 route."""
 
     if (
-        request.prompt_version == "casefile-chat-v15"
+        request.prompt_version in {"casefile-chat-v15", "casefile-chat-v16"}
         and request.target_locked_repair is not None
     ):
         return CaseFileChatTargetLockedRepairOutput
+    _component_id, schema_id = chat_finalizer_component(request)
+    return OUTPUT_SCHEMAS[schema_id]
+
+
+def chat_finalizer_component(request: CaseFileChatRequest) -> tuple[str, str]:
+    """Resolve the persisted component and output-schema identity for a finalizer call."""
+
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
-        return chat_executor_output_type(request)
+        raise ValueError("Structured chat finalizer requires a Prompt Package")
     base_component = _chat_executor_component_id(definition, request)
-    finalizer_component = f"{base_component}_finalizer"
-    component = definition.package.components.get(finalizer_component)
+    component_id = f"{base_component}_finalizer"
+    component = definition.package.components.get(component_id)
     if component is None:
-        return chat_executor_output_type(request)
-    return OUTPUT_SCHEMAS[component.output_schema_id]
+        raise ValueError(
+            f"Prompt Package {request.prompt_version} has no finalizer for {base_component}"
+        )
+    schema_id = (
+        "casefile-chat-target-locked-repair-v1"
+        if request.target_locked_repair is not None
+        else component.output_schema_id
+    )
+    return component_id, schema_id
 
 
 def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
@@ -395,12 +415,7 @@ def render_chat_finalizer_prompt(
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
         raise ValueError("Structured chat finalizer requires a Prompt Package")
-    base_component = _chat_executor_component_id(definition, request)
-    finalizer_component = f"{base_component}_finalizer"
-    if finalizer_component not in definition.package.components:
-        raise ValueError(
-            f"Prompt Package {request.prompt_version} has no finalizer for {base_component}"
-        )
+    finalizer_component, _schema_id = chat_finalizer_component(request)
     payload = dict(request.assembled_input or _casefile_chat_payload(request))
     payload.update(
         {
@@ -418,6 +433,8 @@ def render_chat_finalizer_prompt(
         toolset_version=definition.package.runtime_toolset_version,
     )
     instructions = rendered.instructions
+    if request.prompt_version == "casefile-chat-v16":
+        instructions = _with_chat_repair_feedback(instructions, request)
     if repair_plan:
         instructions += (
             "\n\n系统修复契约（最高优先级，必须逐项满足）：\n"
@@ -551,6 +568,7 @@ __all__ = [
     "brief_intake_synthesize_input",
     "brief_strategy_options_input",
     "casefile_chat_input",
+    "chat_finalizer_component",
     "chat_router_input",
     "generation_input",
     "idea_generation_input",

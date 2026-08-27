@@ -125,6 +125,24 @@ from ._internal import (
     NovelPlanIR,
     PlanningProblem,
     PlanSkeleton,
+    PublicAgentEvent,
+    PublicAgentFailure,
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicDisplayValue,
+    PublicFinding,
+    PublicPatchActions,
+    PublicPatchChange,
+    PublicPatchImpact,
+    PublicPatchResponse,
+    PublicPatchReviewResult,
+    PublicPatchSet,
+    PublicPatchTarget,
+    PublicReference,
+    PublicReviewNotice,
+    PublicRoutingFeedbackReceipt,
+    PublicRoutingInterpretation,
     SemanticFillProposal,
     SkeletonProposal,
     SnapshotBinding,
@@ -177,6 +195,24 @@ __all__ = [
     "PlannerModelViewV4",
     "NarrativeIR",
     "PatchCandidate",
+    "PublicAgentEvent",
+    "PublicAgentFailure",
+    "PublicAgentMessage",
+    "PublicAgentMessageReceipt",
+    "PublicAgentRun",
+    "PublicDisplayValue",
+    "PublicFinding",
+    "PublicPatchActions",
+    "PublicPatchChange",
+    "PublicPatchImpact",
+    "PublicPatchResponse",
+    "PublicPatchReviewResult",
+    "PublicPatchSet",
+    "PublicPatchTarget",
+    "PublicReference",
+    "PublicReviewNotice",
+    "PublicRoutingFeedbackReceipt",
+    "PublicRoutingInterpretation",
     "TaskEvent",
     "TaskRun",
     "SnapshotBinding",
@@ -266,6 +302,19 @@ $typescriptOutput = Join-Path $typescriptRoot "index.d.ts"
 if ($LASTEXITCODE -ne 0) {
     throw "TypeScript contract generation failed."
 }
+$typescriptContent = [System.IO.File]::ReadAllText($typescriptOutput)
+$typescriptContent += @'
+
+/** Strict public event union discriminated by `event`. */
+export type PublicAgentEvent = ChatPublicContracts["event"];
+
+/** Strict public Patch change union discriminated by `kind`. */
+export type PublicPatchChange = PublicPatchSet["changes"][number];
+
+/** Author-facing routing interpretation used by feedback controls. */
+export type PublicRoutingInterpretation = PublicRoutingFeedbackReceipt["interpretation"];
+'@
+Write-GeneratedFile -Path $typescriptOutput -Content $typescriptContent
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $runtimeSchemaFullPath = [System.IO.Path]::GetFullPath($runtimeSchemaRoot)
@@ -283,7 +332,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     }
     New-Item -ItemType Directory -Path $runtimeSchemaFullPath -Force | Out-Null
     foreach ($schemaDirectory in @(
-        "brief", "brief-intake", "casefile", "compiler", "task", "validation"
+        "brief", "brief-intake", "casefile", "chat", "compiler", "task", "validation"
     )) {
         Copy-Item -LiteralPath (Join-Path $schemaRoot $schemaDirectory) `
             -Destination $runtimeSchemaFullPath -Recurse

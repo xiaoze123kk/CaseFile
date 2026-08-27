@@ -146,5 +146,10 @@ def test_backend_executor_fault_matrix_uses_real_postgres_seams(
             executor.close()
 
     assert set(results) == set(FAULT_MATRIX)
-    assert all(result["passed"] is True for result in results.values())
+    failed = {
+        fault_id: result
+        for fault_id, result in results.items()
+        if result["passed"] is not True
+    }
+    assert failed == {}
     assert all(result["production_database"] is True for result in results.values())

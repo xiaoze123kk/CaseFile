@@ -15,6 +15,11 @@ import type {
   CompilerSourceRef,
   NarrativeIR,
   PatchCandidate,
+  PublicAgentEvent,
+  PublicAgentMessage,
+  PublicPatchReviewResult,
+  PublicRoutingFeedbackReceipt,
+  PublicRoutingInterpretation,
   ValidationIssue,
 } from "../generated/typescript/index.js";
 
@@ -130,6 +135,15 @@ const briefIntakeCandidateValidator = ajv.getSchema(
 const briefIntakeQuestionSetValidator = ajv.getSchema(
   "https://casefile.local/schemas/v2/brief-intake/brief-intake.schema.json#/$defs/BriefIntakeQuestionSet",
 );
+const publicMessageValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/chat/chat-public.schema.json#/$defs/PublicAgentMessage",
+);
+const publicEventValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/chat/chat-public.schema.json#/$defs/PublicAgentEvent",
+);
+const publicPatchReviewValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/chat/chat-public.schema.json#/$defs/PublicPatchReviewResult",
+);
 const compilerManifestValidator = ajv.getSchema(
   "https://casefile.local/schemas/v2/compiler/compiler.schema.json#/$defs/CompileInputManifest",
 );
@@ -152,6 +166,9 @@ if (
   !patchValidator ||
   !briefIntakeCandidateValidator ||
   !briefIntakeQuestionSetValidator ||
+  !publicMessageValidator ||
+  !publicEventValidator ||
+  !publicPatchReviewValidator ||
   !compilerManifestValidator ||
   !compilerSourceRefValidator ||
   !compilerArtifactRefValidator ||
@@ -244,6 +261,68 @@ assertValid(
   typedRoundTrip(questionSet),
   "BriefIntakeQuestionSet",
 );
+
+const publicMessage = loadJson(
+  resolve(fixtureRoot, "editing", "chat_public_message.json"),
+);
+assertValid(
+  publicMessageValidator,
+  typedRoundTrip(publicMessage as unknown as PublicAgentMessage),
+  "PublicAgentMessage",
+);
+if (publicMessageValidator({ ...publicMessage, task: { provider: "deepseek" } })) {
+  throw new Error("PublicAgentMessage accepted an internal Task payload");
+}
+
+const publicEvent: PublicAgentEvent = {
+  sequence: 8,
+  event: "run.context",
+  context_state: "compacted",
+};
+assertValid(publicEventValidator, typedRoundTrip(publicEvent), "PublicAgentEvent");
+if (publicEventValidator({ ...publicEvent, payload_jsonb: { token_count: 12000 } })) {
+  throw new Error("PublicAgentEvent accepted an internal payload");
+}
+
+const publicPatchReview: PublicPatchReviewResult = {
+  patch_id: 13,
+  can_apply: false,
+  blockers: [],
+  warnings: [
+    {
+      notice_id: "warning_1",
+      message: "删除会影响 2 项相关内容。",
+    },
+  ],
+  requires_author_confirmation: true,
+  confirmation_token: "confirmation-token",
+};
+assertValid(
+  publicPatchReviewValidator,
+  typedRoundTrip(publicPatchReview),
+  "PublicPatchReviewResult",
+);
+
+const publicInterpretation: PublicRoutingInterpretation = "logic_review";
+const publicFeedback: PublicRoutingFeedbackReceipt = {
+  message_id: 56,
+  acknowledged: true,
+  interpretation: publicInterpretation,
+};
+const publicFeedbackValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/chat/chat-public.schema.json#/$defs/PublicRoutingFeedbackReceipt",
+);
+if (!publicFeedbackValidator) {
+  throw new Error("PublicRoutingFeedbackReceipt schema was not registered");
+}
+assertValid(
+  publicFeedbackValidator,
+  typedRoundTrip(publicFeedback),
+  "PublicRoutingFeedbackReceipt",
+);
+if (publicFeedbackValidator({ ...publicFeedback, route_source: "internal-canary" })) {
+  throw new Error("PublicRoutingFeedbackReceipt accepted internal routing metadata");
+}
 
 const compilerFixtureRoot = resolve(fixtureRoot, "compiler", "foundation");
 const typedCompilerSourceRef: CompilerSourceRef = {

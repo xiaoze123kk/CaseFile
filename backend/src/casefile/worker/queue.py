@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,19 +14,19 @@ from casefile.data_postgres.models import (
     TaskAttempt,
     TaskRun,
 )
-from casefile.worker.executors.chat import _chat_intent_event_payload as _chat_intent_event_payload
-from casefile.worker.executors.chat import (
-    _chat_rewrite_event_payload as _chat_rewrite_event_payload,
-)
-from casefile.worker.executors.chat import _resolve_chat_route as _resolve_chat_route
-from casefile.worker.support import (
-    _previous_attempt_failed_steps as _previous_attempt_failed_steps,
-)
 
 
-class QueueMixin:
-    session_factory: sessionmaker[Session]
-    config: Any
+class TaskQueue:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> None:
+        self.session_factory = session_factory
+        self.worker_id = worker_id
+        self.lease_seconds = lease_seconds
 
     def _claim_next(self) -> tuple[int, int] | Literal["cancelled"] | None:
         now = datetime.now(UTC)
@@ -98,8 +98,8 @@ class QueueMixin:
             task.status = "running"
             task.stage = "preparing"
             task.attempt_count += 1
-            task.leased_by = self.config.worker_id
-            task.lease_expires_at = now + timedelta(seconds=self.config.lease_seconds)
+            task.leased_by = self.worker_id
+            task.lease_expires_at = now + timedelta(seconds=self.lease_seconds)
             task.error_code = None
             task.error_details_jsonb = {}
             attempt = TaskAttempt(
@@ -119,9 +119,9 @@ class QueueMixin:
                 task,
                 "task.started",
                 "preparing",
-                {"attempt_no": attempt.attempt_no, "worker_id": self.config.worker_id},
+                {"attempt_no": attempt.attempt_no, "worker_id": self.worker_id},
             )
             return task.id, attempt.id
 
 
-__all__ = ["QueueMixin"]
+__all__ = ["TaskQueue"]

@@ -44,7 +44,7 @@ PROFILE: dict[str, object] = {}
 
 class ApiChatProvider(FakeProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        assert request.prompt_version == "casefile-chat-v12"
+        assert request.prompt_version == "casefile-chat-v16"
         resolution = request.casefile["resolution_specs"][0]
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(
@@ -943,7 +943,9 @@ def test_settings_brief_generation_sse_and_completion_gate(
             },
         )
         assert queued_chat.status_code == 202
-        chat_task_id = queued_chat.json()["task"]["task_run_id"]
+        queued_chat_body = queued_chat.json()
+        assert set(queued_chat_body) == {"user_message", "assistant_message"}
+        chat_task_id = queued_chat_body["assistant_message"]["run"]["run_id"]
         with engine.connect() as connection:
             stored_prompt_version, stored_toolset_version = connection.execute(
                 text(
@@ -951,7 +953,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 ),
                 {"task_run_id": chat_task_id},
             ).one()
-        assert stored_prompt_version == "casefile-chat-v12"
+        assert stored_prompt_version == "casefile-chat-v16"
         assert stored_toolset_version == "casefile-chat-tools-v4"
         chat_worker = Worker(
             factory,
@@ -967,27 +969,30 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert message_response.status_code == 200
         messages = message_response.json()
         assert [message["role"] for message in messages] == ["user", "assistant"]
-        assert messages[-1]["task"]["task_run_id"] == chat_task_id
-        patch_set = messages[-1]["patch_set"]
+        assert messages[-1]["run"]["run_id"] == chat_task_id
+        assert "task" not in messages[-1]
+        assert "result" not in messages[-1]
+        patch_set = messages[-1]["patch"]
         assert patch_set["status"] == "pending"
-        assert patch_set["operations"][0]["object_type"] == "resolution_spec"
-        assert patch_set["operations"][0]["field_path"] == "/description"
+        assert patch_set["changes"][0]["target"]["type_label"] == "谜题解答"
+        assert patch_set["changes"][0]["field_label"] == "描述"
+        assert "field_path" not in patch_set["changes"][0]
 
         applied = client.post(
-            (f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set['patch_set_id']}/apply"),
+            (f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set['patch_id']}/apply"),
             headers=_identity(actor_id),
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_revision": 2,
-                "operation_ids": None,
+                "change_ids": None,
             },
         )
         assert applied.status_code == 200
-        assert applied.json()["status"] == "applied"
-        assert applied.json()["draft_revision"] == 3
+        assert applied.json()["patch"]["status"] == "applied"
+        assert applied.json()["revision"] == 3
 
         undone = client.post(
-            (f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set['patch_set_id']}/undo"),
+            (f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set['patch_id']}/undo"),
             headers=_identity(actor_id),
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
@@ -995,8 +1000,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             },
         )
         assert undone.status_code == 200
-        assert undone.json()["status"] == "undone"
-        assert undone.json()["draft_revision"] == 4
+        assert undone.json()["patch"]["status"] == "undone"
+        assert undone.json()["revision"] == 4
 
         metrics = client.get(
             f"/api/v1/projects/{project_id}/a-path-metrics",
@@ -1034,22 +1039,19 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
         ).json()
-        rejected_patch = latest_messages[-1]["patch_set"]
+        rejected_patch = latest_messages[-1]["patch"]
         rejected = client.post(
-            (
-                f"/api/v1/projects/{project_id}/agent/patch-sets/"
-                f"{rejected_patch['patch_set_id']}/apply"
-            ),
+            (f"/api/v1/projects/{project_id}/agent/patch-sets/{rejected_patch['patch_id']}/apply"),
             headers=_identity(actor_id),
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_revision": 4,
-                "operation_ids": [],
+                "change_ids": [],
             },
         )
         assert rejected.status_code == 200
-        assert rejected.json()["status"] == "rejected"
-        assert rejected.json()["draft_revision"] == 4
+        assert rejected.json()["patch"]["status"] == "rejected"
+        assert rejected.json()["revision"] == 4
 
         updated_thread = client.patch(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}",

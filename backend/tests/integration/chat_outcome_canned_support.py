@@ -24,6 +24,7 @@ from casefile.agent_runtime.models import (
     CaseFileChatCandidateV2,
     CaseFileChatRequest,
 )
+from casefile.agent_runtime.providers import FakeProvider
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.chat_outcome_canned import (
@@ -35,6 +36,7 @@ from casefile.benchmark.chat_outcome_eval import (
     ChatOutcomeTask,
     ChatOutcomeTrialVerdict,
 )
+from casefile.benchmark.general_mutation_safety_executor import _SafetyProvider
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
 from sqlalchemy import Engine
@@ -69,10 +71,16 @@ def run_chat_trial(
         project_id, generation_task_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
+        generation_provider = (
+            _SafetyProvider(task.frozen_casefile, live=FakeProvider())
+            if task.expectations.expected_primary_intent == "logic_audit"
+            and task.casefile is not None
+            else RichFixtureProvider()
+        )
         generation_worker = Worker(
             factory,
             config=WorkerConfig(worker_id=f"m1-gen-{task.task_id}"),
-            provider_factory=lambda _task: RichFixtureProvider(),
+            provider_factory=lambda _task: generation_provider,
         )
         assert generation_worker.run_once() is True
         adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)

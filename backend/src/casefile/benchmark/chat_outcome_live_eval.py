@@ -378,6 +378,7 @@ def run_live_chat_outcome_eval(
                     "casefile-chat-v13",
                     "casefile-chat-v14",
                     "casefile-chat-v15",
+                    "casefile-chat-v16",
                 }:
                     resolved = replace(
                         prepare_chat_request_artifacts(resolved),
@@ -878,6 +879,7 @@ def main() -> None:
             "casefile-chat-v13",
             "casefile-chat-v14",
             "casefile-chat-v15",
+            "casefile-chat-v16",
         ),
         default="casefile-chat-v14",
         help="Explicit immutable Chat Prompt version for this M2 run",

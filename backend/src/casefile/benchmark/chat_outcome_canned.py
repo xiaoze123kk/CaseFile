@@ -119,6 +119,16 @@ class CannedChatOutcomeProvider(FakeProvider):
             intent == "logic_audit"
             and ("没有漏洞就不要提出任何修改" in request.message or "干净卷宗" in request.message)
         )
+        audit_bundle = request.validation.get("audit_evidence_bundle")
+        audit_pairs = (
+            audit_bundle.get("candidate_pairs", [])
+            if isinstance(audit_bundle, dict)
+            else []
+        )
+        audit_pair = next(
+            (pair for pair in audit_pairs if isinstance(pair, dict)),
+            None,
+        )
         if (
             route is not None
             and route_allows_suggestions(route)
@@ -127,6 +137,17 @@ class CannedChatOutcomeProvider(FakeProvider):
             and not clean_audit
         ):
             if intent == "logic_audit":
+                pair_object_ids = [
+                    str(audit_pair[key])
+                    for key in ("left_id", "right_id")
+                    if audit_pair is not None and isinstance(audit_pair.get(key), str)
+                ]
+                pair_event_id = (
+                    str(audit_pair["event_id"])
+                    if audit_pair is not None
+                    and isinstance(audit_pair.get("event_id"), str)
+                    else event_id
+                )
                 findings.append(
                     CaseFileChatAuditFindingCandidate(
                         finding_id="F1",
@@ -135,8 +156,10 @@ class CannedChatOutcomeProvider(FakeProvider):
                         title="审计基准发现的描述矛盾",
                         statement="冻结卷宗中的对象描述与证据主张存在矛盾。",
                         needs_manual_review=False,
-                        evidence_object_ids=[entity_id],
-                        evidence_event_ids=[event_id] if event_id is not None else [],
+                        evidence_object_ids=pair_object_ids or [entity_id],
+                        evidence_event_ids=(
+                            [pair_event_id] if pair_event_id is not None else []
+                        ),
                         evidence_validation_issue_ids=[issue_id] if issue_id is not None else [],
                     )
                 )

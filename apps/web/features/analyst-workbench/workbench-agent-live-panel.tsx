@@ -2,45 +2,43 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type {
+  PublicAgentEvent,
+  PublicAgentMessage,
+  PublicAgentRun,
+  PublicContextState,
+  PublicPatchReviewResult,
+  PublicPatchSet,
+  PublicRoutingInterpretation,
+  PublicVerificationStatus,
+} from "@casefile/contracts";
 
 import {
   applyAgentPatchSet,
+  cancelAgentRun,
   createAgentThread,
   errorMessage,
-  getVerificationRun,
+  getAgentRun,
   listAgentMessages,
   listAgentThreads,
+  redoAgentPatchSet,
   sendAgentMessage,
   sendAgentRoutingFeedback,
   simulateAgentPatchSet,
-  redoAgentPatchSet,
+  streamAgentRunEvents,
   undoAgentPatchSet,
   updateAgentThread,
   type AgentChatFocus,
   type AgentChatRoutingHint,
-  type AgentMessageView,
-  type AgentPatchSetView,
-  type AgentPatchSimulationView,
-  type AgentRoutingCorrectIntent,
-  type AgentSuggestedView,
   type AgentThreadView,
-  type TaskEventView,
-  type TaskView,
-  type VerificationFindingView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
-import {
-  cancelTask,
-  TaskCancelledError,
-  waitForTask,
-} from "@/features/case-session/case-session-api";
 
 import styles from "./workbench-agent.module.css";
 import { WorkbenchAgentComposer } from "./workbench-agent-composer";
 import {
   WorkbenchAgentConversation,
   agentAuditFindingsFor,
-  agentViewLabels,
 } from "./workbench-agent-conversation";
 import { WorkbenchAgentDesk } from "./workbench-agent-desk";
 import { agentPromptPresets } from "./workbench-agent-presets";
@@ -49,99 +47,56 @@ import { WorkbenchAgentTaskStrip } from "./workbench-agent-task-strip";
 import { WorkbenchAgentThreadMenu } from "./workbench-agent-thread-menu";
 import { WorkbenchAgentInspector } from "./workbench-agent-inspector";
 
-const ACTIVE_TASK_STATUSES = new Set<TaskView["status"]>([
+const ACTIVE_RUN_STATUSES = new Set<PublicAgentRun["status"]>([
   "queued",
   "running",
   "cancelling",
 ]);
 
-const TERMINAL_TASK_STATUSES = new Set<TaskView["status"]>([
+const TERMINAL_RUN_STATUSES = new Set<PublicAgentRun["status"]>([
   "succeeded",
   "failed",
   "cancelled",
 ]);
 
-const routingIntentLabels: Record<AgentRoutingCorrectIntent, string> = {
-  question: "问答",
+const interpretationLabels: Record<PublicRoutingInterpretation, string> = {
+  conversation: "交流问答",
   analysis: "分析",
-  explain_issue: "问题解释",
-  edit_request: "修改请求",
-  validate_request: "验证请求",
-  logic_audit: "逻辑漏洞复查",
-  unsupported_action: "不可执行",
-  clarify: "需要澄清",
-  out_of_scope: "超出范围",
+  logic_review: "逻辑复查",
+  change_request: "修改卷宗",
+  clarification: "补充说明",
 };
 
-const routingSourceLabels: Record<string, string> = {
-  rule_preset: "预设路由",
-  rule_ui: "界面路由",
-  llm: "AI 理解",
-  fallback: "降级路由",
+const focusViewLabels: Record<string, string> = {
+  timeline: "时间线",
+  relations: "关系图",
+  reasoning: "推理分析",
+  map: "地图",
+  export: "导出预览",
+  compile: "编译中心",
+  evidence: "证据对比",
 };
-
-function routingSummaryFor(message: AgentMessageView): {
-  route_source: string | null;
-  intent: string | null;
-} | null {
-  const result = message.task?.result;
-  if (result === null || result === undefined) return null;
-  const routing =
-    typeof result === "object" && result !== null && "routing" in result
-      ? (result as { routing?: unknown }).routing
-      : null;
-  if (routing === null || routing === undefined || typeof routing !== "object") {
-    return null;
-  }
-  const summary = routing as {
-    route_source?: unknown;
-    intent?: unknown;
-  };
-  return {
-    route_source:
-      typeof summary.route_source === "string" ? summary.route_source : null,
-    intent: typeof summary.intent === "string" ? summary.intent : null,
-  };
-}
-interface ContextOccupancy {
-  usedTokens: number;
-  budgetTokens: number | null;
-}
-
-function contextOccupancyFromEvent(
-  event: TaskEventView,
-): ContextOccupancy | null {
-  if (event.event_type !== "context.built") return null;
-  const payload = event.payload;
-  if (typeof payload !== "object" || payload === null) return null;
-  const usedTokens = (payload as { used_tokens?: unknown }).used_tokens;
-  const budgetTokens = (payload as { budget_tokens?: unknown }).budget_tokens;
-  return {
-    usedTokens: typeof usedTokens === "number" ? usedTokens : 0,
-    budgetTokens: typeof budgetTokens === "number" ? budgetTokens : null,
-  };
-}
 
 function mergeMessages(
-  previous: AgentMessageView[],
-  incoming: AgentMessageView[],
-): AgentMessageView[] {
+  previous: PublicAgentMessage[],
+  incoming: PublicAgentMessage[],
+): PublicAgentMessage[] {
   const byId = new Map(previous.map((message) => [message.message_id, message]));
   for (const message of incoming) byId.set(message.message_id, message);
-  return [...byId.values()].sort((a, b) => a.sequence_no - b.sequence_no);
+  return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
 }
 
-function pendingAssistantTask(
-  messages: AgentMessageView[],
-): { message: AgentMessageView; task: TaskView } | null {
+function pendingAssistantRun(
+  messages: PublicAgentMessage[],
+): { message: PublicAgentMessage; run: PublicAgentRun } | null {
   const pending = messages.find(
     (message) =>
       message.role === "assistant" &&
       message.status === "pending" &&
-      message.task !== null &&
-      ACTIVE_TASK_STATUSES.has(message.task.status),
+      message.run !== null &&
+      ACTIVE_RUN_STATUSES.has(message.run.status),
   );
-  return pending?.task ? { message: pending, task: pending.task } : null;
+  return pending?.run ? { message: pending, run: pending.run } : null;
 }
 
 export function AgentLivePanel({
@@ -153,8 +108,6 @@ export function AgentLivePanel({
   referenceLabels,
   onLocateObject,
   onLocateEvent,
-  onLocateIssue,
-  onLocateView,
   onFocusPatch = () => undefined,
   onFocusFinding = () => undefined,
   focusPatchSetId,
@@ -178,8 +131,6 @@ export function AgentLivePanel({
   };
   onLocateObject: (objectId: string) => void;
   onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
-  onLocateView: (view: AgentSuggestedView) => void;
   onFocusPatch?: (patchSetId: number) => void;
   onFocusFinding?: (findingId: string) => void;
   focusPatchSetId?: number | null;
@@ -196,31 +147,29 @@ export function AgentLivePanel({
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [threadsError, setThreadsError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
-  const [messages, setMessages] = useState<AgentMessageView[]>([]);
+  const [messages, setMessages] = useState<PublicAgentMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [liveTasks, setLiveTasks] = useState<Record<number, TaskView>>({});
+  const [liveRuns, setLiveRuns] = useState<Record<number, PublicAgentRun>>({});
   const [creatingThread, setCreatingThread] = useState(false);
   const [patchBusyId, setPatchBusyId] = useState<number | null>(null);
   const [patchError, setPatchError] = useState<string | null>(null);
   const [localFocusPatchSetId, setLocalFocusPatchSetId] = useState<number | null>(null);
   const [localFocusFindingId, setLocalFocusFindingId] = useState<string | null>(null);
   const [feedbackByMessage, setFeedbackByMessage] = useState<
-    Record<number, AgentRoutingCorrectIntent>
+    Record<number, PublicRoutingInterpretation>
   >({});
-  const [contextByTask, setContextByTask] = useState<
-    Record<number, ContextOccupancy | null>
+  const [contextByRun, setContextByRun] = useState<
+    Record<number, PublicContextState | null>
   >({});
-  const [verificationByTask, setVerificationByTask] = useState<
-    Record<number, { status: string; findingCount: number }>
+  const [verificationByRun, setVerificationByRun] = useState<
+    Record<number, { status: PublicVerificationStatus; summary: string }>
   >({});
-  const [verificationByMessage, setVerificationByMessage] = useState<
-    Record<number, VerificationFindingView[]>
-  >({});
+  const [revisionByPatch, setRevisionByPatch] = useState<Record<number, number>>({});
 
   const followsRef = useRef(new Map<number, AbortController>());
-  const followedTaskIdsRef = useRef(new Set<number>());
+  const followedRunIdsRef = useRef(new Set<number>());
   const messagesRequestRef = useRef(0);
   const selectedThreadIdRef = useRef<number | null>(null);
 
@@ -303,6 +252,7 @@ export function AgentLivePanel({
       }
       setThreads(rows);
       setThreadMenuRows(rows);
+      setMessagesLoading(true);
       setSelectedThreadId((current) =>
         current !== null && rows.some((row) => row.thread_id === current)
           ? current
@@ -316,117 +266,145 @@ export function AgentLivePanel({
   }, [draftId, draftRevision, projectId]);
 
   useEffect(() => {
-    void bootstrap();
+    const timer = window.setTimeout(() => void bootstrap(), 0);
+    return () => window.clearTimeout(timer);
   }, [bootstrap]);
-
-  useEffect(() => {
-    const candidates = messages.filter((message) => {
-      const result = message.task?.result;
-      return (
-        message.role === "assistant" &&
-        result !== null &&
-        result !== undefined &&
-        typeof result === "object" &&
-        typeof (result as { verification_run_id?: unknown }).verification_run_id ===
-          "number" &&
-        verificationByMessage[message.message_id] === undefined
-      );
-    });
-    for (const message of candidates) {
-      const runId = (message.task?.result as { verification_run_id: number })
-        .verification_run_id;
-      void getVerificationRun(LOCAL_ACTOR_ID, projectId, runId)
-        .then((run) => {
-          setVerificationByMessage((previous) => ({
-            ...previous,
-            [message.message_id]: run.findings,
-          }));
-        })
-        .catch(() => undefined);
-    }
-  }, [messages, projectId, verificationByMessage]);
 
   useEffect(() => {
     if (selectedThreadId === null) return;
     let active = true;
     const requestId = ++messagesRequestRef.current;
-    setMessages([]);
-    setMessagesLoading(true);
-    setMessagesError(null);
-    void listAgentMessages(LOCAL_ACTOR_ID, projectId, selectedThreadId)
-      .then((rows) => {
-        if (active && requestId === messagesRequestRef.current) {
-          setMessages(rows);
-        }
-      })
-      .catch((caught: unknown) => {
-        if (active && requestId === messagesRequestRef.current) {
-          setMessagesError(errorMessage(caught));
-        }
-      })
-      .finally(() => {
-        if (active && requestId === messagesRequestRef.current) {
-          setMessagesLoading(false);
-        }
-      });
+    const timer = window.setTimeout(() => {
+      if (!active) return;
+      setMessages([]);
+      setMessagesLoading(true);
+      setMessagesError(null);
+      void listAgentMessages(LOCAL_ACTOR_ID, projectId, selectedThreadId)
+        .then((rows) => {
+          if (active && requestId === messagesRequestRef.current) {
+            setMessages(rows);
+          }
+        })
+        .catch((caught: unknown) => {
+          if (active && requestId === messagesRequestRef.current) {
+            setMessagesError(errorMessage(caught));
+          }
+        })
+        .finally(() => {
+          if (active && requestId === messagesRequestRef.current) {
+            setMessagesLoading(false);
+          }
+        });
+    }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [projectId, selectedThreadId]);
 
   const startFollow = useCallback(
-    (taskRunId: number, threadId: number) => {
-      if (followedTaskIdsRef.current.has(taskRunId)) return;
-      followedTaskIdsRef.current.add(taskRunId);
+    (initialRun: PublicAgentRun, threadId: number) => {
+      const runId = initialRun.run_id;
+      if (followedRunIdsRef.current.has(runId)) return;
+      followedRunIdsRef.current.add(runId);
+      setLiveRuns((previous) => ({ ...previous, [runId]: initialRun }));
       const controller = new AbortController();
-      followsRef.current.set(taskRunId, controller);
-      void (async () => {
-        try {
-          await waitForTask(projectId, taskRunId, (task) => {
-            setLiveTasks((previous) => ({
-              ...previous,
-              [task.task_run_id]: task,
-            }));
-          }, controller.signal, (event) => {
-            const occupancy = contextOccupancyFromEvent(event);
-            if (occupancy !== null) {
-              setContextByTask((previous) => ({
-                ...previous,
-                [taskRunId]: occupancy,
-              }));
-            }
-            if (event.event_type.startsWith("verification.")) {
-              const status = event.event_type.slice("verification.".length);
-              const payload = event.payload;
-              const findingCount =
-                typeof payload === "object" && payload !== null &&
-                typeof (payload as { finding_count?: unknown }).finding_count === "number"
-                  ? (payload as { finding_count: number }).finding_count
-                  : undefined;
-              setVerificationByTask((previous) => ({
-                ...previous,
-                [taskRunId]: {
-                  status,
-                  findingCount:
-                    findingCount ??
-                    (status === "finding"
-                      ? (previous[taskRunId]?.findingCount ?? 0) + 1
-                      : (previous[taskRunId]?.findingCount ?? 0)),
-                },
-              }));
-            }
-          });
-        } catch (caught) {
-          if (caught instanceof TaskCancelledError) {
-            setLiveTasks((previous) => ({
-              ...previous,
-              [caught.task.task_run_id]: caught.task,
-            }));
+      followsRef.current.set(runId, controller);
+
+      function receiveEvent(event: PublicAgentEvent) {
+        if (event.event === "run.context") {
+          setContextByRun((previous) => ({
+            ...previous,
+            [runId]: event.context_state,
+          }));
+          return;
+        }
+        if (event.event === "run.verification") {
+          setVerificationByRun((previous) => ({
+            ...previous,
+            [runId]: {
+              status: event.verification_status,
+              summary: event.summary,
+            },
+          }));
+          return;
+        }
+        setLiveRuns((previous) => {
+          const current = previous[runId] ?? initialRun;
+          if (event.event === "run.accepted" || event.event === "run.completed") {
+            return { ...previous, [runId]: event.run };
           }
-          // Provider/validation failures surface through the assistant
-          // message's own task.failure after the authoritative reload below.
+          if (event.event === "run.activity") {
+            return {
+              ...previous,
+              [runId]: { ...current, status: "running", activity: event.activity },
+            };
+          }
+          if (event.event === "run.failed") {
+            return {
+              ...previous,
+              [runId]: {
+                ...current,
+                status: "failed",
+                activity: null,
+                cancellable: false,
+                failure: event.failure,
+              },
+            };
+          }
+          return {
+            ...previous,
+            [runId]: {
+              ...current,
+              status: "cancelled",
+              activity: null,
+              cancellable: false,
+              failure: null,
+            },
+          };
+        });
+      }
+
+      void (async () => {
+        let cursor = 0;
+        let reconnectDelay = 250;
+        try {
+          while (!controller.signal.aborted) {
+            try {
+              cursor = await streamAgentRunEvents(
+                LOCAL_ACTOR_ID,
+                projectId,
+                runId,
+                receiveEvent,
+                controller.signal,
+                cursor,
+              );
+              reconnectDelay = 250;
+            } catch {
+              if (controller.signal.aborted) break;
+            }
+            try {
+              const current = await getAgentRun(LOCAL_ACTOR_ID, projectId, runId);
+              setLiveRuns((previous) => ({ ...previous, [runId]: current }));
+              if (TERMINAL_RUN_STATUSES.has(current.status)) break;
+            } catch {
+              if (controller.signal.aborted) break;
+            }
+            await new Promise<void>((resolve) => {
+              const timer = window.setTimeout(resolve, reconnectDelay);
+              controller.signal.addEventListener(
+                "abort",
+                () => {
+                  window.clearTimeout(timer);
+                  resolve();
+                },
+                { once: true },
+              );
+            });
+            reconnectDelay = Math.min(reconnectDelay * 2, 2_000);
+          }
         } finally {
-          followsRef.current.delete(taskRunId);
+          followsRef.current.delete(runId);
           await refreshThreads();
           if (selectedThreadIdRef.current === threadId) {
             await reloadMessages();
@@ -438,25 +416,25 @@ export function AgentLivePanel({
   );
 
   useEffect(() => {
-    const pending = pendingAssistantTask(messages);
-    if (pending === null) return;
-    startFollow(pending.task.task_run_id, pending.message.thread_id);
-  }, [messages, startFollow]);
+    const pending = pendingAssistantRun(messages);
+    if (pending === null || selectedThreadId === null) return;
+    startFollow(pending.run, selectedThreadId);
+  }, [messages, selectedThreadId, startFollow]);
 
-  const pendingEntry = pendingAssistantTask(messages);
-  const pendingLiveTask =
+  const pendingEntry = pendingAssistantRun(messages);
+  const pendingLiveRun =
     pendingEntry === null
       ? null
-      : (liveTasks[pendingEntry.task.task_run_id] ?? pendingEntry.task);
+      : (liveRuns[pendingEntry.run.run_id] ?? pendingEntry.run);
   const busy =
-    pendingLiveTask !== null && ACTIVE_TASK_STATUSES.has(pendingLiveTask.status);
+    pendingLiveRun !== null && ACTIVE_RUN_STATUSES.has(pendingLiveRun.status);
   const finishing =
-    pendingLiveTask !== null &&
-    TERMINAL_TASK_STATUSES.has(pendingLiveTask.status);
+    pendingLiveRun !== null && TERMINAL_RUN_STATUSES.has(pendingLiveRun.status);
 
   const inputDisabled =
     selectedThreadId === null ||
     threadsLoading ||
+    messagesLoading ||
     busy ||
     finishing ||
     creatingThread ||
@@ -486,6 +464,7 @@ export function AgentLivePanel({
         draftRevision,
       );
       upsertThread(created);
+      setMessagesLoading(true);
       setSelectedThreadId(created.thread_id);
       return created;
     } catch (caught) {
@@ -555,7 +534,6 @@ export function AgentLivePanel({
           focus,
           routingHint ?? { entrypoint: "free_text" },
         );
-        upsertThread(result.thread);
         if (selectedThreadIdRef.current === threadId) {
           messagesRequestRef.current += 1;
           setMessages((previous) =>
@@ -565,7 +543,10 @@ export function AgentLivePanel({
             ]),
           );
         }
-        startFollow(result.task.task_run_id, result.thread.thread_id);
+        void refreshThreads();
+        if (result.assistant_message.run !== null) {
+          startFollow(result.assistant_message.run, threadId);
+        }
       } catch (caught) {
         setMessagesError(errorMessage(caught));
       }
@@ -577,6 +558,7 @@ export function AgentLivePanel({
       finishing,
       focus,
       projectId,
+      refreshThreads,
       selectedThreadId,
       startFollow,
     ],
@@ -587,7 +569,11 @@ export function AgentLivePanel({
     if (kickoff === null || handledKickoffRef.current === kickoff.id) return;
     if (selectedThreadId === null || busy || finishing || threadsLoading) return;
     handledKickoffRef.current = kickoff.id;
-    void send(kickoff.prompt, kickoff.routingHint);
+    const timer = window.setTimeout(
+      () => void send(kickoff.prompt, kickoff.routingHint),
+      0,
+    );
+    return () => window.clearTimeout(timer);
   }, [
     busy,
     finishing,
@@ -597,49 +583,54 @@ export function AgentLivePanel({
     threadsLoading,
   ]);
 
-  async function cancelCurrentTask() {
+  async function cancelCurrentRun() {
     if (pendingEntry === null) return;
     setMessagesError(null);
     try {
-      const task = await cancelTask(projectId, pendingEntry.task.task_run_id);
-      setLiveTasks((previous) => ({
+      const run = await cancelAgentRun(
+        LOCAL_ACTOR_ID,
+        projectId,
+        pendingEntry.run.run_id,
+      );
+      setLiveRuns((previous) => ({
         ...previous,
-        [task.task_run_id]: task,
+        [run.run_id]: run,
       }));
     } catch (caught) {
       setMessagesError(errorMessage(caught));
     }
   }
 
-  function retryMessage(message: AgentMessageView) {
+  function retryMessage(message: PublicAgentMessage) {
     const previousUser = [...messages]
-      .sort((a, b) => b.sequence_no - a.sequence_no)
+      .sort((a, b) => b.sequence - a.sequence)
       .find(
         (candidate) =>
           candidate.role === "user" &&
           candidate.status === "completed" &&
-          candidate.sequence_no < message.sequence_no &&
-          candidate.content !== null,
+          candidate.sequence < message.sequence &&
+          candidate.body !== null,
       );
-    if (previousUser?.content) void send(previousUser.content);
+    if (previousUser?.body) void send(previousUser.body);
   }
 
   async function submitRoutingFeedback(
-    message: AgentMessageView,
-    correctIntent: AgentRoutingCorrectIntent,
+    message: PublicAgentMessage,
+    interpretation: PublicRoutingInterpretation,
   ) {
+    if (selectedThreadId === null) return;
     setMessagesError(null);
     try {
       await sendAgentRoutingFeedback(
         LOCAL_ACTOR_ID,
         projectId,
-        message.thread_id,
+        selectedThreadId,
         message.message_id,
-        correctIntent,
+        interpretation,
       );
       setFeedbackByMessage((previous) => ({
         ...previous,
-        [message.message_id]: correctIntent,
+        [message.message_id]: interpretation,
       }));
     } catch (caught) {
       setMessagesError(errorMessage(caught));
@@ -647,32 +638,46 @@ export function AgentLivePanel({
     }
   }
 
-  function updatePatchSet(patchSet: AgentPatchSetView) {
+  function updatePatchSet(patchSet: PublicPatchSet) {
     setMessages((previous) =>
       previous.map((message) =>
-        message.patch_set?.patch_set_id === patchSet.patch_set_id
-          ? { ...message, patch_set: patchSet }
+        message.patch?.patch_id === patchSet.patch_id
+          ? { ...message, patch: patchSet }
           : message,
       ),
     );
   }
 
   async function applyPatchSet(
-    patchSet: AgentPatchSetView,
-    operationIds: number[] | null,
-    acceptedDebtFindingKeys: string[] = [],
-    debtAcceptanceReason?: string,
+    patchSet: PublicPatchSet,
+    changeIds: number[] | null,
+    confirmation: {
+      confirmationToken?: string;
+      acceptedWarningIds?: string[];
+      confirmationNote?: string;
+    } = {},
   ) {
     if (patchBusyId !== null) return;
-    setPatchBusyId(patchSet.patch_set_id);
+    setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     setMessagesError(null);
     try {
-      const baseArguments = [LOCAL_ACTOR_ID, projectId, patchSet.patch_set_id, draftId, patchSet.base_draft_revision, operationIds] as const;
-      const result = acceptedDebtFindingKeys.length || debtAcceptanceReason
-        ? await applyAgentPatchSet(...baseArguments, undefined, acceptedDebtFindingKeys, debtAcceptanceReason)
-        : await applyAgentPatchSet(...baseArguments);
-      updatePatchSet(result);
+      const result = await applyAgentPatchSet(
+        LOCAL_ACTOR_ID,
+        projectId,
+        patchSet.patch_id,
+        draftId,
+        patchSet.base_revision,
+        changeIds,
+        confirmation.confirmationToken,
+        confirmation.acceptedWarningIds ?? [],
+        confirmation.confirmationNote,
+      );
+      updatePatchSet(result.patch);
+      setRevisionByPatch((previous) => ({
+        ...previous,
+        [patchSet.patch_id]: result.revision,
+      }));
       await onDraftChanged();
       await reloadMessages();
     } catch (caught) {
@@ -685,27 +690,26 @@ export function AgentLivePanel({
   }
 
   async function simulatePatchSet(
-    patchSet: AgentPatchSetView,
-    operationIds: number[],
-    acceptedDebtFindingKeys: string[] = [],
-    debtAcceptanceReason?: string,
-  ): Promise<AgentPatchSimulationView | null> {
+    patchSet: PublicPatchSet,
+    changeIds: number[] | null,
+    acceptedWarningIds: string[] = [],
+    confirmationNote?: string,
+  ): Promise<PublicPatchReviewResult | null> {
     if (patchBusyId !== null) return null;
-    setPatchBusyId(patchSet.patch_set_id);
+    setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     setMessagesError(null);
     try {
-      const targetFindingIds = patchSet.operations
-        .filter((operation) => operationIds.includes(operation.operation_id))
-        .flatMap((operation) => operation.finding_ids ?? []);
-      const targetIds = targetFindingIds.length > 0 ? targetFindingIds : undefined;
-      const baseArguments = [LOCAL_ACTOR_ID, projectId, patchSet.patch_set_id, draftId, patchSet.base_draft_revision, operationIds] as const;
-      const result = acceptedDebtFindingKeys.length || debtAcceptanceReason
-        ? await simulateAgentPatchSet(...baseArguments, targetIds, acceptedDebtFindingKeys, debtAcceptanceReason)
-        : targetIds
-          ? await simulateAgentPatchSet(...baseArguments, targetIds)
-          : await simulateAgentPatchSet(...baseArguments);
-      return result.simulation;
+      return await simulateAgentPatchSet(
+        LOCAL_ACTOR_ID,
+        projectId,
+        patchSet.patch_id,
+        draftId,
+        patchSet.base_revision,
+        changeIds,
+        acceptedWarningIds,
+        confirmationNote,
+      );
     } catch (caught) {
       const message = errorMessage(caught);
       setPatchError(message);
@@ -716,25 +720,24 @@ export function AgentLivePanel({
     }
   }
 
-  async function undoPatchSet(patchSet: AgentPatchSetView) {
-    if (
-      patchBusyId !== null ||
-      patchSet.applied_to_revision === null
-    ) {
-      return;
-    }
-    setPatchBusyId(patchSet.patch_set_id);
+  async function undoPatchSet(patchSet: PublicPatchSet) {
+    if (patchBusyId !== null || !patchSet.actions.can_undo) return;
+    setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     setMessagesError(null);
     try {
       const result = await undoAgentPatchSet(
         LOCAL_ACTOR_ID,
         projectId,
-        patchSet.patch_set_id,
+        patchSet.patch_id,
         draftId,
-        patchSet.applied_to_revision,
+        revisionByPatch[patchSet.patch_id] ?? draftRevision,
       );
-      updatePatchSet(result);
+      updatePatchSet(result.patch);
+      setRevisionByPatch((previous) => ({
+        ...previous,
+        [patchSet.patch_id]: result.revision,
+      }));
       await onDraftChanged();
       await reloadMessages();
     } catch (caught) {
@@ -746,19 +749,23 @@ export function AgentLivePanel({
     }
   }
 
-  async function redoPatchSet(patchSet: AgentPatchSetView) {
-    if (patchBusyId !== null || patchSet.undone_to_revision === null) return;
-    setPatchBusyId(patchSet.patch_set_id);
+  async function redoPatchSet(patchSet: PublicPatchSet) {
+    if (patchBusyId !== null || !patchSet.actions.can_redo) return;
+    setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     try {
       const result = await redoAgentPatchSet(
         LOCAL_ACTOR_ID,
         projectId,
-        patchSet.patch_set_id,
+        patchSet.patch_id,
         draftId,
-        patchSet.undone_to_revision,
+        revisionByPatch[patchSet.patch_id] ?? draftRevision,
       );
-      updatePatchSet(result);
+      updatePatchSet(result.patch);
+      setRevisionByPatch((previous) => ({
+        ...previous,
+        [patchSet.patch_id]: result.revision,
+      }));
       await onDraftChanged();
       await reloadMessages();
     } catch (caught) {
@@ -783,24 +790,24 @@ export function AgentLivePanel({
     if (objectId) chips.push(referenceLabels.objects[objectId] ?? objectId);
     if (eventId) chips.push(referenceLabels.events[eventId] ?? eventId);
     if (issueId) chips.push(referenceLabels.issues[issueId] ?? issueId);
-    if (focus.view && focus.view in agentViewLabels) {
-      chips.push(agentViewLabels[focus.view as keyof typeof agentViewLabels]);
+    if (focus.view && focusViewLabels[focus.view]) {
+      chips.push(focusViewLabels[focus.view]);
     }
     return chips;
   }, [focus, referenceLabels]);
 
-  const latestTask = useMemo(
+  const latestRun = useMemo(
     () =>
       [...messages]
-        .sort((left, right) => right.sequence_no - left.sequence_no)
-        .find((message) => message.task !== null)?.task ?? null,
+        .sort((left, right) => right.sequence - left.sequence)
+        .find((message) => message.run !== null)?.run ?? null,
     [messages],
   );
-  const taskForStrip =
-    pendingLiveTask ??
-    (latestTask === null
+  const runForStrip =
+    pendingLiveRun ??
+    (latestRun === null
       ? null
-      : (liveTasks[latestTask.task_run_id] ?? latestTask));
+      : (liveRuns[latestRun.run_id] ?? latestRun));
   const searchThreads = useCallback(
     async (query: string, includeArchived: boolean) => {
       await refreshThreads({ query, includeArchived });
@@ -810,43 +817,41 @@ export function AgentLivePanel({
 
   const inspectorPatches = useMemo(
     () => messages.flatMap((message) =>
-      message.patch_set ? [{ message, patchSet: message.patch_set }] : [],
+      message.patch ? [{ message, patchSet: message.patch }] : [],
     ),
     [messages],
   );
   const inspectorFindings = useMemo(
     () => messages.flatMap((message) =>
-      verificationByMessage[message.message_id] === undefined
-        ? agentAuditFindingsFor(message).map((finding) => ({ message, finding }))
-        : [],
+      agentAuditFindingsFor(message).map((finding) => ({ message, finding })),
     ),
-    [messages, verificationByMessage],
-  );
-  const inspectorVerificationFindings = useMemo(
-    () => Object.entries(verificationByMessage).flatMap(([messageId, findings]) => {
-      const message = messages.find((item) => item.message_id === Number(messageId));
-      return message ? findings.map((finding) => ({ message, finding })) : [];
-    }),
-    [messages, verificationByMessage],
+    [messages],
   );
   const inspectorProps = {
     busyPatchSetId: patchBusyId,
     patchError,
-    eventLabels: referenceLabels.events,
     findings: inspectorFindings,
-    verificationFindings: inspectorVerificationFindings,
     focusFindingId: focusFindingId ?? localFocusFindingId,
     focusPatchSetId: focusPatchSetId ?? localFocusPatchSetId,
-    issueLabels: referenceLabels.issues,
-    objectLabels: referenceLabels.objects,
-    onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null, keys?: string[], reason?: string) => void applyPatchSet(patchSet, operationIds, keys, reason),
-    onSimulate: (patchSet: AgentPatchSetView, operationIds: number[], keys?: string[], reason?: string) => simulatePatchSet(patchSet, operationIds, keys, reason),
-    onLocateEvent: onLocateEvent,
-    onLocateIssue: onLocateIssue,
+    onApply: (
+      patchSet: PublicPatchSet,
+      changeIds: number[] | null,
+      confirmation?: {
+        confirmationToken?: string;
+        acceptedWarningIds?: string[];
+        confirmationNote?: string;
+      },
+    ) => void applyPatchSet(patchSet, changeIds, confirmation),
+    onSimulate: (
+      patchSet: PublicPatchSet,
+      changeIds: number[] | null,
+      warningIds?: string[],
+      note?: string,
+    ) => simulatePatchSet(patchSet, changeIds, warningIds, note),
     onLocateObject: onLocateObject,
     onRetry: retryMessage,
-    onUndo: (patchSet: AgentPatchSetView) => void undoPatchSet(patchSet),
-    onRedo: (patchSet: AgentPatchSetView) => void redoPatchSet(patchSet),
+    onUndo: (patchSet: PublicPatchSet) => void undoPatchSet(patchSet),
+    onRedo: (patchSet: PublicPatchSet) => void redoPatchSet(patchSet),
     patches: inspectorPatches,
   };
   const inspectorPortal = inspectorHost
@@ -881,7 +886,7 @@ export function AgentLivePanel({
           draft={draft}
           onCancel={
             surface === "quick" && busy && pendingEntry !== null
-              ? () => void cancelCurrentTask()
+              ? () => void cancelCurrentRun()
               : undefined
           }
           onContinueInDesk={
@@ -896,29 +901,24 @@ export function AgentLivePanel({
       conversation={
         <WorkbenchAgentConversation
           busy={busy}
-          liveTasks={liveTasks}
+          liveRuns={liveRuns}
           messages={messages}
           messagesError={messagesError}
           messagesLoading={messagesLoading}
           onLocateEvent={onLocateEvent}
-          onLocateIssue={onLocateIssue}
           onLocateObject={onLocateObject}
-          onLocateView={onLocateView}
           onFocusPatch={focusPatch}
           onFocusFinding={focusFinding}
           onReconnect={() => void bootstrap()}
           onReloadMessages={() => void reloadMessages()}
           onRetryMessage={retryMessage}
-          referenceLabels={referenceLabels}
           renderRoutingFeedback={(message) => {
-            const summary = routingSummaryFor(message);
-            return summary === null ? null : (
+            return message.interpretation === null ? null : (
               <RoutingFeedback
-                intent={summary.intent}
-                onSubmitted={(correctIntent) =>
-                  submitRoutingFeedback(message, correctIntent)
+                interpretation={message.interpretation}
+                onSubmitted={(interpretation) =>
+                  submitRoutingFeedback(message, interpretation)
                 }
-                routeSource={summary.route_source}
                 submittedIntent={feedbackByMessage[message.message_id]}
               />
             );
@@ -947,22 +947,22 @@ export function AgentLivePanel({
       surface={surface}
       taskStrip={
         <WorkbenchAgentTaskStrip
-          contextOccupancy={
-            taskForStrip === null
+          contextState={
+            runForStrip === null
               ? null
-              : (contextByTask[taskForStrip.task_run_id] ?? null)
+              : (contextByRun[runForStrip.run_id] ?? null)
           }
           verificationProgress={
-            taskForStrip === null
+            runForStrip === null
               ? null
-              : (verificationByTask[taskForStrip.task_run_id] ?? null)
+              : (verificationByRun[runForStrip.run_id] ?? null)
           }
           onCancel={
             busy && pendingEntry !== null
-              ? () => void cancelCurrentTask()
+              ? () => void cancelCurrentRun()
               : undefined
           }
-          task={taskForStrip}
+          run={runForStrip}
         />
       }
       threadManager={
@@ -973,6 +973,7 @@ export function AgentLivePanel({
           onSearch={searchThreads}
           onSelect={(thread) => {
             upsertThread(thread);
+            setMessagesLoading(true);
             setSelectedThreadId(thread.thread_id);
           }}
           onSetArchived={setThreadArchived}
@@ -984,14 +985,13 @@ export function AgentLivePanel({
       }
     />
     {inspectorPortal ?? (
-      inspectorVerificationFindings.length > 0 ||
-      (inspectorPatches.length > 0 && !messages.some((message) => routingSummaryFor(message)?.intent === "logic_audit")) ||
+      inspectorFindings.length > 0 ||
+      inspectorPatches.length > 0 ||
       localFocusPatchSetId !== null ||
       localFocusFindingId !== null
     ? (
       <WorkbenchAgentInspector
         {...inspectorProps}
-        requireApplyConfirmation={false}
         onFocusPatch={focusPatch}
       />
     ) : null)}
@@ -1001,18 +1001,16 @@ export function AgentLivePanel({
   return inspectorPortal;
 }
 function RoutingFeedback({
-  routeSource,
-  intent,
+  interpretation,
   submittedIntent,
   onSubmitted,
 }: {
-  routeSource: string | null;
-  intent: string | null;
-  submittedIntent?: AgentRoutingCorrectIntent;
-  onSubmitted: (intent: AgentRoutingCorrectIntent) => Promise<void>;
+  interpretation: PublicRoutingInterpretation;
+  submittedIntent?: PublicRoutingInterpretation;
+  onSubmitted: (intent: PublicRoutingInterpretation) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [selection, setSelection] = useState<AgentRoutingCorrectIntent | "">("");
+  const [selection, setSelection] = useState<PublicRoutingInterpretation | "">("");
   const [submitting, setSubmitting] = useState(false);
 
   async function submit() {
@@ -1029,32 +1027,29 @@ function RoutingFeedback({
   }
 
   return (
-    <div className={styles.agentRouteMeta} aria-label="意图路由">
+    <div className={styles.agentRouteMeta} aria-label="请求理解">
       <span className={styles.agentRouteChip}>
-        {routingSourceLabels[routeSource ?? ""] ?? routeSource ?? "路由"}
-        {intent !== null
-          ? ` · ${routingIntentLabels[intent as AgentRoutingCorrectIntent] ?? intent}`
-          : ""}
+        理解为：{interpretationLabels[interpretation]}
       </span>
       {submittedIntent ? (
         <span className={styles.agentRouteSubmitted}>
-          已记录反馈：{routingIntentLabels[submittedIntent]}
+          已更正为：{interpretationLabels[submittedIntent]}
         </span>
       ) : editing ? (
         <span className={styles.agentRouteFeedback}>
           <select
-            aria-label="正确的意图"
+            aria-label="正确的请求类型"
             onChange={(event) =>
-              setSelection(event.target.value as AgentRoutingCorrectIntent)
+              setSelection(event.target.value as PublicRoutingInterpretation)
             }
             value={selection}
           >
             <option value="" disabled>
-              选择正确意图
+              选择正确理解
             </option>
             {(
-              Object.entries(routingIntentLabels) as Array<
-                [AgentRoutingCorrectIntent, string]
+              Object.entries(interpretationLabels) as Array<
+                [PublicRoutingInterpretation, string]
               >
             ).map(([value, label]) => (
               <option key={value} value={value}>
@@ -1067,7 +1062,7 @@ function RoutingFeedback({
             onClick={() => void submit()}
             type="button"
           >
-            {submitting ? "提交中…" : "提交反馈"}
+            {submitting ? "提交中…" : "确认更正"}
           </button>
           <button
             disabled={submitting}
@@ -1083,7 +1078,7 @@ function RoutingFeedback({
           onClick={() => setEditing(true)}
           type="button"
         >
-          路由错误
+          理解不对
         </button>
       )}
     </div>

@@ -1,89 +1,95 @@
-import type { TaskView } from "@/lib/api-client";
+import type {
+  PublicAgentRun,
+  PublicContextState,
+  PublicVerificationStatus,
+} from "@casefile/contracts";
 
 import styles from "./workbench-agent.module.css";
 
-export interface AgentTaskContextOccupancy {
-  usedTokens: number;
-  budgetTokens: number | null;
-}
-
 export interface AgentVerificationProgress {
-  status: string;
-  findingCount: number;
+  status: PublicVerificationStatus;
+  summary: string;
 }
 
-function taskStageLabel(task: TaskView): string {
-  if (task.status === "queued") return "任务已排队";
-  if (task.status === "running") return task.stage || "等待任务阶段";
-  if (task.status === "cancelling") return "正在取消";
-  if (task.status === "succeeded") return "任务已完成";
-  if (task.status === "cancelled") return "任务已取消";
-  return "任务失败";
-}
+const activityLabels: Record<Exclude<PublicAgentRun["activity"], null>, string> = {
+  understanding: "正在理解你的要求",
+  reading: "正在阅读卷宗",
+  checking: "正在检查前后一致性",
+  preparing_changes: "正在整理修改建议",
+  finalizing: "正在完成回复",
+};
 
-function taskSummary(task: TaskView): string | null {
-  if (task.status === "failed") {
-    return "任务未能完成；回复记录中保留了失败原因。";
+const contextLabels: Partial<Record<PublicContextState, string>> = {
+  near_limit: "对话内容较长，正在控制上下文",
+  compacted: "已整理较早的对话内容",
+};
+
+function runStageLabel(run: PublicAgentRun): string {
+  if (run.status === "queued") return "回复已排队";
+  if (run.status === "running") {
+    return run.activity === null ? "正在准备回复" : activityLabels[run.activity];
   }
-  if (task.status === "cancelled") return "任务已取消，没有生成新的结论。";
-  if (task.status === "succeeded") return "任务完成；完整结论已记录到对话。";
+  if (run.status === "cancelling") return "正在取消";
+  if (run.status === "succeeded") return "回复已完成";
+  if (run.status === "cancelled") return "回复已取消";
+  return "回复未完成";
+}
+
+function runSummary(run: PublicAgentRun): string | null {
+  if (run.status === "failed") {
+    return run.failure?.message ?? "这次回复未能完成，请稍后重试。";
+  }
+  if (run.status === "cancelled") return "已停止这次回复，没有生成新的结论。";
+  if (run.status === "succeeded") return "完整结论已记录到对话。";
   return null;
 }
 
 export function WorkbenchAgentTaskStrip({
-  task,
-  contextOccupancy,
+  run,
+  contextState,
   verificationProgress,
   onCancel,
 }: {
-  task: TaskView | null;
-  contextOccupancy?: AgentTaskContextOccupancy | null;
+  run: PublicAgentRun | null;
+  contextState?: PublicContextState | null;
   verificationProgress?: AgentVerificationProgress | null;
   onCancel?: () => void;
 }) {
-  if (task === null) return null;
+  if (run === null) return null;
   const active =
-    task.status === "queued" ||
-    task.status === "running" ||
-    task.status === "cancelling";
-  const summary = taskSummary(task);
-  const stage = taskStageLabel(task);
-  const verificationStage =
-    verificationProgress?.status === "started" ||
-    verificationProgress?.status === "finding"
-      ? `验证复查 · 已发现 ${verificationProgress.findingCount} 项`
-      : stage;
+    run.status === "queued" ||
+    run.status === "running" ||
+    run.status === "cancelling";
+  const summary = runSummary(run);
+  const stage =
+    verificationProgress?.status === "started"
+      ? "正在复查修改影响"
+      : verificationProgress?.summary || runStageLabel(run);
+  const contextLabel = contextState ? contextLabels[contextState] : undefined;
 
   return (
     <section
       aria-atomic="true"
-      aria-label="Agent 任务状态"
+      aria-label="Agent 回复状态"
       aria-live="polite"
       className={styles.agentTaskStrip}
-      data-status={task.status}
+      data-status={run.status}
     >
       <div className={styles.agentTaskPrimary}>
         <i aria-hidden="true" />
         <span>
-          <strong>{active ? `Agent 正在回复 · ${verificationStage}` : stage}</strong>
-          {contextOccupancy ? (
-            <small>
-              上下文 {contextOccupancy.usedTokens}
-              {contextOccupancy.budgetTokens === null
-                ? " tokens"
-                : `/${contextOccupancy.budgetTokens} tokens`}
-            </small>
-          ) : null}
+          <strong>{active ? `卷宗统筹 · ${stage}` : stage}</strong>
+          {contextLabel ? <small>{contextLabel}</small> : null}
         </span>
       </div>
-      {active && onCancel ? (
+      {active && run.cancellable && onCancel ? (
         <button onClick={onCancel} type="button">
-          取消
+          停止回复
         </button>
       ) : null}
       {!active && summary ? (
         <details className={styles.agentTaskSummary}>
-          <summary>执行摘要</summary>
+          <summary>回复摘要</summary>
           <p>{summary}</p>
         </details>
       ) : null}

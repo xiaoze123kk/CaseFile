@@ -9,7 +9,7 @@ from ._internal import HardConstraints_1 as HardConstraints
 from ._internal import ObjectCatalog_1 as ObjectCatalog
 from ._internal import PrecedenceEdge_1 as PrecedenceEdge
 from ._internal import Resolutions_1 as Resolutions
-from ._internal import Schema_8 as Schema
+from ._internal import Schema_9 as Schema
 from ._internal import Source_1 as Source
 from ._internal import Temporal_1 as Temporal
 

@@ -16,7 +16,10 @@ from casefile.agent_runtime.chat_audit_validation import (
     apply_deterministic_audit_gate,
     audit_repair_integrity,
 )
-from casefile.agent_runtime.chat_intent import apply_route_suggestion_policy
+from casefile.agent_runtime.chat_intent import (
+    apply_route_suggestion_policy,
+    suppress_general_mutation_finalizer_suggestions,
+)
 from casefile.agent_runtime.chat_preparation import (
     bind_chat_context_input as bind_chat_context_input,
 )
@@ -35,7 +38,19 @@ from casefile.agent_runtime.chat_validation import (
     target_label,
     validate_chat_candidate,
 )
+from casefile.agent_runtime.chat_versions import (
+    PUBLIC_LANGUAGE_PROMPT_VERSIONS,
+    SAFE_PATCH_PROMPT_VERSIONS,
+)
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
+from casefile.agent_runtime.public_language import (
+    PublicLanguageValidationError,
+    normalize_general_mutation_clarification,
+    normalize_internal_disclosure_refusal,
+    project_general_mutation_terminal_response,
+    terminal_public_language_error,
+    validate_public_language,
+)
 
 MAX_SEMANTIC_REPAIRS = 3
 MAX_FINALIZER_ATTEMPTS = 1 + MAX_SEMANTIC_REPAIRS
@@ -88,14 +103,17 @@ class ChatExecutionRunner:
         request: CaseFileChatRequest,
         *,
         complete: Callable[[CaseFileChatResult], None] | None = None,
+        artifacts_prepared: bool = False,
     ) -> ChatExecutionResult:
-        request = prepare_chat_request_artifacts(request)
+        if not artifacts_prepared:
+            request = prepare_chat_request_artifacts(request)
         usages: list[dict[str, Any]] = []
         tools: list[ToolMetrics] = []
         repair_attempted = False
         repair_history: list[dict[str, Any]] = []
         materialization_history: list[dict[str, Any]] = []
         previous_failure_signature: str | None = None
+        public_language_repairs = 0
         for attempt in range(1, MAX_FINALIZER_ATTEMPTS + 1):
             server_gate_issues: tuple[ValidationIssue, ...] = ()
             try:
@@ -185,7 +203,7 @@ class ChatExecutionRunner:
                     )
                     raise
             if (
-                request.prompt_version == "casefile-chat-v15"
+                request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS
                 and request.route is not None
                 and request.route.execution_profile.get("primary_intent") == "logic_audit"
             ):
@@ -203,9 +221,9 @@ class ChatExecutionRunner:
                                 ledger_hash=str(ledger.get("ledger_hash") or ""),
                             ),
                         )
-                    rejected_indexes = {
-                        failure.suggestion_index for failure in gate.failures
-                    } | {discard.suggestion_index for discard in gate.discards}
+                    rejected_indexes = {failure.suggestion_index for failure in gate.failures} | {
+                        discard.suggestion_index for discard in gate.discards
+                    }
                     safe_suggestions = [
                         suggestion
                         for index, suggestion in enumerate(proposals)
@@ -219,9 +237,7 @@ class ChatExecutionRunner:
                         candidate_payload["suggestions"] = materialized
                         result = replace(
                             result,
-                            candidate=result.candidate.__class__.model_validate(
-                                candidate_payload
-                            ),
+                            candidate=result.candidate.__class__.model_validate(candidate_payload),
                         )
                     result = replace(result, safe_patch_registry=gate.registry.as_dict())
                     request.emit(
@@ -264,15 +280,16 @@ class ChatExecutionRunner:
                                     "object_id": failure.object_id,
                                     "path": failure.path,
                                     "reason_code": failure.reason_code,
-                                    "value_json": proposals[
-                                        failure.suggestion_index
-                                    ].get("value_json"),
+                                    "value_json": proposals[failure.suggestion_index].get(
+                                        "value_json"
+                                    ),
                                     "validation": failure.validation,
                                     "simulation": failure.simulation,
                                 },
                             )
                             for failure in gate.failures
                         )
+            result = suppress_general_mutation_finalizer_suggestions(request, result)
             result = normalize_reference_slots(request, result)
             result = apply_deterministic_audit_gate(request, result)
             try:
@@ -290,6 +307,13 @@ class ChatExecutionRunner:
                     )
                 validate_chat_candidate(request, result)
                 result = apply_route_suggestion_policy(request, result)
+                if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
+                    result = normalize_general_mutation_clarification(request, result)
+                    result = normalize_internal_disclosure_refusal(request, result)
+                    validate_public_language(
+                        result,
+                        sensitive_values=(request.api_key or "",),
+                    )
                 if complete is not None:
                     complete(result)
             except Exception as error:
@@ -305,6 +329,44 @@ class ChatExecutionRunner:
                         materialization_history=materialization_history,
                     )
                     raise
+                if isinstance(validation, PublicLanguageValidationError):
+                    if public_language_repairs >= 1:
+                        projected = project_general_mutation_terminal_response(request, result)
+                        if projected is not None:
+                            validate_public_language(
+                                projected,
+                                sensitive_values=(request.api_key or "",),
+                            )
+                            if complete is not None:
+                                complete(projected)
+                            return ChatExecutionResult(
+                                result=projected,
+                                usage=_merge_usage(usages),
+                                tools=_merge_tools(tools),
+                                attempts=attempt,
+                                repair_attempted=repair_attempted,
+                                diagnostics={
+                                    "error_code": None,
+                                    "attempts": attempt,
+                                    "repair_history": repair_history,
+                                    "safe_patch_materializations": materialization_history,
+                                    "public_language_projection": (
+                                        "general_mutation_safe_terminal"
+                                    ),
+                                },
+                            )
+                        terminal = terminal_public_language_error(validation)
+                        _attach_failure_metrics(
+                            terminal,
+                            usages,
+                            tools,
+                            attempts=attempt,
+                            repair_attempted=repair_attempted,
+                            repair_history=repair_history,
+                            materialization_history=materialization_history,
+                        )
+                        raise terminal from error
+                    public_language_repairs += 1
                 resolved_target = (
                     target_locked_repair_contract(request, result, validation)
                     if attempt >= 2
@@ -356,9 +418,7 @@ class ChatExecutionRunner:
                     "attempt": attempt,
                     "repair_no": repair_no,
                     "repair_mode": repair_mode,
-                    "validation_issues": [
-                        issue.as_dict() for issue in validation.issues
-                    ],
+                    "validation_issues": [issue.as_dict() for issue in validation.issues],
                     "repair_plan": validation.repair_plan.as_dict(),
                     "suggestion_count": len(result.candidate.suggestions),
                     "suggestion_targets": [
@@ -385,9 +445,7 @@ class ChatExecutionRunner:
                         "unknown_issue_ids": list(validation.issue_ids),
                         "wrong_slot_object_ids": list(validation.wrong_slot_object_ids),
                         "wrong_slot_event_ids": list(validation.wrong_slot_event_ids),
-                        "validation_issues": [
-                            issue.as_dict() for issue in validation.issues
-                        ],
+                        "validation_issues": [issue.as_dict() for issue in validation.issues],
                         "repair_plan": validation.repair_plan.as_dict(),
                         "candidate_summary": {
                             "suggestion_count": repair_record["suggestion_count"],
@@ -445,9 +503,7 @@ def _attach_failure_metrics(
         error.__dict__["attempts"] = attempts
         error.__dict__["repair_attempted"] = repair_attempted
         error.__dict__["repair_history"] = list(repair_history or ())
-        error.__dict__["safe_patch_materializations"] = list(
-            materialization_history or ()
-        )
+        error.__dict__["safe_patch_materializations"] = list(materialization_history or ())
     except (AttributeError, TypeError):
         return
 
@@ -474,12 +530,8 @@ def _as_validation_error(error: Exception) -> ChatCompletionValidationError | No
             object_ids=tuple(str(item) for item in object_ids),
             event_ids=tuple(str(item) for item in event_ids),
             issue_ids=tuple(str(item) for item in issue_ids),
-            wrong_slot_object_ids=tuple(
-                str(item) for item in (wrong_slot_object_ids or ())
-            ),
-            wrong_slot_event_ids=tuple(
-                str(item) for item in (wrong_slot_event_ids or ())
-            ),
+            wrong_slot_object_ids=tuple(str(item) for item in (wrong_slot_object_ids or ())),
+            wrong_slot_event_ids=tuple(str(item) for item in (wrong_slot_event_ids or ())),
         )
     return None
 

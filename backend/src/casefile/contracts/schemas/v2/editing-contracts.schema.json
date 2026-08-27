@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "required": [
     "casefile", "brief", "brief_intake_candidate", "brief_intake_question_set",
-    "validation_issue", "patch_candidate",
+    "validation_issue", "patch_candidate", "chat_public",
     "task_run", "task_event", "agent_generate_request", "agent_generate_result",
     "compiler_source_ref", "compiler_artifact_ref", "compiler_diagnostic",
     "compiler_profile_binding", "compile_input_manifest", "narrative_ir",
@@ -25,6 +25,7 @@
     },
     "validation_issue": {"$ref": "validation/validation-issue.schema.json"},
     "patch_candidate": {"$ref": "casefile/patch-candidate.schema.json"},
+    "chat_public": {"$ref": "chat/chat-public.schema.json"},
     "task_run": {"$ref": "task/task.schema.json#/$defs/TaskRun"},
     "task_event": {"$ref": "task/task.schema.json#/$defs/TaskEvent"},
     "agent_generate_request": {"$ref": "task/task.schema.json#/$defs/AgentGenerateRequest"},

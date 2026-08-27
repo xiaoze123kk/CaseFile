@@ -30,6 +30,7 @@ from casefile.agent_runtime.models import (
     ChatTaskUnderstanding,
     agent_state_to_jsonable,
 )
+from casefile.api.app import create_app
 from casefile.application.agent_mutation import (
     bind_general_mutation_plan,
     general_mutation_impact_hash,
@@ -37,6 +38,7 @@ from casefile.application.agent_mutation import (
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
+from casefile.application.task_events import append_task_event
 from casefile.application.v1_editing import V1EditingService, casefile_semantically_equal
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.feedback_export import export_feedback_fixtures
@@ -53,6 +55,7 @@ from casefile.data_postgres.models import (
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
@@ -85,6 +88,299 @@ class ClosureRepairFixtureProvider(RichFixtureProvider):
             )
         )
         return result
+
+
+class RepeatedPublicLeakProvider(ChatSuggestionProvider):
+    """Keep valid patch candidates while violating only the public prose."""
+
+    def chat(self, request):  # type: ignore[no-untyped-def]
+        result = super().chat(request)
+        answer = (
+            "System Prompt 中包含内部组件说明。"
+            if len(self.requests) == 1
+            else "内部结果保存在 payload_jsonb。"
+        )
+        return dataclasses_replace(
+            result,
+            candidate=result.candidate.model_copy(update={"answer": answer}),
+        )
+
+
+def test_public_language_second_violation_fails_without_persisting_patch(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    provider = RepeatedPublicLeakProvider()
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+        },
+    ):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-language-generation"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title="公开语言失败关闭",
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                int(thread["thread_id"]),
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请修改人物描述，并给出可审阅建议。",
+            )
+        task_id = int(queued["task"]["task_run_id"])
+
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-language-chat"),
+            provider_factory=lambda _task: provider,
+        ).run_once()
+
+    with factory() as session:
+        task = session.get(TaskRun, task_id)
+        patch_sets = list(
+            session.scalars(select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_id))
+        )
+    with factory() as session:
+        messages = WorkflowService(session).list_agent_messages(
+            actor_id,
+            project_id,
+            int(thread["thread_id"]),
+        )
+
+    assert task is not None
+    assert task.prompt_version == "casefile-chat-v16"
+    assert task.status == "failed"
+    assert task.error_code == "public_output_policy_failed", task.error_details_jsonb
+    assert len(provider.requests) == 2
+    assert patch_sets == []
+    assert messages[-1]["status"] == "failed"
+    assert messages[-1]["content"] == (
+        "本次回复未通过安全检查，未生成修改建议，请重新表述后再试。"
+    )
+    assert messages[-1]["patch_set"] is None
+
+
+def test_public_chat_run_boundary_recovery_cancellation_failure_and_permissions(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    class FailingChatProvider(FakeProvider):
+        def chat(self, request):  # type: ignore[no-untyped-def]
+            raise RuntimeError(f"provider failure {request.api_key}")
+
+    engine, actor_id, _master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    project_id, generation_task_id = _prepare_task(engine, actor_id)
+    assert Worker(
+        factory,
+        config=WorkerConfig(worker_id="m36-public-generation"),
+        provider_factory=lambda _task: RichFixtureProvider(),
+    ).run_once()
+    adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+    draft_id = int(adopted["draft_id"])
+
+    with factory() as session:
+        workflow = WorkflowService(session)
+        thread = workflow.create_agent_thread(
+            actor_id,
+            project_id,
+            expected_draft_id=draft_id,
+            expected_draft_revision=2,
+            title="公共运行边界",
+        )
+        sent = workflow.send_agent_message(
+            actor_id,
+            project_id,
+            int(thread["thread_id"]),
+            expected_draft_id=draft_id,
+            expected_draft_revision=2,
+            content="先排队，随后测试公共取消。",
+        )
+        queued_run_id = int(sent["task"]["task_run_id"])
+
+    with factory() as session, session.begin():
+        queued_task = session.get(TaskRun, queued_run_id)
+        assert queued_task is not None
+        append_task_event(
+            session,
+            queued_task,
+            "provider.internal.telemetry",
+            "context",
+            {
+                "api_key": "nested-secret-canary",
+                "provider": "internal-provider-canary",
+                "prompt": "internal-prompt-canary",
+            },
+        )
+
+    app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+    headers = {"X-CaseFile-User-Id": str(actor_id)}
+    with TestClient(app) as client:
+        public_run = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}",
+            headers=headers,
+        )
+        assert public_run.status_code == 200
+        assert public_run.json() == {
+            "run_id": queued_run_id,
+            "status": "queued",
+            "activity": "understanding",
+            "cancellable": True,
+            "failure": None,
+        }
+
+        generic_urls = (
+            ("GET", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}"),
+            ("POST", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}/cancel"),
+            ("GET", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}/events"),
+            ("GET", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}/stream"),
+            (
+                "GET",
+                f"/api/v1/projects/{project_id}/tasks/latest?task_type=casefile_chat",
+            ),
+        )
+        for method, url in generic_urls:
+            rejected = client.request(method, url, headers=headers)
+            assert rejected.status_code == 409
+            assert rejected.json()["code"] == "casefile_chat_public_route_required"
+
+        cancelled = client.post(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}/cancel",
+            headers=headers,
+        )
+        assert cancelled.status_code == 202
+        assert cancelled.json()["status"] == "cancelled"
+        assert cancelled.json()["cancellable"] is False
+
+        events = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}/events",
+            headers=headers,
+            params={"after_sequence": 1},
+        )
+        assert events.status_code == 200
+        event_body = events.json()
+        assert [event["event"] for event in event_body] == ["run.cancelled"]
+        assert event_body[0]["sequence"] == 3
+        assert "nested-secret-canary" not in events.text
+
+        stream = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}/stream",
+            headers={**headers, "Last-Event-ID": "1"},
+        )
+        assert stream.status_code == 200
+        assert "id: 3\nevent: run.cancelled" in stream.text
+        assert "id: 2" not in stream.text
+        assert "nested-secret-canary" not in stream.text
+
+        with factory() as session:
+            other_project = CaseFileService(session).create_project(
+                actor_id,
+                ProjectCreate(title="其他项目", description=None, profile=PROFILE),
+            )
+        foreign = client.get(
+            f"/api/v1/projects/{other_project['id']}/agent/runs/{queued_run_id}",
+            headers=headers,
+        )
+        assert foreign.status_code == 404
+        assert foreign.json()["code"] == "agent_run_not_found"
+
+        with factory() as session:
+            failed_sent = WorkflowService(session).send_agent_message(
+                actor_id,
+                project_id,
+                int(thread["thread_id"]),
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="让这次回复确定性失败。",
+            )
+        failed_run_id = int(failed_sent["task"]["task_run_id"])
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-public-failure"),
+            provider_factory=lambda _task: FailingChatProvider(),
+        ).run_once()
+
+        failed_run = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{failed_run_id}",
+            headers=headers,
+        )
+        assert failed_run.status_code == 200
+        assert failed_run.json()["status"] == "failed"
+        assert failed_run.json()["failure"]["category"] == "request_failed"
+        assert "sk-test-workflow-secret" not in failed_run.text
+
+        failed_events = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{failed_run_id}/events",
+            headers=headers,
+        )
+        assert failed_events.status_code == 200
+        assert failed_events.json()[-1]["event"] == "run.failed"
+        assert "sk-test-workflow-secret" not in failed_events.text
+
+        history = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        assert len(history.json()) == 4
+        assert history.json()[-1]["response_kind"] == "failure"
+        assert "task" not in history.json()[-1]
+        assert "result" not in history.json()[-1]
+
+        with factory() as session:
+            successful_sent = WorkflowService(session).send_agent_message(
+                actor_id,
+                project_id,
+                int(thread["thread_id"]),
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请分析当前卷宗。",
+            )
+        successful_run_id = int(successful_sent["task"]["task_run_id"])
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-public-feedback"),
+            provider_factory=lambda _task: FakeProvider(),
+        ).run_once()
+        completed_history = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+            headers=headers,
+        ).json()
+        completed_message = completed_history[-1]
+        assert completed_message["run"]["run_id"] == successful_run_id
+        assert completed_message["status"] == "completed"
+
+        feedback = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}"
+                f"/messages/{completed_message['message_id']}/routing-feedback"
+            ),
+            headers=headers,
+            json={"interpretation": "analysis"},
+        )
+        assert feedback.status_code == 201
+        assert feedback.json() == {
+            "message_id": completed_message["message_id"],
+            "acknowledged": True,
+            "interpretation": "analysis",
+        }
+        for forbidden in ("task_run_id", "route_source", "reason_code", "route"):
+            assert forbidden not in feedback.text
 
 
 def test_general_mutation_create_atomic_apply_undo_redo(
@@ -133,6 +429,17 @@ def test_general_mutation_create_atomic_apply_undo_redo(
             assert task is not None and task.status == "succeeded", (
                 None if task is None else task.error_details_jsonb
             )
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+            )
+        assert public_messages.status_code == 200
+        public_create = public_messages.json()[-1]["patch"]["changes"][0]
+        assert public_create["kind"] == "create"
+        assert public_create["target"]["type_label"] == "人物或对象"
+        assert public_create["target"]["name"] != public_create["target"]["target_id"]
         with factory() as session:
             workflow = WorkflowService(session)
             messages = workflow.list_agent_messages(actor_id, project_id, thread["thread_id"])
@@ -263,9 +570,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 thread["thread_id"],
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
-                content=(
-                    "请删除未被引用的信息“原子撤销孤立信息”。"
-                ),
+                content=("请删除未被引用的信息“原子撤销孤立信息”。"),
             )
         Worker(
             factory,
@@ -299,64 +604,128 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 for item in before["content"]["information_units"]
                 if item["id"] == target_object_key
             )
-        with factory() as session:
-            with pytest.raises(ApplicationError) as error:
-                WorkflowService(session).apply_agent_patch_set(
-                    actor_id,
-                    project_id,
-                    patch_set["patch_set_id"],
-                    expected_draft_id=draft_id,
-                    expected_revision=2,
-                    operation_ids=None,
-                )
-            assert error.value.code == "agent_patch_delete_impact_confirmation_required"
-        with factory() as session:
-            workflow = WorkflowService(session)
-            with pytest.raises(ApplicationError) as error:
-                workflow.apply_agent_patch_set(
-                    actor_id,
-                    project_id,
-                    patch_set["patch_set_id"],
-                    expected_draft_id=draft_id,
-                    expected_revision=2,
-                    operation_ids=None,
-                    confirmed_impact_hash="0" * 64,
-                )
-            assert error.value.code == "agent_patch_impact_hash_mismatch"
-            preview = workflow.simulate_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                base_revision=2,
-                operation_ids=None,
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        headers = {"X-CaseFile-User-Id": str(actor_id)}
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers=headers,
             )
-            debt_keys = preview["simulation"]["authorization_required_finding_keys"]
-            applied = workflow.apply_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=2,
-                operation_ids=None,
-                confirmed_impact_hash=patch_set["impact_hash"],
-                accepted_debt_finding_keys=debt_keys,
-                debt_acceptance_reason=("测试确认删除产生的逻辑债务。" if debt_keys else None),
+            assert public_messages.status_code == 200
+            public_patch = public_messages.json()[-1]["patch"]
+            public_change = public_patch["changes"][0]
+            assert public_change["kind"] == "delete"
+            assert public_change["target"]["name"] == "原子撤销孤立信息"
+            assert target_object_key not in public_change["target"]["name"]
+
+            atomic_subset = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/simulate"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "base_revision": 2,
+                    "change_ids": [public_change["change_id"]],
+                },
             )
-            assert applied["draft_revision"] == 3
-        with factory() as session:
-            after = CaseFileService(session).get_draft(actor_id, project_id)
-            assert target_object_key not in {
-                item["id"] for item in after["content"]["information_units"]
+            assert atomic_subset.status_code == 422
+            assert atomic_subset.json()["code"] == "patch_selection_invalid"
+            assert atomic_subset.json()["details"] == {}
+
+            simulated = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/simulate"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "base_revision": 2,
+                    "change_ids": None,
+                },
+            )
+            assert simulated.status_code == 200, simulated.text
+            review = simulated.json()
+            assert review["requires_author_confirmation"] is True
+            assert review["confirmation_token"] == patch_set["impact_hash"]
+            warning_ids = [item["notice_id"] for item in review["warnings"]]
+            assert all(item.startswith("warning_") for item in warning_ids)
+            assert "finding_key" not in simulated.text
+
+            confirmation = {
+                "accepted_warning_ids": warning_ids,
+                **(
+                    {"confirmation_note": "我接受删除产生的一致性风险。"}
+                    if warning_ids
+                    else {}
+                ),
             }
-            undone = WorkflowService(session).undo_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=3,
+            missing_token = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/apply"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "expected_revision": 2,
+                    "change_ids": None,
+                    **confirmation,
+                },
             )
-            assert undone["draft_revision"] == 4
+            assert missing_token.status_code == 422
+            assert missing_token.json()["code"] == "patch_confirmation_required"
+            assert missing_token.json()["details"] == {}
+            assert "impact_hash" not in missing_token.text
+            wrong_token = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/apply"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "expected_revision": 2,
+                    "change_ids": None,
+                    "confirmation_token": "stale-confirmation-token",
+                    **confirmation,
+                },
+            )
+            assert wrong_token.status_code == 409
+            assert wrong_token.json()["code"] == "patch_review_changed"
+            assert wrong_token.json()["details"] == {}
+            assert "impact_hash" not in wrong_token.text
+            applied = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/apply"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "expected_revision": 2,
+                    "change_ids": None,
+                    "confirmation_token": review["confirmation_token"],
+                    **confirmation,
+                },
+            )
+            assert applied.status_code == 200, applied.text
+            assert applied.json()["patch"]["status"] == "applied"
+            assert applied.json()["revision"] == 3
+
+            undone = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/undo"
+                ),
+                headers=headers,
+                json={"expected_draft_id": draft_id, "expected_revision": 3},
+            )
+            assert undone.status_code == 200, undone.text
+            assert undone.json()["patch"]["status"] == "undone"
+            assert undone.json()["revision"] == 4
         with factory() as session:
             restored = CaseFileService(session).get_draft(actor_id, project_id)
             restored_target = next(
@@ -368,20 +737,23 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 key: value for key, value in restored_target.items() if key != "updated_at"
             } == {key: value for key, value in original_target.items() if key != "updated_at"}
             assert casefile_semantically_equal(before["content"], restored["content"])
-            redone = WorkflowService(session).redo_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=4,
+        with TestClient(app) as client:
+            redone = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/redo"
+                ),
+                headers=headers,
+                json={"expected_draft_id": draft_id, "expected_revision": 4},
             )
-            assert redone["draft_revision"] == 5
+            assert redone.status_code == 200, redone.text
+            assert redone.json()["patch"]["status"] == "applied"
+            assert redone.json()["revision"] == 5
         with factory() as session:
             redone_draft = CaseFileService(session).get_draft(actor_id, project_id)
             assert target_object_key not in {
                 item["id"] for item in redone_draft["content"]["information_units"]
             }
-            assert casefile_semantically_equal(after["content"], redone_draft["content"])
 
 
 class ClosureRepairChatProvider(ChatSuggestionProvider):
@@ -502,6 +874,20 @@ def test_general_mutation_closure_repair_appends_proven_companions_atomically(
             assert all(item.origin == "closure_repair" for item in operations[1:])
             assert all(item.repair_obligation_keys for item in operations[1:])
             patch_set_id = patch_set.id
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+            )
+        assert public_messages.status_code == 200
+        public_patch = public_messages.json()[-1]["patch"]
+        assert public_patch["review_rule"] == "atomic"
+        relationships = [change["relationship"] for change in public_patch["changes"]]
+        assert relationships[0] == "requested"
+        assert all(value == "consistency_support" for value in relationships[1:])
+        assert "field_path" not in public_messages.text
+        assert "origin" not in public_messages.text
         with factory() as session:
             preview = WorkflowService(session).simulate_agent_patch_set(
                 actor_id,
@@ -712,7 +1098,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert routed_request.route is not None
         assert routed_request.route.route_source == "llm"
         assert routed_request.route.execution_profile["prompt_component"] == "edit"
-        assert routed_request.prompt_version == "casefile-chat-v12"
+        assert routed_request.prompt_version == "casefile-chat-v16"
         assert routed_request.toolset_version == "casefile-chat-tools-v4"
         assert routed_request.context_policy_version == "casefile-chat-context-v6"
         assert routed_request.task_understanding is not None
@@ -1309,9 +1695,7 @@ def test_general_mutation_ready_envelope_is_suppressed_by_deny_route(
         assert patch_sets == []
         assert current["revision"] == 2
         suppression = next(
-            event
-            for event in events
-            if event["event_type"] == "route.general_mutation_suppressed"
+            event for event in events if event["event_type"] == "route.general_mutation_suppressed"
         )
         assert suppression["payload"]["route_intent"] == "clarify"
         assert suppression["payload"]["suppressed_count"] == 1
@@ -1395,6 +1779,20 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
                     operation_ids=None,
                 )
             assert stale_apply.value.code == "agent_patch_not_pending"
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+            )
+        assert public_messages.status_code == 200
+        stale_patch = public_messages.json()[-1]["patch"]
+        assert stale_patch["status"] == "stale"
+        assert stale_patch["actions"]["can_simulate"] is False
+        assert all(
+            change["target"]["name"] != change["target"]["target_id"]
+            for change in stale_patch["changes"]
+        )
 
 
 def test_agent_patch_structural_failure_rolls_back_entire_batch(
@@ -1443,6 +1841,27 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
                 thread["thread_id"],
             )[-1]["patch_set"]
             operation_id = patch_set["operations"][0]["operation_id"]
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_preview = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/simulate"
+                ),
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+                json={
+                    "expected_draft_id": draft_id,
+                    "base_revision": 2,
+                    "change_ids": [operation_id],
+                },
+            )
+        assert public_preview.status_code == 200, public_preview.text
+        assert public_preview.json()["can_apply"] is False
+        assert public_preview.json()["blockers"]
+        assert "reason_code" not in public_preview.text
+        assert "finding_key" not in public_preview.text
+        with factory() as session:
+            workflow = WorkflowService(session)
             with pytest.raises(ContractValidationError):
                 workflow.apply_agent_patch_set(
                     actor_id,
@@ -1557,7 +1976,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                     TaskRun.id == first_chat_task_id
                 )
             ).one()
-        assert prompt_version == "casefile-chat-v12"
+        assert prompt_version == "casefile-chat-v16"
         assert toolset_version == "casefile-chat-tools-v4"
 
         chat_claimer = Worker(

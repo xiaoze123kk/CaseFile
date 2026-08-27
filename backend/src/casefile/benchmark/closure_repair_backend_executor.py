@@ -260,7 +260,7 @@ class PostgresBackendReleaseExecutor:
                     f"backend_executor_message_enqueue_failed:{queued.status_code}:"
                     f"{queued.json().get('code')}"
                 )
-            task_run_id = int(queued.json()["task"]["task_run_id"])
+            task_run_id = int(queued.json()["assistant_message"]["run"]["run_id"])
             worker_executed = Worker(
                 self.session_factory,
                 config=WorkerConfig(
@@ -286,11 +286,11 @@ class PostgresBackendReleaseExecutor:
                 f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
                 headers=headers,
             ).json()
-            patch = messages[-1].get("patch_set")
+            patch = messages[-1].get("patch")
             if not isinstance(patch, dict):
                 raise RuntimeError("backend_executor_patch_set_missing")
-            patch_set_id = int(patch["patch_set_id"])
-            operation_ids = [int(item["operation_id"]) for item in patch["operations"]]
+            patch_set_id = int(patch["patch_id"])
+            operation_ids = [int(item["change_id"]) for item in patch["changes"]]
             partial_selection_rejected = True
             full_patch_simulates = True
             if task.automation == "agent" and len(operation_ids) > 1:
@@ -300,11 +300,12 @@ class PostgresBackendReleaseExecutor:
                     json={
                         "expected_draft_id": draft_id,
                         "base_revision": 2,
-                        "operation_ids": operation_ids[:1],
+                        "change_ids": operation_ids[:1],
                     },
                 )
                 partial_selection_rejected = (
-                    partial.status_code == 200 and not partial.json()["simulation"]["can_apply"]
+                    partial.status_code == 409
+                    and partial.json().get("code") == "patch_selection_invalid"
                 )
             full = client.post(
                 f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate",
@@ -312,26 +313,22 @@ class PostgresBackendReleaseExecutor:
                 json={
                     "expected_draft_id": draft_id,
                     "base_revision": 2,
-                    "operation_ids": operation_ids,
+                    "change_ids": operation_ids,
                 },
             )
-            full_patch_simulates = (
-                full.status_code == 200 and full.json()["simulation"]["can_apply"]
-            )
+            full_patch_simulates = full.status_code == 200 and full.json()["can_apply"]
             illegal = client.post(
                 f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate",
                 headers=headers,
                 json={
                     "expected_draft_id": draft_id,
                     "base_revision": 2,
-                    "operation_ids": [max(operation_ids, default=0) + 10_000_000],
+                    "change_ids": [max(operation_ids, default=0) + 10_000_000],
                 },
             )
             illegal_selection_rejected = illegal.status_code in {409, 422}
             if task.automation != "agent":
-                abstention_proven = (
-                    full.status_code == 200 and not full.json()["simulation"]["can_apply"]
-                )
+                abstention_proven = full.status_code == 200 and not full.json()["can_apply"]
                 persisted = self._persistence_evidence(task_run_id, patch_set_id, task.automation)
                 self._last_trial = {
                     "actor_id": actor_id,
@@ -380,7 +377,7 @@ class PostgresBackendReleaseExecutor:
                 json={
                     "expected_draft_id": draft_id,
                     "expected_revision": 1,
-                    "operation_ids": operation_ids,
+                    "change_ids": operation_ids,
                 },
             )
             stale_rejected = stale.status_code == 409
@@ -390,17 +387,17 @@ class PostgresBackendReleaseExecutor:
                 json={
                     "expected_draft_id": draft_id,
                     "expected_revision": 2,
-                    "operation_ids": operation_ids,
+                    "change_ids": operation_ids,
                 },
             )
-            apply_verified = apply.status_code == 200 and apply.json()["draft_revision"] == 3
+            apply_verified = apply.status_code == 200 and apply.json()["revision"] == 3
             duplicate = client.post(
                 f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply",
                 headers=headers,
                 json={
                     "expected_draft_id": draft_id,
                     "expected_revision": 3,
-                    "operation_ids": operation_ids,
+                    "change_ids": operation_ids,
                 },
             )
             duplicate_apply_rejected = duplicate.status_code in {409, 422}
@@ -409,13 +406,13 @@ class PostgresBackendReleaseExecutor:
                 headers=headers,
                 json={"expected_draft_id": draft_id, "expected_revision": 3},
             )
-            undo_verified = undo.status_code == 200 and undo.json()["draft_revision"] == 4
+            undo_verified = undo.status_code == 200 and undo.json()["revision"] == 4
             redo = client.post(
                 f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo",
                 headers=headers,
                 json={"expected_draft_id": draft_id, "expected_revision": 4},
             )
-            redo_verified = redo.status_code == 200 and redo.json()["draft_revision"] == 5
+            redo_verified = redo.status_code == 200 and redo.json()["revision"] == 5
         persisted = self._persistence_evidence(task_run_id, patch_set_id, task.automation)
         self._last_trial = {
             "actor_id": actor_id,
@@ -881,14 +878,14 @@ class PostgresBackendReleaseExecutor:
         headers = {"X-CaseFile-User-Id": str(actor_id)}
         with TestClient(self.app) as client:
             event_rows = client.get(
-                f"/api/v1/projects/{project_id}/tasks/{task_run_id}/events",
+                f"/api/v1/projects/{project_id}/agent/runs/{task_run_id}/events",
                 headers=headers,
             ).json()
             stream = client.get(
-                f"/api/v1/projects/{project_id}/tasks/{task_run_id}/stream",
+                f"/api/v1/projects/{project_id}/agent/runs/{task_run_id}/stream",
                 headers=headers,
             )
-        expected_ids = [int(row["sequence_no"]) for row in event_rows]
+        expected_ids = [int(row["sequence"]) for row in event_rows]
         streamed_ids = [
             int(line.removeprefix("id: "))
             for line in stream.text.splitlines()
@@ -899,7 +896,7 @@ class PostgresBackendReleaseExecutor:
             "content_type": stream.headers.get("content-type"),
             "event_count": len(expected_ids),
             "streamed_event_count": len(streamed_ids),
-            "sequence_continuous": expected_ids == list(range(1, len(expected_ids) + 1)),
+            "cursor_monotonic": expected_ids == sorted(set(expected_ids)),
         }
         return (
             stream.status_code == 200
@@ -988,7 +985,7 @@ class PostgresBackendReleaseExecutor:
         }
         return (
             response.status_code == 409
-            and response.json().get("code") == "agent_patch_undo_stale"
+            and response.json().get("code") == "patch_stale"
             and before == after,
             details,
         )
@@ -1023,7 +1020,7 @@ class PostgresBackendReleaseExecutor:
             )
             if queued.status_code != 202:
                 raise RuntimeError("backend_fault_message_enqueue_failed")
-            return int(queued.json()["task"]["task_run_id"])
+            return int(queued.json()["assistant_message"]["run"]["run_id"])
 
     def _claim_expected(self, worker: Worker, task_run_id: int) -> tuple[int, int]:
         claimed = worker._claim_next()
@@ -1118,7 +1115,7 @@ class PostgresBackendReleaseExecutor:
             "expected_revision": expected_revision,
         }
         if action == "apply":
-            payload["operation_ids"] = list(context["operation_ids"])
+            payload["change_ids"] = list(context["operation_ids"])
         with TestClient(self.app) as client:
             return client.post(
                 f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/{action}",

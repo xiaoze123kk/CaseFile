@@ -57,8 +57,8 @@ from casefile.application.casefile_v1 import generation_candidate_summary
 from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
+from casefile.worker.failures import error_code, safe_error_message
 from casefile.worker.runtime import provider_for_task
-from casefile.worker.support import error_code, safe_error_message
 from casefile_contracts import CaseFile, ObjectRef
 from openai import (
     APIConnectionError,
@@ -806,7 +806,13 @@ def test_fake_provider_chat_consumes_retrieval_queries_under_route_budget() -> N
     ]
 
 
-def test_v14_fake_chat_freezes_ledger_before_no_tool_finalizer() -> None:
+@pytest.mark.parametrize(
+    "prompt_version",
+    ("casefile-chat-v14", "casefile-chat-v15", "casefile-chat-v16"),
+)
+def test_v14_to_v16_fake_chat_freezes_ledger_before_no_tool_finalizer(
+    prompt_version: str,
+) -> None:
     emitted: list[tuple[str, str, dict[str, Any]]] = []
     route = RouteDecision(
         execution_profile={
@@ -819,7 +825,7 @@ def test_v14_fake_chat_freezes_ledger_before_no_tool_finalizer() -> None:
     )
     request = CaseFileChatRequest(
         task_run_id=314,
-        prompt_version="casefile-chat-v14",
+        prompt_version=prompt_version,
         casefile={"entities": [{"id": "ent_1", "name": "张三"}]},
         history=(),
         message="张三是谁",
@@ -855,9 +861,107 @@ def test_v14_fake_chat_freezes_ledger_before_no_tool_finalizer() -> None:
         < event_types.index("model.tool_ledger.frozen")
         < event_types.index("model.finalizer.started")
     )
+    finalizer_started = next(
+        payload
+        for event_type, _stage, payload in emitted
+        if event_type == "agent.model_call.started"
+        and payload.get("component_id") == "chat_finalizer"
+    )
+    finalizer_completed = next(
+        payload
+        for event_type, _stage, payload in emitted
+        if event_type == "agent.model_call.completed"
+        and payload.get("component_id") == "chat_finalizer"
+    )
+    assert finalizer_started["schema_id"] == "casefile-chat-output-v1"
+    assert finalizer_started["model_id"] == request.model_id
+    assert finalizer_completed["schema_id"] == finalizer_started["schema_id"]
+    assert len(finalizer_completed["output_hash"]) == 64
     assert result.tool_ledger is not None
     assert len(result.tool_ledger["ledger_hash"]) == 64
     assert result.candidate.suggestions == []
+
+
+@pytest.mark.parametrize(
+    ("provider_type", "model_id"),
+    (
+        (DeepSeekAgentsProvider, "deepseek-v4-pro"),
+        (OpenAIAgentsProvider, "gpt-5.6-sol"),
+    ),
+)
+@pytest.mark.parametrize(
+    "prompt_version",
+    ("casefile-chat-v14", "casefile-chat-v15", "casefile-chat-v16"),
+)
+def test_v14_to_v16_live_adapters_bind_finalizer_model_call_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    provider_type: type[DeepSeekAgentsProvider] | type[OpenAIAgentsProvider],
+    model_id: str,
+    prompt_version: str,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_run_auxiliary(
+        *_args: object,
+        **kwargs: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        captured.update(kwargs)
+        return (
+            {
+                "answer": "这是面向作者的安全回复。",
+                "referenced_object_ids": [],
+                "referenced_event_ids": [],
+                "suggestions": [],
+            },
+            {},
+        )
+
+    monkeypatch.setattr(provider_type, "_run_auxiliary", fake_run_auxiliary)
+    route = RouteDecision(
+        execution_profile={
+            "primary_intent": "question",
+            "prompt_component": "chat",
+            "toolset": [],
+            "max_tool_calls": 0,
+            "max_turns": 2,
+        }
+    )
+    request = CaseFileChatRequest(
+        task_run_id=315,
+        prompt_version=prompt_version,
+        casefile={"entities": []},
+        history=(),
+        message="请概括当前卷宗。",
+        editable_fields_by_collection={},
+        input_hash="f" * 64,
+        model_id=model_id,
+        api_key="sk-test",
+        max_turns=2,
+        emit=lambda *_args: None,
+        route=route,
+        toolset_version="casefile-chat-tools-v4",
+        assembled_input={
+            "input_hash": "f" * 64,
+            "casefile": {"entities": []},
+            "focus_objects": {},
+            "thread_history": [],
+            "thread_memory": None,
+            "context_dashboard": None,
+            "author_message": "请概括当前卷宗。",
+            "editable_fields_by_collection": {},
+            "focus": {},
+            "validation": {},
+            "validation_issues": [],
+            "routing": {"execution_profile": route.execution_profile},
+        },
+    )
+
+    result = provider_type().chat(request)
+
+    assert result.candidate.answer == "这是面向作者的安全回复。"
+    assert captured["component_id"] == "chat_finalizer"
+    assert captured["schema_id"] == "casefile-chat-output-v1"
+    assert captured["stage"] == "finalizing"
 
 
 def test_fake_provider_chat_stops_retrieval_when_budget_is_exhausted() -> None:

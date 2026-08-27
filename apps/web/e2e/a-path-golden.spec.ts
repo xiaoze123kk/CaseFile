@@ -339,7 +339,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   const previewBanner = page.getByRole("status", {
     name: "候选预览只读提示",
   });
-  await expect(previewBanner).toContainText("候选预览，不是 Current Draft");
+  await expect(previewBanner).toContainText("候选预览，不是当前工作稿");
   await expect(previewBanner).toContainText(
     "预览不会采用候选，也不会读取或修改当前工作稿。",
   );
@@ -378,7 +378,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(page.getByRole("tab", { name: /导出预览/ })).toBeDisabled();
   await expect(page.getByRole("tab", { name: /编译中心/ })).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "采用后才能编辑" }),
+    page.getByRole("button", { name: "编辑所选时间" }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "重新验证" }),
@@ -388,7 +388,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   ).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "补丁审阅" })).toHaveCount(0);
   await expect(
-    page.getByText("候选预览不读取当前工作稿来源", { exact: true }),
+    page.getByText("候选尚未进入当前工作稿", { exact: true }),
   ).toBeVisible();
   await attachPageEvidence(testInfo, page, "08-read-only-candidate-preview");
 
@@ -488,6 +488,217 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(page.getByText("已与服务端同步", { exact: true })).toHaveCount(0);
   await attachPageEvidence(testInfo, page, "09-real-workbench");
 
+  let publicPatchStatus: "pending" | "applied" | "undone" = "pending";
+  let publicPatchRevision = currentDraft!.revision;
+  const chatRequestBodies: Array<Record<string, unknown>> = [];
+  const publicPatch = () => ({
+    patch_id: 901,
+    title: "修改建议",
+    summary: "你要求的修改 1 项；为保持一致性同步调整 1 项。",
+    status: publicPatchStatus,
+    review_rule: "atomic",
+    base_revision: currentDraft!.revision,
+    impact: {
+      summary: "共涉及 2 项卷宗修改，包含 1 项一致性调整。",
+      affected_change_count: 2,
+      has_deletions: false,
+    },
+    changes: [
+      {
+        change_id: 902,
+        kind: "update",
+        relationship: "requested",
+        target: {
+          target_id: "entity_e2e_private_handle",
+          type_label: "人物或对象",
+          name: "档案员",
+        },
+        field_label: "描述",
+        before: { kind: "text", text: "旧描述" },
+        after: { kind: "text", text: "补足不存在时间的调查动机" },
+        explanation: "这是你要求调整的卷宗内容。",
+      },
+      {
+        change_id: 903,
+        kind: "update",
+        relationship: "consistency_support",
+        target: {
+          target_id: "event_e2e_private_handle",
+          type_label: "事件",
+          name: "缺失的时间记录",
+        },
+        field_label: "参与者",
+        before: { kind: "list", text: "无" },
+        after: { kind: "list", text: "档案员" },
+        explanation: "为保持卷宗前后一致，需要同步调整这项内容。",
+      },
+    ],
+    actions: {
+      can_simulate: publicPatchStatus === "pending",
+      can_undo: publicPatchStatus === "applied",
+      can_redo: publicPatchStatus === "undone",
+    },
+  });
+  const publicReview = () => ({
+    patch_id: 901,
+    can_apply: true,
+    blockers: [],
+    warnings: [],
+    requires_author_confirmation: false,
+    confirmation_token: null,
+  });
+  const publicMessages = () => [
+    {
+      message_id: 801,
+      sequence: 1,
+      role: "user",
+      status: "completed",
+      response_kind: "message",
+      body: "补足档案员调查不存在时间的动机。",
+      interpretation: null,
+      references: [],
+      findings: [],
+      patch: null,
+      run: null,
+      created_at: "2026-08-26T09:00:00Z",
+      updated_at: "2026-08-26T09:00:00Z",
+    },
+    {
+      message_id: 802,
+      sequence: 2,
+      role: "assistant",
+      status: "completed",
+      response_kind: "patch_proposal",
+      body: "我整理了两项需要一起审阅的卷宗修改。",
+      interpretation: "change_request",
+      references: [],
+      findings: [],
+      patch: publicPatch(),
+      run: {
+        run_id: 803,
+        status: "succeeded",
+        activity: null,
+        cancellable: false,
+        failure: null,
+      },
+      created_at: "2026-08-26T09:00:01Z",
+      updated_at: "2026-08-26T09:00:01Z",
+    },
+  ];
+  await page.route(
+    `**/api/v1/projects/${projectId}/agent/**`,
+    async (route) => {
+      const requestUrl = new URL(route.request().url());
+      const method = route.request().method();
+      const path = requestUrl.pathname;
+      if (path.endsWith("/agent/threads") && method === "GET") {
+        await route.fulfill({
+          json: [
+            {
+              thread_id: 701,
+              title: "公共协议审阅",
+              title_source: "user",
+              is_pinned: false,
+              status: "active",
+              last_message_at: "2026-08-26T09:00:01Z",
+              created_at: "2026-08-26T09:00:00Z",
+              updated_at: "2026-08-26T09:00:01Z",
+            },
+          ],
+        });
+        return;
+      }
+      if (path.endsWith("/messages") && method === "GET") {
+        await route.fulfill({ json: publicMessages() });
+        return;
+      }
+      if (path.endsWith("/simulate") && method === "POST") {
+        chatRequestBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+        await route.fulfill({ json: publicReview() });
+        return;
+      }
+      if (path.endsWith("/apply") && method === "POST") {
+        chatRequestBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+        publicPatchStatus = "applied";
+        publicPatchRevision += 1;
+        await route.fulfill({
+          json: {
+            patch: publicPatch(),
+            review: publicReview(),
+            revision: publicPatchRevision,
+          },
+        });
+        return;
+      }
+      if (path.endsWith("/undo") && method === "POST") {
+        chatRequestBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+        publicPatchStatus = "undone";
+        publicPatchRevision += 1;
+        await route.fulfill({
+          json: {
+            patch: publicPatch(),
+            review: publicReview(),
+            revision: publicPatchRevision,
+          },
+        });
+        return;
+      }
+      if (path.endsWith("/redo") && method === "POST") {
+        chatRequestBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+        publicPatchStatus = "applied";
+        publicPatchRevision += 1;
+        await route.fulfill({
+          json: {
+            patch: publicPatch(),
+            review: publicReview(),
+            revision: publicPatchRevision,
+          },
+        });
+        return;
+      }
+      await route.fulfill({ status: 404, json: { code: "not_found" } });
+    },
+  );
+
+  await page.getByRole("button", { name: "打开卷宗统筹 Agent 对话" }).click();
+  const agentReview = page.getByRole("region", { name: "Agent 审阅" });
+  await expect(agentReview.getByText("你要求的修改", { exact: true })).toBeVisible();
+  await expect(
+    agentReview.getByText("为保持一致性同步调整", { exact: true }),
+  ).toBeVisible();
+  await expect(agentReview.getByText("补足不存在时间的调查动机")).toBeVisible();
+  await expect(agentReview.getByRole("checkbox")).toHaveCount(0);
+  await expect(
+    agentReview.getByText(
+      /entity_e2e_private_handle|event_e2e_private_handle|Patch #|Draft R|\/description|update_field/u,
+    ),
+  ).toHaveCount(0);
+
+  await agentReview.getByRole("button", { name: "检查修改影响" }).click();
+  await expect(agentReview.getByText("检查通过")).toBeVisible();
+  await agentReview.getByRole("button", { name: "应用修改" }).click();
+  await agentReview.getByRole("button", { name: "确认应用" }).click();
+  await expect(agentReview.getByRole("button", { name: "撤销应用" })).toBeVisible();
+  await agentReview.getByRole("button", { name: "撤销应用" }).click();
+  await expect(agentReview.getByRole("button", { name: "重做应用" })).toBeVisible();
+  await agentReview.getByRole("button", { name: "重做应用" }).click();
+  await expect(agentReview.getByRole("button", { name: "撤销应用" })).toBeVisible();
+  expect(chatRequestBodies[0]).toEqual({
+    expected_draft_id: currentDraft!.draft_id,
+    base_revision: currentDraft!.revision,
+    accepted_warning_ids: [],
+  });
+  expect(chatRequestBodies[1]).toEqual({
+    expected_draft_id: currentDraft!.draft_id,
+    expected_revision: currentDraft!.revision,
+    accepted_warning_ids: [],
+  });
+  expect(JSON.stringify(chatRequestBodies)).not.toMatch(
+    /operation_ids|field_path|finding_key|impact_hash|accepted_debt/u,
+  );
+  await attachPageEvidence(testInfo, page, "10-chat-public-review");
+  await page.getByRole("button", { name: "关闭 Agent 对话" }).click();
+
   const draftAId = currentDraft!.draft_id;
   const draftAEntityName = `工作稿 A 独立人物 ${projectId}`;
   await editCurrentEntity(draftAEntityName);
@@ -532,21 +743,18 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
     .getByRole("region", { name: "当前简报完整深稿" })
     .locator("article")
     .filter({ hasText: "氛围优先" });
-  if (
-    (await candidateBCard
-      .getByRole("button", { name: /采用为当前工作稿/u })
-      .count()) === 0
-  ) {
-    await candidateBCard.getByRole("button").first().click();
+  const candidateBSummary = candidateBCard.getByRole("button", {
+    name: /氛围优先.*待采用/u,
+  });
+  await expect(candidateBSummary).toBeVisible();
+  if ((await candidateBSummary.getAttribute("aria-expanded")) !== "true") {
+    await candidateBSummary.click();
   }
-  await expect(
-    candidateBCard.getByTestId(
-      `candidate-completed-at-${generatedCandidateB!.task_run_id}`,
-    ),
-  ).toBeVisible();
-  await candidateBCard
-    .getByRole("button", { name: /采用为当前工作稿/u })
-    .click();
+  const adoptCandidateB = candidateBCard.getByRole("button", {
+    name: /采用为当前工作稿/u,
+  });
+  await expect(adoptCandidateB).toBeVisible();
+  await adoptCandidateB.click();
   await expect(page).toHaveURL(
     new RegExp(`/workbench\\?project=${projectId}$`),
   );
@@ -629,7 +837,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
       adoption_operations: 2,
       edit_operations: 2,
       edited_adoptions: 2,
-      operation_types: { replace: 2 },
+      operation_types: { logical_mutation_apply: 2 },
     },
   });
   expect(metrics.usage_observations.task_attempts).toBeGreaterThanOrEqual(2);

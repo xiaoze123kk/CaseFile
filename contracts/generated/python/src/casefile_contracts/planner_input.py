@@ -4,6 +4,6 @@
 
 from ._internal import AllowedPresentationMode_1 as AllowedPresentationMode
 from ._internal import PlanningConstraints_1 as PlanningConstraints
-from ._internal import Schema_5 as Schema
+from ._internal import Schema_6 as Schema
 
 __all__ = ["AllowedPresentationMode", "PlanningConstraints", "Schema"]

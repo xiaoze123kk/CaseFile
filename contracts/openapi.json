@@ -4579,8 +4579,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": true
+                    "$ref": "#/components/schemas/PublicAgentMessage"
                   },
                   "title": "Response List Agent Messages Api V1 Projects  Project Id  Agent Threads  Thread Id  Messages Get"
                 }
@@ -4657,9 +4656,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Send Agent Message Api V1 Projects  Project Id  Agent Threads  Thread Id  Messages Post"
+                  "$ref": "#/components/schemas/PublicAgentMessageReceipt"
                 }
               }
             }
@@ -4745,10 +4742,304 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Submit Agent Routing Feedback Api V1 Projects  Project Id  Agent Threads  Thread Id  Messages  Message Id  Routing Feedback Post"
+                  "$ref": "#/components/schemas/PublicRoutingFeedbackReceipt"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Run",
+        "operationId": "get_agent_run_api_v1_projects__project_id__agent_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAgentRun"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Cancel Agent Run",
+        "operationId": "cancel_agent_run_api_v1_projects__project_id__agent_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAgentRun"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}/events": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Run Events",
+        "operationId": "get_agent_run_events_api_v1_projects__project_id__agent_runs__run_id__events_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "After Sequence"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicAgentEvent"
+                  },
+                  "title": "Response Get Agent Run Events Api V1 Projects  Project Id  Agent Runs  Run Id  Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}/stream": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Stream Agent Run",
+        "operationId": "stream_agent_run_api_v1_projects__project_id__agent_runs__run_id__stream_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -4824,9 +5115,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Apply Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Apply Post"
+                  "$ref": "#/components/schemas/PublicPatchResponse"
                 }
               }
             }
@@ -4903,9 +5192,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Simulate Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Simulate Post"
+                  "$ref": "#/components/schemas/PublicPatchReviewResult"
                 }
               }
             }
@@ -4982,9 +5269,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Undo Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Undo Post"
+                  "$ref": "#/components/schemas/PublicPatchResponse"
                 }
               }
             }
@@ -5061,9 +5346,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Redo Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Redo Post"
+                  "$ref": "#/components/schemas/PublicPatchResponse"
                 }
               }
             }
@@ -6474,6 +6757,28 @@
   },
   "components": {
     "schemas": {
+      "Activity": {
+        "enum": [
+          "understanding",
+          "reading",
+          "checking",
+          "preparing_changes",
+          "finalizing",
+          null
+        ],
+        "title": "Activity"
+      },
+      "Activity1": {
+        "type": "string",
+        "enum": [
+          "understanding",
+          "reading",
+          "checking",
+          "preparing_changes",
+          "finalizing"
+        ],
+        "title": "Activity1"
+      },
       "AgentChatFocus": {
         "properties": {
           "object_ids": {
@@ -6616,55 +6921,43 @@
             "minimum": 1.0,
             "title": "Expected Revision"
           },
-          "operation_ids": {
+          "change_ids": {
             "anyOf": [
               {
                 "items": {
                   "type": "integer"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 200
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Operation Ids"
+            "title": "Change Ids"
           },
-          "confirmed_impact_hash": {
+          "confirmation_token": {
             "anyOf": [
               {
                 "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
+                "maxLength": 256,
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Confirmed Impact Hash"
+            "title": "Confirmation Token"
           },
-          "target_finding_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Finding Ids"
-          },
-          "accepted_debt_finding_keys": {
+          "accepted_warning_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 100,
-            "title": "Accepted Debt Finding Keys"
+            "title": "Accepted Warning Ids"
           },
-          "debt_acceptance_reason": {
+          "confirmation_note": {
             "anyOf": [
               {
                 "type": "string",
@@ -6674,7 +6967,7 @@
                 "type": "null"
               }
             ],
-            "title": "Debt Acceptance Reason"
+            "title": "Confirmation Note"
           }
         },
         "additionalProperties": false,
@@ -6718,43 +7011,30 @@
             "minimum": 1.0,
             "title": "Base Revision"
           },
-          "operation_ids": {
+          "change_ids": {
             "anyOf": [
               {
                 "items": {
                   "type": "integer"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 200
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Operation Ids"
+            "title": "Change Ids"
           },
-          "target_finding_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Finding Ids"
-          },
-          "accepted_debt_finding_keys": {
+          "accepted_warning_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 100,
-            "title": "Accepted Debt Finding Keys"
+            "title": "Accepted Warning Ids"
           },
-          "debt_acceptance_reason": {
+          "confirmation_note": {
             "anyOf": [
               {
                 "type": "string",
@@ -6764,7 +7044,7 @@
                 "type": "null"
               }
             ],
-            "title": "Debt Acceptance Reason"
+            "title": "Confirmation Note"
           }
         },
         "additionalProperties": false,
@@ -6798,26 +7078,15 @@
       },
       "AgentRoutingFeedbackRequest": {
         "properties": {
-          "correct_intent": {
+          "interpretation": {
             "anyOf": [
               {
-                "type": "string",
-                "enum": [
-                  "question",
-                  "analysis",
-                  "explain_issue",
-                  "edit_request",
-                  "validate_request",
-                  "unsupported_action",
-                  "clarify",
-                  "out_of_scope"
-                ]
+                "$ref": "#/components/schemas/PublicRoutingInterpretation"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Correct Intent"
+            ]
           },
           "note": {
             "anyOf": [
@@ -7355,6 +7624,15 @@
         ],
         "title": "BriefUpdateRequest"
       },
+      "Category1": {
+        "type": "string",
+        "enum": [
+          "temporarily_unavailable",
+          "request_failed",
+          "output_rejected"
+        ],
+        "title": "Category1"
+      },
       "CompileRunCreateRequest": {
         "properties": {
           "mode": {
@@ -7493,6 +7771,15 @@
           "payload"
         ],
         "title": "CompilerProfileVersionCreateRequest"
+      },
+      "ContextState": {
+        "type": "string",
+        "enum": [
+          "normal",
+          "near_limit",
+          "compacted"
+        ],
+        "title": "ContextState"
       },
       "DraftActivateRequest": {
         "properties": {
@@ -7816,6 +8103,28 @@
           "action"
         ],
         "title": "ItemActionRequest"
+      },
+      "Kind": {
+        "type": "string",
+        "enum": [
+          "story_item",
+          "event",
+          "finding"
+        ],
+        "title": "Kind"
+      },
+      "Kind1": {
+        "type": "string",
+        "enum": [
+          "empty",
+          "text",
+          "number",
+          "boolean",
+          "time_range",
+          "reference",
+          "list"
+        ],
+        "title": "Kind1"
       },
       "LogicalMutationApplyRequest": {
         "properties": {
@@ -8350,6 +8659,940 @@
         ],
         "title": "ProviderSettingRequest"
       },
+      "PublicAgentEvent": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent1"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent2"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent3"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent4"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent5"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent6"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent7"
+          }
+        ],
+        "title": "PublicAgentEvent"
+      },
+      "PublicAgentEvent1": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.accepted",
+            "title": "Event"
+          },
+          "run": {
+            "$ref": "#/components/schemas/PublicAgentRun"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "run"
+        ],
+        "title": "PublicAgentEvent1"
+      },
+      "PublicAgentEvent2": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.activity",
+            "title": "Event"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/Activity1",
+            "title": "PublicEventActivity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "activity"
+        ],
+        "title": "PublicAgentEvent2"
+      },
+      "PublicAgentEvent3": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.context",
+            "title": "Event"
+          },
+          "context_state": {
+            "$ref": "#/components/schemas/ContextState",
+            "title": "PublicContextState"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "context_state"
+        ],
+        "title": "PublicAgentEvent3"
+      },
+      "PublicAgentEvent4": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.verification",
+            "title": "Event"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "title": "PublicVerificationStatus"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "verification_status",
+          "summary"
+        ],
+        "title": "PublicAgentEvent4"
+      },
+      "PublicAgentEvent5": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.completed",
+            "title": "Event"
+          },
+          "run": {
+            "$ref": "#/components/schemas/PublicAgentRun"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "run"
+        ],
+        "title": "PublicAgentEvent5"
+      },
+      "PublicAgentEvent6": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.failed",
+            "title": "Event"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/PublicAgentFailure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "failure"
+        ],
+        "title": "PublicAgentEvent6"
+      },
+      "PublicAgentEvent7": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.cancelled",
+            "title": "Event"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "message"
+        ],
+        "title": "PublicAgentEvent7"
+      },
+      "PublicAgentFailure": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/Category1",
+            "title": "PublicFailureCategory"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "message",
+          "retryable"
+        ],
+        "title": "PublicAgentFailure"
+      },
+      "PublicAgentMessage": {
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Message Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "title": "PublicMessageRole"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status4",
+            "title": "PublicMessageStatus"
+          },
+          "response_kind": {
+            "$ref": "#/components/schemas/ResponseKind",
+            "title": "PublicResponseKind"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "interpretation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicRoutingInterpretation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReference"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "References"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/PublicFinding"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Findings"
+          },
+          "patch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicPatchSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicAgentRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message_id",
+          "sequence",
+          "role",
+          "status",
+          "response_kind",
+          "body",
+          "interpretation",
+          "references",
+          "findings",
+          "patch",
+          "run",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PublicAgentMessage"
+      },
+      "PublicAgentMessageReceipt": {
+        "properties": {
+          "user_message": {
+            "$ref": "#/components/schemas/PublicAgentMessage"
+          },
+          "assistant_message": {
+            "$ref": "#/components/schemas/PublicAgentMessage"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_message",
+          "assistant_message"
+        ],
+        "title": "PublicAgentMessageReceipt"
+      },
+      "PublicAgentRun": {
+        "properties": {
+          "run_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Run Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status2",
+            "title": "PublicRunStatus"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/Activity",
+            "title": "PublicAgentActivity"
+          },
+          "cancellable": {
+            "type": "boolean",
+            "title": "Cancellable"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicAgentFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "run_id",
+          "status",
+          "activity",
+          "cancellable",
+          "failure"
+        ],
+        "title": "PublicAgentRun"
+      },
+      "PublicDisplayValue": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/Kind1",
+            "title": "PublicDisplayKind"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "PublicDisplayValue"
+      },
+      "PublicFinding": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Finding Id"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity",
+            "title": "PublicFindingSeverity"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "statement": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Statement"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "finding_id",
+          "severity",
+          "title",
+          "statement"
+        ],
+        "title": "PublicFinding"
+      },
+      "PublicPatchActions": {
+        "properties": {
+          "can_simulate": {
+            "type": "boolean",
+            "title": "Can Simulate"
+          },
+          "can_undo": {
+            "type": "boolean",
+            "title": "Can Undo"
+          },
+          "can_redo": {
+            "type": "boolean",
+            "title": "Can Redo"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "can_simulate",
+          "can_undo",
+          "can_redo"
+        ],
+        "title": "PublicPatchActions"
+      },
+      "PublicPatchChange1": {
+        "properties": {
+          "change_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Change Id"
+          },
+          "kind": {
+            "type": "string",
+            "const": "create",
+            "title": "Kind"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/Relationship1",
+            "title": "PublicChangeRelationship"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PublicPatchTarget"
+          },
+          "after": {
+            "$ref": "#/components/schemas/PublicDisplayValue"
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Explanation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "change_id",
+          "kind",
+          "relationship",
+          "target",
+          "after",
+          "explanation"
+        ],
+        "title": "PublicPatchChange1"
+      },
+      "PublicPatchChange2": {
+        "properties": {
+          "change_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Change Id"
+          },
+          "kind": {
+            "type": "string",
+            "const": "update",
+            "title": "Kind"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/Relationship1",
+            "title": "PublicChangeRelationship"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PublicPatchTarget"
+          },
+          "field_label": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Field Label"
+          },
+          "before": {
+            "$ref": "#/components/schemas/PublicDisplayValue"
+          },
+          "after": {
+            "$ref": "#/components/schemas/PublicDisplayValue"
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Explanation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "change_id",
+          "kind",
+          "relationship",
+          "target",
+          "field_label",
+          "before",
+          "after",
+          "explanation"
+        ],
+        "title": "PublicPatchChange2"
+      },
+      "PublicPatchChange3": {
+        "properties": {
+          "change_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Change Id"
+          },
+          "kind": {
+            "type": "string",
+            "const": "delete",
+            "title": "Kind"
+          },
+          "relationship": {
+            "$ref": "#/components/schemas/Relationship1",
+            "title": "PublicChangeRelationship"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PublicPatchTarget"
+          },
+          "before": {
+            "$ref": "#/components/schemas/PublicDisplayValue"
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Explanation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "change_id",
+          "kind",
+          "relationship",
+          "target",
+          "before",
+          "explanation"
+        ],
+        "title": "PublicPatchChange3"
+      },
+      "PublicPatchImpact": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary"
+          },
+          "affected_change_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Affected Change Count"
+          },
+          "has_deletions": {
+            "type": "boolean",
+            "title": "Has Deletions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "summary",
+          "affected_change_count",
+          "has_deletions"
+        ],
+        "title": "PublicPatchImpact"
+      },
+      "PublicPatchResponse": {
+        "properties": {
+          "patch": {
+            "$ref": "#/components/schemas/PublicPatchSet"
+          },
+          "review": {
+            "$ref": "#/components/schemas/PublicPatchReviewResult"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "patch",
+          "review",
+          "revision"
+        ],
+        "title": "PublicPatchResponse"
+      },
+      "PublicPatchReviewResult": {
+        "properties": {
+          "patch_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Patch Id"
+          },
+          "can_apply": {
+            "type": "boolean",
+            "title": "Can Apply"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewNotice"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Blockers"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/PublicReviewNotice"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Warnings"
+          },
+          "requires_author_confirmation": {
+            "type": "boolean",
+            "title": "Requires Author Confirmation"
+          },
+          "confirmation_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "patch_id",
+          "can_apply",
+          "blockers",
+          "warnings",
+          "requires_author_confirmation",
+          "confirmation_token"
+        ],
+        "title": "PublicPatchReviewResult"
+      },
+      "PublicPatchSet": {
+        "properties": {
+          "patch_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Patch Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Summary"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status3",
+            "title": "PublicPatchStatus"
+          },
+          "review_rule": {
+            "$ref": "#/components/schemas/ReviewRule",
+            "title": "PublicPatchReviewRule"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Base Revision"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/PublicPatchImpact"
+          },
+          "changes": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PublicPatchChange1"
+                },
+                {
+                  "$ref": "#/components/schemas/PublicPatchChange2"
+                },
+                {
+                  "$ref": "#/components/schemas/PublicPatchChange3"
+                }
+              ]
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Changes"
+          },
+          "actions": {
+            "$ref": "#/components/schemas/PublicPatchActions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "patch_id",
+          "title",
+          "summary",
+          "status",
+          "review_rule",
+          "base_revision",
+          "impact",
+          "changes",
+          "actions"
+        ],
+        "title": "PublicPatchSet"
+      },
+      "PublicPatchTarget": {
+        "properties": {
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "type_label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Type Label"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target_id",
+          "type_label",
+          "name"
+        ],
+        "title": "PublicPatchTarget"
+      },
+      "PublicReference": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/Kind",
+            "title": "PublicReferenceKind"
+          },
+          "target_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Target Id"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "target_id",
+          "label"
+        ],
+        "title": "PublicReference"
+      },
+      "PublicReviewNotice": {
+        "properties": {
+          "notice_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Notice Id"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "notice_id",
+          "message"
+        ],
+        "title": "PublicReviewNotice"
+      },
+      "PublicRoutingFeedbackReceipt": {
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Message Id"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "const": true,
+            "title": "Acknowledged"
+          },
+          "interpretation": {
+            "$ref": "#/components/schemas/PublicRoutingInterpretation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message_id",
+          "acknowledged",
+          "interpretation"
+        ],
+        "title": "PublicRoutingFeedbackReceipt"
+      },
+      "PublicRoutingInterpretation": {
+        "type": "string",
+        "enum": [
+          "conversation",
+          "analysis",
+          "logic_review",
+          "change_request",
+          "clarification"
+        ],
+        "title": "PublicRoutingInterpretation"
+      },
+      "Relationship1": {
+        "type": "string",
+        "enum": [
+          "requested",
+          "consistency_support"
+        ],
+        "title": "Relationship1"
+      },
       "ResolutionConclusionActionRequest": {
         "properties": {
           "expected_draft_id": {
@@ -8370,6 +9613,19 @@
           "expected_revision"
         ],
         "title": "ResolutionConclusionActionRequest"
+      },
+      "ResponseKind": {
+        "type": "string",
+        "enum": [
+          "message",
+          "answer",
+          "analysis",
+          "clarification",
+          "findings",
+          "patch_proposal",
+          "failure"
+        ],
+        "title": "ResponseKind"
       },
       "ResumeGenerationTaskRequest": {
         "properties": {
@@ -8397,6 +9653,31 @@
           "expected_brief_revision"
         ],
         "title": "ResumeGenerationTaskRequest"
+      },
+      "ReviewRule": {
+        "type": "string",
+        "enum": [
+          "atomic",
+          "selective"
+        ],
+        "title": "ReviewRule"
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "user",
+          "assistant"
+        ],
+        "title": "Role"
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "blocker",
+          "warning",
+          "note"
+        ],
+        "title": "Severity"
       },
       "SourceRecordCreateRequest": {
         "properties": {
@@ -8433,6 +9714,38 @@
           "content_text"
         ],
         "title": "SourceRecordCreateRequest"
+      },
+      "Status2": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "cancelling",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "Status2"
+      },
+      "Status3": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "applied",
+          "undone",
+          "stale",
+          "rejected"
+        ],
+        "title": "Status3"
+      },
+      "Status4": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "completed",
+          "failed"
+        ],
+        "title": "Status4"
       },
       "TimelineTimePreviewRequest": {
         "properties": {
@@ -8563,6 +9876,15 @@
           "expected_draft_revision"
         ],
         "title": "VerificationRerunRequest"
+      },
+      "VerificationStatus": {
+        "type": "string",
+        "enum": [
+          "started",
+          "passed",
+          "blocked"
+        ],
+        "title": "VerificationStatus"
       }
     }
   }

@@ -102,6 +102,7 @@ from casefile.agent_runtime.prompt import (
     brief_intake_synthesize_input,
     brief_strategy_options_input,
     chat_executor_output_type,
+    chat_finalizer_component,
     chat_finalizer_output_type,
     idea_generation_input,
     polish_input,
@@ -449,7 +450,11 @@ class OpenAIAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
-        if request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}:
+        if request.prompt_version in {
+            "casefile-chat-v14",
+            "casefile-chat-v15",
+            "casefile-chat-v16",
+        }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
@@ -501,7 +506,7 @@ class OpenAIAgentsProvider:
                 # v15's deterministic Bundle is authoritative.  A bounded
                 # Evidence Agent failure must not block the no-tool Finalizer
                 # from completing against that frozen evidence.
-                if request.prompt_version != "casefile-chat-v15":
+                if request.prompt_version not in {"casefile-chat-v15", "casefile-chat-v16"}:
                     raise
                 request.emit(
                     "model.tool_agent.failed",
@@ -532,12 +537,13 @@ class OpenAIAgentsProvider:
             repair_plan=request.repair_plan,
         )
         output_type = chat_finalizer_output_type(request)
+        finalizer_component_id, finalizer_schema_id = chat_finalizer_component(request)
         request.emit(
             "model.finalizer.started",
             "finalizing",
             {
                 "model_id": request.model_id,
-                "schema_id": output_type.__name__,
+                "schema_id": finalizer_schema_id,
                 "ledger_hash": (
                     None if ledger_payload is None else ledger_payload.get("ledger_hash")
                 ),
@@ -551,6 +557,8 @@ class OpenAIAgentsProvider:
                 input_text=finalizer_input,
                 output_type=output_type,
                 stage="finalizing",
+                component_id=finalizer_component_id,
+                schema_id=finalizer_schema_id,
                 temperature=_chat_live_temperature(),
             )
         )

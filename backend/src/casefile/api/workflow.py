@@ -5,8 +5,17 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, NoReturn
 
+from casefile_contracts import (
+    PublicAgentEvent,
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicPatchResponse,
+    PublicPatchReviewResult,
+    PublicRoutingFeedbackReceipt,
+)
 from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -32,8 +41,18 @@ from casefile.api.schemas import (
     SourceRecordCreateRequest,
 )
 from casefile.application.a_path_metrics import APathMetricsService
+from casefile.application.chat_public_contracts import (
+    internal_intent_for_public_interpretation,
+    public_agent_message_receipt_view,
+    public_agent_message_view,
+    public_patch_response_view,
+    public_patch_review_view,
+    public_routing_feedback_view,
+)
+from casefile.application.chat_public_patches import resolve_public_warning_ids
 from casefile.application.errors import ApplicationError
 from casefile.application.workflow_service import WorkflowService
+from casefile.contracts import ContractValidationError
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 
@@ -180,24 +199,29 @@ def workflow_router() -> APIRouter:
             ),
         )
 
-    @router.get("/projects/{project_id}/agent/threads/{thread_id}/messages")
+    @router.get(
+        "/projects/{project_id}/agent/threads/{thread_id}/messages",
+        response_model=list[PublicAgentMessage],
+    )
     def list_agent_messages(
         project_id: int,
         thread_id: int,
         actor: ActorDependency,
         session: SessionDependency,
         after_sequence: int = 0,
-    ) -> list[dict[str, Any]]:
-        return WorkflowService(session).list_agent_messages(
+    ) -> list[PublicAgentMessage]:
+        messages = WorkflowService(session).list_agent_messages(
             actor,
             project_id,
             thread_id,
             after_sequence=after_sequence,
         )
+        return [public_agent_message_view(message) for message in messages]
 
     @router.post(
         "/projects/{project_id}/agent/threads/{thread_id}/messages",
         status_code=202,
+        response_model=PublicAgentMessageReceipt,
     )
     def send_agent_message(
         project_id: int,
@@ -205,31 +229,27 @@ def workflow_router() -> APIRouter:
         payload: AgentMessageCreateRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).send_agent_message(
-            actor,
-            project_id,
-            thread_id,
-            expected_draft_id=payload.expected_draft_id,
-            expected_draft_revision=payload.expected_draft_revision,
-            content=payload.content,
-            provider=payload.provider,
-            focus=(
-                None
-                if payload.focus is None
-                else payload.focus.model_dump()
-            ),
-            routing_hint=(
-                None
-                if payload.routing_hint is None
-                else payload.routing_hint.model_dump()
-            ),
+    ) -> PublicAgentMessageReceipt:
+        return public_agent_message_receipt_view(
+            WorkflowService(session).send_agent_message(
+                actor,
+                project_id,
+                thread_id,
+                expected_draft_id=payload.expected_draft_id,
+                expected_draft_revision=payload.expected_draft_revision,
+                content=payload.content,
+                provider=payload.provider,
+                focus=(None if payload.focus is None else payload.focus.model_dump()),
+                routing_hint=(
+                    None if payload.routing_hint is None else payload.routing_hint.model_dump()
+                ),
+            )
         )
 
     @router.post(
-        "/projects/{project_id}/agent/threads/{thread_id}/messages/{message_id}"
-        "/routing-feedback",
+        "/projects/{project_id}/agent/threads/{thread_id}/messages/{message_id}/routing-feedback",
         status_code=201,
+        response_model=PublicRoutingFeedbackReceipt,
     )
     def submit_agent_routing_feedback(
         project_id: int,
@@ -238,88 +258,259 @@ def workflow_router() -> APIRouter:
         payload: AgentRoutingFeedbackRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).submit_agent_routing_feedback(
-            actor,
-            project_id,
-            thread_id,
-            message_id,
-            correct_intent=payload.correct_intent,
-            note=payload.note,
+    ) -> PublicRoutingFeedbackReceipt:
+        return public_routing_feedback_view(
+            WorkflowService(session).submit_agent_routing_feedback(
+                actor,
+                project_id,
+                thread_id,
+                message_id,
+                correct_intent=internal_intent_for_public_interpretation(payload.interpretation),
+                note=payload.note,
+            )
         )
 
-    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply")
+    @router.get(
+        "/projects/{project_id}/agent/runs/{run_id}",
+        response_model=PublicAgentRun,
+    )
+    def get_agent_run(
+        project_id: int,
+        run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> PublicAgentRun:
+        return WorkflowService(session).get_agent_run(actor, project_id, run_id)
+
+    @router.post(
+        "/projects/{project_id}/agent/runs/{run_id}/cancel",
+        status_code=202,
+        response_model=PublicAgentRun,
+    )
+    def cancel_agent_run(
+        project_id: int,
+        run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> PublicAgentRun:
+        return WorkflowService(session).cancel_agent_run(actor, project_id, run_id)
+
+    @router.get(
+        "/projects/{project_id}/agent/runs/{run_id}/events",
+        response_model=list[PublicAgentEvent],
+    )
+    def get_agent_run_events(
+        project_id: int,
+        run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+        after_sequence: int = 0,
+    ) -> list[PublicAgentEvent]:
+        return WorkflowService(session).list_agent_run_events(
+            actor,
+            project_id,
+            run_id,
+            after_sequence=after_sequence,
+        )
+
+    @router.get("/projects/{project_id}/agent/runs/{run_id}/stream")
+    def stream_agent_run(
+        project_id: int,
+        run_id: int,
+        request: Request,
+        actor: ActorDependency,
+        session: SessionDependency,
+        last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    ) -> StreamingResponse:
+        WorkflowService(session).get_agent_run(actor, project_id, run_id)
+        after_sequence = _last_event_sequence(last_event_id)
+        factory = request.app.state.session_factory
+
+        def events() -> Iterator[str]:
+            cursor = after_sequence
+            idle_polls = 0
+            while True:
+                with factory() as stream_session:
+                    service = WorkflowService(stream_session)
+                    rows = service.list_agent_run_events(
+                        actor,
+                        project_id,
+                        run_id,
+                        after_sequence=cursor,
+                    )
+                    run = service.get_agent_run(actor, project_id, run_id)
+                if rows:
+                    idle_polls = 0
+                    for event in rows:
+                        payload = event.model_dump(mode="json")
+                        cursor = int(payload["sequence"])
+                        yield _public_sse(payload)
+                else:
+                    idle_polls += 1
+                    if idle_polls % 20 == 0:
+                        yield ": keep-alive\n\n"
+                if run.status.value in TERMINAL_STATUSES and not rows:
+                    break
+                time.sleep(0.5)
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    @router.post(
+        "/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply",
+        response_model=PublicPatchResponse,
+    )
     def apply_agent_patch_set(
         project_id: int,
         patch_set_id: int,
         payload: AgentPatchApplyRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).apply_agent_patch_set(
-            actor,
-            project_id,
-            patch_set_id,
-            expected_draft_id=payload.expected_draft_id,
-            expected_revision=payload.expected_revision,
-            operation_ids=payload.operation_ids,
-            confirmed_impact_hash=payload.confirmed_impact_hash,
-            target_finding_ids=payload.target_finding_ids,
-            accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
-            debt_acceptance_reason=payload.debt_acceptance_reason,
-        )
+    ) -> PublicPatchResponse:
+        try:
+            service = WorkflowService(session)
+            accepted_keys: list[str] = []
+            if payload.accepted_warning_ids:
+                preview = service.simulate_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    base_revision=payload.expected_revision,
+                    operation_ids=payload.change_ids,
+                    target_finding_ids=None,
+                    accepted_debt_finding_keys=[],
+                    debt_acceptance_reason=None,
+                )
+                accepted_keys = resolve_public_warning_ids(
+                    patch_id=patch_set_id,
+                    accepted_warning_ids=payload.accepted_warning_ids,
+                    simulation=preview["simulation"],
+                )
+            return public_patch_response_view(
+                service.apply_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    expected_revision=payload.expected_revision,
+                    operation_ids=payload.change_ids,
+                    confirmed_impact_hash=payload.confirmation_token,
+                    target_finding_ids=None,
+                    accepted_debt_finding_keys=accepted_keys,
+                    debt_acceptance_reason=payload.confirmation_note,
+                )
+            )
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
-    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate")
+    @router.post(
+        "/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate",
+        response_model=PublicPatchReviewResult,
+    )
     def simulate_agent_patch_set(
         project_id: int,
         patch_set_id: int,
         payload: AgentPatchSimulateRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).simulate_agent_patch_set(
-            actor,
-            project_id,
-            patch_set_id,
-            expected_draft_id=payload.expected_draft_id,
-            base_revision=payload.base_revision,
-            operation_ids=payload.operation_ids,
-            target_finding_ids=payload.target_finding_ids,
-            accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
-            debt_acceptance_reason=payload.debt_acceptance_reason,
-        )
+    ) -> PublicPatchReviewResult:
+        try:
+            service = WorkflowService(session)
+            preview = service.simulate_agent_patch_set(
+                actor,
+                project_id,
+                patch_set_id,
+                expected_draft_id=payload.expected_draft_id,
+                base_revision=payload.base_revision,
+                operation_ids=payload.change_ids,
+                target_finding_ids=None,
+                accepted_debt_finding_keys=[],
+                debt_acceptance_reason=None,
+            )
+            if payload.accepted_warning_ids:
+                accepted_keys = resolve_public_warning_ids(
+                    patch_id=patch_set_id,
+                    accepted_warning_ids=payload.accepted_warning_ids,
+                    simulation=preview["simulation"],
+                )
+                preview = service.simulate_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    base_revision=payload.base_revision,
+                    operation_ids=payload.change_ids,
+                    target_finding_ids=None,
+                    accepted_debt_finding_keys=accepted_keys,
+                    debt_acceptance_reason=payload.confirmation_note,
+                )
+            return public_patch_review_view(preview)
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
-    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo")
+    @router.post(
+        "/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo",
+        response_model=PublicPatchResponse,
+    )
     def undo_agent_patch_set(
         project_id: int,
         patch_set_id: int,
         payload: AgentPatchUndoRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).undo_agent_patch_set(
-            actor,
-            project_id,
-            patch_set_id,
-            expected_draft_id=payload.expected_draft_id,
-            expected_revision=payload.expected_revision,
-        )
+    ) -> PublicPatchResponse:
+        try:
+            return public_patch_response_view(
+                WorkflowService(session).undo_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    expected_revision=payload.expected_revision,
+                )
+            )
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
-    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo")
+    @router.post(
+        "/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo",
+        response_model=PublicPatchResponse,
+    )
     def redo_agent_patch_set(
         project_id: int,
         patch_set_id: int,
         payload: AgentPatchRedoRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).redo_agent_patch_set(
-            actor,
-            project_id,
-            patch_set_id,
-            expected_draft_id=payload.expected_draft_id,
-            expected_revision=payload.expected_revision,
-        )
+    ) -> PublicPatchResponse:
+        try:
+            return public_patch_response_view(
+                WorkflowService(session).redo_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    expected_revision=payload.expected_revision,
+                )
+            )
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
     @router.post("/projects/{project_id}/tasks/generate", status_code=202)
     def create_generation_task(
@@ -442,7 +633,9 @@ def workflow_router() -> APIRouter:
             "casefile_chat",
         ],
     ) -> dict[str, Any] | None:
-        return WorkflowService(session).get_latest_task(
+        service = WorkflowService(session)
+        service.require_generic_task_type(actor, project_id, task_type)
+        return service.get_latest_task(
             actor,
             project_id,
             task_type=task_type,
@@ -463,7 +656,9 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return WorkflowService(session).get_task(actor, project_id, task_run_id)
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.get_task(actor, project_id, task_run_id)
 
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/cancel",
@@ -475,7 +670,9 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return WorkflowService(session).cancel_task(actor, project_id, task_run_id)
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.cancel_task(actor, project_id, task_run_id)
 
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/resume",
@@ -488,7 +685,9 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return WorkflowService(session).resume_generation_task(
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.resume_generation_task(
             actor,
             project_id,
             task_run_id,
@@ -505,7 +704,9 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
         after_sequence: int = 0,
     ) -> list[dict[str, Any]]:
-        return WorkflowService(session).list_task_events(
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.list_task_events(
             actor,
             project_id,
             task_run_id,
@@ -521,7 +722,9 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
     ) -> StreamingResponse:
-        WorkflowService(session).get_task(actor, project_id, task_run_id)
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        service.get_task(actor, project_id, task_run_id)
         after_sequence = _last_event_sequence(last_event_id)
         factory = request.app.state.session_factory
 
@@ -584,6 +787,53 @@ def _last_event_sequence(value: str | None) -> int:
     return sequence
 
 
+def _raise_public_patch_error(error: ApplicationError) -> NoReturn:
+    stale_codes = {
+        "agent_patch_stale",
+        "agent_patch_undo_stale",
+        "agent_patch_redo_stale",
+    }
+    selection_codes = {
+        "agent_patch_selection_invalid",
+        "agent_patch_atomic_subset_forbidden",
+    }
+    unavailable_codes = {
+        "agent_patch_not_pending",
+        "agent_patch_not_applied",
+        "agent_patch_not_undone",
+    }
+    if error.code in stale_codes:
+        code, message = "patch_stale", "卷宗已经变化，请刷新后重新审阅。"
+    elif error.code in selection_codes:
+        code, message = "patch_selection_invalid", "所选修改项不可用于当前审阅方式。"
+    elif error.code == "agent_patch_delete_impact_confirmation_required":
+        code, message = "patch_confirmation_required", "删除内容前需要确认当前影响范围。"
+    elif error.code == "agent_patch_impact_hash_mismatch":
+        code, message = "patch_review_changed", "影响范围已经变化，请重新模拟后再确认。"
+    elif error.code == "public_warning_selection_invalid":
+        code, message = "patch_warning_selection_invalid", error.message
+    elif error.code in unavailable_codes:
+        code, message = "patch_not_available", "这组修改当前不能执行该操作。"
+    elif error.code == "not_found":
+        code, message = "patch_not_found", "没有找到这组修改建议。"
+    else:
+        code, message = "patch_review_blocked", "这组修改未通过应用前检查。"
+    raise ApplicationError(code, message, status_code=error.status_code) from None
+
+
+def _raise_public_patch_contract_error() -> NoReturn:
+    raise ApplicationError(
+        "patch_review_blocked",
+        "这组修改未通过应用前检查。",
+        status_code=409,
+    ) from None
+
+
 def _sse(event: dict[str, Any]) -> str:
     data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
     return f"id: {event['sequence_no']}\nevent: {event['event_type']}\ndata: {data}\n\n"
+
+
+def _public_sse(event: dict[str, Any]) -> str:
+    data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+    return f"id: {event['sequence']}\nevent: {event['event']}\ndata: {data}\n\n"

@@ -94,8 +94,7 @@ def _chat_context_policy_version() -> str:
     """Return the default or opted-in chat context policy version.
 
     ``casefile-chat-context-v6`` is the accepted default (pairs with the
-    router/query-rewrite hardened ``casefile-chat-v12`` and
-    ``casefile-chat-tools-v4``).
+    public-language hardened ``casefile-chat-v16`` and ``casefile-chat-tools-v4``).
     ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v5`` restores the
     structured-audit policy (paired with ``casefile-chat-v9``), ``...v4``
     restores the audit prompt policy (paired with ``casefile-chat-v8``),
