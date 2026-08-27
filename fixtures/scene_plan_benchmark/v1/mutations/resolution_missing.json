@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "resolution_missing",
+  "base_task_id": "resolution_execution__basic",
+  "kind": "drop_resolution_obligation",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_fill_obligation_coverage_invalid",
+  "category": "Resolution"
+}

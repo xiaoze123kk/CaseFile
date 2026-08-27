@@ -1,0 +1,8 @@
+{
+  "agent_id": "scene_compiler_semantic_fill",
+  "version": "scene-compiler-semantic-fill-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "5ea507befff7f3778bb1b7f4c8f30e605ee81cb9b621664564b7e63e3aab8aa0",
+  "previous_version": null,
+  "change_summary": "N4.4章内有界Scene Fill，模型只拥有结构化执行语义，不得覆盖服务端权威字段。"
+}

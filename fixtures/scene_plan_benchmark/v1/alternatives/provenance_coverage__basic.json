@@ -1,0 +1,460 @@
+{
+  "schema_id": "compiler.scene-plan-candidate.v1",
+  "scenes": [
+    {
+      "scene_id": "scene_1",
+      "beats": [
+        {
+          "ordinal": 1,
+          "kind": "transition",
+          "directive": "明确进入场景目标与行动条件，但不提前执行后续事实动作。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            }
+          ],
+          "event_ref": null,
+          "exposure": null,
+          "resolution": null
+        },
+        {
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "执行事件 evt_restart_seven，服务于场景目标：推进 false_belief 的 basic 场景 1。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            }
+          ],
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "exposure": null,
+          "resolution": null
+        },
+        {
+          "ordinal": 3,
+          "kind": "exposure",
+          "directive": "introduce 读者信息 exposure_manual_trace，并保持场景目标不变。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            }
+          ],
+          "event_ref": null,
+          "exposure": {
+            "entry_key": "exposure_manual_trace",
+            "action": "introduce"
+          },
+          "resolution": null
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_2",
+      "beats": [
+        {
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "执行事件 evt_restart_seven，服务于场景目标：推进 false_belief 的 basic 场景 2。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            }
+          ],
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "exposure": null,
+          "resolution": null
+        },
+        {
+          "ordinal": 2,
+          "kind": "exposure",
+          "directive": "introduce 读者信息 exposure_restart_log，并保持场景目标不变。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            }
+          ],
+          "event_ref": null,
+          "exposure": {
+            "entry_key": "exposure_restart_log",
+            "action": "introduce"
+          },
+          "resolution": null
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_3",
+      "beats": [
+        {
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "执行事件 evt_restart_seven，服务于场景目标：推进 false_belief 的 basic 场景 3。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "exposure": null,
+          "resolution": null
+        },
+        {
+          "ordinal": 2,
+          "kind": "exposure",
+          "directive": "reinterpret 读者信息 exposure_manual_trace，并保持场景目标不变。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "event_ref": null,
+          "exposure": {
+            "entry_key": "exposure_manual_trace",
+            "action": "reinterpret"
+          },
+          "resolution": null
+        },
+        {
+          "ordinal": 3,
+          "kind": "resolution",
+          "directive": "resolve 结论 res_root_cause。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "event_ref": null,
+          "exposure": null,
+          "resolution": {
+            "resolution_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "action": "resolve"
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "resolution",
+          "directive": "resolve 结论 res_shutdown_rule。",
+          "participant_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "story_time_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "event_ref": null,
+          "exposure": null,
+          "resolution": {
+            "resolution_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            },
+            "action": "resolve"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "agent_id": "scene_compiler_semantic_fill",
+  "version": "scene-compiler-semantic-fill-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "14621f7a5cd3296c8047d59a4640a448f77e8665a493d5b5f308ebe0369e6613",
+  "previous_version": "scene-compiler-semantic-fill-v4",
+  "change_summary": "明确 depends_on 仅能引用当前 Scene 严格更早的 Beat local key，禁止跨 Scene 借用。"
+}

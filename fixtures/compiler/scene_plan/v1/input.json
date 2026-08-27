@@ -1,0 +1,91 @@
+{
+  "schema_id": "compiler.scene-compiler-input.v1",
+  "source": {
+    "novel_plan_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "narrative_ir_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "input_hash": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "novel_plan": {
+    "schema_id": "compiler.novel-plan.v1",
+    "planner_version": "fixture.scene-plan-input.v1",
+    "source": {
+      "planner_input_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+      "narrative_ir_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "profile_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+      "exposure_hash": null,
+      "component_fingerprint": "6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "chapters": [
+      {
+        "chapter_id": "chapter_1",
+        "ordinal": 1,
+        "act_ordinal": 1,
+        "title": "第一章"
+      }
+    ],
+    "scenes": [
+      {
+        "scene_id": "scene_1",
+        "chapter_id": "chapter_1",
+        "discourse_order": 1,
+        "purpose": "transition",
+        "intent": "建立最小场景执行边界。",
+        "presentation_mode": "linear",
+        "pov_ref": null,
+        "participant_refs": [],
+        "location_ref": null,
+        "event_refs": [],
+        "story_time_refs": [],
+        "basis_refs": [
+          {"object_type": "casefile", "object_id": "case_ir_minimal"}
+        ],
+        "exposure": [],
+        "resolutions": [],
+        "prerequisite_scene_ids": [],
+        "source_refs": [
+          {
+            "object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"},
+            "field_path": "",
+            "source_fragment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      }
+    ],
+    "indexes": {
+      "chapter_scene_ids": {"chapter_1": ["scene_1"]},
+      "scene_dependencies": {"scene_1": []}
+    }
+  },
+  "narrative_ir": {
+    "schema_id": "compiler.narrative-ir.v1",
+    "projection_version": "compiler.narrative-ir-projection.v1",
+    "source": {
+      "casefile_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"},
+      "source_schema_id": "casefile.v2",
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "root_source_refs": [
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "", "source_fragment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/title", "source_fragment_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/status", "source_fragment_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/version", "source_fragment_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/brief_ref", "source_fragment_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/content_notices", "source_fragment_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+        {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/extensions", "source_fragment_hash": "0000000000000000000000000000000000000000000000000000000000000000"}
+      ]
+    },
+    "case": {
+      "title": "最小叙事投影",
+      "status": "draft",
+      "version": {"version_id": "draft_ir_minimal", "version_no": 1, "parent_version_id": null},
+      "brief_ref": {"brief_id": "brief_ir_minimal", "version": 1}
+    },
+    "objects": {
+      "resolution_specs": [], "entities": [], "relationships": [], "locations": [],
+      "events": [], "information_units": [], "claims": [], "hypotheses": [],
+      "reasoning_paths": [], "constraints": [], "structure_locks": []
+    },
+    "content_notices": [],
+    "extensions": {},
+    "indexes": {"reference_edges": []}
+  }
+}

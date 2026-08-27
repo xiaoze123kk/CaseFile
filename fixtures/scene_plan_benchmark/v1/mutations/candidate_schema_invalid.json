@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "candidate_schema_invalid",
+  "base_task_id": "scene_decomposition__basic",
+  "kind": "remove_fill_schema",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_fill_contract_invalid",
+  "category": "Contract"
+}

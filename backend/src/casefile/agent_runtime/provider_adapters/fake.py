@@ -128,6 +128,10 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _bind_safe_patch_registry,
     _validate_generated_descriptions,
 )
+from casefile.agent_runtime.scene_compiler import (
+    SceneFillBatchRequest,
+    SceneFillBatchResult,
+)
 from casefile.agent_runtime.story_planner import (
     StoryPlannerPatchProviderResult,
     StoryPlannerPatchRequest,
@@ -437,7 +441,58 @@ class FakeProvider:
         self._goal_decisions = list(goal_decisions)
         self._goal_final_candidate = goal_final_candidate
 
-    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult:
+    def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+        scenes: list[dict[str, Any]] = []
+        for scene in request.batch_view["scenes"]:
+            beats: list[dict[str, Any]] = []
+            previous: str | None = None
+            for ordinal, obligation in enumerate(scene["obligations"], start=1):
+                local_key = f"beat_local_{scene['scene_id']}_{ordinal:03d}"
+                target_refs = []
+                if obligation["event_ref"] is not None:
+                    target_refs.append(obligation["event_ref"])
+                if obligation["resolution"] is not None:
+                    target_refs.append(obligation["resolution"]["resolution_ref"])
+                beats.append(
+                    {
+                        "local_key": local_key,
+                        "kind": obligation["kind"],
+                        "directive": (
+                            f"执行 {obligation['obligation_key']} 并推进场景目标。"
+                        ),
+                        "actor_refs": scene["participant_refs"][:1],
+                        "target_refs": target_refs,
+                        "basis_refs": obligation["basis_refs"],
+                        "fulfills_obligation_keys": [obligation["obligation_key"]],
+                        "depends_on": [] if previous is None else [previous],
+                        "knowledge_transitions": [],
+                        "location_assertions": [],
+                        "setup_keys": [],
+                        "payoff_keys": [],
+                    }
+                )
+                previous = local_key
+            scenes.append(
+                {
+                    "scene_id": scene["scene_id"],
+                    "dramatic_goal": f"落实 {scene['scene_id']} 的既定目标。",
+                    "conflict": "来源事实与角色目标形成可执行阻力。",
+                    "outcome": "硬义务完成并为后续场景留下可追溯状态。",
+                    "beats": beats,
+                }
+            )
+        return SceneFillBatchResult(
+            proposal={
+                "schema_id": "compiler.scene-semantic-fill.v1",
+                "batch_id": request.batch_view["batch_id"],
+                "scenes": scenes,
+            },
+            usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        )
+
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult:
         basis = request.planning_problem["object_refs"][0]
         proposal = {
             "schema_id": "compiler.skeleton-proposal.v1",

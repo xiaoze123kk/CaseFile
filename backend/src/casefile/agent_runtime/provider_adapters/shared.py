@@ -54,6 +54,7 @@ from casefile.agent_runtime.prompt_repository import (
     system_prompt_for_task,
 )
 from casefile.agent_runtime.provider_adapters.protocols import ProviderProtocolError
+from casefile.agent_runtime.scene_compiler import SceneFillBatchRequest
 from casefile.agent_runtime.story_planner import (
     StoryPlannerPatchRequest,
     StoryPlannerRequest,
@@ -246,6 +247,7 @@ async def _run_auxiliary_agent(
         | StoryPlannerPatchRequest
         | SkeletonProposalRequest
         | SemanticFillRequest
+        | SceneFillBatchRequest
         | GeneralMutationPlannerRequest
     ),
     *,

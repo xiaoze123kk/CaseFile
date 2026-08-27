@@ -1,0 +1,8 @@
+{
+  "agent_id": "scene_compiler_semantic_fill",
+  "version": "scene-compiler-semantic-fill-v6",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "b9f5ae3b9dc0b37f5ff36575fd2da7db8c12fbc2ef4b37c26b56578366a203f6",
+  "previous_version": "scene-compiler-semantic-fill-v5",
+  "change_summary": "逐条绑定 knowledge_operation_constraints 与 allowed_operations，禁止把已知事实改成 false belief。"
+}

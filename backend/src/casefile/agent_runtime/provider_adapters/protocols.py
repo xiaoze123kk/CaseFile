@@ -53,6 +53,10 @@ from casefile.agent_runtime.models import (
     RouteSpecificRewriteRequest,
     RouteSpecificRewriteResult,
 )
+from casefile.agent_runtime.scene_compiler import (
+    SceneFillBatchRequest,
+    SceneFillBatchResult,
+)
 from casefile.agent_runtime.story_planner import (
     StoryPlannerProviderResult,
     StoryPlannerRequest,
@@ -64,7 +68,11 @@ class GenerationProvider(Protocol):
 
 
 class AgentProvider(GenerationProvider, Protocol):
-    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult: ...
+    def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult: ...
+
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult: ...
 
     def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult: ...
 

@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/scene-plan.schema.json",
+  "title": "ScenePlanIR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "compiler_version", "source", "chapters", "scenes", "beats",
+    "edges", "indexes", "diagnostics", "metrics"
+  ],
+  "properties": {
+    "schema_id": {"const": "compiler.scene-plan.v1"},
+    "compiler_version": {"const": "compiler.scene-execution.v1"},
+    "source": {"$ref": "#/$defs/ScenePlanSource"},
+    "chapters": {"type": "array", "items": {"$ref": "#/$defs/ChapterExecution"}, "minItems": 1},
+    "scenes": {"type": "array", "items": {"$ref": "#/$defs/SceneExecution"}, "minItems": 1},
+    "beats": {"type": "array", "items": {"$ref": "#/$defs/BeatExecution"}, "minItems": 1},
+    "edges": {"type": "array", "items": {"$ref": "#/$defs/NarrativeExecutionEdge"}},
+    "indexes": {"$ref": "#/$defs/ScenePlanIndexes"},
+    "diagnostics": {
+      "type": "array",
+      "items": {"$ref": "compiler.schema.json#/$defs/CompilerDiagnostic"}
+    },
+    "metrics": {"$ref": "#/$defs/ScenePlanMetrics"}
+  },
+  "$defs": {
+    "ScenePlanSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["novel_plan_hash", "narrative_ir_hash", "component_fingerprint"],
+      "properties": {
+        "novel_plan_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "candidate_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "component_fingerprint": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "SceneCompilerInputSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["novel_plan_hash", "narrative_ir_hash", "input_hash"],
+      "properties": {
+        "novel_plan_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "SceneCompilerInputBundle": {
+      "title": "SceneCompilerInputBundle",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "source", "novel_plan", "narrative_ir"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-compiler-input.v1"},
+        "source": {"$ref": "#/$defs/SceneCompilerInputSource"},
+        "novel_plan": {"$ref": "novel-plan.schema.json#/$defs/NovelPlanIR"},
+        "narrative_ir": {"$ref": "narrative-ir.schema.json"}
+      }
+    },
+    "ChapterExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapter_id", "ordinal", "act_ordinal", "title", "scene_ids"],
+      "properties": {
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "act_ordinal": {"type": "integer", "minimum": 1, "maximum": 10},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "scene_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "AudienceExposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_key", "status", "first_scene_id", "last_scene_id"],
+      "properties": {
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "status": {"enum": ["introduced", "reinforced", "reinterpreted"]},
+        "first_scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "last_scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"}
+      }
+    },
+    "ExposurePlacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_key", "action"],
+      "properties": {
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "action": {"enum": ["introduce", "reinforce", "reinterpret"]}
+      }
+    },
+    "ResolutionPlacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution_ref", "action"],
+      "properties": {
+        "resolution_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "action": {"enum": ["advance", "resolve", "intentionally_unresolved"]}
+      }
+    },
+    "SceneExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id", "chapter_id", "discourse_order", "purpose", "presentation_mode",
+        "objective", "pov_ref", "participant_refs", "location_ref", "story_time_refs",
+        "audience_state_before", "audience_state_after", "allowed_reveals",
+        "forbidden_reveal_entry_keys", "resolution_actions", "prerequisite_scene_ids",
+        "beat_ids", "source_refs"
+      ],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "novel-plan.schema.json#/$defs/ScenePurpose"},
+        "presentation_mode": {"$ref": "novel-plan.schema.json#/$defs/PresentationMode"},
+        "objective": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "pov_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "audience_state_before": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/AudienceExposure"},
+          "uniqueItems": true
+        },
+        "audience_state_after": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/AudienceExposure"},
+          "uniqueItems": true
+        },
+        "allowed_reveals": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ExposurePlacement"},
+          "uniqueItems": true
+        },
+        "forbidden_reveal_entry_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+          "uniqueItems": true
+        },
+        "resolution_actions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ResolutionPlacement"},
+          "uniqueItems": true
+        },
+        "prerequisite_scene_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+          "uniqueItems": true
+        },
+        "beat_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "BeatKind": {"enum": ["event", "exposure", "resolution", "transition"]},
+    "SceneBeatCandidate": {
+      "title": "SceneBeatCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal", "kind", "directive", "participant_refs", "location_ref",
+        "story_time_refs", "basis_refs", "event_ref", "exposure", "resolution"
+      ],
+      "properties": {
+        "ordinal": {"type": "integer", "minimum": 1},
+        "kind": {"$ref": "#/$defs/BeatKind"},
+        "directive": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "event_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "exposure": {
+          "oneOf": [{"$ref": "#/$defs/ExposurePlacement"}, {"type": "null"}]
+        },
+        "resolution": {
+          "oneOf": [{"$ref": "#/$defs/ResolutionPlacement"}, {"type": "null"}]
+        }
+      }
+    },
+    "SceneExecutionCandidate": {
+      "title": "SceneExecutionCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "beats"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "beats": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneBeatCandidate"},
+          "minItems": 1
+        }
+      }
+    },
+    "ScenePlanCandidate": {
+      "title": "ScenePlanCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-plan-candidate.v1"},
+        "scenes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneExecutionCandidate"},
+          "minItems": 1
+        }
+      }
+    },
+    "BeatExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beat_id", "scene_id", "ordinal", "kind", "directive", "basis_refs",
+        "participant_refs", "location_ref", "story_time_refs", "event_ref",
+        "exposure", "resolution", "audience_delta", "source_refs"
+      ],
+      "properties": {
+        "beat_id": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"},
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "kind": {"$ref": "#/$defs/BeatKind"},
+        "directive": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "event_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "exposure": {
+          "oneOf": [{"$ref": "#/$defs/ExposurePlacement"}, {"type": "null"}]
+        },
+        "resolution": {
+          "oneOf": [{"$ref": "#/$defs/ResolutionPlacement"}, {"type": "null"}]
+        },
+        "audience_delta": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ExposurePlacement"},
+          "uniqueItems": true
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "NarrativeExecutionRelation": {
+      "enum": ["chapter_contains_scene", "scene_contains_beat", "scene_enables_scene"]
+    },
+    "NarrativeExecutionEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge_id", "relation", "from_node_id", "to_node_id"],
+      "properties": {
+        "edge_id": {"type": "string", "pattern": "^edge_[a-z0-9][a-z0-9_]{0,150}$"},
+        "relation": {"$ref": "#/$defs/NarrativeExecutionRelation"},
+        "from_node_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "to_node_id": {"type": "string", "minLength": 1, "maxLength": 160}
+      }
+    },
+    "ScenePlanIndexes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chapter_scene_ids", "scene_beat_ids", "scene_dependencies",
+        "exposure_scene_ids", "resolution_scene_ids"
+      ],
+      "properties": {
+        "chapter_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "scene_beat_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "scene_dependencies": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "exposure_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "resolution_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}
+      }
+    },
+    "ScenePlanMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapter_count", "scene_count", "beat_count", "exposure_count", "resolution_action_count"],
+      "properties": {
+        "chapter_count": {"type": "integer", "minimum": 1},
+        "scene_count": {"type": "integer", "minimum": 1},
+        "beat_count": {"type": "integer", "minimum": 1},
+        "exposure_count": {"type": "integer", "minimum": 0},
+        "resolution_action_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

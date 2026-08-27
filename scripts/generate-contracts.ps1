@@ -143,6 +143,10 @@ from ._internal import (
     PublicReviewNotice,
     PublicRoutingFeedbackReceipt,
     PublicRoutingInterpretation,
+    SceneCompilerInputBundle,
+    SceneCompilerModelView,
+    ScenePlanCandidate,
+    SceneSemanticFillProposal,
     SemanticFillProposal,
     SkeletonProposal,
     SnapshotBinding,
@@ -161,7 +165,12 @@ from .planner_input_v2 import Schema as PlannerInputBundleV2
 from .planner_input_v3 import Schema as PlannerInputBundleV3
 from .planner_model_view_v3 import Schema as PlannerModelViewV3
 from .planner_model_view_v4 import Schema as PlannerModelViewV4
+from .scene_compiler import Schema as SceneCompilerInputBundleV2
+from .scene_plan import Schema as ScenePlanIR
+from .scene_plan_v2 import Schema as ScenePlanIRV2
 from .validation_issue import Schema as ValidationIssue
+
+ScenePlan = ScenePlanIR
 
 __all__ = [
     "AgentGenerateRequest",
@@ -186,6 +195,14 @@ __all__ = [
     "NovelPlanIR",
     "StoryPlanStructuralPatch",
     "SemanticFillProposal",
+    "SceneCompilerInputBundle",
+    "SceneCompilerInputBundleV2",
+    "SceneCompilerModelView",
+    "ScenePlanCandidate",
+    "SceneSemanticFillProposal",
+    "ScenePlan",
+    "ScenePlanIR",
+    "ScenePlanIRV2",
     "SkeletonProposal",
     "NovelProfile",
     "PlannerInputBundle",
@@ -237,6 +254,10 @@ from .public import (
     PlannerInputBundleV3,
     PlannerModelViewV3,
     PlannerModelViewV4,
+    SceneCompilerInputBundleV2,
+    ScenePlan,
+    ScenePlanIR,
+    ScenePlanIRV2,
     ValidationIssue,
 )
 
@@ -252,6 +273,10 @@ __all__ += [
     "PlannerInputBundleV3",
     "PlannerModelViewV3",
     "PlannerModelViewV4",
+    "SceneCompilerInputBundleV2",
+    "ScenePlan",
+    "ScenePlanIR",
+    "ScenePlanIRV2",
     "ValidationIssue",
 ]
 '@

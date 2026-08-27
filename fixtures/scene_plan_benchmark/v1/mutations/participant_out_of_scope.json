@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "participant_out_of_scope",
+  "base_task_id": "scene_grounding__basic",
+  "kind": "borrow_actor_ref",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_fill_actor_invalid",
+  "category": "Grounding"
+}

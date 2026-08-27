@@ -17,6 +17,7 @@ from casefile.agent_runtime.constraint_first_story_planner import (
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.prompt_repository import load_prompt
+from casefile.agent_runtime.scene_compiler import SCENE_COMPILER_PIPELINE_VERSION
 from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_AGENT_VERSION,
     StoryPlannerRequest,
@@ -68,7 +69,10 @@ def execute_story_planner_component(
     narrative_ir_json: dict[str, Any],
     narrative_ir_hash: str,
 ) -> tuple[int, str, bool]:
-    if _task_agent_version(worker, task_run_id) == CONSTRAINT_FIRST_PIPELINE_VERSION:
+    if _task_agent_version(worker, task_run_id) in {
+        CONSTRAINT_FIRST_PIPELINE_VERSION,
+        SCENE_COMPILER_PIPELINE_VERSION,
+    }:
         return _execute_constraint_first_component(
             worker,
             task_run_id=task_run_id,
