@@ -8,6 +8,18 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
+)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -150,18 +162,6 @@ from casefile.agent_runtime.story_planner_prompt import (
 )
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
-)
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    NovelPlanCandidate,
-    SemanticFillProposal,
-    SkeletonProposal,
-    StoryPlanStructuralPatch,
 )
 
 
