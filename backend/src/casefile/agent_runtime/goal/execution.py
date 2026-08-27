@@ -86,6 +86,7 @@ class GoalExecutionRunner:
         budget: GoalBudget,
         execute_capability: GoalCapabilityExecutor,
         is_cancelled: CancellationProbe = lambda: False,
+        initial_provider_operations: int = 0,
     ) -> GoalExecutionResult:
         observations: list[GoalObservation] = []
         usage_records: list[dict[str, Any]] = []
@@ -93,7 +94,7 @@ class GoalExecutionRunner:
         completion_feedback: GoalCompletionDecision | None = None
         completion_retries = 0
         decision_calls = 0
-        provider_operations = 0
+        provider_operations = initial_provider_operations
         total_observation_chars = 0
         seen_actions: set[str] = set()
         mutation_proof: dict[str, Any] | None = None

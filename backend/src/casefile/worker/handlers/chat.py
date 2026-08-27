@@ -285,6 +285,19 @@ class ChatHandler:
         except Exception as error:
             context.emit(
                 task.id,
+                "agent.step.failed",
+                "goal_understanding",
+                {
+                    "component_id": "goal_interpreter",
+                    "schema_id": "casefile-chat-goal-understanding-v1",
+                    "error_code": "goal_interpreter_failed",
+                    "failure_layer": "qualification",
+                    "issues": [{"code": type(error).__name__}],
+                    "recoverable": True,
+                },
+            )
+            context.emit(
+                task.id,
                 "goal.qualification_failed",
                 "routing",
                 {"reason_code": "goal_interpreter_failed", "error_class": type(error).__name__},
@@ -358,6 +371,7 @@ class ChatHandler:
             },
         )
         candidate_document: dict[str, Any] | None = None
+        candidate_state_hash: str | None = None
         mutation_envelope: dict[str, Any] | None = None
         repair_envelope: dict[str, Any] | None = None
 
@@ -365,7 +379,8 @@ class ChatHandler:
             action: InvokeCapabilityAction,
             action_no: int,
         ) -> GoalCapabilityResult:
-            nonlocal candidate_document, mutation_envelope, repair_envelope
+            nonlocal candidate_document, candidate_state_hash
+            nonlocal mutation_envelope, repair_envelope
             if self._chat._goal_cancelled(task.id):
                 raise TaskCancellationRequested
             context.emit(
@@ -414,7 +429,7 @@ class ChatHandler:
             if reusable_capability is not None:
                 artifact = reusable_capability["output"]
                 expected_candidate_hash = (
-                    None if action.target_state == "baseline" else stable_hash(candidate_document)
+                    None if action.target_state == "baseline" else candidate_state_hash
                 )
                 if (
                     artifact.get("capability") == action.capability
@@ -479,6 +494,7 @@ class ChatHandler:
                     if hasattr(raw_candidate, "model_dump")
                     else dict(raw_candidate)
                 )
+                candidate_state_hash = simulation.candidate_hash
                 mutation_envelope = envelope
                 repair_envelope = repair
                 proof = {
@@ -542,7 +558,7 @@ class ChatHandler:
                     candidate_hash=(
                         None
                         if action.target_state == "baseline"
-                        else stable_hash(candidate_document)
+                        else candidate_state_hash
                     ),
                     usage=evidence.usage,
                     tools=evidence.tools,
@@ -600,6 +616,7 @@ class ChatHandler:
                 budget=runtime.budget,
                 execute_capability=execute_capability,
                 is_cancelled=cancelled,
+                initial_provider_operations=1,
             )
         except GoalExecutionError as error:
             context.emit(
