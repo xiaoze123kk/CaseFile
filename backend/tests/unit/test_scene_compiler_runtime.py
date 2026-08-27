@@ -186,3 +186,42 @@ def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency()
     forbidden["scenes"][0]["beats"][0]["directive"] += " exposure_future_secret"
     with pytest.raises(CompilerContractError, match="compiler_scene_fill_forbidden_reveal"):
         validate_scene_semantic_fill(forbidden, batch_view=batch)
+
+
+def test_v3_allowlist_is_visible_but_cannot_widen_validator_provenance() -> None:
+    batch = _batch(1, "scene_1")
+    event = _ref("event", "evt_anchor")
+    catalog_only = _ref("information_unit", "info_catalog_only")
+    batch["scenes"][0]["beat_basis_allowlist"] = [event]
+    batch["object_catalog"].append(
+        {"object_ref": catalog_only, "label": "目录内但非场景依据", "facts": []}
+    )
+    proposal = (
+        FakeProvider()
+        .fill_scene_batch(
+            SceneFillBatchRequest(
+                task_run_id=1,
+                prompt_version="scene-compiler-semantic-fill-v1",
+                batch_view=batch,
+                inbound_state_hash="0" * 64,
+                input_hash="1" * 64,
+                model_id="fake",
+                api_key="unused",
+            )
+        )
+        .proposal
+    )
+    proposal["scenes"][0]["beats"][0]["basis_refs"] = [catalog_only]
+
+    with pytest.raises(
+        SceneFillValidationError, match="compiler_scene_fill_provenance_invalid"
+    ) as captured:
+        validate_scene_semantic_fill(proposal, batch_view=batch)
+    assert captured.value.evidence["emitted_ref"] == catalog_only
+    assert captured.value.evidence["allowed_ref_count"] == 1
+
+    batch["scenes"][0]["beat_basis_allowlist"].append(catalog_only)
+    with pytest.raises(
+        SceneFillValidationError, match="compiler_scene_fill_provenance_invalid"
+    ):
+        validate_scene_semantic_fill(proposal, batch_view=batch)

@@ -2068,23 +2068,37 @@ class SceneObjectSummary(BaseModel):
     facts: list[Fact]
 
 
-class SceneCompilerBatchView(BaseModel):
+class SceneCompilerBatchSceneView(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    batch_id: Annotated[str, Field(pattern='^scene_batch_[a-z0-9][a-z0-9_]{0,100}$')]
-    ordinal: Annotated[int, Field(ge=1)]
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
     chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
-    scene_ids: Annotated[list[SceneId], Field(max_length=8, min_length=1)]
-    scenes: Annotated[list[SceneExecutionConstraint], Field(max_length=8, min_length=1)]
-    object_catalog: list[SceneObjectSummary]
-    state_seed: SceneStateSeed
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    presentation_mode: PresentationMode
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    story_time_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+    obligations: Annotated[list[SceneObligation], Field(min_length=1)]
+    forbidden_reveal_entry_keys: list[ForbiddenRevealEntryKey]
+    beat_basis_allowlist: Annotated[
+        list[ObjectRef] | None,
+        Field(
+            description='Exact allowlist for top-level SceneBeatFill.basis_refs. Object catalog membership alone does not grant provenance eligibility.',
+            min_length=1,
+        ),
+    ] = None
 
 
 class ProjectionVersion(Enum):
     compiler_scene_compiler_model_view_projection_v1 = 'compiler.scene-compiler-model-view-projection.v1'
     compiler_scene_compiler_model_view_projection_v2 = 'compiler.scene-compiler-model-view-projection.v2'
+    compiler_scene_compiler_model_view_projection_v3 = 'compiler.scene-compiler-model-view-projection.v3'
 
 
 class Source(BaseModel):
@@ -2094,16 +2108,6 @@ class Source(BaseModel):
     )
     projection_version: ProjectionVersion
     scene_compiler_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
-
-
-class SceneCompilerModelView(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    schema_id: Literal['compiler.scene-compiler-model-view.v1']
-    source: Source
-    batches: Annotated[list[SceneCompilerBatchView], Field(min_length=1)]
 
 
 class Operation1(Enum):
@@ -2869,6 +2873,32 @@ class NarrativeObjects(BaseModel):
     reasoning_paths: list[ReasoningEnvelope]
     constraints: list[ConstraintEnvelope]
     structure_locks: list[StructureLockEnvelope]
+
+
+class SceneCompilerBatchView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    batch_id: Annotated[str, Field(pattern='^scene_batch_[a-z0-9][a-z0-9_]{0,100}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    scene_ids: Annotated[list[SceneId], Field(max_length=8, min_length=1)]
+    scenes: Annotated[
+        list[SceneCompilerBatchSceneView], Field(max_length=8, min_length=1)
+    ]
+    object_catalog: list[SceneObjectSummary]
+    state_seed: SceneStateSeed
+
+
+class SceneCompilerModelView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-compiler-model-view.v1']
+    source: Source
+    batches: Annotated[list[SceneCompilerBatchView], Field(min_length=1)]
 
 
 class SceneCompilerInputBundle(BaseModel):

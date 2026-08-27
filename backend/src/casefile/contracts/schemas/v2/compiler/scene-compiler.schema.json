@@ -260,7 +260,7 @@
         },
         "scenes": {
           "type": "array",
-          "items": {"$ref": "#/$defs/SceneExecutionConstraint"},
+          "items": {"$ref": "#/$defs/SceneCompilerBatchSceneView"},
           "minItems": 1,
           "maxItems": 8
         },
@@ -269,6 +269,72 @@
           "items": {"$ref": "#/$defs/SceneObjectSummary"}
         },
         "state_seed": {"$ref": "#/$defs/SceneStateSeed"}
+      }
+    },
+    "SceneCompilerBatchSceneView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id", "chapter_id", "discourse_order", "purpose", "presentation_mode",
+        "pov_ref", "participant_refs", "location_ref", "story_time_refs", "basis_refs",
+        "prerequisite_scene_ids", "obligations", "forbidden_reveal_entry_keys"
+      ],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "novel-plan.schema.json#/$defs/ScenePurpose"},
+        "presentation_mode": {"$ref": "novel-plan.schema.json#/$defs/PresentationMode"},
+        "pov_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "prerequisite_scene_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+          "uniqueItems": true
+        },
+        "obligations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneObligation"},
+          "minItems": 1
+        },
+        "forbidden_reveal_entry_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+          "uniqueItems": true
+        },
+        "beat_basis_allowlist": {
+          "description": "Exact allowlist for top-level SceneBeatFill.basis_refs. Object catalog membership alone does not grant provenance eligibility.",
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
       }
     },
     "SceneCompilerModelView": {
@@ -286,7 +352,8 @@
             "projection_version": {
               "enum": [
                 "compiler.scene-compiler-model-view-projection.v1",
-                "compiler.scene-compiler-model-view-projection.v2"
+                "compiler.scene-compiler-model-view-projection.v2",
+                "compiler.scene-compiler-model-view-projection.v3"
               ]
             },
             "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}

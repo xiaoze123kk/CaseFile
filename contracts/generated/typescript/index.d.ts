@@ -1096,7 +1096,9 @@ export interface SceneCompilerModelView {
   schema_id: "compiler.scene-compiler-model-view.v1";
   source: {
     projection_version:
-      "compiler.scene-compiler-model-view-projection.v1" | "compiler.scene-compiler-model-view-projection.v2";
+      | "compiler.scene-compiler-model-view-projection.v1"
+      | "compiler.scene-compiler-model-view-projection.v2"
+      | "compiler.scene-compiler-model-view-projection.v3";
     scene_compiler_input_hash: string;
   };
   /**
@@ -1117,9 +1119,47 @@ export interface SceneCompilerBatchView {
    * @minItems 1
    * @maxItems 8
    */
-  scenes: [SceneExecutionConstraint, ...SceneExecutionConstraint[]];
+  scenes: [SceneCompilerBatchSceneView, ...SceneCompilerBatchSceneView[]];
   object_catalog: SceneObjectSummary[];
   state_seed: SceneStateSeed;
+}
+export interface SceneCompilerBatchSceneView {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  story_time_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  prerequisite_scene_ids: string[];
+  /**
+   * @minItems 1
+   */
+  obligations: [SceneObligation, ...SceneObligation[]];
+  forbidden_reveal_entry_keys: string[];
+  /**
+   * Exact allowlist for top-level SceneBeatFill.basis_refs. Object catalog membership alone does not grant provenance eligibility.
+   *
+   * @minItems 1
+   */
+  beat_basis_allowlist?: [ObjectRef, ...ObjectRef[]];
 }
 export interface SceneObjectSummary {
   object_ref: ObjectRef;

@@ -54,6 +54,9 @@ def test_scene_plan_suite_is_audited_24_task_matrix() -> None:
         for item in validated["model_views"].values()
     )
     for model_view in validated["model_views"].values():
+        assert model_view["source"]["projection_version"] == (
+            "compiler.scene-compiler-model-view-projection.v3"
+        )
         for batch in model_view["batches"]:
             catalog = {
                 f"{item['object_ref']['object_type']}:{item['object_ref']['object_id']}"
@@ -61,6 +64,22 @@ def test_scene_plan_suite_is_audited_24_task_matrix() -> None:
             }
             assert _object_ref_keys(batch["scenes"]) <= catalog
             assert _object_ref_keys(batch["state_seed"]) <= catalog
+            for scene in batch["scenes"]:
+                expected = {
+                    f"{ref['object_type']}:{ref['object_id']}"
+                    for ref in [
+                        *scene["basis_refs"],
+                        *(
+                            ref
+                            for obligation in scene["obligations"]
+                            for ref in obligation["basis_refs"]
+                        ),
+                    ]
+                }
+                assert {
+                    f"{ref['object_type']}:{ref['object_id']}"
+                    for ref in scene["beat_basis_allowlist"]
+                } == expected
 
 
 def test_scene_plan_reference_and_alternative_outcomes_pass() -> None:

@@ -23,7 +23,7 @@ from casefile.domain.narrative_compiler.foundation import (
 SCENE_COMPILER_INPUT_V2_SCHEMA_ID = "compiler.scene-compiler-input.v2"
 SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID = "compiler.scene-compiler-model-view.v1"
 SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION = (
-    "compiler.scene-compiler-model-view-projection.v2"
+    "compiler.scene-compiler-model-view-projection.v3"
 )
 SCENE_COMPILER_BATCH_SIZE = 8
 
@@ -151,7 +151,7 @@ def build_scene_compiler_model_view(
                 "ordinal": batch_ordinal,
                 "chapter_id": chapter_id,
                 "scene_ids": [scene["scene_id"] for scene in batch_scenes],
-                "scenes": batch_scenes,
+                "scenes": [_model_view_scene(scene) for scene in batch_scenes],
                 "object_catalog": object_catalog,
                 "state_seed": batch_state_seed,
             }
@@ -337,6 +337,24 @@ def _constraint_refs(scenes: list[dict[str, Any]]) -> set[str]:
             if obligation["resolution"] is not None:
                 refs.append(obligation["resolution"]["resolution_ref"])
     return {_ref_key(ref) for ref in refs}
+
+
+def _model_view_scene(scene: dict[str, Any]) -> dict[str, Any]:
+    allowlist = {
+        _ref_key(ref): ref
+        for ref in [
+            *scene["basis_refs"],
+            *(
+                ref
+                for obligation in scene["obligations"]
+                for ref in obligation["basis_refs"]
+            ),
+        ]
+    }
+    return {
+        **scene,
+        "beat_basis_allowlist": [allowlist[key] for key in sorted(allowlist)],
+    }
 
 
 def _object_catalog(

@@ -108,7 +108,7 @@ def test_model_view_catalog_closes_every_provider_visible_reference() -> None:
     view = build_scene_compiler_model_view(_bundle())
 
     assert view["source"]["projection_version"] == (
-        "compiler.scene-compiler-model-view-projection.v2"
+        "compiler.scene-compiler-model-view-projection.v3"
     )
     for batch in view["batches"]:
         catalog = {
@@ -118,11 +118,38 @@ def test_model_view_catalog_closes_every_provider_visible_reference() -> None:
         assert _object_ref_keys(batch["scenes"]) <= catalog
         assert _object_ref_keys(batch["state_seed"]) <= catalog
 
-    historical = deepcopy(view)
-    historical["source"]["projection_version"] = (
-        "compiler.scene-compiler-model-view-projection.v1"
-    )
-    SceneCompilerModelView.model_validate(historical)
+        for scene in batch["scenes"]:
+            expected = {
+                f"{ref['object_type']}:{ref['object_id']}"
+                for ref in [
+                    *scene["basis_refs"],
+                    *(
+                        ref
+                        for obligation in scene["obligations"]
+                        for ref in obligation["basis_refs"]
+                    ),
+                ]
+            }
+            actual = {
+                f"{ref['object_type']}:{ref['object_id']}"
+                for ref in scene["beat_basis_allowlist"]
+            }
+            assert actual == expected
+            assert [
+                f"{ref['object_type']}:{ref['object_id']}"
+                for ref in scene["beat_basis_allowlist"]
+            ] == sorted(actual)
+
+    for projection_version in (
+        "compiler.scene-compiler-model-view-projection.v1",
+        "compiler.scene-compiler-model-view-projection.v2",
+    ):
+        historical = deepcopy(view)
+        historical["source"]["projection_version"] = projection_version
+        for batch in historical["batches"]:
+            for scene in batch["scenes"]:
+                del scene["beat_basis_allowlist"]
+        SceneCompilerModelView.model_validate(historical)
 
 
 def test_model_view_fails_closed_when_visible_reference_has_no_catalog_object() -> None:
