@@ -1,5 +1,11 @@
 # 架构边界与模块规则
 
+## Bounded Goal Controller 边界
+
+M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通用 Agent 框架。它只能调度静态注册的 `analyze`、`audit`、`propose_mutation`，模型输出不得包含自由工具名、对象 ID、字段路径或工具参数。Mutable Plan 只用于下一步选择；完成事实只由冻结 obligations 与权威 Observation 决定。
+
+一个 Goal 必须在单个 `TaskRun` 内完成。跨 `TaskRun` 继续、任意 replan、subagent、Hook 插件和 Thread Memory 写入均不属于 M3.7。候选态只存在于 Worker 内存或可由冻结 Planner artifact 重建，完整候选文档不得写入 TaskEvent。最终只调用一次 Goal Finalizer 和一次既有 Chat 完成边界；Patch 始终为待审批状态，Apply 仍由 `V1EditingService` 独立执行。
+
 ## 产品与架构边界
 
 - 当前产品只面向个人用户。一个 Project 只有一个 `owner_user_id`，不得预建 Workspace、Membership、成员邀请、团队角色、评论、Review Task、共享项目或团队预算。每份 Draft 的单一 Exposure Plan 是独立的展示设计版本链，不属于 CaseFile 契约、Canon 或事件事实时间。

@@ -15,6 +15,7 @@ STABLE_EXPORTS = {
         "ChatExecutionResult",
         "ChatExecutionRunner",
         "bind_chat_context_input",
+        "coordinate_chat_candidate_validation",
         "prepare_chat_request_artifacts",
         "validate_chat_candidate",
     },

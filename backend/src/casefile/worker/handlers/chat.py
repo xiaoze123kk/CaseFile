@@ -3,15 +3,113 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from dataclasses import replace
+from typing import Any, cast
 
 from casefile.agent_runtime.chat_execution import (
     ChatExecutionRunner,
     prepare_chat_request_artifacts,
 )
 from casefile.agent_runtime.chat_intent import route_public_payload
+from casefile.agent_runtime.chat_routing import routing_policy
+from casefile.agent_runtime.goal.contracts import (
+    GoalDecisionOutput,
+    GoalUnderstandingOutput,
+    InvokeCapabilityAction,
+)
+from casefile.agent_runtime.goal.execution import (
+    GoalCapabilityResult,
+    GoalExecutionError,
+    GoalExecutionRunner,
+)
+from casefile.agent_runtime.goal.filter import goal_candidate_filter
+from casefile.agent_runtime.goal.policy import (
+    GoalRuntimeConfig,
+    freeze_goal,
+    qualify_goal,
+    stable_hash,
+)
+from casefile.agent_runtime.goal.provider import (
+    GoalDecisionRequest,
+    GoalDecisionResult,
+    GoalFinalizerRequest,
+    GoalUnderstandingRequest,
+    GoalUnderstandingResult,
+)
+from casefile.agent_runtime.models import (
+    CaseFileChatCandidateV2,
+    CaseFileChatResult,
+    ChatTaskUnderstanding,
+    QueryRewriteResult,
+    ToolMetrics,
+)
 from casefile.worker.execution import ProviderRequirement, TaskExecutionContext
 from casefile.worker.executors.chat import ChatTaskExecutor, resolve_chat_route
+from casefile.worker.failures import TaskCancellationRequested
+
+
+class _RecoveringGoalProvider:
+    def __init__(self, provider: Any, chat: ChatTaskExecutor, task_run_id: int) -> None:
+        self.provider = provider
+        self.chat = chat
+        self.task_run_id = task_run_id
+
+    def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult:
+        upstream = {
+            "obligations": request.goal.obligations_hash,
+            **{
+                f"observation_{index}": item.output_hash
+                for index, item in enumerate(request.observations, start=1)
+            },
+        }
+        input_hash = stable_hash(
+            {
+                "goal": request.goal.obligations_hash,
+                "observations": [item.output_hash for item in request.observations],
+                "completion_feedback": (
+                    None
+                    if request.completion_feedback is None
+                    else request.completion_feedback.state_hash
+                ),
+            }
+        )
+        reusable = self.chat._load_reusable_goal_step(
+            self.task_run_id, "goal_controller", input_hash, upstream
+        )
+        if reusable is not None:
+            candidate = GoalDecisionOutput.model_validate(reusable["output"])
+            if stable_hash(candidate.model_dump(mode="json")) == reusable["output_hash"]:
+                return GoalDecisionResult(
+                    candidate=candidate,
+                    usage={},
+                    reused_from_step_run_id=reusable["step_run_id"],
+                )
+        return cast(GoalDecisionResult, self.provider.decide_goal(request))
+
+    def finalize_goal(self, request: GoalFinalizerRequest) -> CaseFileChatResult:
+        input_hash = stable_hash(
+            {
+                "goal": request.goal.obligations_hash,
+                "completion": request.completion.state_hash,
+                "mutation_proof": request.mutation_proof,
+            }
+        )
+        upstream = {
+            "completion": request.completion.state_hash,
+            "obligations": request.goal.obligations_hash,
+        }
+        reusable = self.chat._load_reusable_goal_step(
+            self.task_run_id, "goal_finalizer", input_hash, upstream
+        )
+        if reusable is not None:
+            candidate = CaseFileChatCandidateV2.model_validate(reusable["output"])
+            if stable_hash(candidate.model_dump(mode="json")) == reusable["output_hash"]:
+                return CaseFileChatResult(
+                    candidate=candidate,
+                    usage={},
+                    reused_from_step_run_id=reusable["step_run_id"],
+                )
+        return cast(CaseFileChatResult, self.provider.finalize_goal(request))
 
 
 class ChatHandler:
@@ -26,6 +124,18 @@ class ChatHandler:
         provider, api_key = context.require_provider()
         task = context.task
         request = self._chat._load_chat_request(task, api_key)
+        if self._try_goal(context, request, provider, api_key):
+            return
+        self._execute_single(context, request, provider, api_key)
+
+    def _execute_single(
+        self,
+        context: TaskExecutionContext,
+        request: Any,
+        provider: Any,
+        api_key: str,
+    ) -> None:
+        task = context.task
         previous_routing = self._chat._load_previous_chat_routing(task.id)
         request = resolve_chat_route(
             request,
@@ -109,6 +219,473 @@ class ChatHandler:
             model_requested_compaction=(
                 int(getattr(result.tools, "requested_thread_compaction", 0)) > 0
             ),
+        )
+
+    def _try_goal(
+        self,
+        context: TaskExecutionContext,
+        request: Any,
+        provider: Any,
+        api_key: str,
+    ) -> bool:
+        task = context.task
+        raw_runtime = task.input_jsonb.get("goal_runtime")
+        if not isinstance(raw_runtime, dict):
+            return False
+        runtime = GoalRuntimeConfig.model_validate(raw_runtime)
+        entrypoint = str(request.routing_hint.get("entrypoint") or "free_text")
+        candidate = goal_candidate_filter(request.message, routing_entrypoint=entrypoint)
+        if not candidate.candidate:
+            return False
+        context.emit(
+            task.id,
+            "agent.step.started",
+            "goal_understanding",
+            {
+                "component_id": "goal_interpreter",
+                "component_version": task.prompt_version,
+                "schema_id": "casefile-chat-goal-understanding-v1",
+                "input_hash": task.input_hash,
+            },
+        )
+        try:
+            if self._chat._goal_cancelled(task.id):
+                raise TaskCancellationRequested
+            reusable = self._chat._load_reusable_goal_step(
+                task.id, "goal_interpreter", task.input_hash, {}
+            )
+            if reusable is not None:
+                reused_output = GoalUnderstandingOutput.model_validate(reusable["output"])
+                if stable_hash(reused_output.model_dump(mode="json")) != reusable["output_hash"]:
+                    reusable = None
+            if reusable is not None:
+                interpreted = GoalUnderstandingResult(candidate=reused_output, usage={})
+                context.emit(
+                    task.id,
+                    "agent.step.reused",
+                    "goal_understanding",
+                    {
+                        "component_id": "goal_interpreter",
+                        "schema_id": "casefile-chat-goal-understanding-v1",
+                        "output_hash": reusable["output_hash"],
+                        "resumed_from_step_run_id": reusable["step_run_id"],
+                        "_artifact": reused_output.model_dump(mode="json"),
+                    },
+                )
+            else:
+                interpreted = provider.understand_goal(GoalUnderstandingRequest(chat=request))
+            frozen = freeze_goal(interpreted.candidate, request.message)
+            qualification = qualify_goal(
+                interpreted.candidate,
+                frozen,
+                budget=runtime.budget,
+            )
+        except TaskCancellationRequested:
+            raise
+        except Exception as error:
+            context.emit(
+                task.id,
+                "goal.qualification_failed",
+                "routing",
+                {"reason_code": "goal_interpreter_failed", "error_class": type(error).__name__},
+            )
+            return False
+        if reusable is None:
+            artifact = interpreted.candidate.model_dump(mode="json")
+            context.emit(
+                task.id,
+                "agent.step.completed",
+                "goal_understanding",
+                {
+                    "component_id": "goal_interpreter",
+                    "component_version": task.prompt_version,
+                    "schema_id": "casefile-chat-goal-understanding-v1",
+                    "input_hash": task.input_hash,
+                    "output_hash": stable_hash(artifact),
+                    "usage": interpreted.usage,
+                    "_artifact": artifact,
+                },
+            )
+        if not qualification.qualified:
+            context.emit(
+                task.id,
+                "goal.qualification_failed",
+                "routing",
+                {
+                    "reason_codes": list(qualification.reason_codes),
+                    "obligation_count": len(frozen.obligations),
+                },
+            )
+            return False
+        if (
+            any(item.kind == "mutation_proposal" for item in frozen.obligations)
+            and context.chat_config.general_mutation_mode != "suggest"
+        ):
+            context.emit(
+                task.id,
+                "goal.qualification_failed",
+                "routing",
+                {
+                    "reason_codes": ["goal_mutation_effect_unavailable"],
+                    "obligation_count": len(frozen.obligations),
+                },
+            )
+            return False
+        if runtime.mode == "shadow":
+            context.emit(
+                task.id,
+                "goal.shadow_evaluated",
+                "routing",
+                {
+                    "qualified": True,
+                    "obligation_count": len(frozen.obligations),
+                    "has_mutation": any(
+                        item.kind == "mutation_proposal" for item in frozen.obligations
+                    ),
+                },
+            )
+            return False
+
+        context.emit(
+            task.id,
+            "goal.started",
+            "goal",
+            {
+                "runtime_version": runtime.runtime_version,
+                "policy_version": runtime.policy_version,
+                "capability_registry_version": runtime.capability_registry_version,
+                "obligation_count": len(frozen.obligations),
+            },
+        )
+        candidate_document: dict[str, Any] | None = None
+        mutation_envelope: dict[str, Any] | None = None
+        repair_envelope: dict[str, Any] | None = None
+
+        def execute_capability(
+            action: InvokeCapabilityAction,
+            action_no: int,
+        ) -> GoalCapabilityResult:
+            nonlocal candidate_document, mutation_envelope, repair_envelope
+            if self._chat._goal_cancelled(task.id):
+                raise TaskCancellationRequested
+            context.emit(
+                task.id,
+                "goal.capability_started",
+                "goal",
+                {
+                    "action_no": action_no,
+                    "capability": action.capability,
+                    "target_state": action.target_state,
+                },
+            )
+            capability_component = f"goal_capability_{action_no}"
+            capability_input_hash = stable_hash(
+                [task.input_hash, action.model_dump(mode="json"), action_no]
+            )
+            context.emit(
+                task.id,
+                "agent.step.started",
+                "goal_capability",
+                {
+                    "component_id": capability_component,
+                    "parent_component_id": "goal_controller",
+                    "component_version": runtime.capability_registry_version,
+                    "schema_id": "casefile-chat-goal-observation-v1",
+                    "input_hash": capability_input_hash,
+                    "upstream_hashes": {"obligations": frozen.obligations_hash},
+                },
+            )
+            capability_request = self._capability_request(
+                request,
+                action,
+                candidate_document=candidate_document,
+                budget=task.budget_jsonb,
+            )
+            reusable_capability = (
+                None
+                if action.capability == "propose_mutation"
+                else self._chat._load_reusable_goal_step(
+                    task.id,
+                    capability_component,
+                    capability_input_hash,
+                    {"obligations": frozen.obligations_hash},
+                )
+            )
+            if reusable_capability is not None:
+                artifact = reusable_capability["output"]
+                expected_candidate_hash = (
+                    None if action.target_state == "baseline" else stable_hash(candidate_document)
+                )
+                if (
+                    artifact.get("capability") == action.capability
+                    and artifact.get("obligation_ids") == action.obligation_ids
+                    and artifact.get("target_state") == action.target_state
+                    and artifact.get("candidate_hash") == expected_candidate_hash
+                    and artifact.get("output_hash") == reusable_capability["output_hash"]
+                ):
+                    reused_result = GoalCapabilityResult(
+                        summary=str(artifact["summary"]),
+                        object_refs=tuple(artifact.get("object_refs") or ()),
+                        evidence_refs=tuple(artifact.get("evidence_refs") or ()),
+                        input_hash=capability_input_hash,
+                        output_hash=str(artifact["output_hash"]),
+                        route_hash=artifact.get("route_hash"),
+                        ledger_hash=artifact.get("ledger_hash"),
+                        candidate_hash=artifact.get("candidate_hash"),
+                        verification_proof_refs=tuple(
+                            artifact.get("verification_proof_refs") or ()
+                        ),
+                        usage=dict(reusable_capability.get("usage") or {}),
+                        tools=ToolMetrics(),
+                        provider_operations=0,
+                    )
+                    context.emit(
+                        task.id,
+                        "agent.step.reused",
+                        "goal_capability",
+                        {
+                            "component_id": capability_component,
+                            "schema_id": "casefile-chat-goal-observation-v1",
+                            "output_hash": reused_result.output_hash,
+                            "resumed_from_step_run_id": reusable_capability["step_run_id"],
+                            "_artifact": artifact,
+                        },
+                    )
+                    context.emit(
+                        task.id,
+                        "goal.capability_completed",
+                        "goal",
+                        {
+                            "action_no": action_no,
+                            "capability": action.capability,
+                            "target_state": action.target_state,
+                            "reused": True,
+                        },
+                    )
+                    return reused_result
+            if action.capability == "propose_mutation":
+                envelope, repair, usage = self._chat._execute_goal_mutation(
+                    task,
+                    capability_request,
+                    provider,
+                    api_key,
+                )
+                if envelope is None or envelope.get("status") != "ready":
+                    raise GoalExecutionError("goal_capability_blocked")
+                simulation = envelope["simulation"]
+                raw_candidate = simulation.document
+                candidate_document = (
+                    raw_candidate.model_dump(mode="json")
+                    if hasattr(raw_candidate, "model_dump")
+                    else dict(raw_candidate)
+                )
+                mutation_envelope = envelope
+                repair_envelope = repair
+                proof = {
+                    "status": "ready",
+                    "plan_hash": envelope["bound"].plan_hash,
+                    "candidate_hash": simulation.candidate_hash,
+                    "impact_hash": envelope["impact_hash"],
+                    "can_apply": simulation.can_apply,
+                }
+                result = GoalCapabilityResult(
+                    summary="已形成经过绑定、模拟和闭合检查的待审阅修改建议。",
+                    input_hash=stable_hash([task.input_hash, action.model_dump(mode="json")]),
+                    output_hash=envelope["bound"].plan_hash,
+                    candidate_hash=simulation.candidate_hash,
+                    mutation_proof_ref=f"general_mutation:{envelope['bound'].plan_hash}",
+                    verification_proof_refs=(f"simulation:{envelope['impact_hash']}",),
+                    mutation_proof=proof,
+                    usage=usage,
+                    provider_operations=2 if repair is not None else 1,
+                )
+            else:
+                context.emit(
+                    task.id,
+                    "agent.model_call.started",
+                    "goal_capability",
+                    {
+                        "component_id": capability_component,
+                        "schema_id": "casefile-chat-evidence-v1",
+                        "attempt_no": 1,
+                        "protocol": "provider_evidence_agent",
+                        "model_id": request.model_id,
+                        "input_hash": capability_input_hash,
+                    },
+                )
+                evidence = provider.collect_chat_evidence(capability_request)
+                ledger = evidence.ledger or {}
+                ledger_hash = str(ledger.get("ledger_hash") or "") or None
+                evidence_output_hash = ledger_hash or stable_hash(evidence.evidence_summary)
+                context.emit(
+                    task.id,
+                    "agent.model_call.completed",
+                    "goal_capability",
+                    {
+                        "component_id": capability_component,
+                        "schema_id": "casefile-chat-evidence-v1",
+                        "attempt_no": 1,
+                        "protocol": "provider_evidence_agent",
+                        "output_hash": evidence_output_hash,
+                        "output_size_bytes": len(evidence.evidence_summary.encode("utf-8")),
+                        "usage": evidence.usage,
+                    },
+                )
+                result = GoalCapabilityResult(
+                    summary=evidence.evidence_summary or "已完成冻结卷宗证据核对。",
+                    input_hash=stable_hash(
+                        [task.input_hash, action.model_dump(mode="json"), action_no]
+                    ),
+                    output_hash=evidence_output_hash,
+                    route_hash=capability_request.route.route_hash,
+                    ledger_hash=ledger_hash,
+                    candidate_hash=(
+                        None
+                        if action.target_state == "baseline"
+                        else stable_hash(candidate_document)
+                    ),
+                    usage=evidence.usage,
+                    tools=evidence.tools,
+                    provider_operations=1,
+                )
+            context.emit(
+                task.id,
+                "agent.step.completed",
+                "goal_capability",
+                {
+                    "component_id": capability_component,
+                    "schema_id": "casefile-chat-goal-observation-v1",
+                    "output_hash": result.output_hash,
+                    "usage": result.usage,
+                    "_artifact": {
+                        "capability": action.capability,
+                        "obligation_ids": action.obligation_ids,
+                        "target_state": action.target_state,
+                        "summary": result.summary,
+                        "object_refs": list(result.object_refs),
+                        "evidence_refs": list(result.evidence_refs),
+                        "output_hash": result.output_hash,
+                        "route_hash": result.route_hash,
+                        "ledger_hash": result.ledger_hash,
+                        "candidate_hash": result.candidate_hash,
+                        "mutation_proof_ref": result.mutation_proof_ref,
+                        "verification_proof_refs": list(result.verification_proof_refs),
+                    },
+                },
+            )
+            context.emit(
+                task.id,
+                "goal.capability_completed",
+                "goal",
+                {
+                    "action_no": action_no,
+                    "capability": action.capability,
+                    "target_state": action.target_state,
+                    "output_hash": result.output_hash,
+                },
+            )
+            return result
+
+        def cancelled() -> bool:
+            if self._chat._goal_cancelled(task.id):
+                raise TaskCancellationRequested
+            return False
+
+        try:
+            execution = GoalExecutionRunner(
+                _RecoveringGoalProvider(provider, self._chat, task.id)
+            ).run(
+                request,
+                frozen,
+                budget=runtime.budget,
+                execute_capability=execute_capability,
+                is_cancelled=cancelled,
+            )
+        except GoalExecutionError as error:
+            context.emit(
+                task.id,
+                "goal.failed",
+                "goal",
+                {"reason_code": error.code},
+            )
+            raise
+        self._complete_chat(
+            task.id,
+            context.attempt_id,
+            execution.result,
+            route=None,
+            repair_envelope=repair_envelope,
+            repair_usage=None,
+            general_mutation_envelope=mutation_envelope,
+        )
+        context.state.candidate = execution.result.candidate.model_dump(mode="json")
+        context.state.usage = execution.usage
+        context.emit(
+            task.id,
+            "goal.completed",
+            "goal",
+            {
+                "state_hash": execution.completion.state_hash,
+                "observation_count": len(execution.observations),
+                "decision_calls": execution.decision_calls,
+            },
+        )
+        self._chat._maybe_compact_chat_thread(
+            task,
+            provider,
+            api_key,
+            model_requested_compaction=(
+                int(getattr(execution.tools, "requested_thread_compaction", 0)) > 0
+            ),
+        )
+        return True
+
+    @staticmethod
+    def _capability_request(
+        request: Any,
+        action: InvokeCapabilityAction,
+        *,
+        candidate_document: dict[str, Any] | None,
+        budget: dict[str, Any],
+    ) -> Any:
+        if action.target_state == "candidate" and candidate_document is None:
+            raise GoalExecutionError("goal_capability_blocked")
+        primary_intent = {
+            "analyze": "analysis",
+            "audit": "logic_audit",
+            "propose_mutation": "edit_request",
+        }[action.capability]
+        understanding = ChatTaskUnderstanding(
+            primary_intent=primary_intent,
+            sub_intents=(f"goal:{action.capability}",),
+            complexity="high",
+            multi_step=False,
+            confidence=1.0,
+            reason_codes=("goal_capability",),
+        )
+        route = routing_policy(understanding, budget=budget)
+        rewritten = QueryRewriteResult(
+            original_query=request.message,
+            normalized_query=request.message,
+            canonical_query=request.message,
+        )
+        return prepare_chat_request_artifacts(
+            replace(
+                request,
+                casefile=(
+                    request.casefile if action.target_state == "baseline" else candidate_document
+                ),
+                task_understanding=understanding,
+                route=route,
+                rewrite=rewritten,
+                assembled_input=None,
+                frozen_tool_ledger=None,
+                safe_patch_registry=None,
+                previous_candidate=None,
+                repair_plan=None,
+                target_locked_repair=None,
+            ),
+            general_mutation_authoritative=True,
         )
 
 

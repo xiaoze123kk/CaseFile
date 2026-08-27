@@ -48,10 +48,10 @@ class GoalBudget(StrictAgentOutput):
 
 class GoalRuntimeConfig(StrictAgentOutput):
     mode: Literal["shadow", "active"]
-    runtime_version: Literal["casefile-chat-goal-runtime-v1"] = GOAL_RUNTIME_VERSION
-    policy_version: Literal["casefile-chat-goal-policy-v1"] = GOAL_POLICY_VERSION
+    runtime_version: Literal["casefile-chat-goal-runtime-v1"] = "casefile-chat-goal-runtime-v1"
+    policy_version: Literal["casefile-chat-goal-policy-v1"] = "casefile-chat-goal-policy-v1"
     capability_registry_version: Literal["casefile-chat-goal-capabilities-v1"] = (
-        GOAL_CAPABILITY_REGISTRY_VERSION
+        "casefile-chat-goal-capabilities-v1"
     )
     budget: GoalBudget = Field(default_factory=GoalBudget)
 

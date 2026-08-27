@@ -75,6 +75,11 @@ try {
             throw "General Mutation deterministic safety gate failed."
         }
 
+        & $python -m casefile.benchmark.chat_goal_gate
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat Goal deterministic/Fake gate failed."
+        }
+
         & $python -m casefile.benchmark chat-outcome --mode calibrate
         if ($LASTEXITCODE -ne 0) {
             throw "CaseFile chat outcome M0 calibration failed."

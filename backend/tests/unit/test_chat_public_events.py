@@ -110,3 +110,26 @@ def test_public_sse_uses_original_sequence_as_resume_cursor() -> None:
     assert encoded.startswith("id: 5\nevent: run.context\ndata: ")
     data_line = next(line for line in encoded.splitlines() if line.startswith("data: "))
     assert json.loads(data_line.removeprefix("data: ")) == event
+
+
+def test_goal_events_project_only_generic_activity_without_internal_payload() -> None:
+    projected = public_agent_event_view(
+        _event(
+            12,
+            "goal.capability_completed",
+            {
+                "capability": "propose_mutation",
+                "obligation_id": "obl_2",
+                "candidate_hash": "secret-hash",
+                "model_id": "secret-model",
+            },
+        ),
+        _run(),
+    )
+
+    assert projected is not None
+    payload = projected.model_dump(mode="json")
+    assert payload == {"sequence": 12, "event": "run.activity", "activity": "checking"}
+    serialized = json.dumps(payload)
+    for forbidden in ("capability", "obligation", "hash", "model"):
+        assert forbidden not in serialized

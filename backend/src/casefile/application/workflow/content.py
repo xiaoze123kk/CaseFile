@@ -29,6 +29,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
+from casefile.agent_runtime.goal.policy import GoalRuntimeConfig
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
@@ -991,6 +992,15 @@ class ContentWorkflowMixin:
             }:
                 # Explicit immutable override for rollback or controlled evaluation.
                 prompt_version = rollout_prompt
+            goal_rollout = os.environ.get("CASEFILE_CHAT_GOAL_ROLLOUT", "").strip().lower()
+            if goal_rollout in {"shadow", "active"}:
+                goal_runtime = GoalRuntimeConfig.model_validate({"mode": goal_rollout})
+                input_jsonb = {
+                    **input_jsonb,
+                    "goal_runtime": goal_runtime.model_dump(mode="json"),
+                }
+                input_hash = _json_hash(input_jsonb)
+                prompt_version = "casefile-chat-v17"
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,

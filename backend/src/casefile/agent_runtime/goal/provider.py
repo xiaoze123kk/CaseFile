@@ -44,6 +44,7 @@ class GoalDecisionRequest:
 class GoalDecisionResult:
     candidate: GoalDecisionOutput
     usage: dict[str, Any]
+    reused_from_step_run_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

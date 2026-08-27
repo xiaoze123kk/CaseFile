@@ -25,6 +25,11 @@ _FAILURE_MESSAGES = {
     "provider_rate_limited": "模型服务当前限流，请稍后重试。",
     "provider_authentication_failed": "模型服务认证失败，请检查 API 密钥与模型权限。",
     "generation_failed": "Agent 生成失败，草稿未被修改。",
+    "goal_action_invalid": "复杂请求的下一步不符合受限执行规则，已停止且未生成修改。",
+    "goal_capability_blocked": "复杂请求所需能力未通过权限或证据检查，已停止且未生成修改。",
+    "goal_budget_exhausted": "复杂请求已达到本轮安全预算，已停止且未生成修改。",
+    "goal_no_progress": "复杂请求未能继续取得有效进展，已停止且未生成修改。",
+    "goal_completion_blocked": "复杂请求仍有未完成事项，已停止且未生成修改。",
 }
 _COMPILER_FAILURE_MESSAGE = "编译冻结输入校验失败，本次构建已安全停止。"
 _RETRYABLE_FAILURES = frozenset(
