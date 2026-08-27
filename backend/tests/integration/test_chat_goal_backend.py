@@ -110,6 +110,7 @@ def test_active_read_only_goal_persists_lineage_and_one_completed_message(
     assert task.prompt_version == "casefile-chat-v17"
     assert task.input_jsonb["goal_runtime"]["mode"] == "active"
     assert task.status == "succeeded"
+    assert task.result_jsonb["routing"]["intent"] == "logic_audit"
     assert patch_sets == []
     assert messages[-1]["status"] == "completed"
     assert messages[-1]["patch_set"] is None

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from casefile.agent_runtime.chat_execution import coordinate_chat_candidate_validation
@@ -17,6 +17,7 @@ from casefile.agent_runtime.goal.policy import (
     GoalBudget,
     GoalPolicyError,
     complete_goal,
+    normalize_decision_plan,
     stable_hash,
     validate_decision,
 )
@@ -25,6 +26,10 @@ from casefile.agent_runtime.goal.provider import (
     GoalFinalizerRequest,
 )
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
+from casefile.agent_runtime.public_language import (
+    PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+    PublicLanguageValidationError,
+)
 
 
 class GoalExecutionError(RuntimeError):
@@ -145,7 +150,8 @@ class GoalExecutionRunner:
                 )
             )
             usage_records.append(dict(decided.usage))
-            decision_output = decided.candidate.model_dump(mode="json")
+            decision = normalize_decision_plan(goal, decided.candidate, tuple(observations))
+            decision_output = decision.model_dump(mode="json")
             decision_event = (
                 "agent.step.reused"
                 if decided.reused_from_step_run_id is not None
@@ -168,10 +174,10 @@ class GoalExecutionRunner:
                 },
             )
             try:
-                validate_decision(goal, decided.candidate, tuple(observations))
+                validate_decision(goal, decision, tuple(observations))
             except GoalPolicyError as error:
                 raise GoalExecutionError(error.code) from error
-            action = decided.candidate.action
+            action = decision.action
             if action.action == "finish":
                 completion = complete_goal(
                     goal,
@@ -275,7 +281,17 @@ class GoalExecutionRunner:
             )
         )
         usage_records.append(dict(finalized.usage))
-        finalized = coordinate_chat_candidate_validation(request, finalized)
+        finalized = _normalize_goal_finalizer_result(finalized)
+        try:
+            finalized = coordinate_chat_candidate_validation(request, finalized)
+        except PublicLanguageValidationError:
+            if mutation_proof is None:
+                raise
+            finalized = _replace_goal_answer(
+                finalized,
+                PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+            )
+            finalized = coordinate_chat_candidate_validation(request, finalized)
         finalizer_artifact = finalized.candidate.model_dump(mode="json")
         request.emit(
             (
@@ -335,6 +351,31 @@ def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
             else:
                 merged[key] = value
     return merged
+
+
+def _normalize_goal_finalizer_result(result: CaseFileChatResult) -> CaseFileChatResult:
+    """Keep the Goal Finalizer prose-only; server facts own structured output."""
+
+    updates: dict[str, Any] = {
+        "referenced_object_ids": [],
+        "referenced_event_ids": [],
+        "referenced_validation_issue_ids": [],
+        "suggested_view": None,
+        "suggestions": [],
+    }
+    if hasattr(result.candidate, "audit_findings"):
+        updates["audit_findings"] = []
+    return replace(
+        result,
+        candidate=result.candidate.model_copy(update=updates),
+    )
+
+
+def _replace_goal_answer(result: CaseFileChatResult, answer: str) -> CaseFileChatResult:
+    return replace(
+        result,
+        candidate=result.candidate.model_copy(update={"answer": answer}),
+    )
 
 
 def _bounded_observation_summary(value: str, *, max_chars: int) -> str:

@@ -11,19 +11,21 @@ from typing import Any, Literal
 from pydantic import Field
 
 from casefile.agent_runtime.goal.contracts import (
+    FinishGoalAction,
     FrozenGoal,
     GoalCompletionDecision,
     GoalDecisionOutput,
     GoalObligation,
     GoalObservation,
+    GoalPlanItem,
     GoalUnderstandingOutput,
     InvokeCapabilityAction,
 )
 from casefile.agent_runtime.models import StrictAgentOutput
 
-GOAL_RUNTIME_VERSION = "casefile-chat-goal-runtime-v1"
-GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v1"
-GOAL_CAPABILITY_REGISTRY_VERSION = "casefile-chat-goal-capabilities-v1"
+GOAL_RUNTIME_VERSION = "casefile-chat-goal-runtime-v2"
+GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v2"
+GOAL_CAPABILITY_REGISTRY_VERSION = "casefile-chat-goal-capabilities-v2"
 GOAL_QUALIFICATION_CONFIDENCE = 0.80
 
 
@@ -48,10 +50,10 @@ class GoalBudget(StrictAgentOutput):
 
 class GoalRuntimeConfig(StrictAgentOutput):
     mode: Literal["shadow", "active"]
-    runtime_version: Literal["casefile-chat-goal-runtime-v1"] = "casefile-chat-goal-runtime-v1"
-    policy_version: Literal["casefile-chat-goal-policy-v1"] = "casefile-chat-goal-policy-v1"
-    capability_registry_version: Literal["casefile-chat-goal-capabilities-v1"] = (
-        "casefile-chat-goal-capabilities-v1"
+    runtime_version: Literal["casefile-chat-goal-runtime-v2"] = "casefile-chat-goal-runtime-v2"
+    policy_version: Literal["casefile-chat-goal-policy-v2"] = "casefile-chat-goal-policy-v2"
+    capability_registry_version: Literal["casefile-chat-goal-capabilities-v2"] = (
+        "casefile-chat-goal-capabilities-v2"
     )
     budget: GoalBudget = Field(default_factory=GoalBudget)
 
@@ -138,7 +140,10 @@ def qualify_goal(
         reasons.append("goal_confidence_low")
     if output.ambiguous:
         reasons.append("goal_ambiguous")
-    if output.missing_info:
+    # ``missing_info`` is model-authored explanatory text, not an authoritative
+    # stop signal. Only the typed ambiguous flag and the later deterministic
+    # mutation preflight may reject an otherwise self-contained Goal.
+    if output.missing_info and output.ambiguous:
         reasons.append("goal_missing_info")
     if len(frozen.obligations) > budget.max_plan_items:
         reasons.append("goal_plan_budget_exceeded")
@@ -186,6 +191,54 @@ def validate_decision(
         completed = _completed_ids(observations)
         if not set(obligation.depends_on).issubset(completed):
             raise GoalPolicyError("goal_capability_blocked")
+
+
+def normalize_decision_plan(
+    frozen: FrozenGoal,
+    decision: GoalDecisionOutput,
+    observations: tuple[GoalObservation, ...],
+) -> GoalDecisionOutput:
+    """Rebuild non-authoritative plan display from frozen server facts."""
+
+    completed = _completed_ids(observations)
+    known_ids = {item.obligation_id for item in frozen.obligations}
+    action = FinishGoalAction() if completed == known_ids else decision.action
+    in_progress = (
+        set(action.obligation_ids) if isinstance(action, InvokeCapabilityAction) else set()
+    )
+    plan_items = [
+        GoalPlanItem(
+            obligation_id=obligation.obligation_id,
+            status=(
+                "in_progress"
+                if obligation.obligation_id in in_progress
+                else "completed"
+                if obligation.obligation_id in completed
+                else "pending"
+            ),
+        )
+        for obligation in frozen.obligations
+    ]
+    return decision.model_copy(update={"plan_items": plan_items, "action": action})
+
+
+def goal_capability_message(
+    frozen: FrozenGoal,
+    action: InvokeCapabilityAction,
+) -> str:
+    """Project one authorized action to only its verbatim obligation text."""
+
+    selected = set(action.obligation_ids)
+    if not selected:
+        raise GoalPolicyError("goal_action_invalid")
+    excerpts = [
+        obligation.source_excerpt.strip()
+        for obligation in frozen.obligations
+        if obligation.obligation_id in selected
+    ]
+    if len(excerpts) != len(selected) or any(not excerpt for excerpt in excerpts):
+        raise GoalPolicyError("goal_action_invalid")
+    return "；".join(excerpts)
 
 
 def complete_goal(
@@ -313,6 +366,8 @@ __all__ = [
     "GoalRuntimeConfig",
     "complete_goal",
     "freeze_goal",
+    "goal_capability_message",
+    "normalize_decision_plan",
     "qualify_goal",
     "stable_hash",
     "validate_decision",

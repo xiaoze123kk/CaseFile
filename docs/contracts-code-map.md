@@ -39,6 +39,7 @@
 | `fixtures/validator_benchmark/` | Validator V0 规则、V1 patch/safe-gate、V2 RepairPlan/authoritative-target/repair-state 确定性 release-gate fixtures，包含可拷贝示例和扩展约定。 |
 | `fixtures/closure_repair_benchmark/` | M3.3 Closure Repair Benchmark v2：保留 24 个 FakeProvider Regression/Safety Golden；`capability/v1/` 冻结 61 个 input/oracle 分离 Task、真实文档、Policy finding catalog 与逐 Task Reference，覆盖 `closure-repair-v1` 全部 52 个策略项。12 个 agent Task 与 49 个正确拒绝 Task 分开计分。 |
 | `fixtures/general_mutation_benchmark/` | General Mutation Capability Dev、Safety / Abstention 与 Backend Release：Capability 使用自然语言输入、最终状态 Oracle 与隔离 Reference Plan；Safety v2 冻结危险请求、隐式歧义和合法近邻；Release v1 冻结 15 题真实 Apply/Undo/Redo cohort。私有 Holdout 只在 `backend/var/benchmark/private/` 保存，仓库仅保存 descriptor fingerprints。 |
+| `fixtures/chat_goal_benchmark/` | M3.7 Goal 资格套件；v1 保留首轮历史证据，v2 将 24 题目标与冻结 General Mutation CaseFile 对齐，并为所有预期 Patch 任务声明最终状态 Oracle。 |
 | `fixtures/compiler/foundation/` | N4.0 Compiler 基础合法/非法样例：Preview/Canonical 冻结输入、Exposure/Profile hash、SourceRef、ArtifactRef、Diagnostic 与结构/语义失败场景。 |
 | `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |

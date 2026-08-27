@@ -10,9 +10,13 @@ from casefile.agent_runtime.chat_execution import (
     ChatExecutionRunner,
     prepare_chat_request_artifacts,
 )
-from casefile.agent_runtime.chat_intent import route_public_payload
+from casefile.agent_runtime.chat_intent import (
+    general_mutation_abstention_reason,
+    route_public_payload,
+)
 from casefile.agent_runtime.chat_routing import routing_policy
 from casefile.agent_runtime.goal.contracts import (
+    FrozenGoal,
     GoalDecisionOutput,
     GoalUnderstandingOutput,
     InvokeCapabilityAction,
@@ -26,6 +30,7 @@ from casefile.agent_runtime.goal.filter import goal_candidate_filter
 from casefile.agent_runtime.goal.policy import (
     GoalRuntimeConfig,
     freeze_goal,
+    goal_capability_message,
     qualify_goal,
     stable_hash,
 )
@@ -41,6 +46,7 @@ from casefile.agent_runtime.models import (
     CaseFileChatResult,
     ChatTaskUnderstanding,
     QueryRewriteResult,
+    RouteDecision,
     ToolMetrics,
 )
 from casefile.worker.execution import ProviderRequirement, TaskExecutionContext
@@ -344,6 +350,22 @@ class ChatHandler:
                 },
             )
             return False
+        mutation_preflight_reason = self._mutation_preflight_reason(
+            request,
+            frozen,
+            budget=task.budget_jsonb,
+        )
+        if mutation_preflight_reason is not None:
+            context.emit(
+                task.id,
+                "goal.qualification_failed",
+                "routing",
+                {
+                    "reason_codes": [mutation_preflight_reason],
+                    "obligation_count": len(frozen.obligations),
+                },
+            )
+            return False
         if runtime.mode == "shadow":
             context.emit(
                 task.id,
@@ -412,6 +434,7 @@ class ChatHandler:
             )
             capability_request = self._capability_request(
                 request,
+                frozen,
                 action,
                 candidate_document=candidate_document,
                 budget=task.budget_jsonb,
@@ -549,6 +572,8 @@ class ChatHandler:
                 )
                 result = GoalCapabilityResult(
                     summary=evidence.evidence_summary or "已完成冻结卷宗证据核对。",
+                    object_refs=_goal_ledger_refs(ledger, "retrieved_object_ids"),
+                    evidence_refs=_goal_ledger_refs(ledger, "retrieved_evidence_ids"),
                     input_hash=stable_hash(
                         [task.input_hash, action.model_dump(mode="json"), action_no]
                     ),
@@ -640,7 +665,7 @@ class ChatHandler:
             task.id,
             context.attempt_id,
             execution.result,
-            route=None,
+            route=self._goal_completion_route(frozen, budget=task.budget_jsonb),
             repair_envelope=repair_envelope,
             repair_usage=None,
             general_mutation_envelope=mutation_envelope,
@@ -658,8 +683,60 @@ class ChatHandler:
         return True
 
     @staticmethod
+    def _goal_completion_route(
+        frozen: FrozenGoal,
+        *,
+        budget: dict[str, Any],
+    ) -> RouteDecision:
+        kinds = {item.kind for item in frozen.obligations}
+        primary_intent = (
+            "edit_request"
+            if "mutation_proposal" in kinds
+            else "logic_audit"
+            if "audit" in kinds
+            else "analysis"
+        )
+        understanding = ChatTaskUnderstanding(
+            primary_intent=primary_intent,
+            sub_intents=("goal:completed",),
+            complexity="high",
+            multi_step=True,
+            confidence=1.0,
+            reason_codes=("goal_completion",),
+        )
+        return routing_policy(understanding, budget=budget)
+
+    @staticmethod
+    def _mutation_preflight_reason(
+        request: Any,
+        frozen: FrozenGoal,
+        *,
+        budget: dict[str, Any],
+    ) -> str | None:
+        for obligation in frozen.obligations:
+            if obligation.kind != "mutation_proposal":
+                continue
+            action = InvokeCapabilityAction(
+                capability="propose_mutation",
+                obligation_ids=[obligation.obligation_id],
+                target_state=obligation.target_state,
+            )
+            capability_request = ChatHandler._capability_request(
+                request,
+                frozen,
+                action,
+                candidate_document=None,
+                budget=budget,
+            )
+            reason = general_mutation_abstention_reason(capability_request)
+            if reason is not None:
+                return reason
+        return None
+
+    @staticmethod
     def _capability_request(
         request: Any,
+        frozen: FrozenGoal,
         action: InvokeCapabilityAction,
         *,
         candidate_document: dict[str, Any] | None,
@@ -681,14 +758,16 @@ class ChatHandler:
             reason_codes=("goal_capability",),
         )
         route = routing_policy(understanding, budget=budget)
+        scoped_message = goal_capability_message(frozen, action)
         rewritten = QueryRewriteResult(
-            original_query=request.message,
-            normalized_query=request.message,
-            canonical_query=request.message,
+            original_query=scoped_message,
+            normalized_query=scoped_message,
+            canonical_query=scoped_message,
         )
         return prepare_chat_request_artifacts(
             replace(
                 request,
+                message=scoped_message,
                 casefile=(
                     request.casefile if action.target_state == "baseline" else candidate_document
                 ),
@@ -704,6 +783,17 @@ class ChatHandler:
             ),
             general_mutation_authoritative=True,
         )
+
+
+def _goal_ledger_refs(ledger: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw = ledger.get(key)
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        dict.fromkeys(
+            value.strip() for value in raw if isinstance(value, str) and value.strip()
+        )
+    )[:50]
 
 
 __all__ = ["ChatHandler"]

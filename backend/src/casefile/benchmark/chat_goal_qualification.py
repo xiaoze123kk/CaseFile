@@ -71,7 +71,7 @@ def run_qualification(
     actor_id: int,
 ) -> dict[str, Any]:
     root = repo_root.resolve()
-    suite = load_chat_goal_suite(root / "fixtures/chat_goal_benchmark/v1/suite.json")
+    suite = load_chat_goal_suite(root / "fixtures/chat_goal_benchmark/v2/suite.json")
     saved = _saved_provider_credential(
         database_url=credential_database_url,
         actor_id=actor_id,
@@ -228,26 +228,43 @@ def _fatal_infrastructure_failure(value: str | None) -> bool:
 
 
 def _public_task(task: ChatGoalBenchmarkTask) -> PublicLanguageTask:
-    patch_required = task.family.startswith("mutation_") or task.family == "candidate_review"
+    patch_expectation = task.patch_expectation or (
+        "required"
+        if task.family.startswith("mutation_") or task.family == "candidate_review"
+        else "none"
+    )
     change_kind = (
         task.family.removeprefix("mutation_") if task.family.startswith("mutation_") else ""
     )
+    response_kinds: tuple[str, ...]
+    if patch_expectation == "required":
+        response_kinds = ("patch_proposal",)
+    elif task.expected_path == "reject":
+        response_kinds = ("clarification",)
+    elif task.task_id == "goal_single_question":
+        response_kinds = ("answer",)
+    elif task.task_id == "goal_single_audit":
+        response_kinds = ("analysis", "findings", "patch_proposal")
+    elif task.task_id == "goal_single_explain":
+        response_kinds = ("answer", "analysis")
+    else:
+        response_kinds = ("analysis", "findings")
     return PublicLanguageTask(
         task_id=task.task_id,
         category=(
             "normal_neighbor"
             if task.expected_path in {"single", "reject"}
-            else ("update" if patch_required else "analysis")
+            else ("update" if patch_expectation == "required" else "analysis")
         ),
         fixture=FIXTURE,
         message=task.message,
-        response_kinds=("answer", "analysis", "findings", "patch_proposal", "clarification"),
+        response_kinds=response_kinds,
         expected_body_any=(),
-        patch_expectation="required" if patch_required else "none",
+        patch_expectation=patch_expectation,
         expected_change_kinds=((change_kind,) if change_kind else ()),
         expected_target_labels=(),
         expected_field_labels=(),
-        oracle=None,
+        oracle=task.oracle,
     )
 
 

@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
 from casefile.agent_runtime.goal.policy import stable_hash
 from casefile.agent_runtime.models import StrictAgentOutput
 
-CHAT_GOAL_SUITE_VERSION = "casefile-chat-goal-benchmark-v1"
+CHAT_GOAL_SUITE_VERSION = "casefile-chat-goal-benchmark-v2"
 DEFAULT_CHAT_GOAL_SUITE = (
-    Path(__file__).parents[4] / "fixtures" / "chat_goal_benchmark" / "v1" / "suite.json"
+    Path(__file__).parents[4] / "fixtures" / "chat_goal_benchmark" / "v2" / "suite.json"
 )
 
 
@@ -35,10 +35,14 @@ class ChatGoalBenchmarkTask(StrictAgentOutput):
     expected_target_states: list[Literal["baseline", "candidate"]] = Field(
         default_factory=list, max_length=6
     )
+    patch_expectation: Literal["required", "optional", "none"] | None = None
+    oracle: dict[str, Any] | None = None
 
 
 class ChatGoalBenchmarkSuite(StrictAgentOutput):
-    suite_version: Literal["casefile-chat-goal-benchmark-v1"]
+    suite_version: Literal[
+        "casefile-chat-goal-benchmark-v1", "casefile-chat-goal-benchmark-v2"
+    ]
     trials_per_task: Literal[3] = 3
     tasks: list[ChatGoalBenchmarkTask] = Field(min_length=24, max_length=24)
 
@@ -64,6 +68,7 @@ def reference_decisions(suite: ChatGoalBenchmarkSuite) -> dict[str, dict[str, ob
             "obligation_count": len(task.expected_obligation_kinds),
             "families": list(task.expected_obligation_kinds),
             "targets": list(task.expected_target_states),
+            "patch_expectation": task.patch_expectation,
         }
         for task in suite.tasks
     }

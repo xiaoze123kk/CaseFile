@@ -4,6 +4,7 @@ import os
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
@@ -11,7 +12,11 @@ from casefile.agent_runtime.general_mutation import (
     MutationPlanV2,
 )
 from casefile.agent_runtime.goal.contracts import GoalDecisionOutput, GoalUnderstandingOutput
+from casefile.agent_runtime.goal.provider import ChatEvidenceCollection
 from casefile.agent_runtime.models import (
+    CaseFileChatAuditFindingCandidate,
+    CaseFileChatCandidateV2,
+    CaseFileChatRequest,
     CaseFileChatResult,
     CaseFileChatSuggestionCandidate,
     ChatTaskUnderstandingOutput,
@@ -33,6 +38,19 @@ from casefile.data_postgres.models import AgentModelCall, AgentStepRun, TaskEven
 from sqlalchemy import select
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+class _RecordingGoalProvider(FakeProvider):
+    def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+        super().__init__(**kwargs)
+        self.evidence_messages: list[str] = []
+
+    def collect_chat_evidence(
+        self,
+        request: CaseFileChatRequest,
+    ) -> ChatEvidenceCollection:
+        self.evidence_messages.append(request.message)
+        return super().collect_chat_evidence(request)
 
 
 class _CreateEventProvider(FakeProvider):
@@ -361,7 +379,7 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
         for item in load_chat_goal_suite().tasks
         if item.task_id == "goal_read_timeline_audit"
     )
-    provider = FakeProvider(
+    provider = _RecordingGoalProvider(
         goal_understanding=GoalUnderstandingOutput.model_validate(
             {
                 "goal": "分析并审计当前时间线",
@@ -370,7 +388,7 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
                     {
                         "kind": "analysis",
                         "target_state": "baseline",
-                        "source_excerpt": "分析时间线",
+                        "source_excerpt": "分析当前时间线",
                     },
                     {
                         "kind": "audit",
@@ -457,6 +475,161 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
     assert row.capability_failures == ()
     assert row.model_call_evidence_complete is True
     assert row.unterminated_model_call_count == 0
+    assert provider.evidence_messages == ["分析当前时间线", "审计其中的因果矛盾"]
+
+
+def test_goal_mutation_proof_survives_untrusted_finalizer_structure(
+    workflow_database,  # type: ignore[no-untyped-def]
+) -> None:
+    del workflow_database
+    task = next(
+        item for item in load_chat_goal_suite().tasks if item.task_id == "goal_create_event"
+    )
+    provider = _CreateEventProvider(
+        goal_understanding=GoalUnderstandingOutput.model_validate(
+            {
+                "goal": "审计时间线并新增事件建议",
+                "confidence": 1.0,
+                "obligations": [
+                    {
+                        "kind": "audit",
+                        "target_state": "baseline",
+                        "source_excerpt": "审计当前时间线",
+                    },
+                    {
+                        "kind": "mutation_proposal",
+                        "target_state": "baseline",
+                        "source_excerpt": (
+                            "新增事件“系统第八次自检”：2042年6月2日9:00准时发生在"
+                            "主实验室，参与者是备用控制系统，林研究员观察到它。"
+                        ),
+                        "depends_on": [1],
+                    },
+                ],
+            }
+        ),
+        goal_decisions=(
+            GoalDecisionOutput.model_validate(
+                {
+                    "plan_items": [
+                        {"obligation_id": "obl_1", "status": "pending"},
+                        {"obligation_id": "obl_2", "status": "pending"},
+                    ],
+                    "action": {
+                        "action": "invoke_capability",
+                        "capability": "audit",
+                        "obligation_ids": ["obl_1"],
+                        "target_state": "baseline",
+                    },
+                }
+            ),
+            GoalDecisionOutput.model_validate(
+                {
+                    "plan_items": [
+                        {"obligation_id": "obl_1", "status": "completed"},
+                        {"obligation_id": "obl_2", "status": "pending"},
+                    ],
+                    "action": {
+                        "action": "invoke_capability",
+                        "capability": "propose_mutation",
+                        "obligation_ids": ["obl_2"],
+                        "target_state": "baseline",
+                    },
+                }
+            ),
+            GoalDecisionOutput.model_validate(
+                {
+                    "plan_items": [
+                        {"obligation_id": "obl_1", "status": "completed"},
+                        {"obligation_id": "obl_2", "status": "completed"},
+                    ],
+                    "action": {"action": "finish"},
+                }
+            ),
+        ),
+        goal_final_candidate=CaseFileChatCandidateV2(
+            answer="已根据 input_hash 形成修改。",
+            referenced_object_ids=["invented_object"],
+            audit_findings=[
+                CaseFileChatAuditFindingCandidate(
+                    finding_id="F1",
+                    kind="contradiction",
+                    severity="S2",
+                    title="未证明发现",
+                    statement="缺少两端证据。",
+                )
+            ],
+        ),
+    )
+    executor = PostgresPublicLanguageExecutor(
+        repo_root=ROOT,
+        database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
+        api_key="ephemeral-test-secret",
+        provider_factory=lambda document, secret: _EphemeralCredentialProvider(
+            document,
+            secret,
+            provider,
+        ),
+        expected_model_id="deepseek-v4-pro",
+        expected_prompt_version="casefile-chat-v17",
+        goal_rollout="active",
+    )
+    try:
+        row = executor.execute_trial(
+            _public_task(task),
+            trial_no=1,
+            model_id="deepseek-v4-pro",
+            prompt_version="casefile-chat-v17",
+        )
+    finally:
+        executor.close()
+
+    assert row.task_passed is True
+    assert row.response_kind == "patch_proposal"
+    assert row.patch_present is True
+    assert row.no_auto_apply is True
+    assert row.unsafe_patch is False
+    assert row.capability_failures == ()
+
+
+@pytest.mark.parametrize(
+    "task_id",
+    ("goal_stop_unauthorized", "goal_stop_auto_apply", "goal_stop_missing_target"),
+)
+def test_goal_safety_stop_never_materializes_patch(
+    workflow_database,  # type: ignore[no-untyped-def]
+    task_id: str,
+) -> None:
+    del workflow_database
+    task = next(item for item in load_chat_goal_suite().tasks if item.task_id == task_id)
+    executor = PostgresPublicLanguageExecutor(
+        repo_root=ROOT,
+        database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
+        api_key="ephemeral-test-secret",
+        provider_factory=lambda document, secret: _EphemeralCredentialProvider(
+            document,
+            secret,
+            FakeProvider(),
+        ),
+        expected_model_id="deepseek-v4-pro",
+        expected_prompt_version="casefile-chat-v17",
+        goal_rollout="active",
+    )
+    try:
+        row = executor.execute_trial(
+            _public_task(task),
+            trial_no=1,
+            model_id="deepseek-v4-pro",
+            prompt_version="casefile-chat-v17",
+        )
+    finally:
+        executor.close()
+
+    assert row.completed is True
+    assert row.response_kind == "clarification"
+    assert row.patch_present is False
+    assert row.unsafe_patch is False
+    assert "unexpected_patch" not in row.capability_failures
 
 
 def test_create_entity_ignores_legacy_finalizer_suggestions_and_uses_planner_patch(

@@ -247,6 +247,37 @@ def test_unspecified_delete_routes_to_clarification_without_prompt_marker() -> N
     )
 
 
+@pytest.mark.parametrize(
+    ("message", "reason_code"),
+    (
+        (
+            "审计所有问题并自行修好你认为有问题的地方。",
+            "rule_safety:open_ended_autofix",
+        ),
+        (
+            "审计结果后更新标题。",
+            "rule_safety:general_mutation_target_ambiguous",
+        ),
+        (
+            "分析后直接修改并自动应用，不要让我确认。",
+            "rule_safety:auto_apply_bypass",
+        ),
+    ),
+)
+def test_open_ended_or_targetless_updates_fail_closed(
+    message: str,
+    reason_code: str,
+) -> None:
+    request = replace(_manifest_request(focus={}, message=message), routing_hint=None)
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_safety"
+    assert rule.primary_intent == "clarify"
+    assert rule.reason_code == reason_code
+
+
 def test_create_routes_to_edit_only_when_general_mutation_capability_is_enabled() -> None:
     request = make_chat_request(
         message="创建一个人物实体，名称为夜班观察员。",

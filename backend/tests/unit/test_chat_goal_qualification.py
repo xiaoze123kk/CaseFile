@@ -4,9 +4,11 @@ import pytest
 from casefile.benchmark.chat_goal_qualification import (
     GoalTrialEvidence,
     _fatal_infrastructure_failure,
+    _public_task,
     _report,
     _trial_progress_line,
 )
+from casefile.benchmark.chat_goal_suite import load_chat_goal_suite
 
 
 def test_goal_qualification_progress_tracks_trial_start_and_completion() -> None:
@@ -143,3 +145,46 @@ def test_goal_qualification_excludes_infrastructure_from_capability_rate() -> No
     assert report["metrics"]["capability_trial_count"] == 0
     assert _fatal_infrastructure_failure(row.infrastructure_failure) is True
     assert _fatal_infrastructure_failure("provider_transport:provider_timeout") is False
+
+
+def test_single_update_requires_and_semantically_grades_patch() -> None:
+    task = next(
+        item for item in load_chat_goal_suite().tasks if item.task_id == "goal_single_update"
+    )
+
+    public = _public_task(task)
+
+    assert task.expected_path == "single"
+    assert task.message == "把事件 evt_restart_seven 的标题改成夜间系统重启。"
+    assert public.patch_expectation == "required"
+    assert public.response_kinds == ("patch_proposal",)
+    assert public.oracle == {
+        "acceptable_statuses": ["proposal_ready"],
+        "required_state": [
+            {
+                "collection": "events",
+                "where": {
+                    "/id": "evt_restart_seven",
+                    "/title": "夜间系统重启",
+                },
+                "count": 1,
+            }
+        ],
+        "forbidden_changes": [
+            "/resolution_specs",
+            "/constraints",
+            "/structure_locks",
+        ],
+    }
+
+
+def test_single_audit_allows_but_does_not_require_safe_patch() -> None:
+    task = next(
+        item for item in load_chat_goal_suite().tasks if item.task_id == "goal_single_audit"
+    )
+
+    public = _public_task(task)
+
+    assert public.patch_expectation == "optional"
+    assert public.response_kinds == ("analysis", "findings", "patch_proposal")
+    assert public.oracle is None

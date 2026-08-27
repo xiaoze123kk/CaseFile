@@ -5,12 +5,15 @@ from casefile.agent_runtime.goal.contracts import (
     GoalDecisionOutput,
     GoalObservation,
     GoalUnderstandingOutput,
+    InvokeCapabilityAction,
 )
 from casefile.agent_runtime.goal.policy import (
     GoalBudget,
     GoalPolicyError,
     complete_goal,
     freeze_goal,
+    goal_capability_message,
+    normalize_decision_plan,
     qualify_goal,
     stable_hash,
     validate_decision,
@@ -120,6 +123,93 @@ def test_decision_cannot_reference_unknown_or_wrong_capability() -> None:
     )
     with pytest.raises(GoalPolicyError, match="goal_capability_blocked"):
         validate_decision(frozen, decision, ())
+
+
+def test_capability_message_contains_only_authorized_obligation_excerpt() -> None:
+    frozen = freeze_goal(understanding(), SOURCE)
+    action = InvokeCapabilityAction(
+        capability="propose_mutation",
+        obligation_ids=["obl_3"],
+        target_state="baseline",
+    )
+
+    assert goal_capability_message(frozen, action) == "把事件标题改成夜访"
+
+    unknown = action.model_copy(update={"obligation_ids": ["obl_99"]})
+    with pytest.raises(GoalPolicyError, match="goal_action_invalid"):
+        goal_capability_message(frozen, unknown)
+
+
+def test_non_authoritative_plan_items_are_rebuilt_from_server_facts() -> None:
+    frozen = freeze_goal(understanding(), SOURCE)
+    decision = GoalDecisionOutput.model_validate(
+        {
+            "plan_items": [{"obligation_id": "obl_1", "status": "pending"}],
+            "action": {
+                "action": "invoke_capability",
+                "capability": "audit",
+                "obligation_ids": ["obl_2"],
+                "target_state": "baseline",
+            },
+        }
+    )
+    observations = (observation(1, "obl_1", "analyze", "baseline"),)
+
+    normalized = normalize_decision_plan(frozen, decision, observations)
+
+    assert [item.model_dump(mode="json") for item in normalized.plan_items] == [
+        {"obligation_id": "obl_1", "status": "completed"},
+        {"obligation_id": "obl_2", "status": "in_progress"},
+        {"obligation_id": "obl_3", "status": "pending"},
+        {"obligation_id": "obl_4", "status": "pending"},
+    ]
+
+
+def test_completed_server_observations_override_repeated_model_action() -> None:
+    frozen = freeze_goal(understanding(), SOURCE)
+    repeated = GoalDecisionOutput.model_validate(
+        {
+            "plan_items": [
+                {"obligation_id": item.obligation_id, "status": "completed"}
+                for item in frozen.obligations
+            ],
+            "action": {
+                "action": "invoke_capability",
+                "capability": "propose_mutation",
+                "obligation_ids": ["obl_3"],
+                "target_state": "baseline",
+            },
+        }
+    )
+    observations = tuple(
+        observation(index, item.obligation_id, capability, item.target_state)
+        for index, (item, capability) in enumerate(
+            zip(
+                frozen.obligations,
+                ("analyze", "audit", "propose_mutation", "audit"),
+                strict=True,
+            ),
+            start=1,
+        )
+    )
+
+    normalized = normalize_decision_plan(frozen, repeated, observations)
+
+    assert normalized.action.action == "finish"
+
+
+def test_non_ambiguous_missing_info_text_does_not_veto_actionable_goal() -> None:
+    output = understanding().model_copy(
+        update={"missing_info": ["模型附带的非阻断说明"]}
+    )
+    frozen = freeze_goal(output, SOURCE)
+
+    assert qualify_goal(output, frozen, budget=GoalBudget()).qualified is True
+
+    ambiguous = output.model_copy(update={"ambiguous": True})
+    result = qualify_goal(ambiguous, frozen, budget=GoalBudget())
+    assert result.qualified is False
+    assert "goal_missing_info" in result.reason_codes
 
 
 def test_completion_requires_proof_and_candidate_hash_binding() -> None:
