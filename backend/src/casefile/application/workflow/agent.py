@@ -138,6 +138,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
     _public_goal_session: Any
     _queue_goal_delivery: Any
     _resolve_goal_delivery: Any
+    _finalize_agent_goal_task_success: Any
 
     def list_agent_threads(
         self,
@@ -1359,6 +1360,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
+            self._finalize_agent_goal_task_success(task, now=now)
             if route is not None:
                 assert routing_summary is not None
                 _append_event(

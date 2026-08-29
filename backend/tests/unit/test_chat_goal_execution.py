@@ -7,7 +7,9 @@ from casefile.agent_runtime.goal.contracts import (
 )
 from casefile.agent_runtime.goal.execution import (
     GoalCapabilityResult,
+    GoalCheckpointResult,
     GoalExecutionError,
+    GoalExecutionResult,
     GoalExecutionRunner,
 )
 from casefile.agent_runtime.goal.filter import goal_candidate_filter
@@ -111,6 +113,99 @@ def test_goal_loop_completes_with_one_finalizer() -> None:
     assert len(result.observations) == 2
     assert result.decision_calls == 3
     assert result.result.candidate.suggestions == []
+
+
+def test_goal_loop_checkpoints_after_capability_and_resumes_without_repeating_it() -> None:
+    first = GoalExecutionRunner(
+        FakeProvider(goal_decisions=(_decision("analyze", "obl_1"),))
+    ).run(
+        _request(),
+        _goal(),
+        budget=GoalBudget(),
+        execute_capability=_capability,
+        should_interrupt=lambda safe_point: safe_point == "after_capability",
+    )
+
+    assert isinstance(first, GoalCheckpointResult)
+    assert first.safe_point == "after_capability"
+    assert [item.obligation_ids for item in first.checkpoint.observations] == [["obl_1"]]
+
+    resumed = GoalExecutionRunner(
+        FakeProvider(
+            goal_decisions=(
+                _decision("audit", "obl_2"),
+                _finish(),
+            )
+        )
+    ).run(
+        _request(),
+        _goal(),
+        budget=GoalBudget(),
+        execute_capability=_capability,
+        checkpoint=first.checkpoint,
+    )
+
+    assert isinstance(resumed, GoalExecutionResult)
+    assert [item.obligation_ids for item in resumed.observations] == [
+        ["obl_1"],
+        ["obl_2"],
+    ]
+    assert resumed.decision_calls == 2
+
+
+def test_goal_loop_checkpoints_before_finalizer_and_only_finalizes_after_resume() -> None:
+    interrupted = GoalExecutionRunner(
+        FakeProvider(
+            goal_decisions=(
+                _decision("analyze", "obl_1"),
+                _decision("audit", "obl_2"),
+                _finish(),
+            )
+        )
+    ).run(
+        _request(),
+        _goal(),
+        budget=GoalBudget(),
+        execute_capability=_capability,
+        should_interrupt=lambda safe_point: safe_point == "before_finalizer",
+    )
+
+    assert isinstance(interrupted, GoalCheckpointResult)
+    assert interrupted.checkpoint.completion is not None
+    assert interrupted.checkpoint.completion.allowed is True
+
+    resumed = GoalExecutionRunner(FakeProvider()).run(
+        _request(),
+        _goal(),
+        budget=GoalBudget(),
+        execute_capability=_capability,
+        checkpoint=interrupted.checkpoint,
+    )
+
+    assert isinstance(resumed, GoalExecutionResult)
+    assert resumed.decision_calls == 0
+    assert resumed.result.candidate.answer
+
+
+def test_goal_loop_rejects_checkpoint_for_other_obligations() -> None:
+    checkpointed = GoalExecutionRunner(FakeProvider()).run(
+        _request(),
+        _goal(),
+        budget=GoalBudget(),
+        execute_capability=_capability,
+        should_interrupt=lambda safe_point: safe_point == "before_controller",
+    )
+    assert isinstance(checkpointed, GoalCheckpointResult)
+    invalid = checkpointed.checkpoint.model_copy(update={"obligations_hash": "0" * 64})
+
+    with pytest.raises(GoalExecutionError, match="goal_checkpoint_invalid"):
+        GoalExecutionRunner(FakeProvider()).run(
+            _request(),
+            _goal(),
+            budget=GoalBudget(),
+            execute_capability=_capability,
+            checkpoint=invalid,
+        )
 
 
 def test_finish_gets_one_feedback_then_fails_closed() -> None:

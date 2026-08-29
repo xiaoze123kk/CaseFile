@@ -4,7 +4,7 @@
 
 ## M3.8 GoalSession 迁移契约
 
-M3.8-01 新增 `agent_goal_sessions`、`agent_goal_revisions`、`agent_goal_obligations`、`agent_goal_obligation_dependencies`、`agent_goal_deliveries`、`agent_goal_observations`、`agent_goal_task_runs`、`agent_goal_transitions` 八张表。精确状态机、关系、预算、不可变边界与 rollout 见 `docs/m3.8-goal-session-runtime.md`。
+M3.8-01 新增 `agent_goal_sessions`、`agent_goal_revisions`、`agent_goal_obligations`、`agent_goal_obligation_dependencies`、`agent_goal_deliveries`、`agent_goal_observations`、`agent_goal_task_runs`、`agent_goal_transitions` 八张表。M3.8-03 通过前向迁移修正 obligation target-state 约束，使只读 `audit` 可以核验 candidate，同时继续强制 `propose_mutation` 只以 baseline 为目标。精确状态机、关系、预算、不可变边界与 rollout 见 `docs/m3.8-goal-session-runtime.md`。
 
 `V20260829124753` 是从 `V20260826175944` 升级的唯一 head。迁移同步提供复合归属外键、Thread 内单一活跃 Goal/Goal TaskRun 部分唯一索引、追加式历史触发器和 Session/Delivery/TaskRun binding 终态保护；`AgentMessage.status` 同步增加 `cancelled`，不回填历史消息。
 
@@ -213,7 +213,7 @@ compile_runs（Build 身份与 Snapshot/Canon?/Exposure?/Profile 精确绑定）
 | `agent_messages` | Thread 内按连续序号保存用户、助手或系统消息及 pending/completed/failed/cancelled 状态。 | Agent Collaboration Service；Worker。 | 对话记录持久保留；助手占位消息由执行结果完成、标记失败或在 Goal delivery 取消时收敛为 cancelled。 |
 | `agent_goal_sessions` | Thread 下长生命周期 Goal 聚合根，冻结 Draft baseline、runtime/policy/capability 版本、当前 Revision 指针和会话级计数器。 | GoalSession Repository。 | 非终态可按冻结矩阵推进；同 Thread 最多一个活跃 Goal，终态不可恢复或删除。 |
 | `agent_goal_revisions` | Goal 的不可变解释版本，绑定来源消息、父 Revision、baseline 与 obligations/state hash。 | GoalSession Repository。 | 只追加，单 Goal 最多 8 个版本；历史不可更新/删除。 |
-| `agent_goal_obligations` | Revision 内稳定 key、顺序、capability、target state、指令和可验证来源摘录。 | Goal Interpreter/Amendment Service。 | 随 Revision 原子追加；不可更新/删除。 |
+| `agent_goal_obligations` | Revision 内稳定 key、顺序、capability、target state、指令和可验证来源摘录；`propose_mutation` 只允许 baseline，后续只读 audit 可核验 candidate。 | Goal Interpreter/Amendment Service。 | 随 Revision 原子追加；不可更新/删除。 |
 | `agent_goal_obligation_dependencies` | 同一 Revision 内 obligation DAG 的规范化依赖边。 | Goal Interpreter/Amendment Service。 | 只追加；复合外键拒绝跨 Goal/Revision 引用和自依赖。 |
 | `agent_goal_deliveries` | steer/follow_up/replace 用户消息与助手占位的 FIFO、claim lease 和消费状态。 | GoalSession Delivery Service；Worker safe point。 | queued→claimed→consumed/cancelled；终态不可更新/删除。 |
 | `agent_goal_observations` | capability 对某 obligation 的 hash-bound 执行事实、Draft/candidate/Patch/Verification 身份与复用来源。 | Worker Goal Controller。 | 只追加；只有全身份匹配的显式 reused 行可参与新 Revision Completion Gate。 |

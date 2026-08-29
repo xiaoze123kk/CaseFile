@@ -101,6 +101,16 @@ class GoalCompletionDecision(StrictAgentOutput):
     state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class GoalExecutionCheckpoint(StrictAgentOutput):
+    """Hashable, persistence-neutral state at one cooperative safe point."""
+
+    version: Literal["goal-execution-checkpoint.v1"] = "goal-execution-checkpoint.v1"
+    obligations_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observations: list[GoalObservation] = Field(default_factory=list, max_length=4)
+    completion: GoalCompletionDecision | None = None
+    mutation_proof: dict[str, Any] | None = None
+
+
 class GoalInterpreterInputV1(StrictAgentOutput):
     input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     author_message: str = Field(min_length=1, max_length=100_000)
@@ -138,6 +148,7 @@ __all__ = [
     "FrozenGoal",
     "GoalCapability",
     "GoalCompletionDecision",
+    "GoalExecutionCheckpoint",
     "GoalControllerInputV1",
     "GoalDecisionOutput",
     "GoalObservation",

@@ -249,8 +249,8 @@ class AgentGoalObligation(BigIntIdentityPrimaryKeyMixin, Base):
         ),
         CheckConstraint("target_state IN ('baseline', 'candidate')", name="target_state_allowed"),
         CheckConstraint(
-            "capability = 'propose_mutation' OR target_state = 'baseline'",
-            name="candidate_requires_mutation",
+            "capability <> 'propose_mutation' OR target_state = 'baseline'",
+            name="mutation_targets_baseline",
         ),
         CheckConstraint("length(btrim(instruction)) > 0", name="instruction_not_blank"),
         CheckConstraint("length(btrim(source_excerpt)) > 0", name="source_excerpt_not_blank"),

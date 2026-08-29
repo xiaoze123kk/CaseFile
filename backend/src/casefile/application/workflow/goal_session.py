@@ -7,14 +7,17 @@ from datetime import UTC, datetime
 from typing import Any
 
 from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
+from casefile.agent_runtime.goal.policy import stable_hash
 from casefile.application.errors import ApplicationError
 from casefile.application.goal_session_repository import GoalSessionRepository
 from casefile.application.goal_session_state import (
     TERMINAL_GOAL_STATUSES,
     GoalSessionStateError,
+    require_budget_available,
     require_expected_revision,
 )
 from casefile.application.task_cancellation import (
@@ -24,11 +27,15 @@ from casefile.application.task_cancellation import (
 from casefile.application.workflow_common import _append_event, _json_hash
 from casefile.data_postgres.models import (
     AgentGoalDelivery,
+    AgentGoalObligation,
+    AgentGoalObservation,
+    AgentGoalRevision,
     AgentGoalSession,
     AgentGoalTaskRun,
     AgentGoalTransition,
     AgentMessage,
     AgentThread,
+    TaskAttempt,
     TaskRun,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
@@ -40,6 +47,7 @@ _WAITING_BY_STATUS = {
     "waiting_patch_review": "patch_review",
     "stale": "stale",
 }
+GOAL_CHECKPOINTED_PUBLIC_MESSAGE = "已保存当前进度，并将按你的新要求继续处理。"
 
 
 class GoalSessionWorkflowMixin:
@@ -173,6 +181,502 @@ class GoalSessionWorkflowMixin:
             except GoalSessionStateError as exc:
                 raise _goal_state_error(exc) from exc
             return self._public_goal_session(goal)
+
+    def initialize_agent_goal_task(
+        self,
+        task_run_id: int,
+        frozen_goal: FrozenGoal,
+    ) -> None:
+        """Bind the first qualified TaskRun to revision 1 exactly once."""
+
+        with self.session.begin():
+            task = self.session.scalar(
+                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+            )
+            if task is None or task.task_type != "casefile_chat":
+                raise RuntimeError("Goal TaskRun disappeared or has an invalid task type")
+            goal_id = _task_goal_id(task)
+            if goal_id is None:
+                raise RuntimeError("Goal TaskRun has no GoalSession lineage")
+            repository = GoalSessionRepository(self.session)
+            goal = repository.get_for_update(
+                project_id=task.project_id,
+                goal_session_id=goal_id,
+            )
+            existing = self.session.scalar(
+                select(AgentGoalTaskRun)
+                .where(AgentGoalTaskRun.task_run_id == task.id)
+                .with_for_update()
+            )
+            if existing is not None:
+                existing_revision = self.session.get(
+                    AgentGoalRevision,
+                    existing.goal_revision_id,
+                )
+                obligation_count = int(
+                    self.session.scalar(
+                        select(func.count(AgentGoalObligation.id)).where(
+                            AgentGoalObligation.goal_revision_id == existing.goal_revision_id
+                        )
+                    )
+                    or 0
+                )
+                if (
+                    existing_revision is None
+                    or existing_revision.obligations_hash != frozen_goal.obligations_hash
+                    or obligation_count != len(frozen_goal.obligations)
+                ):
+                    raise RuntimeError("Bound GoalRevision obligations do not match")
+                return
+            if goal.status != "interpreting" or goal.revision_count != 0:
+                raise GoalSessionStateError(
+                    "agent_goal_state_conflict",
+                    "GoalSession cannot initialize another first TaskRun",
+                )
+            source = self.session.get(AgentMessage, goal.source_message_id)
+            if source is None or not source.content_text:
+                raise RuntimeError("GoalSession source message disappeared")
+            state_hash = stable_hash(
+                {
+                    "goal_id": goal.id,
+                    "revision": 1,
+                    "frozen_goal": frozen_goal.model_dump(mode="json"),
+                    "baseline_hash": goal.baseline_hash,
+                }
+            )
+            revision = repository.append_frozen_revision(
+                goal,
+                source_message_id=source.id,
+                amendment_kind="initial",
+                frozen_goal=frozen_goal,
+                source_excerpt=source.content_text,
+                state_hash=state_hash,
+                baseline_draft_revision=goal.baseline_draft_revision,
+                baseline_hash=goal.baseline_hash,
+            )
+            repository.bind_task_run(
+                goal,
+                goal_revision_id=revision.id,
+                task_run_id=task.id,
+                trigger_kind="initial",
+            )
+            repository.transition(
+                goal,
+                target_status="running",
+                reason_code="goal_qualified",
+                state_hash=state_hash,
+                goal_revision_id=revision.id,
+                source_message_id=source.id,
+                task_run_id=task.id,
+            )
+
+    def has_pending_agent_goal_control(self, task_run_id: int) -> bool:
+        """Read the FIFO queue without claiming it; the safe-point transaction rechecks."""
+
+        if _goal_session_rollout() != "active":
+            return False
+        with self.session.begin():
+            task = self.session.get(TaskRun, task_run_id)
+            if task is None:
+                return False
+            goal_id = _task_goal_id(task)
+            if goal_id is None:
+                return False
+            return self.session.scalar(
+                select(AgentGoalDelivery.id)
+                .where(
+                    AgentGoalDelivery.goal_session_id == goal_id,
+                    AgentGoalDelivery.mode == "steer",
+                    AgentGoalDelivery.status == "queued",
+                )
+                .order_by(AgentGoalDelivery.message_sequence_no)
+                .limit(1)
+            ) is not None
+
+    def checkpoint_agent_goal_task(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        frozen_goal: FrozenGoal,
+        checkpoint: GoalExecutionCheckpoint,
+        safe_point: str,
+        usage: dict[str, Any],
+        tools: dict[str, Any],
+    ) -> int:
+        """Atomically end one slice, consume one steer, and queue its successor."""
+
+        checkpoint_payload = checkpoint.model_dump(mode="json")
+        checkpoint_hash = stable_hash(checkpoint_payload)
+        if checkpoint.obligations_hash != frozen_goal.obligations_hash:
+            raise GoalSessionStateError(
+                "agent_goal_state_conflict",
+                "Checkpoint does not match the frozen Goal obligations",
+            )
+        if any(item.capability == "propose_mutation" for item in checkpoint.observations):
+            raise GoalSessionStateError(
+                "agent_goal_state_conflict",
+                "Mutation checkpoints require the M3.8-04 PatchSet boundary",
+            )
+        with self.session.begin():
+            task = self.session.scalar(
+                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+            )
+            attempt = self.session.scalar(
+                select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
+            )
+            if task is None or attempt is None:
+                raise RuntimeError("TaskRun or TaskAttempt disappeared at Goal safe point")
+            if task.status != "running" or attempt.status != "running":
+                raise RuntimeError("Goal safe point no longer owns a running TaskRun")
+            if attempt.task_run_id != task.id:
+                raise RuntimeError("TaskAttempt does not own the Goal TaskRun")
+            goal_id = _task_goal_id(task)
+            if goal_id is None:
+                raise RuntimeError("Goal TaskRun has no GoalSession lineage")
+            repository = GoalSessionRepository(self.session)
+            goal = repository.get_for_update(
+                project_id=task.project_id,
+                goal_session_id=goal_id,
+            )
+            if goal.status != "running" or goal.current_revision_id is None:
+                raise GoalSessionStateError(
+                    "agent_goal_state_conflict",
+                    "GoalSession is not running at the safe point",
+                )
+            current_revision = self.session.get(AgentGoalRevision, goal.current_revision_id)
+            if (
+                current_revision is None
+                or current_revision.obligations_hash != checkpoint.obligations_hash
+            ):
+                raise GoalSessionStateError(
+                    "agent_goal_state_conflict",
+                    "Checkpoint does not match the current GoalRevision",
+                )
+            binding = self.session.scalar(
+                select(AgentGoalTaskRun)
+                .where(
+                    AgentGoalTaskRun.goal_session_id == goal.id,
+                    AgentGoalTaskRun.task_run_id == task.id,
+                    AgentGoalTaskRun.status == "active",
+                )
+                .with_for_update()
+            )
+            if binding is None or binding.goal_revision_id != goal.current_revision_id:
+                raise RuntimeError("Goal TaskRun binding is not the active revision")
+            delivery = self.session.scalar(
+                select(AgentGoalDelivery)
+                .where(
+                    AgentGoalDelivery.goal_session_id == goal.id,
+                    AgentGoalDelivery.mode == "steer",
+                    AgentGoalDelivery.status == "queued",
+                )
+                .order_by(AgentGoalDelivery.message_sequence_no)
+                .limit(1)
+                .with_for_update()
+            )
+            if delivery is None:
+                raise GoalSessionStateError(
+                    "agent_goal_delivery_conflict",
+                    "No queued steer remains at the safe point",
+                )
+            require_budget_available(
+                revision_count=goal.revision_count,
+                task_run_slice_count=goal.task_run_slice_count,
+                consumed_control_count=goal.consumed_control_count,
+                add_revisions=1,
+                add_task_run_slices=1,
+                add_consumed_controls=1,
+            )
+            self._persist_goal_checkpoint_observations(
+                goal=goal,
+                binding=binding,
+                task=task,
+                checkpoint=checkpoint,
+            )
+            now = datetime.now(UTC)
+            output_message = self.session.get(AgentMessage, task.output_message_id)
+            source_message = self.session.get(AgentMessage, delivery.source_message_id)
+            response_message = self.session.get(AgentMessage, delivery.response_message_id)
+            thread = self.session.scalar(
+                select(AgentThread)
+                .where(
+                    AgentThread.id == task.agent_thread_id,
+                    AgentThread.project_id == task.project_id,
+                )
+                .with_for_update()
+            )
+            if (
+                output_message is None
+                or source_message is None
+                or not source_message.content_text
+                or response_message is None
+                or thread is None
+            ):
+                raise RuntimeError("Goal continuation message lineage disappeared")
+            if output_message.status != "pending" or response_message.status != "pending":
+                raise RuntimeError("Goal continuation assistant message is not pending")
+
+            output_message.status = "completed"
+            output_message.content_text = GOAL_CHECKPOINTED_PUBLIC_MESSAGE
+            binding.status = "checkpointed"
+            binding.checkpoint_hash = checkpoint_hash
+            binding.finished_at = now
+            task.status = "succeeded"
+            task.stage = "checkpointed"
+            task.usage_jsonb = usage
+            task.completed_at = now
+            task.leased_by = None
+            task.lease_expires_at = None
+            self.session.flush()
+
+            delivery.status = "consumed"
+            delivery.consumed_at = now
+            delivery.reason_code = "steer_checkpointed"
+            goal.consumed_control_count += 1
+            revision_state_hash = stable_hash(
+                {
+                    "goal_id": goal.id,
+                    "parent_revision": goal.revision_count,
+                    "delivery_id": delivery.id,
+                    "checkpoint_hash": checkpoint_hash,
+                }
+            )
+            revision = repository.append_frozen_revision(
+                goal,
+                source_message_id=source_message.id,
+                amendment_kind="refine",
+                frozen_goal=frozen_goal,
+                source_excerpt=source_message.content_text,
+                state_hash=revision_state_hash,
+                baseline_draft_revision=goal.baseline_draft_revision,
+                baseline_hash=goal.baseline_hash,
+            )
+            history_rows = list(
+                self.session.scalars(
+                    select(AgentMessage)
+                    .where(
+                        AgentMessage.thread_id == thread.id,
+                        AgentMessage.sequence_no < source_message.sequence_no,
+                        AgentMessage.status == "completed",
+                    )
+                    .order_by(AgentMessage.sequence_no)
+                )
+            )
+            next_input = dict(task.input_jsonb)
+            next_input.update(
+                {
+                    "history": [
+                        {"role": message.role, "content": message.content_text}
+                        for message in history_rows
+                        if message.content_text is not None
+                    ],
+                    "message": source_message.content_text,
+                    "goal_session": {
+                        "goal_id": goal.id,
+                        "goal_revision": revision.revision_no,
+                        "runtime_version": goal.runtime_version,
+                        "policy_version": goal.policy_version,
+                        "capability_registry_version": goal.capability_registry_version,
+                    },
+                    "goal_checkpoint": checkpoint_payload,
+                    "frozen_goal": frozen_goal.model_dump(mode="json"),
+                }
+            )
+            continuation = _continuation_task(
+                task,
+                input_message_id=source_message.id,
+                output_message_id=response_message.id,
+                input_jsonb=next_input,
+            )
+            self.session.add(continuation)
+            self.session.flush()
+            repository.bind_task_run(
+                goal,
+                goal_revision_id=revision.id,
+                task_run_id=continuation.id,
+                trigger_kind="steer",
+            )
+            repository.transition(
+                goal,
+                target_status="running",
+                reason_code="steer_checkpointed",
+                state_hash=revision_state_hash,
+                goal_revision_id=revision.id,
+                source_message_id=source_message.id,
+                task_run_id=continuation.id,
+            )
+            result_payload: dict[str, Any] = {
+                "answer": GOAL_CHECKPOINTED_PUBLIC_MESSAGE,
+                "referenced_object_ids": [],
+                "referenced_event_ids": [],
+                "referenced_validation_issue_ids": [],
+                "suggested_view": None,
+                "patch_set_id": None,
+                "stale": False,
+                "audit_findings": [],
+                "tool_metrics": tools,
+                "checkpointed": True,
+                "continuation_run_id": continuation.id,
+            }
+            task.result_jsonb = result_payload
+            attempt.status = "succeeded"
+            attempt.candidate_jsonb = result_payload
+            attempt.validation_errors_jsonb = []
+            attempt.usage_jsonb = usage
+            attempt.finished_at = now
+            thread.last_message_at = now
+            _append_event(
+                self.session,
+                task,
+                "goal.checkpointed",
+                "checkpointed",
+                {
+                    "safe_point": safe_point,
+                    "observation_count": len(checkpoint.observations),
+                    "continuation_run_id": continuation.id,
+                },
+            )
+            _append_event(
+                self.session,
+                task,
+                "task.succeeded",
+                "checkpointed",
+                {
+                    "message": GOAL_CHECKPOINTED_PUBLIC_MESSAGE,
+                    "task_type": task.task_type,
+                    "checkpointed": True,
+                },
+            )
+            _append_event(
+                self.session,
+                continuation,
+                "task.queued",
+                "queued",
+                {
+                    "message": "Goal continuation 已进入队列",
+                    "task_type": continuation.task_type,
+                    "model_id": continuation.model_id,
+                    "input_hash": continuation.input_hash,
+                },
+            )
+            self.session.flush()
+            return continuation.id
+
+    def _persist_goal_checkpoint_observations(
+        self,
+        *,
+        goal: AgentGoalSession,
+        binding: AgentGoalTaskRun,
+        task: TaskRun,
+        checkpoint: GoalExecutionCheckpoint,
+    ) -> None:
+        obligations = {
+            row.obligation_key: row
+            for row in self.session.scalars(
+                select(AgentGoalObligation).where(
+                    AgentGoalObligation.goal_revision_id == binding.goal_revision_id
+                )
+            )
+        }
+        prior_outputs: list[str] = []
+        for observation in checkpoint.observations:
+            if observation.status != "completed":
+                raise RuntimeError("Checkpoint contains a non-completed Goal observation")
+            upstream_hash = stable_hash(
+                {
+                    "obligations": checkpoint.obligations_hash,
+                    "prior_outputs": prior_outputs,
+                }
+            )
+            for obligation_key in observation.obligation_ids:
+                obligation = obligations.get(obligation_key)
+                if obligation is None:
+                    raise RuntimeError("Checkpoint references an unknown Goal obligation")
+                already_persisted = self.session.scalar(
+                    select(AgentGoalObservation.id)
+                    .where(
+                        AgentGoalObservation.goal_session_id == goal.id,
+                        AgentGoalObservation.capability == observation.capability,
+                        AgentGoalObservation.action_hash == observation.action_hash,
+                        AgentGoalObservation.output_hash == observation.output_hash,
+                    )
+                    .limit(1)
+                )
+                if already_persisted is not None:
+                    continue
+                if observation.capability == "propose_mutation":
+                    # PatchSet identity is introduced by the M3.8-04 review boundary.
+                    continue
+                self.session.add(
+                    AgentGoalObservation(
+                        project_id=goal.project_id,
+                        goal_session_id=goal.id,
+                        goal_revision_id=binding.goal_revision_id,
+                        obligation_id=obligation.id,
+                        task_run_id=task.id,
+                        agent_step_run_id=None,
+                        capability=observation.capability,
+                        target_state=observation.target_state,
+                        status="succeeded",
+                        draft_revision=task.input_draft_revision,
+                        draft_hash=goal.baseline_hash,
+                        action_hash=observation.action_hash,
+                        input_hash=observation.input_hash,
+                        upstream_hash=upstream_hash,
+                        output_hash=observation.output_hash,
+                        candidate_hash=observation.candidate_hash,
+                        patch_set_id=None,
+                        verification_run_id=None,
+                        reused_from_observation_id=None,
+                        summary_text=observation.summary,
+                    )
+                )
+            prior_outputs.append(observation.output_hash)
+
+    def _finalize_agent_goal_task_success(self, task: TaskRun, *, now: datetime) -> None:
+        """Project a successful final slice to its binding and GoalSession."""
+
+        goal_id = _task_goal_id(task)
+        if goal_id is None:
+            return
+        repository = GoalSessionRepository(self.session)
+        goal = repository.get_for_update(
+            project_id=task.project_id,
+            goal_session_id=goal_id,
+        )
+        if goal.status in TERMINAL_GOAL_STATUSES:
+            return
+        binding = self.session.scalar(
+            select(AgentGoalTaskRun)
+            .where(
+                AgentGoalTaskRun.goal_session_id == goal.id,
+                AgentGoalTaskRun.task_run_id == task.id,
+            )
+            .with_for_update()
+        )
+        if binding is not None:
+            if binding.status != "active":
+                raise RuntimeError("Final Goal TaskRun binding is not active")
+            binding.status = "completed"
+            binding.finished_at = now
+        reason_code = "goal_completed" if binding is not None else "single_turn_fallback"
+        repository.transition(
+            goal,
+            target_status="completed",
+            reason_code=reason_code,
+            state_hash=stable_hash(
+                {
+                    "goal_id": goal.id,
+                    "status": "completed",
+                    "task_run_id": task.id,
+                    "goal_revision_id": goal.current_revision_id,
+                }
+            ),
+            goal_revision_id=goal.current_revision_id,
+            source_message_id=goal.source_message_id,
+            task_run_id=task.id,
+        )
 
     def _resolve_goal_delivery(
         self,
@@ -462,6 +966,59 @@ def public_goal_delivery_view(delivery: AgentGoalDelivery) -> PublicGoalDelivery
             "created_at": delivery.created_at,
             "updated_at": delivery.updated_at,
         }
+    )
+
+
+def _task_goal_id(task: TaskRun) -> int | None:
+    raw = task.input_jsonb.get("goal_session")
+    if not isinstance(raw, dict):
+        return None
+    value = raw.get("goal_id")
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _continuation_task(
+    previous: TaskRun,
+    *,
+    input_message_id: int,
+    output_message_id: int,
+    input_jsonb: dict[str, Any],
+) -> TaskRun:
+    """Create one immutable queued slice using the prior slice's frozen bindings."""
+
+    return TaskRun(
+        project_id=previous.project_id,
+        casefile_id=previous.casefile_id,
+        draft_id=previous.draft_id,
+        brief_version_id=None,
+        input_source_record_id=None,
+        input_brief_revision=None,
+        brief_intake_id=None,
+        input_brief_intake_revision=None,
+        base_brief_intake_candidate_id=None,
+        agent_thread_id=previous.agent_thread_id,
+        input_message_id=input_message_id,
+        output_message_id=output_message_id,
+        input_hash=_json_hash(input_jsonb),
+        input_jsonb=input_jsonb,
+        actor_user_id=previous.actor_user_id,
+        provider_setting_id=previous.provider_setting_id,
+        task_type="casefile_chat",
+        status="queued",
+        stage="queued",
+        input_draft_revision=previous.input_draft_revision,
+        provider=previous.provider,
+        model_id=previous.model_id,
+        provider_config_version=previous.provider_config_version,
+        schema_version=previous.schema_version,
+        agent_version=previous.agent_version,
+        prompt_version=previous.prompt_version,
+        toolset_version=previous.toolset_version,
+        budget_jsonb=dict(previous.budget_jsonb),
+        usage_jsonb={},
+        attempt_count=0,
+        result_jsonb=None,
+        error_details_jsonb={},
     )
 
 

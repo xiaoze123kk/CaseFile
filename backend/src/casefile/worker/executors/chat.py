@@ -76,6 +76,7 @@ from casefile.agent_runtime.general_mutation import (
     general_mutation_request_budget_reason,
     general_mutation_request_dependency_reason,
 )
+from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
     ChatTaskUnderstanding,
@@ -1778,6 +1779,36 @@ class ChatTaskExecutor:
 
     def _goal_cancelled(self, task_run_id: int) -> bool:
         return self._requests._goal_cancelled(task_run_id)
+
+    def _initialize_goal_task(self, task_run_id: int, frozen_goal: FrozenGoal) -> None:
+        with self._context.session_factory() as session:
+            WorkflowService(session).initialize_agent_goal_task(task_run_id, frozen_goal)
+
+    def _goal_control_pending(self, task_run_id: int) -> bool:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).has_pending_agent_goal_control(task_run_id)
+
+    def _checkpoint_goal_task(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        frozen_goal: FrozenGoal,
+        checkpoint: GoalExecutionCheckpoint,
+        safe_point: str,
+        usage: dict[str, Any],
+        tools: dict[str, Any],
+    ) -> int:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).checkpoint_agent_goal_task(
+                task_run_id,
+                attempt_id,
+                frozen_goal=frozen_goal,
+                checkpoint=checkpoint,
+                safe_point=safe_point,
+                usage=usage,
+                tools=tools,
+            )
 
     def _load_reusable_goal_step(
         self,

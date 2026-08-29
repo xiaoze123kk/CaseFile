@@ -5,12 +5,15 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.goal.contracts import FrozenGoal
 from casefile.application.goal_session_state import (
     GoalSessionStateError,
     require_budget_available,
     require_transition,
 )
 from casefile.data_postgres.models.goal_session import (
+    AgentGoalObligation,
+    AgentGoalObligationDependency,
     AgentGoalRevision,
     AgentGoalSession,
     AgentGoalTaskRun,
@@ -122,6 +125,67 @@ class GoalSessionRepository:
         row.revision_count = revision_no
         row.baseline_draft_revision = baseline_draft_revision
         row.baseline_hash = baseline_hash
+        self.session.flush()
+        return revision
+
+    def append_frozen_revision(
+        self,
+        row: AgentGoalSession,
+        *,
+        source_message_id: int,
+        amendment_kind: str,
+        frozen_goal: FrozenGoal,
+        source_excerpt: str,
+        state_hash: str,
+        baseline_draft_revision: int,
+        baseline_hash: str,
+    ) -> AgentGoalRevision:
+        """Append one normalized revision and its immutable obligation DAG."""
+
+        revision = self.append_revision(
+            row,
+            source_message_id=source_message_id,
+            amendment_kind=amendment_kind,
+            goal_text=frozen_goal.goal,
+            source_excerpt=source_excerpt,
+            obligations_hash=frozen_goal.obligations_hash,
+            state_hash=state_hash,
+            baseline_draft_revision=baseline_draft_revision,
+            baseline_hash=baseline_hash,
+        )
+        capability_by_kind = {
+            "analysis": "analyze",
+            "audit": "audit",
+            "mutation_proposal": "propose_mutation",
+        }
+        obligation_rows: dict[str, AgentGoalObligation] = {}
+        for ordinal, obligation in enumerate(frozen_goal.obligations, start=1):
+            obligation_row = AgentGoalObligation(
+                project_id=row.project_id,
+                goal_session_id=row.id,
+                goal_revision_id=revision.id,
+                obligation_key=obligation.obligation_id,
+                ordinal=ordinal,
+                capability=capability_by_kind[obligation.kind],
+                target_state=obligation.target_state,
+                instruction=obligation.source_excerpt,
+                source_excerpt=obligation.source_excerpt,
+            )
+            self.session.add(obligation_row)
+            obligation_rows[obligation.obligation_id] = obligation_row
+        self.session.flush()
+        for obligation in frozen_goal.obligations:
+            child = obligation_rows[obligation.obligation_id]
+            for dependency_key in obligation.depends_on:
+                self.session.add(
+                    AgentGoalObligationDependency(
+                        project_id=row.project_id,
+                        goal_session_id=row.id,
+                        goal_revision_id=revision.id,
+                        obligation_id=child.id,
+                        depends_on_obligation_id=obligation_rows[dependency_key].id,
+                    )
+                )
         self.session.flush()
         return revision
 

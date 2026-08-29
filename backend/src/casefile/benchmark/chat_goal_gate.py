@@ -14,7 +14,11 @@ from casefile.agent_runtime.goal.contracts import (
     GoalUnderstandingOutput,
     InvokeCapabilityAction,
 )
-from casefile.agent_runtime.goal.execution import GoalCapabilityResult, GoalExecutionRunner
+from casefile.agent_runtime.goal.execution import (
+    GoalCapabilityResult,
+    GoalExecutionResult,
+    GoalExecutionRunner,
+)
 from casefile.agent_runtime.goal.filter import goal_candidate_filter
 from casefile.agent_runtime.goal.policy import GoalBudget, freeze_goal, qualify_goal, stable_hash
 from casefile.agent_runtime.models import CaseFileChatRequest
@@ -49,6 +53,8 @@ def run_gate() -> dict[str, int | str]:
                 budget=GoalBudget(),
                 execute_capability=_capability,
             )
+            if not isinstance(execution, GoalExecutionResult):
+                raise RuntimeError(f"unexpected goal checkpoint: {task.task_id}")
             if not execution.completion.allowed:
                 raise RuntimeError(f"goal completion failed: {task.task_id}")
             completed += 1
