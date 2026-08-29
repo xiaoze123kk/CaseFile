@@ -63,8 +63,8 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile/application/commands.py` | 与 HTTP 解耦的 Project、Entity 和 Event 类型化写入命令。 |
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
 | `backend/src/casefile/application/goal_session_state.py` | M3.8 GoalSession 的纯确定性状态转换矩阵、revision 并发门禁和会话级预算规则；不依赖数据库、API、Worker 或 Provider。 |
-| `backend/src/casefile/application/goal_session_repository.py` | M3.8 GoalSession 聚合的 SQLAlchemy 锁与持久化边界：创建 interpreting 会话、原子追加 Revision/Obligation DAG/Transition、绑定 TaskRun slice，并推进计数器和指针。 |
-| `backend/src/casefile/application/workflow/goal_session.py` | M3.8 GoalSession 应用用例：按 Project/Draft/Thread 归属解析显式投递、创建/查询/取消 Goal 与公共投影；同时拥有 Worker 调用的初始 Revision 绑定、safe-point observation 持久化，以及“旧 TaskRun/Attempt 成功收敛、Checkpoint 哈希、单条 steer 消费、新 Revision、唯一 queued TaskRun”的原子事务。replace/follow-up、Patch Review 和 recovery lease 不在本阶段消费。 |
+| `backend/src/casefile/application/goal_session_repository.py` | M3.8 GoalSession 聚合的 SQLAlchemy 锁与持久化边界：创建 interpreting 会话、原子追加 Revision/Obligation DAG/Transition、绑定 TaskRun slice，并以 FIFO 锁完成 delivery claim、过期回收和当前 TaskAttempt fencing。 |
+| `backend/src/casefile/application/workflow/goal_session.py` | M3.8 GoalSession 应用用例：按 Project/Draft/Thread 归属解析显式投递、创建/查询/取消 Goal 与公共投影；拥有初始 Revision、HITL/Patch Review、steer/replace/follow-up、safe-point observation、delivery claim lease，以及“旧 TaskRun/Attempt 成功收敛、Checkpoint 哈希、单条 control 消费、新 Revision/Goal、唯一 queued TaskRun”的原子事务。 |
 | `backend/src/casefile/application/snapshot.py` | 从全部规范化当前态投影 CaseFile JSON，稳定排序、契约校验并计算 RFC 8785 SHA-256。 |
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 CaseFile v2 JSON（v1 仅历史读取兼容）与规范化当前态之间执行原子写入、增量对象创建、完整投影、契约引用映射和规范哈希。 |
@@ -197,7 +197,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/tests/unit/test_workbench_read_model.py` | 验证工作台确定性错误的稳定中文输出和真实 `source_fragment` 标识/JSON Pointer 追溯。 |
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
-| `backend/tests/unit/test_chat_goal_execution.py`、`backend/tests/integration/test_goal_session_execution.py` | 验证 M3.8 Checkpoint 三类安全点、obligations hash 恢复门禁、非终态确定性模板、capability Observation 持久化、单 Finalizer，以及 TaskRun/Attempt/Delivery/Revision/下一 slice 原子事务、故障回滚和同 Thread 单活跃约束。 |
+| `backend/tests/unit/test_chat_goal_execution.py`、`backend/tests/integration/test_goal_session_execution.py` | 验证 M3.8 Checkpoint 三类安全点、obligations hash 恢复门禁、非终态确定性模板、capability Observation 持久化、单 Finalizer，以及 TaskRun/Attempt/Delivery/Revision/下一 slice 原子事务、claim 幂等、过期 Attempt 接管、旧 Attempt fencing、故障回滚和同 Thread 单活跃约束。 |
 | `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 冻结输入哈希/DAG、模型 Candidate 接地与 provenance 门禁、服务器规范化和忽略 directive 措辞的语义签名，并保留 ScenePlanIR 确定性派生、NetworkX 查询和篡改失败关闭。 |
 | `backend/tests/unit/test_scene_plan_benchmark.py` | 验证 ScenePlan 24-task 审计矩阵到 v2 Input/ModelView/冻结 runtime reference 的确定性升级、8 个替代表达 G4 等价回归、v2 Safety mutation reason code、Shadow runtime 报告分母/fingerprint、Flash G3 候选/reference 传递与空响应单次重试、Task-cluster bootstrap、G3/G4 promotion checks、live Provider 注入路径与正式 24×3 Pro+Flash 参数失败关闭；测试本身不触网。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |

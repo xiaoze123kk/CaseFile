@@ -29,7 +29,7 @@
 
 - 同一 Thread 同时最多一个非终态 GoalSession，并继续最多一个 queued/running/cancelling TaskRun。GoalSession 的 waiting/stale 状态不得伪装为长期 running TaskRun 或占用 Worker lease。
 - GoalRevision、obligation、依赖、observation 和 transition 只追加；GoalSession 当前状态是受状态转换矩阵约束的投影。身份、状态、版本、队列顺序和关系不得仅保存在 JSONB。
-- steer/replace 消息先按 Thread 消息顺序持久化，再由安全点 FIFO 单条领取。M3.8-03 已把当前 TaskRun/Attempt 成功终态、slice Checkpoint 哈希、单条 steer 消费、GoalRevision 与下一 queued TaskRun 放入同一事务；replace 的 supersede 语义和 claimed lease 恢复仍由后续阶段完成。
+- steer/replace 消息先按 Thread 消息顺序持久化，再由安全点 FIFO 单条领取。M3.8-06 在 Provider 解释 control 前把 FIFO 队首 lease 给当前 TaskAttempt；未过期 claim 阻止后项越序，过期 claim 只能由接管 TaskRun 的新 Attempt fencing 回收。当前 TaskRun/Attempt 成功终态、slice Checkpoint 哈希、单条 control 消费、GoalRevision/后继 Goal 与下一 queued TaskRun 保持同一事务。
 - Goal continuation 同时比较 expected Goal ID/revision 与 Current Draft ID/revision。任一不匹配进入冲突或 stale；不得自动 rebase，也不得复用旧 mutation candidate。
 - PatchSet 仍是审批/Apply 生命周期唯一权威。GoalSession 只保存关联和等待状态，不复制 Patch 操作、审阅决策或 Apply 事实。
 - M3.8 会话级预算固定为 8 revisions、12 TaskRun slices、6 次已消费 steer/replace；单 TaskRun 继续使用 M3.7 预算，二者都不能被自动 continuation 绕过。

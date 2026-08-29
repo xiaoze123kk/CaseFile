@@ -944,7 +944,14 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert queued_chat.status_code == 202
         queued_chat_body = queued_chat.json()
-        assert set(queued_chat_body) == {"user_message", "assistant_message"}
+        assert set(queued_chat_body) == {
+            "user_message",
+            "assistant_message",
+            "goal",
+            "delivery",
+        }
+        assert queued_chat_body["goal"] is None
+        assert queued_chat_body["delivery"] is None
         chat_task_id = queued_chat_body["assistant_message"]["run"]["run_id"]
         with engine.connect() as connection:
             stored_prompt_version, stored_toolset_version = connection.execute(

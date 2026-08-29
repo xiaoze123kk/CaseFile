@@ -504,7 +504,7 @@ class GoalSessionWorkflowMixin:
             )
 
     def has_pending_agent_goal_control(self, task_run_id: int) -> bool:
-        """Read the FIFO queue without claiming it; the safe-point transaction rechecks."""
+        """Report whether the FIFO head is queued or has a recoverable claim."""
 
         if _goal_session_rollout() != "active":
             return False
@@ -515,36 +515,79 @@ class GoalSessionWorkflowMixin:
             goal_id = _task_goal_id(task)
             if goal_id is None:
                 return False
-            return self.session.scalar(
-                select(AgentGoalDelivery.id)
-                .where(
-                    AgentGoalDelivery.goal_session_id == goal_id,
-                    AgentGoalDelivery.mode.in_(("steer", "replace")),
-                    AgentGoalDelivery.status == "queued",
-                )
-                .order_by(AgentGoalDelivery.message_sequence_no)
-                .limit(1)
-            ) is not None
-
-    def peek_agent_goal_control(self, task_run_id: int) -> dict[str, Any] | None:
-        """Return only the next FIFO control payload; claiming remains transactional."""
-
-        with self.session.begin():
-            task = self.session.get(TaskRun, task_run_id)
-            if task is None:
-                return None
-            goal_id = _task_goal_id(task)
-            if goal_id is None:
-                return None
             delivery = self.session.scalar(
                 select(AgentGoalDelivery)
                 .where(
                     AgentGoalDelivery.goal_session_id == goal_id,
                     AgentGoalDelivery.mode.in_(("steer", "replace")),
-                    AgentGoalDelivery.status == "queued",
+                    AgentGoalDelivery.status.in_(("queued", "claimed")),
                 )
                 .order_by(AgentGoalDelivery.message_sequence_no)
                 .limit(1)
+            )
+            if delivery is None:
+                return False
+            if delivery.status == "queued" or (
+                delivery.lease_expires_at is not None
+                and delivery.lease_expires_at < datetime.now(UTC)
+            ):
+                return True
+            attempt = self.session.scalar(
+                select(TaskAttempt)
+                .where(
+                    TaskAttempt.task_run_id == task.id,
+                    TaskAttempt.status == "running",
+                )
+                .order_by(TaskAttempt.attempt_no.desc())
+                .limit(1)
+            )
+            return attempt is not None and delivery.claimed_by == _goal_delivery_claim_owner(
+                task.id,
+                attempt.id,
+            )
+
+    def claim_agent_goal_control(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+    ) -> dict[str, Any] | None:
+        """Lease the next FIFO control to the currently running TaskAttempt."""
+
+        if _goal_session_rollout() != "active":
+            return None
+        with self.session.begin():
+            task = self.session.scalar(
+                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+            )
+            attempt = self.session.scalar(
+                select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
+            )
+            now = datetime.now(UTC)
+            if (
+                task is None
+                or attempt is None
+                or attempt.task_run_id != task.id
+                or task.status != "running"
+                or attempt.status != "running"
+                or task.leased_by is None
+                or task.lease_expires_at is None
+            ):
+                return None
+            goal_id = _task_goal_id(task)
+            if goal_id is None:
+                return None
+            repository = GoalSessionRepository(self.session)
+            goal = repository.get_for_update(
+                project_id=task.project_id,
+                goal_session_id=goal_id,
+            )
+            if goal.status != "running":
+                return None
+            delivery = repository.claim_next_control(
+                goal,
+                claim_owner=_goal_delivery_claim_owner(task.id, attempt.id),
+                lease_expires_at=task.lease_expires_at,
+                now=now,
             )
             if delivery is None:
                 return None
@@ -631,32 +674,17 @@ class GoalSessionWorkflowMixin:
             )
             if binding is None or binding.goal_revision_id != goal.current_revision_id:
                 raise RuntimeError("Goal TaskRun binding is not the active revision")
-            delivery = self.session.scalar(
-                select(AgentGoalDelivery)
-                .where(
-                    AgentGoalDelivery.goal_session_id == goal.id,
-                    AgentGoalDelivery.mode.in_(("steer", "replace")),
-                    AgentGoalDelivery.status == "queued",
+            if delivery_id is None:
+                raise GoalSessionStateError(
+                    "agent_goal_delivery_conflict",
+                    "A claimed steer is required at the safe point",
                 )
-                .order_by(AgentGoalDelivery.message_sequence_no)
-                .limit(1)
-                .with_for_update()
+            delivery = repository.require_claimed_control(
+                goal,
+                delivery_id=delivery_id,
+                claim_owner=_goal_delivery_claim_owner(task.id, attempt.id),
+                mode="steer",
             )
-            if delivery is None:
-                raise GoalSessionStateError(
-                    "agent_goal_delivery_conflict",
-                    "No queued steer remains at the safe point",
-                )
-            if delivery_id is not None and delivery.id != delivery_id:
-                raise GoalSessionStateError(
-                    "agent_goal_delivery_conflict",
-                    "The FIFO Goal control changed before the safe point committed",
-                )
-            if delivery.mode != "steer":
-                raise GoalSessionStateError(
-                    "agent_goal_delivery_conflict",
-                    "Replace requires the successor Goal transaction",
-                )
             if amended_goal is None or amendment_kind is None:
                 raise GoalSessionStateError(
                     "agent_goal_amendment_invalid",
@@ -928,23 +956,15 @@ class GoalSessionWorkflowMixin:
                 )
                 .with_for_update()
             )
-            delivery = self.session.scalar(
-                select(AgentGoalDelivery)
-                .where(
-                    AgentGoalDelivery.goal_session_id == goal.id,
-                    AgentGoalDelivery.mode.in_(("steer", "replace")),
-                    AgentGoalDelivery.status == "queued",
-                )
-                .order_by(AgentGoalDelivery.message_sequence_no)
-                .limit(1)
-                .with_for_update()
+            delivery = repository.require_claimed_control(
+                goal,
+                delivery_id=delivery_id,
+                claim_owner=_goal_delivery_claim_owner(task.id, attempt.id),
+                mode="replace",
             )
             if (
                 binding is None
                 or binding.goal_revision_id != goal.current_revision_id
-                or delivery is None
-                or delivery.id != delivery_id
-                or delivery.mode != "replace"
             ):
                 raise GoalSessionStateError(
                     "agent_goal_delivery_conflict", "The FIFO replace is no longer current"
@@ -2311,6 +2331,12 @@ def _continuation_task(
         result_jsonb=None,
         error_details_jsonb={},
     )
+
+
+def _goal_delivery_claim_owner(task_run_id: int, attempt_id: int) -> str:
+    """Return a stable fencing identity that never exposes Worker configuration."""
+
+    return f"task:{task_run_id}:attempt:{attempt_id}"
 
 
 def _public_goal_session_row(

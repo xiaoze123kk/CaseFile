@@ -738,7 +738,7 @@ class ChatHandler:
             )
             raise
         if isinstance(execution, GoalCheckpointResult):
-            control = self._chat._next_goal_control(task.id)
+            control = self._chat._claim_goal_control(task.id, context.attempt_id)
             if control is None:
                 raise GoalExecutionError("goal_delivery_missing")
             control_request = replace(

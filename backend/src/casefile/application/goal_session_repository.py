@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,7 @@ from casefile.application.goal_session_state import (
     require_transition,
 )
 from casefile.data_postgres.models.goal_session import (
+    AgentGoalDelivery,
     AgentGoalObligation,
     AgentGoalObligationDependency,
     AgentGoalRevision,
@@ -217,6 +220,87 @@ class GoalSessionRepository:
         row.task_run_slice_count = slice_no
         self.session.flush()
         return binding
+
+    def claim_next_control(
+        self,
+        row: AgentGoalSession,
+        *,
+        claim_owner: str,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> AgentGoalDelivery | None:
+        """Claim or recover the FIFO steer/replace at a TaskRun safe point.
+
+        The first non-terminal control is authoritative.  A later queued item
+        cannot bypass an unexpired claim, while an expired claim can be fenced
+        to the current TaskAttempt without returning it to a raceable queued
+        state.
+        """
+
+        delivery = self.session.scalar(
+            select(AgentGoalDelivery)
+            .where(
+                AgentGoalDelivery.goal_session_id == row.id,
+                AgentGoalDelivery.mode.in_(("steer", "replace")),
+                AgentGoalDelivery.status.in_(("queued", "claimed")),
+            )
+            .order_by(AgentGoalDelivery.message_sequence_no)
+            .limit(1)
+            .with_for_update()
+        )
+        if delivery is None:
+            return None
+        if delivery.status == "claimed":
+            if delivery.claimed_by == claim_owner:
+                delivery.lease_expires_at = lease_expires_at
+                self.session.flush()
+                return delivery
+            if delivery.lease_expires_at is None or delivery.lease_expires_at >= now:
+                return None
+            reason_code = "delivery_claim_recovered"
+        else:
+            reason_code = "delivery_claimed"
+        delivery.status = "claimed"
+        delivery.claimed_by = claim_owner
+        delivery.claimed_at = now
+        delivery.lease_expires_at = lease_expires_at
+        delivery.reason_code = reason_code
+        self.session.flush()
+        return delivery
+
+    def require_claimed_control(
+        self,
+        row: AgentGoalSession,
+        *,
+        delivery_id: int,
+        claim_owner: str,
+        mode: str,
+    ) -> AgentGoalDelivery:
+        """Lock and fence the claimed FIFO head before atomic consumption."""
+
+        delivery = self.session.scalar(
+            select(AgentGoalDelivery)
+            .where(
+                AgentGoalDelivery.goal_session_id == row.id,
+                AgentGoalDelivery.mode.in_(("steer", "replace")),
+                AgentGoalDelivery.status.in_(("queued", "claimed")),
+            )
+            .order_by(AgentGoalDelivery.message_sequence_no)
+            .limit(1)
+            .with_for_update()
+        )
+        if (
+            delivery is None
+            or delivery.id != delivery_id
+            or delivery.mode != mode
+            or delivery.status != "claimed"
+            or delivery.claimed_by != claim_owner
+        ):
+            raise GoalSessionStateError(
+                "agent_goal_delivery_conflict",
+                "The FIFO Goal control claim is no longer owned by this TaskAttempt",
+            )
+        return delivery
 
     def transition(
         self,

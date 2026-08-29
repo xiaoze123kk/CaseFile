@@ -1,9 +1,9 @@
-"""M3.8-03 checkpoint, safe-point, and atomic continuation integration."""
+"""M3.8 checkpoint, safe-point, delivery recovery, and continuation integration."""
 
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -246,6 +246,13 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
         assert isinstance(claimed, tuple)
         claimed_run_id, attempt_id = claimed
         assert claimed_run_id == first_run_id
+        with factory() as session:
+            claimed_control = WorkflowService(session).claim_agent_goal_control(
+                first_run_id,
+                attempt_id,
+            )
+        assert claimed_control is not None
+        assert int(claimed_control["delivery_id"]) == delivery_id
 
         checkpoint = GoalExecutionCheckpoint(obligations_hash=frozen.obligations_hash)
         original_bind = GoalSessionRepository.bind_task_run
@@ -285,7 +292,7 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
             )
             assert first_run is not None and first_run.status == "running"
             assert first_attempt is not None and first_attempt.status == "running"
-            assert delivery is not None and delivery.status == "queued"
+            assert delivery is not None and delivery.status == "claimed"
             assert goal is not None
             counters = (
                 goal.revision_count,
@@ -423,3 +430,185 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
             ]
             assert active_thread_runs == 0
             assert counter == {"finalizer": 1}
+
+
+def test_expired_delivery_claim_is_recovered_by_the_new_task_attempt(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    frozen = freeze_goal(_understanding(), SOURCE)
+
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT": "active",
+            "CASEFILE_CHAT_GOAL_ROLLOUT": "active",
+        },
+    ):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m38-06-generation"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title="M3.8 delivery recovery",
+            )
+            thread_id = int(thread["thread_id"])
+            created = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content=SOURCE,
+                delivery_mode="new_goal",
+            )
+            goal_id = int(created["goal"].goal_id)
+            task_id = int(created["task"]["task_run_id"])
+        with factory() as session:
+            WorkflowService(session).initialize_agent_goal_task(task_id, frozen)
+        delivery_ids: list[int] = []
+        with factory() as session:
+            workflow = WorkflowService(session)
+            for content in (
+                "优先完成时间线分析。",
+                "然后继续审计矛盾。",
+            ):
+                queued = workflow.send_agent_message(
+                    actor_id,
+                    project_id,
+                    thread_id,
+                    expected_draft_id=draft_id,
+                    expected_draft_revision=2,
+                    content=content,
+                    delivery_mode="steer",
+                    expected_goal_id=goal_id,
+                    expected_goal_revision=1,
+                )
+                delivery_ids.append(int(queued["delivery"].delivery_id))
+
+        first_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="m38-06-crashed", lease_seconds=1),
+            provider_factory=lambda _task: FakeProvider(
+                goal_understanding=_understanding(),
+                goal_amendment=_amendment(),
+            ),
+        )
+        first_claim = first_worker._claim_next()
+        assert isinstance(first_claim, tuple)
+        first_task_id, first_attempt_id = first_claim
+        assert first_task_id == task_id
+        with factory() as session:
+            control = WorkflowService(session).claim_agent_goal_control(
+                task_id,
+                first_attempt_id,
+            )
+        assert control is not None
+        assert int(control["delivery_id"]) == delivery_ids[0]
+        with factory() as session:
+            first_delivery = session.get(AgentGoalDelivery, delivery_ids[0])
+            second_delivery = session.get(AgentGoalDelivery, delivery_ids[1])
+            assert first_delivery is not None and first_delivery.status == "claimed"
+            assert second_delivery is not None and second_delivery.status == "queued"
+            first_owner = first_delivery.claimed_by
+            assert first_owner == f"task:{task_id}:attempt:{first_attempt_id}"
+        with factory() as session:
+            assert WorkflowService(session).has_pending_agent_goal_control(task_id)
+        with factory() as session:
+            repeated_control = WorkflowService(session).claim_agent_goal_control(
+                task_id,
+                first_attempt_id,
+            )
+            assert repeated_control is not None
+            assert int(repeated_control["delivery_id"]) == delivery_ids[0]
+
+        expired = datetime.now(UTC) - timedelta(seconds=1)
+        with factory() as session, session.begin():
+            task = session.get(TaskRun, task_id)
+            delivery = session.get(AgentGoalDelivery, delivery_ids[0])
+            assert task is not None and delivery is not None
+            task.lease_expires_at = expired
+            delivery.lease_expires_at = expired
+
+        recovered_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="m38-06-recovered", lease_seconds=30),
+            provider_factory=lambda _task: FakeProvider(
+                goal_understanding=_understanding(),
+                goal_amendment=_amendment(),
+            ),
+        )
+        recovered_claim = recovered_worker._claim_next()
+        assert isinstance(recovered_claim, tuple)
+        recovered_task_id, recovered_attempt_id = recovered_claim
+        assert recovered_task_id == task_id
+        with factory() as session:
+            recovered_control = WorkflowService(session).claim_agent_goal_control(
+                task_id,
+                recovered_attempt_id,
+            )
+        assert recovered_control is not None
+        assert int(recovered_control["delivery_id"]) == delivery_ids[0]
+        with factory() as session:
+            delivery = session.get(AgentGoalDelivery, delivery_ids[0])
+            assert delivery is not None and delivery.status == "claimed"
+            assert delivery.claimed_by == f"task:{task_id}:attempt:{recovered_attempt_id}"
+            assert delivery.claimed_by != first_owner
+            assert delivery.reason_code == "delivery_claim_recovered"
+        with factory() as session:
+            assert WorkflowService(session).has_pending_agent_goal_control(task_id)
+
+        with factory() as session:
+            with pytest.raises(RuntimeError, match="no longer owns a running TaskRun"):
+                WorkflowService(session).checkpoint_agent_goal_task(
+                    task_id,
+                    first_attempt_id,
+                    frozen_goal=frozen,
+                    checkpoint=GoalExecutionCheckpoint(
+                        obligations_hash=frozen.obligations_hash
+                    ),
+                    safe_point="before_controller",
+                    usage={},
+                    tools={},
+                    delivery_id=delivery_ids[0],
+                    amended_goal=frozen,
+                    amendment_kind="refine",
+                )
+
+        recovered_worker._execute(task_id, recovered_attempt_id)
+        with factory() as session:
+            goal = session.get(AgentGoalSession, goal_id)
+            task = session.get(TaskRun, task_id)
+            first_delivery = session.get(AgentGoalDelivery, delivery_ids[0])
+            second_delivery = session.get(AgentGoalDelivery, delivery_ids[1])
+            bindings = list(
+                session.scalars(
+                    select(AgentGoalTaskRun)
+                    .where(AgentGoalTaskRun.goal_session_id == goal_id)
+                    .order_by(AgentGoalTaskRun.slice_no)
+                )
+            )
+            assert goal is not None and goal.status == "running"
+            assert task is not None and task.status == "succeeded", (
+                None if task is None else task.error_code,
+                None if task is None else task.error_details_jsonb,
+            )
+            assert first_delivery is not None and first_delivery.status == "consumed"
+            assert second_delivery is not None and second_delivery.status == "queued"
+            assert [(row.slice_no, row.status) for row in bindings] == [
+                (1, "checkpointed"),
+                (2, "active"),
+            ]
+            assert goal.consumed_control_count == 1

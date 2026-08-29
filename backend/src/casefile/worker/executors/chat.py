@@ -1793,9 +1793,16 @@ class ChatTaskExecutor:
         with self._context.session_factory() as session:
             return WorkflowService(session).has_pending_agent_goal_control(task_run_id)
 
-    def _next_goal_control(self, task_run_id: int) -> dict[str, Any] | None:
+    def _claim_goal_control(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+    ) -> dict[str, Any] | None:
         with self._context.session_factory() as session:
-            return WorkflowService(session).peek_agent_goal_control(task_run_id)
+            return WorkflowService(session).claim_agent_goal_control(
+                task_run_id,
+                attempt_id,
+            )
 
     def _pause_goal_for_clarification(
         self,
