@@ -74,6 +74,8 @@ from casefile.agent_runtime.general_mutation import (
     MutationPlanV2,
 )
 from casefile.agent_runtime.goal.contracts import (
+    GoalAmendmentInputV1,
+    GoalAmendmentOutput,
     GoalControllerInputV1,
     GoalDecisionOutput,
     GoalFinalizerInputV1,
@@ -169,6 +171,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-finalizer-input-v1": ChatFinalizerInputV1,
         "casefile-chat-finalizer-input-v2": ChatFinalizerInputV2,
         "casefile-chat-goal-interpreter-input-v1": GoalInterpreterInputV1,
+        "casefile-chat-goal-amendment-input-v1": GoalAmendmentInputV1,
         "casefile-chat-goal-controller-input-v1": GoalControllerInputV1,
         "casefile-chat-goal-finalizer-input-v1": GoalFinalizerInputV1,
         "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
@@ -196,6 +199,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-output-v2": CaseFileChatCandidateV2,
         "casefile-chat-evidence-v1": ChatEvidenceOutputV1,
         "casefile-chat-goal-understanding-v1": GoalUnderstandingOutput,
+        "casefile-chat-goal-amendment-v1": GoalAmendmentOutput,
         "casefile-chat-goal-decision-v1": GoalDecisionOutput,
         "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
         "closure-repair-output-v1": ClosureRepairOutputV1,

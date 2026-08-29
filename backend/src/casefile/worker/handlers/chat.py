@@ -31,12 +31,14 @@ from casefile.agent_runtime.goal.execution import (
 from casefile.agent_runtime.goal.filter import goal_candidate_filter
 from casefile.agent_runtime.goal.policy import (
     GoalRuntimeConfig,
+    apply_goal_amendment,
     freeze_goal,
     goal_capability_message,
     qualify_goal,
     stable_hash,
 )
 from casefile.agent_runtime.goal.provider import (
+    GoalAmendmentRequest,
     GoalDecisionRequest,
     GoalDecisionResult,
     GoalFinalizerRequest,
@@ -244,7 +246,39 @@ class ChatHandler:
         checkpoint: GoalExecutionCheckpoint | None = None
         raw_checkpoint = task.input_jsonb.get("goal_checkpoint")
         raw_frozen_goal = task.input_jsonb.get("frozen_goal")
-        if isinstance(raw_checkpoint, dict):
+        raw_pending_delivery = task.input_jsonb.get("pending_goal_delivery")
+        if isinstance(raw_pending_delivery, dict):
+            if runtime.mode != "active" or not isinstance(raw_frozen_goal, dict):
+                raise GoalExecutionError("goal_amendment_invalid")
+            previous_goal = FrozenGoal.model_validate(raw_frozen_goal)
+            amendment = provider.amend_goal(
+                GoalAmendmentRequest(chat=request, current_goal=previous_goal)
+            )
+            frozen = apply_goal_amendment(
+                previous_goal,
+                amendment.candidate,
+                request.message,
+                budget=runtime.budget,
+            )
+            self._chat._initialize_waiting_goal_amendment(
+                task.id,
+                delivery_id=int(raw_pending_delivery["delivery_id"]),
+                amended_goal=frozen,
+                amendment_kind=amendment.candidate.amendment_kind,
+            )
+            checkpoint = GoalExecutionCheckpoint(
+                obligations_hash=frozen.obligations_hash
+            )
+            context.emit(
+                task.id,
+                "goal.amended",
+                "goal",
+                {
+                    "amendment_kind": amendment.candidate.amendment_kind,
+                    "obligation_count": len(frozen.obligations),
+                },
+            )
+        elif isinstance(raw_checkpoint, dict):
             if runtime.mode != "active" or not isinstance(raw_frozen_goal, dict):
                 raise GoalExecutionError("goal_checkpoint_invalid")
             checkpoint = GoalExecutionCheckpoint.model_validate(raw_checkpoint)
@@ -704,6 +738,60 @@ class ChatHandler:
             )
             raise
         if isinstance(execution, GoalCheckpointResult):
+            control = self._chat._next_goal_control(task.id)
+            if control is None:
+                raise GoalExecutionError("goal_delivery_missing")
+            control_request = replace(
+                request,
+                message=str(control["message"]),
+                input_hash=stable_hash(
+                    [request.input_hash, control["delivery_id"], control["message"]]
+                ),
+            )
+            if control["mode"] == "replace":
+                replacement = provider.understand_goal(
+                    GoalUnderstandingRequest(chat=control_request)
+                )
+                replacement_goal = freeze_goal(
+                    replacement.candidate,
+                    control_request.message,
+                )
+                replacement_qualification = qualify_goal(
+                    replacement.candidate,
+                    replacement_goal,
+                    budget=runtime.budget,
+                )
+                if not replacement_qualification.qualified:
+                    raise GoalExecutionError("goal_replacement_invalid")
+                continuation_run_id = self._chat._replace_goal_task(
+                    task.id,
+                    context.attempt_id,
+                    frozen_goal=frozen,
+                    checkpoint=execution.checkpoint,
+                    delivery_id=int(control["delivery_id"]),
+                    replacement_goal=replacement_goal,
+                    safe_point=execution.safe_point,
+                    usage=execution.usage,
+                    tools=execution.tools.as_dict(),
+                )
+                context.state.candidate = {
+                    "checkpointed": True,
+                    "replaced": True,
+                    "continuation_run_id": continuation_run_id,
+                }
+                context.state.usage = execution.usage
+                return True
+            if control["mode"] != "steer":
+                raise GoalExecutionError("goal_delivery_invalid")
+            amendment = provider.amend_goal(
+                GoalAmendmentRequest(chat=control_request, current_goal=frozen)
+            )
+            amended_goal = apply_goal_amendment(
+                frozen,
+                amendment.candidate,
+                control_request.message,
+                budget=runtime.budget,
+            )
             continuation_run_id = self._chat._checkpoint_goal_task(
                 task.id,
                 context.attempt_id,
@@ -712,6 +800,9 @@ class ChatHandler:
                 safe_point=execution.safe_point,
                 usage=execution.usage,
                 tools=execution.tools.as_dict(),
+                delivery_id=int(control["delivery_id"]),
+                amended_goal=amended_goal,
+                amendment_kind=amendment.candidate.amendment_kind,
             )
             context.state.candidate = {
                 "checkpointed": True,

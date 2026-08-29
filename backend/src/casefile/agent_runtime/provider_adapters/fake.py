@@ -57,11 +57,14 @@ from casefile.agent_runtime.general_mutation_prompt import (
     render_general_mutation_prompt,
 )
 from casefile.agent_runtime.goal.contracts import (
+    GoalAmendmentOutput,
     GoalDecisionOutput,
     GoalUnderstandingOutput,
 )
 from casefile.agent_runtime.goal.provider import (
     ChatEvidenceCollection,
+    GoalAmendmentRequest,
+    GoalAmendmentResult,
     GoalDecisionRequest,
     GoalDecisionResult,
     GoalFinalizerRequest,
@@ -115,6 +118,7 @@ from casefile.agent_runtime.prompt import (
     chat_finalizer_output_type,
     render_chat_executor_prompt,
     render_chat_finalizer_prompt,
+    render_goal_amendment_prompt,
     render_goal_controller_prompt,
     render_goal_finalizer_prompt,
     render_goal_interpreter_prompt,
@@ -434,10 +438,12 @@ class FakeProvider:
         self,
         *,
         goal_understanding: GoalUnderstandingOutput | None = None,
+        goal_amendment: GoalAmendmentOutput | None = None,
         goal_decisions: tuple[GoalDecisionOutput, ...] = (),
         goal_final_candidate: CaseFileChatCandidateV2 | None = None,
     ) -> None:
         self._goal_understanding = goal_understanding
+        self._goal_amendment = goal_amendment
         self._goal_decisions = list(goal_decisions)
         self._goal_final_candidate = goal_final_candidate
 
@@ -1144,6 +1150,7 @@ class FakeProvider:
             "casefile-chat-v15",
             "casefile-chat-v16",
             "casefile-chat-v17",
+            "casefile-chat-v18",
         }:
             return self._chat_v14(request)
         render_chat_executor_prompt(request)
@@ -1327,6 +1334,39 @@ class FakeProvider:
             },
         )
         return GoalUnderstandingResult(candidate=self._goal_understanding, usage=usage)
+
+    def amend_goal(self, request: GoalAmendmentRequest) -> GoalAmendmentResult:
+        instructions, _input = render_goal_amendment_prompt(request)
+        request.chat.emit(
+            "agent.model_call.started",
+            "goal_amending",
+            {
+                "component_id": "goal_amendment",
+                "schema_id": "casefile-chat-goal-amendment-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.chat.model_id,
+                "prompt_sha256": sha256(instructions.encode("utf-8")).hexdigest(),
+            },
+        )
+        if self._goal_amendment is None:
+            raise ProviderProtocolError("FakeProvider goal_amendment script is required")
+        usage = _zero_usage()
+        output = self._goal_amendment.model_dump_json().encode("utf-8")
+        request.chat.emit(
+            "agent.model_call.completed",
+            "goal_amending",
+            {
+                "component_id": "goal_amendment",
+                "schema_id": "casefile-chat-goal-amendment-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(output).hexdigest(),
+                "output_size_bytes": len(output),
+                "usage": usage,
+            },
+        )
+        return GoalAmendmentResult(candidate=self._goal_amendment, usage=usage)
 
     def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult:
         instructions, _input = render_goal_controller_prompt(request)

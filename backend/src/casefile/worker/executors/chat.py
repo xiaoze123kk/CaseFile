@@ -1380,6 +1380,7 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v15",
             "casefile-chat-v16",
             "casefile-chat-v17",
+            "casefile-chat-v18",
         }:
             raise RuntimeError(
                 "Context policy "
@@ -1792,6 +1793,10 @@ class ChatTaskExecutor:
         with self._context.session_factory() as session:
             return WorkflowService(session).has_pending_agent_goal_control(task_run_id)
 
+    def _next_goal_control(self, task_run_id: int) -> dict[str, Any] | None:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).peek_agent_goal_control(task_run_id)
+
     def _pause_goal_for_clarification(
         self,
         task_run_id: int,
@@ -1808,6 +1813,22 @@ class ChatTaskExecutor:
                 usage=usage,
             )
 
+    def _initialize_waiting_goal_amendment(
+        self,
+        task_run_id: int,
+        *,
+        delivery_id: int,
+        amended_goal: FrozenGoal,
+        amendment_kind: str,
+    ) -> None:
+        with self._context.session_factory() as session:
+            WorkflowService(session).initialize_waiting_goal_amendment_task(
+                task_run_id,
+                delivery_id=delivery_id,
+                amended_goal=amended_goal,
+                amendment_kind=amendment_kind,
+            )
+
     def _checkpoint_goal_task(
         self,
         task_run_id: int,
@@ -1818,6 +1839,9 @@ class ChatTaskExecutor:
         safe_point: str,
         usage: dict[str, Any],
         tools: dict[str, Any],
+        delivery_id: int | None = None,
+        amended_goal: FrozenGoal | None = None,
+        amendment_kind: str | None = None,
     ) -> int:
         with self._context.session_factory() as session:
             return WorkflowService(session).checkpoint_agent_goal_task(
@@ -1825,6 +1849,35 @@ class ChatTaskExecutor:
                 attempt_id,
                 frozen_goal=frozen_goal,
                 checkpoint=checkpoint,
+                safe_point=safe_point,
+                usage=usage,
+                tools=tools,
+                delivery_id=delivery_id,
+                amended_goal=amended_goal,
+                amendment_kind=amendment_kind,
+            )
+
+    def _replace_goal_task(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        frozen_goal: FrozenGoal,
+        checkpoint: GoalExecutionCheckpoint,
+        delivery_id: int,
+        replacement_goal: FrozenGoal,
+        safe_point: str,
+        usage: dict[str, Any],
+        tools: dict[str, Any],
+    ) -> int:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).replace_agent_goal_task(
+                task_run_id,
+                attempt_id,
+                frozen_goal=frozen_goal,
+                checkpoint=checkpoint,
+                delivery_id=delivery_id,
+                replacement_goal=replacement_goal,
                 safe_point=safe_point,
                 usage=usage,
                 tools=tools,

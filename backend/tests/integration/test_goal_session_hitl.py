@@ -11,9 +11,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime.goal.contracts import (
     GoalCompletionDecision,
     GoalExecutionCheckpoint,
@@ -36,6 +33,8 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -270,7 +269,8 @@ def test_missing_info_waits_then_steer_revises_and_run_cancel_converges(
                 expected_goal_revision=1,
             )
             continuation_id = int(resumed["task"]["task_run_id"])
-            assert resumed["goal"].revision == 2
+            assert resumed["goal"].revision == 1
+            assert resumed["goal"].status.value == "interpreting"
         with factory() as session:
             queued_control = WorkflowService(session).send_agent_message(
                 actor_id,
@@ -281,7 +281,7 @@ def test_missing_info_waits_then_steer_revises_and_run_cancel_converges(
                 content="同时保留原始标题作为说明。",
                 delivery_mode="steer",
                 expected_goal_id=goal_id,
-                expected_goal_revision=2,
+                expected_goal_revision=1,
             )
             delivery_id = int(queued_control["delivery"].delivery_id)
         with factory() as session:

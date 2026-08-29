@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+from casefile_contracts import PublicAgentEvent, PublicAgentRun
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -126,7 +127,6 @@ from casefile.domain.logical_mutation import (
     MutationSet,
     UpdateField,
 )
-from casefile_contracts import PublicAgentEvent, PublicAgentRun
 
 
 class AgentWorkflowMixin(AgentPatchMutationMixin):
@@ -148,6 +148,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
     _queue_post_apply_goal_audit: Any
     _goal_for_patch_set: Any
     _continue_waiting_goal_delivery: Any
+    _supersede_waiting_goal_for_replace: Any
 
     def list_agent_threads(
         self,
@@ -548,6 +549,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 thread.title = _auto_thread_title(content)
             now = datetime.now(UTC)
             thread.last_message_at = now
+            queued_delivery = None
+            successor_created = False
             if resolved_delivery_mode in {"steer", "follow_up", "replace"}:
                 if goal is None:
                     raise RuntimeError("Goal control delivery resolved without a GoalSession")
@@ -559,6 +562,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     message_sequence_no=user_message.sequence_no,
                     mode=resolved_delivery_mode,
                 )
+                queued_delivery = delivery
                 if resolved_delivery_mode == "steer" and goal.status in {
                     "waiting_clarification",
                     "stale",
@@ -585,17 +589,60 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                         "goal": self._public_goal_session(goal),
                         "delivery": public_goal_delivery_view(delivery),
                     }
-                return {
-                    "thread": _agent_thread_view(thread),
-                    "user_message": _agent_message_view(user_message),
-                    "assistant_message": _agent_message_view(assistant_message),
-                    "task": None,
-                    "goal": self._public_goal_session(goal),
-                    "delivery": public_goal_delivery_view(delivery),
-                }
+                if resolved_delivery_mode == "replace" and goal.status in {
+                    "waiting_clarification",
+                    "waiting_patch_review",
+                    "stale",
+                }:
+                    predecessor = goal
+                    self._supersede_waiting_goal_for_replace(
+                        predecessor,
+                        delivery=delivery,
+                    )
+                    casefile = build_casefile_document(self.session, owned)
+                    goal = self._create_goal_session(
+                        owned,
+                        thread,
+                        source_message_id=user_message.id,
+                        actor_user_id=actor_user_id,
+                        baseline_hash=casefile_content_hash(casefile),
+                        predecessor_goal_session_id=predecessor.id,
+                    )
+                    delivery.status = "consumed"
+                    delivery.consumed_at = now
+                    delivery.reason_code = "replace_successor_created"
+                    setting = self._provider_setting(actor_user_id, provider)
+                    successor_created = True
+                    resolved_delivery_mode = "new_goal"
+                elif resolved_delivery_mode == "follow_up":
+                    predecessor = goal
+                    casefile = build_casefile_document(self.session, owned)
+                    goal = self._create_goal_session(
+                        owned,
+                        thread,
+                        source_message_id=user_message.id,
+                        actor_user_id=actor_user_id,
+                        baseline_hash=casefile_content_hash(casefile),
+                        predecessor_goal_session_id=predecessor.id,
+                    )
+                    delivery.status = "consumed"
+                    delivery.consumed_at = now
+                    delivery.reason_code = "follow_up_successor_created"
+                    setting = self._provider_setting(actor_user_id, provider)
+                    successor_created = True
+                    resolved_delivery_mode = "new_goal"
+                else:
+                    return {
+                        "thread": _agent_thread_view(thread),
+                        "user_message": _agent_message_view(user_message),
+                        "assistant_message": _agent_message_view(assistant_message),
+                        "task": None,
+                        "goal": self._public_goal_session(goal),
+                        "delivery": public_goal_delivery_view(delivery),
+                    }
 
             casefile = build_casefile_document(self.session, owned)
-            if resolved_delivery_mode == "new_goal":
+            if resolved_delivery_mode == "new_goal" and not successor_created:
                 goal = self._create_goal_session(
                     owned,
                     thread,
@@ -680,7 +727,11 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 ),
                 "task": task_result,
                 "goal": None if goal is None else self._public_goal_session(goal),
-                "delivery": None,
+                "delivery": (
+                    None
+                    if queued_delivery is None
+                    else public_goal_delivery_view(queued_delivery)
+                ),
             }
 
     def rerun_verification(

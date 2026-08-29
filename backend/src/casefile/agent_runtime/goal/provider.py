@@ -7,6 +7,7 @@ from typing import Any
 
 from casefile.agent_runtime.goal.contracts import (
     FrozenGoal,
+    GoalAmendmentOutput,
     GoalCompletionDecision,
     GoalDecisionOutput,
     GoalObservation,
@@ -28,6 +29,18 @@ class GoalUnderstandingRequest:
 @dataclass(frozen=True, slots=True)
 class GoalUnderstandingResult:
     candidate: GoalUnderstandingOutput
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class GoalAmendmentRequest:
+    chat: CaseFileChatRequest
+    current_goal: FrozenGoal
+
+
+@dataclass(frozen=True, slots=True)
+class GoalAmendmentResult:
+    candidate: GoalAmendmentOutput
     usage: dict[str, Any]
 
 
@@ -70,6 +83,9 @@ class GoalProviderPort:
     def understand_goal(self, request: GoalUnderstandingRequest) -> GoalUnderstandingResult:
         raise NotImplementedError
 
+    def amend_goal(self, request: GoalAmendmentRequest) -> GoalAmendmentResult:
+        raise NotImplementedError
+
     def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult:
         raise NotImplementedError
 
@@ -82,6 +98,8 @@ class GoalProviderPort:
 
 __all__ = [
     "ChatEvidenceCollection",
+    "GoalAmendmentRequest",
+    "GoalAmendmentResult",
     "GoalDecisionRequest",
     "GoalDecisionResult",
     "GoalFinalizerRequest",

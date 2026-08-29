@@ -14,6 +14,7 @@ from application_services_test_support import (
     _prepare_task,
 )
 from casefile.agent_runtime.goal.contracts import (
+    GoalAmendmentOutput,
     GoalDecisionOutput,
     GoalExecutionCheckpoint,
     GoalUnderstandingOutput,
@@ -92,6 +93,30 @@ def _finish() -> GoalDecisionOutput:
     )
 
 
+def _amendment() -> GoalAmendmentOutput:
+    return GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "refine",
+            "goal": "分析并审计",
+            "obligations": [
+                {
+                    "obligation_ref": "obl_1",
+                    "kind": "analysis",
+                    "target_state": "baseline",
+                    "source_excerpt": "分析时间线",
+                },
+                {
+                    "obligation_ref": "obl_2",
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "审计矛盾",
+                    "depends_on": ["obl_1"],
+                },
+            ],
+        }
+    )
+
+
 class _CountingGoalProvider(FakeProvider):
     def __init__(self, counter: dict[str, int], **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -107,6 +132,7 @@ class _SteeringGoalProvider(_CountingGoalProvider):
         super().__init__(
             counter,
             goal_understanding=_understanding(),
+            goal_amendment=_amendment(),
             goal_decisions=(_decision("analyze", "obl_1"),),
         )
         self._steer = steer
@@ -240,6 +266,9 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
                         safe_point="before_controller",
                         usage={},
                         tools={},
+                        delivery_id=delivery_id,
+                        amended_goal=frozen,
+                        amendment_kind="refine",
                     )
 
         with factory() as session:
@@ -350,7 +379,17 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
             ]
             assert [row["obligation_ids"] for row in checkpoint_observations] == [["obl_1"]]
             assert continuation.input_jsonb["goal_session"]["goal_revision"] == 2
-            assert observation_count == 1
+            assert observation_count == 2
+            reused_count = int(
+                session.scalar(
+                    select(func.count(AgentGoalObservation.id)).where(
+                        AgentGoalObservation.goal_session_id == goal_id,
+                        AgentGoalObservation.status == "reused",
+                    )
+                )
+                or 0
+            )
+            assert reused_count == 1
             assert active_thread_runs == 1
 
         assert worker.run_once()

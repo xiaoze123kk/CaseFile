@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from casefile.agent_runtime.goal.contracts import (
+    GoalAmendmentOutput,
     GoalDecisionOutput,
     GoalObservation,
     GoalUnderstandingOutput,
@@ -10,6 +11,7 @@ from casefile.agent_runtime.goal.contracts import (
 from casefile.agent_runtime.goal.policy import (
     GoalBudget,
     GoalPolicyError,
+    apply_goal_amendment,
     complete_goal,
     freeze_goal,
     goal_capability_message,
@@ -92,6 +94,110 @@ def test_freeze_rejects_non_verbatim_authorization_and_forward_dependency() -> N
     payload["obligations"][0]["depends_on"] = [2]
     with pytest.raises(GoalPolicyError, match="goal_dependency_invalid"):
         freeze_goal(GoalUnderstandingOutput.model_validate(payload), SOURCE)
+
+
+def test_amendment_assigns_stable_new_keys_and_validates_new_excerpt() -> None:
+    current = freeze_goal(understanding(), SOURCE)
+    source = "再增加一项：复查新的证据链。"
+    amendment = GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "add_obligation",
+            "goal": "分析、审计、提出修改并复查新的证据链",
+            "obligations": [
+                {
+                    "obligation_ref": item.obligation_id,
+                    "kind": item.kind,
+                    "target_state": item.target_state,
+                    "source_excerpt": item.source_excerpt,
+                    "depends_on": item.depends_on,
+                }
+                for item in current.obligations
+            ]
+            + [
+                {
+                    "obligation_ref": "new_1",
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "复查新的证据链",
+                    "depends_on": ["obl_2"],
+                }
+            ],
+        }
+    )
+
+    amended = apply_goal_amendment(
+        current, amendment, source, budget=GoalBudget(max_plan_items=6)
+    )
+
+    assert [item.obligation_id for item in amended.obligations] == [
+        "obl_1",
+        "obl_2",
+        "obl_3",
+        "obl_4",
+        "obl_5",
+    ]
+    assert amended.obligations[-1].depends_on == ["obl_2"]
+
+    invalid = amendment.model_copy(
+        update={
+            "obligations": amendment.obligations[:-1]
+            + [
+                amendment.obligations[-1].model_copy(
+                    update={"source_excerpt": "模型自行增加的检查"}
+                )
+            ]
+        }
+    )
+    with pytest.raises(GoalPolicyError, match="goal_amendment_excerpt_invalid"):
+        apply_goal_amendment(current, invalid, source, budget=GoalBudget())
+
+
+def test_amendment_rejects_remove_shape_and_dependency_cycle() -> None:
+    current = freeze_goal(understanding(), SOURCE)
+    payload = {
+        "amendment_kind": "refine",
+        "goal": current.goal,
+        "obligations": [
+            {
+                "obligation_ref": item.obligation_id,
+                "kind": item.kind,
+                "target_state": item.target_state,
+                "source_excerpt": item.source_excerpt,
+                "depends_on": item.depends_on,
+            }
+            for item in current.obligations[:-1]
+        ],
+    }
+    with pytest.raises(GoalPolicyError, match="goal_amendment_shape_invalid"):
+        apply_goal_amendment(
+            current,
+            GoalAmendmentOutput.model_validate(payload),
+            "保持原目标",
+            budget=GoalBudget(),
+        )
+
+    payload["amendment_kind"] = "remove_obligation"
+    payload["removal_source_excerpt"] = "明确放弃最后一项"
+    payload["obligations"][0]["depends_on"] = ["obl_2"]
+    payload["obligations"][1]["depends_on"] = ["obl_1"]
+    with pytest.raises(GoalPolicyError, match="goal_dependency_cycle"):
+        apply_goal_amendment(
+            current,
+            GoalAmendmentOutput.model_validate(payload),
+            "明确放弃最后一项",
+            budget=GoalBudget(),
+        )
+
+    payload["obligations"][0]["depends_on"] = []
+    payload["obligations"][1]["depends_on"] = ["obl_1"]
+    payload["removal_source_excerpt"] = "模型虚构的放弃说明"
+    with pytest.raises(GoalPolicyError, match="goal_amendment_excerpt_invalid"):
+        apply_goal_amendment(
+            current,
+            GoalAmendmentOutput.model_validate(payload),
+            "明确放弃最后一项",
+            budget=GoalBudget(),
+        )
 
 
 def test_qualification_rejects_candidate_without_mutation_and_budget_overflow() -> None:

@@ -13,6 +13,7 @@ from pydantic import Field
 from casefile.agent_runtime.goal.contracts import (
     FinishGoalAction,
     FrozenGoal,
+    GoalAmendmentOutput,
     GoalCompletionDecision,
     GoalDecisionOutput,
     GoalObligation,
@@ -163,6 +164,96 @@ def qualify_goal(
     if len(frozen.obligations) > budget.max_capability_actions:
         reasons.append("goal_capability_budget_exceeded")
     return GoalQualification(qualified=not reasons, reason_codes=tuple(reasons))
+
+
+def apply_goal_amendment(
+    current: FrozenGoal,
+    amendment: GoalAmendmentOutput,
+    source_message: str,
+    *,
+    budget: GoalBudget,
+) -> FrozenGoal:
+    """Validate a model amendment and assign stable server-owned obligation keys."""
+
+    existing = {item.obligation_id: item for item in current.obligations}
+    refs = [item.obligation_ref for item in amendment.obligations]
+    ref_set = set(refs)
+    existing_refs = {ref for ref in refs if ref.startswith("obl_")}
+    new_refs = [ref for ref in refs if ref.startswith("new_")]
+    unknown_existing = existing_refs - set(existing)
+    if unknown_existing:
+        raise GoalPolicyError("goal_amendment_obligation_unknown")
+    removed = set(existing) - existing_refs
+    if amendment.amendment_kind in {"refine", "add_constraint"} and (
+        removed or new_refs
+    ):
+        raise GoalPolicyError("goal_amendment_shape_invalid")
+    if amendment.amendment_kind == "add_obligation" and (removed or not new_refs):
+        raise GoalPolicyError("goal_amendment_shape_invalid")
+    if amendment.amendment_kind == "remove_obligation" and (
+        not removed or new_refs
+    ):
+        raise GoalPolicyError("goal_amendment_shape_invalid")
+    if len(amendment.obligations) > budget.max_plan_items:
+        raise GoalPolicyError("goal_plan_budget_exceeded")
+    if any(
+        dependency not in ref_set
+        for item in amendment.obligations
+        for dependency in item.depends_on
+    ):
+        raise GoalPolicyError("goal_amendment_dependency_unknown")
+    if any(item.obligation_ref in item.depends_on for item in amendment.obligations):
+        raise GoalPolicyError("goal_amendment_dependency_cycle")
+
+    normalized_message = " ".join(source_message.split())
+    if amendment.removal_source_excerpt is not None and (
+        " ".join(amendment.removal_source_excerpt.split()) not in normalized_message
+    ):
+        raise GoalPolicyError("goal_amendment_excerpt_invalid")
+    for draft in amendment.obligations:
+        prior = existing.get(draft.obligation_ref)
+        changed = prior is None or (
+            prior.kind != draft.kind
+            or prior.target_state != draft.target_state
+            or prior.source_excerpt != draft.source_excerpt
+        )
+        if changed and " ".join(draft.source_excerpt.split()) not in normalized_message:
+            raise GoalPolicyError("goal_amendment_excerpt_invalid")
+
+    max_existing = max(int(key.removeprefix("obl_")) for key in existing)
+    assigned = {
+        ref: f"obl_{max_existing + offset}"
+        for offset, ref in enumerate(new_refs, start=1)
+    }
+    assigned.update({key: key for key in existing_refs})
+    obligations = [
+        GoalObligation(
+            obligation_id=assigned[draft.obligation_ref],
+            kind=draft.kind,
+            target_state=draft.target_state,
+            source_excerpt=draft.source_excerpt,
+            depends_on=[assigned[key] for key in draft.depends_on],
+        )
+        for draft in amendment.obligations
+    ]
+    _validate_dag(obligations)
+    if sum(item.kind == "mutation_proposal" for item in obligations) > (
+        budget.max_mutation_proposals
+    ):
+        raise GoalPolicyError("goal_mutation_budget_exceeded")
+    if any(
+        item.target_state == "candidate"
+        and not _has_mutation_ancestor(item, obligations)
+        for item in obligations
+    ):
+        raise GoalPolicyError("goal_candidate_before_mutation")
+    payload = [item.model_dump(mode="json") for item in obligations]
+    return FrozenGoal(
+        goal=amendment.goal,
+        obligations=obligations,
+        source_message_hash=stable_hash(source_message),
+        obligations_hash=stable_hash(payload),
+    )
 
 
 def validate_decision(
@@ -364,6 +455,7 @@ __all__ = [
     "GoalPolicyError",
     "GoalQualification",
     "GoalRuntimeConfig",
+    "apply_goal_amendment",
     "complete_goal",
     "freeze_goal",
     "goal_capability_message",

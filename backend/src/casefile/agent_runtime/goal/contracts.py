@@ -11,6 +11,9 @@ from casefile.agent_runtime.models import StrictAgentOutput
 GoalObligationKind = Literal["analysis", "audit", "mutation_proposal"]
 GoalTargetState = Literal["baseline", "candidate"]
 GoalCapability = Literal["analyze", "audit", "propose_mutation"]
+GoalAmendmentKind = Literal[
+    "refine", "add_constraint", "add_obligation", "remove_obligation"
+]
 
 
 class GoalObligationDraft(StrictAgentOutput):
@@ -43,6 +46,36 @@ class FrozenGoal(StrictAgentOutput):
     obligations: list[GoalObligation] = Field(min_length=1, max_length=6)
     source_message_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     obligations_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GoalAmendmentObligationDraft(StrictAgentOutput):
+    """One existing or newly proposed obligation in a full amendment projection."""
+
+    obligation_ref: str = Field(pattern=r"^(?:obl_[1-9][0-9]*|new_[1-6])$")
+    kind: GoalObligationKind
+    target_state: GoalTargetState
+    source_excerpt: str = Field(min_length=1, max_length=2_000)
+    depends_on: list[str] = Field(default_factory=list, max_length=6)
+
+
+class GoalAmendmentOutput(StrictAgentOutput):
+    amendment_kind: GoalAmendmentKind
+    goal: str = Field(min_length=1, max_length=4_000)
+    obligations: list[GoalAmendmentObligationDraft] = Field(min_length=1, max_length=6)
+    removal_source_excerpt: str | None = Field(default=None, min_length=1, max_length=2_000)
+
+    @model_validator(mode="after")
+    def unique_refs(self) -> GoalAmendmentOutput:
+        refs = [item.obligation_ref for item in self.obligations]
+        if len(refs) != len(set(refs)):
+            raise ValueError("goal amendment obligation refs must be unique")
+        if (self.amendment_kind == "remove_obligation") != (
+            self.removal_source_excerpt is not None
+        ):
+            raise ValueError(
+                "remove amendment alone requires a removal source excerpt"
+            )
+        return self
 
 
 class GoalPlanItem(StrictAgentOutput):
@@ -116,6 +149,12 @@ class GoalInterpreterInputV1(StrictAgentOutput):
     author_message: str = Field(min_length=1, max_length=100_000)
 
 
+class GoalAmendmentInputV1(StrictAgentOutput):
+    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    current_goal: FrozenGoal
+    author_message: str = Field(min_length=1, max_length=100_000)
+
+
 class GoalControllerInputV1(StrictAgentOutput):
     input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     goal: FrozenGoal
@@ -146,6 +185,10 @@ def jsonable(value: Any) -> Any:
 __all__ = [
     "FinishGoalAction",
     "FrozenGoal",
+    "GoalAmendmentInputV1",
+    "GoalAmendmentKind",
+    "GoalAmendmentObligationDraft",
+    "GoalAmendmentOutput",
     "GoalCapability",
     "GoalCompletionDecision",
     "GoalExecutionCheckpoint",
