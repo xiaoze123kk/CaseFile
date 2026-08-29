@@ -1,0 +1,222 @@
+"""Transactional persistence boundary for M3.8 GoalSession state."""
+
+from __future__ import annotations
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from casefile.application.goal_session_state import (
+    GoalSessionStateError,
+    require_budget_available,
+    require_transition,
+)
+from casefile.data_postgres.models.goal_session import (
+    AgentGoalRevision,
+    AgentGoalSession,
+    AgentGoalTaskRun,
+    AgentGoalTransition,
+)
+
+
+class GoalSessionRepository:
+    """Locks the aggregate root before counters, pointers, or status are changed."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_for_update(self, *, project_id: int, goal_session_id: int) -> AgentGoalSession:
+        row = self.session.scalar(
+            select(AgentGoalSession)
+            .where(
+                AgentGoalSession.project_id == project_id,
+                AgentGoalSession.id == goal_session_id,
+            )
+            .with_for_update()
+        )
+        if row is None:
+            raise GoalSessionStateError("agent_goal_not_found", "GoalSession was not found")
+        return row
+
+    def create_interpreting(
+        self,
+        *,
+        project_id: int,
+        casefile_id: int,
+        draft_id: int,
+        thread_id: int,
+        source_message_id: int,
+        actor_user_id: int,
+        runtime_version: str,
+        policy_version: str,
+        capability_registry_version: str,
+        baseline_draft_revision: int,
+        baseline_hash: str,
+        initial_state_hash: str,
+        predecessor_goal_session_id: int | None = None,
+    ) -> AgentGoalSession:
+        row = AgentGoalSession(
+            project_id=project_id,
+            casefile_id=casefile_id,
+            draft_id=draft_id,
+            thread_id=thread_id,
+            source_message_id=source_message_id,
+            created_by_user_id=actor_user_id,
+            predecessor_goal_session_id=predecessor_goal_session_id,
+            status="interpreting",
+            runtime_version=runtime_version,
+            policy_version=policy_version,
+            capability_registry_version=capability_registry_version,
+            baseline_draft_revision=baseline_draft_revision,
+            baseline_hash=baseline_hash,
+        )
+        self.session.add(row)
+        self.session.flush()
+        self._append_transition(
+            row,
+            from_status=None,
+            to_status="interpreting",
+            reason_code="goal_created",
+            state_hash=initial_state_hash,
+            source_message_id=source_message_id,
+        )
+        return row
+
+    def append_revision(
+        self,
+        row: AgentGoalSession,
+        *,
+        source_message_id: int,
+        amendment_kind: str,
+        goal_text: str,
+        source_excerpt: str,
+        obligations_hash: str,
+        state_hash: str,
+        baseline_draft_revision: int,
+        baseline_hash: str,
+    ) -> AgentGoalRevision:
+        require_budget_available(
+            revision_count=row.revision_count,
+            task_run_slice_count=row.task_run_slice_count,
+            consumed_control_count=row.consumed_control_count,
+            add_revisions=1,
+        )
+        parent_revision_id = row.current_revision_id
+        revision_no = row.revision_count + 1
+        revision = AgentGoalRevision(
+            project_id=row.project_id,
+            goal_session_id=row.id,
+            revision_no=revision_no,
+            parent_revision_id=parent_revision_id,
+            source_message_id=source_message_id,
+            amendment_kind=amendment_kind,
+            goal_text=goal_text,
+            source_excerpt=source_excerpt,
+            obligations_hash=obligations_hash,
+            state_hash=state_hash,
+            baseline_draft_revision=baseline_draft_revision,
+            baseline_hash=baseline_hash,
+        )
+        self.session.add(revision)
+        self.session.flush()
+        row.current_revision_id = revision.id
+        row.revision_count = revision_no
+        row.baseline_draft_revision = baseline_draft_revision
+        row.baseline_hash = baseline_hash
+        self.session.flush()
+        return revision
+
+    def bind_task_run(
+        self,
+        row: AgentGoalSession,
+        *,
+        goal_revision_id: int,
+        task_run_id: int,
+        trigger_kind: str,
+    ) -> AgentGoalTaskRun:
+        require_budget_available(
+            revision_count=row.revision_count,
+            task_run_slice_count=row.task_run_slice_count,
+            consumed_control_count=row.consumed_control_count,
+            add_task_run_slices=1,
+        )
+        slice_no = row.task_run_slice_count + 1
+        binding = AgentGoalTaskRun(
+            project_id=row.project_id,
+            goal_session_id=row.id,
+            goal_revision_id=goal_revision_id,
+            task_run_id=task_run_id,
+            slice_no=slice_no,
+            trigger_kind=trigger_kind,
+            status="active",
+        )
+        self.session.add(binding)
+        row.task_run_slice_count = slice_no
+        self.session.flush()
+        return binding
+
+    def transition(
+        self,
+        row: AgentGoalSession,
+        *,
+        target_status: str,
+        reason_code: str,
+        state_hash: str,
+        goal_revision_id: int | None = None,
+        source_message_id: int | None = None,
+        task_run_id: int | None = None,
+    ) -> AgentGoalTransition:
+        require_transition(row.status, target_status)
+        previous = row.status
+        row.status = target_status
+        if target_status in {"completed", "cancelled", "superseded", "failed"}:
+            row.terminal_reason_code = reason_code
+        transition = self._append_transition(
+            row,
+            from_status=previous,
+            to_status=target_status,
+            reason_code=reason_code,
+            state_hash=state_hash,
+            goal_revision_id=goal_revision_id,
+            source_message_id=source_message_id,
+            task_run_id=task_run_id,
+        )
+        self.session.flush()
+        return transition
+
+    def _append_transition(
+        self,
+        row: AgentGoalSession,
+        *,
+        from_status: str | None,
+        to_status: str,
+        reason_code: str,
+        state_hash: str,
+        goal_revision_id: int | None = None,
+        source_message_id: int | None = None,
+        task_run_id: int | None = None,
+    ) -> AgentGoalTransition:
+        sequence_no = int(
+            self.session.scalar(
+                select(func.coalesce(func.max(AgentGoalTransition.sequence_no), 0) + 1).where(
+                    AgentGoalTransition.goal_session_id == row.id
+                )
+            )
+            or 1
+        )
+        transition = AgentGoalTransition(
+            project_id=row.project_id,
+            goal_session_id=row.id,
+            sequence_no=sequence_no,
+            from_status=from_status,
+            to_status=to_status,
+            reason_code=reason_code,
+            goal_revision_id=goal_revision_id,
+            source_message_id=source_message_id,
+            task_run_id=task_run_id,
+            state_hash=state_hash,
+        )
+        self.session.add(transition)
+        return transition
+
+
+__all__ = ["GoalSessionRepository"]

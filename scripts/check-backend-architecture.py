@@ -99,6 +99,8 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/application/workflow/",
     "backend/src/casefile/application/chat_public_contracts.py",
     "backend/src/casefile/application/chat_public_events.py",
+    "backend/src/casefile/application/goal_session_repository.py",
+    "backend/src/casefile/application/goal_session_state.py",
     "backend/src/casefile/application/workflow_common.py",
     "backend/src/casefile/domain/verification_engine.py",
     "backend/src/casefile/worker/queue.py",

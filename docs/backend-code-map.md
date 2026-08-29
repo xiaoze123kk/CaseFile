@@ -2,7 +2,7 @@
 
 ## M3.8 Persistent GoalSession 规划边界
 
-`docs/m3.8-goal-session-runtime.md` 是 M3.8-00 冻结 ADR。后续实现必须保持三层职责：`agent_runtime/goal/` 只定义无数据库的 Goal Amendment/Checkpoint/State Engine 纯契约与规则；`application/workflow/` 拥有 GoalSession、消息投递、Patch review continuation 和状态转换事务；`worker/handlers/` 只在安全点消费 delivery、收敛当前 TaskRun 并排队下一执行切片。
+`docs/m3.8-goal-session-runtime.md` 是 M3.8 冻结 ADR。实现保持三层职责：`agent_runtime/goal/` 继续定义无数据库的 Goal 语义契约与单 TaskRun bounded execution；`application/goal_session_state.py` 与 `goal_session_repository.py` 拥有跨 TaskRun 的 GoalSession 状态矩阵、预算和持久化事务，后续消息/Patch continuation 接入 `application/workflow/`；`worker/handlers/` 只在安全点消费 delivery、收敛当前 TaskRun 并排队下一执行切片。
 
 M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runtime`，不在 API route 中直接读写 Goal 表，也不创建第二条 Patch/Apply 路径。M3.8-00 尚未新增运行时模块；新增、删除或重命名实际源码后，必须在对应阶段把精确路径补入本文和静态架构检查。
 
@@ -47,6 +47,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8–v15 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
 | `backend/src/casefile/data_postgres/models/compiler.py` | N4.1 `compiler_profiles`、不可变 `compiler_profile_versions`、关系型 `compile_runs` 与不可变 `compile_artifacts` ORM；CompileRun 只保存 Build 身份和冻结绑定，不复制执行状态或 Manifest。 |
 | `backend/src/casefile/data_postgres/models/context_states.py` | 追加式不可变 `agent_thread_context_states` ORM：按 thread 冻结 policy/state_kind/消息区间/state_jsonb/输入哈希，供 Rolling Thread Memory 压缩回放与 `context_state` 冻结引用。 |
+| `backend/src/casefile/data_postgres/models/goal_session.py` | M3.8 GoalSession、Revision、Obligation DAG、FIFO Delivery、Observation、TaskRun slice 绑定与 Transition 的关系型 ORM；状态、归属、预算和不可变性由正式列、复合外键、约束与触发器承载。 |
 | `backend/src/casefile/data_postgres/models/verification.py` | `verification_runs`、`verification_findings`、规范化 finding refs、作者 reviews 与 patch-operation lineage ORM；VerificationRun 是领域 observation，不承载 TaskRun 调度字段。 |
 | `backend/src/casefile/data_postgres/models/reverse_parse.py` | 路径 C 反向解析的 `imported_documents` 与 `parse_items` ORM：上传文档与提取文本、解析状态、逐项确认结果、grading/field_sources 与来源片段引用。 |
 | `backend/src/casefile/data_postgres/models/__init__.py` | 汇总导入全部 ORM，供 Alembic metadata 发现。 |
@@ -61,6 +62,8 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile_contracts/` | 从根目录 Schema 生成、供后端运行时使用的 Pydantic 契约模型；禁止手改。 |
 | `backend/src/casefile/application/commands.py` | 与 HTTP 解耦的 Project、Entity 和 Event 类型化写入命令。 |
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
+| `backend/src/casefile/application/goal_session_state.py` | M3.8 GoalSession 的纯确定性状态转换矩阵、revision 并发门禁和会话级预算规则；不依赖数据库、API、Worker 或 Provider。 |
+| `backend/src/casefile/application/goal_session_repository.py` | M3.8 GoalSession 聚合的 SQLAlchemy 锁与持久化边界：创建 interpreting 会话、追加 Revision/Transition、绑定 TaskRun slice，并原子推进计数器和指针。 |
 | `backend/src/casefile/application/snapshot.py` | 从全部规范化当前态投影 CaseFile JSON，稳定排序、契约校验并计算 RFC 8785 SHA-256。 |
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 CaseFile v2 JSON（v1 仅历史读取兼容）与规范化当前态之间执行原子写入、增量对象创建、完整投影、契约引用映射和规范哈希。 |
