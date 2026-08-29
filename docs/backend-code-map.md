@@ -15,6 +15,9 @@ M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runti
 - `backend/src/casefile/agent_runtime/goal/provider.py`：Interpreter、Controller、Evidence 与 Finalizer 的 provider-neutral 端口。
 - `backend/src/casefile/worker/handlers/chat.py`：rollout/资格分流、能力适配、取消观察、Goal safe-point 轮询、Checkpoint continuation 委派和最终持久化；Provider/Binder/Simulation/Verification 内不轮询。
 - `backend/src/casefile/benchmark/chat_goal_suite.py`、`chat_goal_qualification.py`：M3.7 24×3 正式资格套件、生产路径评分、逐题追踪与聚合门禁；v2 题目必须与冻结 CaseFile fixture 可解，并用最终状态 Oracle 评分 mutation。
+- `backend/src/casefile/benchmark/chat_goal_interactive_suite.py`：M3.8-07 Interactive Goal 的严格私有 Holdout loader、8-family 场景契约、RFC 8785 指纹、路径/泄漏/双 attestation 校验；仓库只跟踪 descriptor 与 8 题公开 Fake dev suite。
+- `backend/src/casefile/benchmark/chat_goal_interactive_executor.py`：以真实公共 HTTP、后台 Worker、PostgreSQL、continuation 与 Patch Review 路径执行交互 trial；通过默认关闭的 Worker 组合端口在三类 safe point 建立确定性 barrier，不新增公共 API 或运行时配置。
+- `backend/src/casefile/benchmark/chat_goal_interactive_qualification.py`：M3.8-07 clean source/独立 `_test` 数据库/精确 Pro 与 Prompt preflight、24×3 逐 trial 编排、证据指纹及 Intent Adherence Under Intervention 聚合门禁。
 
 Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，也不得直接调用 Apply。Goal Finalizer 只负责作者可见正文，模型生成的引用、finding 与 suggestion 不构成权威结果；结构化结果由 Observation、Completion proof 与 Mutation proof 决定。任何 Goal 失败均在 `_complete_chat()` 前关闭，因此不产生 `AgentPatchSet`。恢复只复用精确 input/upstream/output hash 匹配的 bounded artifact；Mutation 只复用 Planner artifact并重新绑定、模拟。
 
@@ -198,6 +201,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
 | `backend/tests/unit/test_chat_goal_execution.py`、`backend/tests/integration/test_goal_session_execution.py` | 验证 M3.8 Checkpoint 三类安全点、obligations hash 恢复门禁、非终态确定性模板、capability Observation 持久化、单 Finalizer，以及 TaskRun/Attempt/Delivery/Revision/下一 slice 原子事务、claim 幂等、过期 Attempt 接管、旧 Attempt fencing、故障回滚和同 Thread 单活跃约束。 |
+| `backend/tests/unit/test_chat_goal_interactive_benchmark.py`、`backend/tests/integration/test_chat_goal_interactive_executor.py` | 验证 M3.8-07 suite/descriptor/attestation/指纹和资格分母、scenario/family/safety 门禁，并在真实 HTTP/Worker/PostgreSQL 上覆盖 `before_controller`、`after_capability`、`before_finalizer` 三类确定性注入及精确模型/Prompt 证据；测试使用 Fake Provider，不触网。 |
 | `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 冻结输入哈希/DAG、模型 Candidate 接地与 provenance 门禁、服务器规范化和忽略 directive 措辞的语义签名，并保留 ScenePlanIR 确定性派生、NetworkX 查询和篡改失败关闭。 |
 | `backend/tests/unit/test_scene_plan_benchmark.py` | 验证 ScenePlan 24-task 审计矩阵到 v2 Input/ModelView/冻结 runtime reference 的确定性升级、8 个替代表达 G4 等价回归、v2 Safety mutation reason code、Shadow runtime 报告分母/fingerprint、Flash G3 候选/reference 传递与空响应单次重试、Task-cluster bootstrap、G3/G4 promotion checks、live Provider 注入路径与正式 24×3 Pro+Flash 参数失败关闭；测试本身不触网。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |

@@ -21,6 +21,7 @@ from casefile.worker.dispatch import TaskDispatcher
 from casefile.worker.execution import (
     ChatRuntimeConfig,
     ExecutionState,
+    GoalSafePointObserver,
     TaskExecutionContext,
     WorkerEventPorts,
 )
@@ -104,6 +105,7 @@ class Worker:
         *,
         config: WorkerConfig,
         provider_factory: ProviderFactory | None = None,
+        goal_safe_point_observer: GoalSafePointObserver | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.config = config
@@ -152,7 +154,11 @@ class Worker:
                 BriefIntakeHandler(self._completion),
                 ReverseParseHandler(self._completion),
                 BriefGenerationHandler(self._completion),
-                ChatHandler(self._chat, self._complete_chat),
+                ChatHandler(
+                    self._chat,
+                    self._complete_chat,
+                    goal_safe_point_observer=goal_safe_point_observer,
+                ),
                 CompilerHandler(self._compiler),
             )
         )

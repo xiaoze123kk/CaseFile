@@ -14,6 +14,7 @@ from casefile.data_postgres.models import TaskRun
 ProviderRequirement = Literal["required", "none"]
 ChatRolloutMode = Literal["off", "shadow", "suggest"]
 EventEmitter = Callable[[int, str, str, dict[str, Any]], None]
+GoalSafePointObserver = Callable[[int, int, str], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,7 @@ __all__ = [
     "ChatRuntimeConfig",
     "EventEmitter",
     "ExecutionState",
+    "GoalSafePointObserver",
     "ProviderRequirement",
     "TaskExecutionContext",
     "WorkerEventPorts",

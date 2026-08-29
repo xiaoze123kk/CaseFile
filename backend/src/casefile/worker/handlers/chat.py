@@ -53,7 +53,11 @@ from casefile.agent_runtime.models import (
     RouteDecision,
     ToolMetrics,
 )
-from casefile.worker.execution import ProviderRequirement, TaskExecutionContext
+from casefile.worker.execution import (
+    GoalSafePointObserver,
+    ProviderRequirement,
+    TaskExecutionContext,
+)
 from casefile.worker.executors.chat import ChatTaskExecutor, resolve_chat_route
 from casefile.worker.failures import TaskCancellationRequested
 
@@ -126,9 +130,15 @@ class ChatHandler:
     task_types = frozenset({"casefile_chat"})
     provider_requirement: ProviderRequirement = "required"
 
-    def __init__(self, chat: ChatTaskExecutor, complete_chat: Callable[..., None]) -> None:
+    def __init__(
+        self,
+        chat: ChatTaskExecutor,
+        complete_chat: Callable[..., None],
+        goal_safe_point_observer: GoalSafePointObserver | None = None,
+    ) -> None:
         self._chat = chat
         self._complete_chat = complete_chat
+        self._goal_safe_point_observer = goal_safe_point_observer
 
     def execute(self, context: TaskExecutionContext) -> None:
         provider, api_key = context.require_provider()
@@ -712,6 +722,8 @@ class ChatHandler:
             return False
 
         def should_interrupt(_safe_point: str) -> bool:
+            if self._goal_safe_point_observer is not None:
+                self._goal_safe_point_observer(task.id, context.attempt_id, _safe_point)
             # M3.8-04 will materialize mutation observations with PatchSet
             # identity. Until then a Planner/Binder result stays in its slice.
             return mutation_envelope is None and self._chat._goal_control_pending(task.id)
