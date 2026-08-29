@@ -90,6 +90,8 @@ def test_message_projection_is_allowlist_only_and_uses_public_run() -> None:
     assert projected["interpretation"] == "change_request"
     assert projected["run"] == {
         "run_id": 21,
+        "goal_id": None,
+        "goal_revision": None,
         "status": "running",
         "activity": "reading",
         "cancellable": True,
@@ -121,8 +123,32 @@ def test_message_receipt_atomically_drops_thread_and_task_envelopes() -> None:
         }
     ).model_dump(mode="json")
 
-    assert set(projected) == {"user_message", "assistant_message"}
+    assert set(projected) == {
+        "user_message",
+        "assistant_message",
+        "goal",
+        "delivery",
+    }
+    assert projected["goal"] is None
+    assert projected["delivery"] is None
     assert projected["assistant_message"]["run"]["run_id"] == 21
+
+
+def test_message_projection_exposes_only_public_goal_lineage() -> None:
+    message = _legacy_message(role="assistant", message_id=56, sequence=4)
+    assert message["task"] is not None
+    assert message["patch_set"] is not None
+    message["task"]["goal_id"] = 41
+    message["task"]["goal_revision"] = 2
+    message["patch_set"]["goal_id"] = 41
+    message["patch_set"]["goal_revision"] = 2
+
+    projected = public_agent_message_view(message).model_dump(mode="json")
+
+    assert projected["run"]["goal_id"] == 41
+    assert projected["run"]["goal_revision"] == 2
+    assert projected["patch"]["goal_id"] == 41
+    assert projected["patch"]["goal_revision"] == 2
 
 
 def test_patch_review_and_action_response_hide_finding_keys_and_hashes() -> None:

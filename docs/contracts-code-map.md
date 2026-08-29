@@ -30,9 +30,9 @@
 
 根目录 `contracts/schemas/` 是当前 CaseFile v2、Brief、Task 和编辑契约的唯一人工维护事实源。`scripts/generate-contracts.ps1` 同步生成跨语言包、后端 Pydantic 模型和 `backend/src/casefile/contracts/schemas/v2/` 当前运行时镜像；`backend/src/casefile/contracts/schemas/v1/` 作为历史只读镜像保留，生成器不得删除或覆盖。生成物禁止手改，`check:contracts` 必须拒绝漂移。
 
-## M3.8 Chat Public 契约冻结草案
+## M3.8 Chat Public 契约
 
-M3.8-00 只在 `docs/m3.8-goal-session-runtime.md` 冻结 `PublicGoalSession`、`PublicGoalDelivery` 和现有 Receipt/Run/PatchResponse 的可选 Goal 关联，不提前修改 JSON Schema 或生成物。M3.8-02 才能修改 `contracts/schemas/chat/chat-public.schema.json`，随后必须按 Schema → Python/TypeScript 生成物 → OpenAPI → Fixture 的顺序同步。
+`docs/m3.8-goal-session-runtime.md` 是冻结协议说明。M3.8-02 已在 `contracts/schemas/chat/chat-public.schema.json` 落地 `PublicGoalSession`、`PublicGoalDelivery`、`PublicGoalEvent`，并为现有 Receipt/Run/PatchSet 增加可选 Goal 关联；Python/TypeScript 生成物、后端运行时镜像与 OpenAPI snapshot 均由事实源重新生成，不得手改生成物。
 
 新增公共字段必须保持旧客户端兼容：现有消息、Run 和 Patch 字段不改名、不删除；Goal 关联以可选字段增加。公共投影只提供作者可理解的 Goal 状态、等待原因和可执行动作，不得暴露 FrozenGoal、obligation/observation、内部 hash、Provider/Prompt/模型、TaskEvent payload 或 PatchOperation 原始值。
 

@@ -27,6 +27,9 @@ from casefile_contracts import (  # noqa: E402
     PatchCandidate,
     PublicAgentEvent,
     PublicAgentMessage,
+    PublicGoalDelivery,
+    PublicGoalEvent,
+    PublicGoalSession,
     PublicPatchReviewResult,
     PublicRoutingFeedbackReceipt,
     TaskRun,
@@ -141,6 +144,16 @@ def validators(
                 "$ref": (
                     "https://casefile.local/schemas/v2/chat/chat-public.schema.json"
                     "#/$defs/PublicPatchReviewResult"
+                )
+            },
+            registry=registry,
+            format_checker=checker,
+        ),
+        "public_goal": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v2/chat/chat-public.schema.json"
+                    "#/$defs/PublicGoalSession"
                 )
             },
             registry=registry,
@@ -425,7 +438,14 @@ def test_chat_public_contracts_roundtrip_and_reject_internal_fields(
     message = load_json(FIXTURE_ROOT / "editing" / "chat_public_message.json")
     validators["public_message"].validate(message)
     generated_message = PublicAgentMessage.model_validate(message)
-    assert generated_message.model_dump(mode="json") == message
+    generated_value = generated_message.model_dump(mode="json")
+    if generated_value["run"] is not None:
+        generated_value["run"].pop("goal_id")
+        generated_value["run"].pop("goal_revision")
+    if generated_value["patch"] is not None:
+        generated_value["patch"].pop("goal_id")
+        generated_value["patch"].pop("goal_revision")
+    assert generated_value == message
 
     leaked_message = copy.deepcopy(message)
     leaked_message["task"] = {"provider": "deepseek"}
@@ -472,6 +492,55 @@ def test_chat_public_contracts_roundtrip_and_reject_internal_fields(
         PublicRoutingFeedbackReceipt.model_validate({**feedback, "route_source": "internal-canary"})
 
 
+def test_goal_public_contracts_roundtrip_and_reject_internal_state(
+    validators: dict[str, Draft202012Validator],
+) -> None:
+    goal = {
+        "goal_id": 41,
+        "status": "running",
+        "revision": 2,
+        "waiting_for": "none",
+        "active_run_id": 73,
+        "active_patch_id": None,
+        "can_steer": True,
+        "can_follow_up": True,
+        "can_replace": True,
+        "cancellable": True,
+        "created_at": "2026-08-29T10:00:00Z",
+        "updated_at": "2026-08-29T10:01:00Z",
+    }
+    validators["public_goal"].validate(goal)
+    assert PublicGoalSession.model_validate(goal).model_dump(mode="json") == goal
+
+    delivery = {
+        "delivery_id": 91,
+        "goal_id": 41,
+        "successor_goal_id": None,
+        "mode": "steer",
+        "status": "queued",
+        "message_id": 101,
+        "response_message_id": 102,
+        "expected_goal_revision": 2,
+        "created_at": "2026-08-29T10:02:00Z",
+        "updated_at": "2026-08-29T10:02:00Z",
+    }
+    assert PublicGoalDelivery.model_validate(delivery).model_dump(mode="json") == delivery
+
+    event = {
+        "sequence": 3,
+        "event": "goal.transition",
+        "status": "running",
+        "waiting_for": "none",
+        "goal": goal,
+    }
+    assert PublicGoalEvent.model_validate(event).model_dump(mode="json") == event
+
+    leaked = {**goal, "policy_version": "internal-policy-canary"}
+    assert list(validators["public_goal"].iter_errors(leaked))
+    with pytest.raises(ValidationError):
+        PublicGoalSession.model_validate(leaked)
+
+
 def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(
     validators: dict[str, Draft202012Validator],
     registry: Registry,
@@ -484,10 +553,7 @@ def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(
     ):
         value = load_json(compiler_root / name)
         validators["compiler_manifest"].validate(value)
-        assert (
-            CompileInputManifest.model_validate(value).model_dump(mode="json")
-            == value
-        )
+        assert CompileInputManifest.model_validate(value).model_dump(mode="json") == value
 
     source_ref = load_json(compiler_root / "source_ref.json")
     artifact_ref = load_json(compiler_root / "artifact_ref.json")
@@ -532,9 +598,7 @@ def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(
         ),
     }
     for invalid_case in invalid_cases:
-        expected_layers = invalid_case.get(
-            "expected_layers", [invalid_case.get("expected_layer")]
-        )
+        expected_layers = invalid_case.get("expected_layers", [invalid_case.get("expected_layer")])
         if "schema" not in expected_layers:
             continue
         base_name = invalid_case["base_fixture"]

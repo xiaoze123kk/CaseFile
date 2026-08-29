@@ -85,6 +85,7 @@ from casefile.application.verification_engine import (
 )
 from casefile.application.verification_service import VerificationService
 from casefile.application.workbench_read_model import WorkbenchReadModel
+from casefile.application.workflow.goal_session import public_goal_delivery_view
 from casefile.application.workflow_common import (
     DEFAULT_PROVIDER,
     SUPPORTED_CHAT_VIEWS,
@@ -133,6 +134,10 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
     _provider_setting: Any
     _queue_task: Any
     _require_current_draft: Any
+    _create_goal_session: Any
+    _public_goal_session: Any
+    _queue_goal_delivery: Any
+    _resolve_goal_delivery: Any
 
     def list_agent_threads(
         self,
@@ -422,6 +427,9 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         focus: dict[str, Any] | None = None,
         routing_hint: dict[str, Any] | None = None,
         verification_trigger: str = "chat",
+        delivery_mode: str | None = None,
+        expected_goal_id: int | None = None,
+        expected_goal_revision: int | None = None,
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
         content = content.strip()
@@ -447,6 +455,12 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     "已归档的 Agent 对话不能接收新消息。",
                     status_code=409,
                 )
+            resolved_delivery_mode, goal = self._resolve_goal_delivery(
+                thread,
+                delivery_mode=delivery_mode,
+                expected_goal_id=expected_goal_id,
+                expected_goal_revision=expected_goal_revision,
+            )
             active_task = self.session.scalar(
                 select(TaskRun.id)
                 .where(
@@ -455,14 +469,22 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 )
                 .limit(1)
             )
-            if active_task is not None:
+            if active_task is not None and resolved_delivery_mode not in {
+                "steer",
+                "follow_up",
+                "replace",
+            }:
                 raise ApplicationError(
                     "agent_thread_busy",
                     "请等待当前 Agent 回复后再发送下一条消息。",
                     status_code=409,
                     details={"task_run_id": active_task},
                 )
-            setting = self._provider_setting(actor_user_id, provider)
+            setting = (
+                None
+                if resolved_delivery_mode in {"steer", "follow_up", "replace"}
+                else self._provider_setting(actor_user_id, provider)
+            )
             history = list(
                 self.session.scalars(
                     select(AgentMessage)
@@ -508,7 +530,35 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 thread.title = _auto_thread_title(content)
             now = datetime.now(UTC)
             thread.last_message_at = now
+            if resolved_delivery_mode in {"steer", "follow_up", "replace"}:
+                if goal is None:
+                    raise RuntimeError("Goal control delivery resolved without a GoalSession")
+                delivery = self._queue_goal_delivery(
+                    goal,
+                    thread_id=thread.id,
+                    source_message_id=user_message.id,
+                    response_message_id=assistant_message.id,
+                    message_sequence_no=user_message.sequence_no,
+                    mode=resolved_delivery_mode,
+                )
+                return {
+                    "thread": _agent_thread_view(thread),
+                    "user_message": _agent_message_view(user_message),
+                    "assistant_message": _agent_message_view(assistant_message),
+                    "task": None,
+                    "goal": self._public_goal_session(goal),
+                    "delivery": public_goal_delivery_view(delivery),
+                }
+
             casefile = build_casefile_document(self.session, owned)
+            if resolved_delivery_mode == "new_goal":
+                goal = self._create_goal_session(
+                    owned,
+                    thread,
+                    source_message_id=user_message.id,
+                    actor_user_id=actor_user_id,
+                    baseline_hash=casefile_content_hash(casefile),
+                )
             focus_values = focus if isinstance(focus, dict) else None
             validation_snapshot = WorkbenchReadModel(self.session).validation_snapshot(owned)
             known_issue_ids = frozenset(
@@ -549,6 +599,16 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     thread_id=thread.id,
                 ),
             }
+            if goal is not None:
+                frozen_input["goal_session"] = {
+                    "goal_id": goal.id,
+                    "goal_revision": goal.revision_count,
+                    "runtime_version": goal.runtime_version,
+                    "policy_version": goal.policy_version,
+                    "capability_registry_version": goal.capability_registry_version,
+                }
+            if setting is None:
+                raise RuntimeError("TaskRun delivery resolved without a provider setting")
             task = self._new_task(
                 owned,
                 actor_user_id=actor_user_id,
@@ -575,6 +635,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     task=task,
                 ),
                 "task": task_result,
+                "goal": None if goal is None else self._public_goal_session(goal),
+                "delivery": None,
             }
 
     def rerun_verification(
@@ -2088,11 +2150,14 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     for operation in operations
                     if operation.decision == "accepted" and operation.target_object_id in registries
                 ]
-                validator_issues = _nonblocking_validator_issues(
-                    projection_document, accepted
-                )
+                validator_issues = _nonblocking_validator_issues(projection_document, accepted)
+        source_task = self.session.get(TaskRun, patch_set.task_run_id)
+        goal_value = None if source_task is None else source_task.input_jsonb.get("goal_session")
+        goal = goal_value if isinstance(goal_value, dict) else {}
         return {
             "patch_set_id": patch_set.id,
+            "goal_id": goal.get("goal_id"),
+            "goal_revision": goal.get("goal_revision"),
             "thread_id": patch_set.thread_id,
             "source_message_id": patch_set.source_message_id,
             "task_run_id": patch_set.task_run_id,
@@ -2174,8 +2239,7 @@ def _patch_object_labels(document: dict[str, Any]) -> dict[str, dict[str, str | 
                 (
                     candidate.strip()[:240]
                     for key in ("name", "title")
-                    if isinstance((candidate := value.get(key)), str)
-                    and candidate.strip()
+                    if isinstance((candidate := value.get(key)), str) and candidate.strip()
                 ),
                 None,
             )

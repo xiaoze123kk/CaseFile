@@ -6,7 +6,7 @@ M3.8 的完整决策见 `docs/m3.8-goal-session-runtime.md`。该阶段以 `Goal
 
 运行中输入必须由用户显式标记为 `steer`、`follow_up` 或 `replace`。steer/replace 进入 FIFO 队列，仅在 Controller 前、完整 capability 后或 Finalizer 前的安全点消费；命中后当前 TaskRun 以 `succeeded + checkpointed` 收敛，再原子创建新 GoalRevision 和新 TaskRun。Provider、Binder、Simulation、Verification 与 Apply 事务不得强制中断。
 
-General Mutation、PatchSet 和 `V1EditingService` 继续拥有唯一写入权威。Patch 拒绝进入 clarification，Draft 变化进入 stale 且不自动 rebase，Apply 后的新 Draft revision 作为新 baseline；任何 Goal 自动 Apply、跨 Project、多 Agent、无限循环或模型决定 Observation 复用均被禁止。M3.8-00 只冻结设计，不代表持久化表、API 或 v18 Prompt 已实现。
+General Mutation、PatchSet 和 `V1EditingService` 继续拥有唯一写入权威。Patch 拒绝进入 clarification，Draft 变化进入 stale 且不自动 rebase，Apply 后的新 Draft revision 作为新 baseline；任何 Goal 自动 Apply、跨 Project、多 Agent、无限循环或模型决定 Observation 复用均被禁止。M3.8-02 已实现 Goal 投递/API/公共契约，但 delivery 消费、Checkpoint、安全点 continuation 和 v18 Prompt 尚未实现。
 
 ## Bounded Goal Controller 边界
 

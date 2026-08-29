@@ -4,7 +4,7 @@
 
 `docs/m3.8-goal-session-runtime.md` 是 M3.8 冻结 ADR。实现保持三层职责：`agent_runtime/goal/` 继续定义无数据库的 Goal 语义契约与单 TaskRun bounded execution；`application/goal_session_state.py` 与 `goal_session_repository.py` 拥有跨 TaskRun 的 GoalSession 状态矩阵、预算和持久化事务，后续消息/Patch continuation 接入 `application/workflow/`；`worker/handlers/` 只在安全点消费 delivery、收敛当前 TaskRun 并排队下一执行切片。
 
-M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runtime`，不在 API route 中直接读写 Goal 表，也不创建第二条 Patch/Apply 路径。M3.8-00 尚未新增运行时模块；新增、删除或重命名实际源码后，必须在对应阶段把精确路径补入本文和静态架构检查。
+M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runtime`，不在 API route 中直接读写 Goal 表，也不创建第二条 Patch/Apply 路径。新增、删除或重命名实际源码后，必须在对应阶段把精确路径补入本文和静态架构检查。
 
 ## M3.7 Bounded Goal Harness
 
@@ -64,6 +64,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
 | `backend/src/casefile/application/goal_session_state.py` | M3.8 GoalSession 的纯确定性状态转换矩阵、revision 并发门禁和会话级预算规则；不依赖数据库、API、Worker 或 Provider。 |
 | `backend/src/casefile/application/goal_session_repository.py` | M3.8 GoalSession 聚合的 SQLAlchemy 锁与持久化边界：创建 interpreting 会话、追加 Revision/Transition、绑定 TaskRun slice，并原子推进计数器和指针。 |
+| `backend/src/casefile/application/workflow/goal_session.py` | M3.8 GoalSession 的 HTTP-facing 应用用例：按 Project/Draft/Thread 归属解析显式投递、创建 Goal、持久化控制队列，并提供 Goal 查询、公共事件、取消收敛和 allowlist 投影；不消费 delivery 或创建 continuation TaskRun。 |
 | `backend/src/casefile/application/snapshot.py` | 从全部规范化当前态投影 CaseFile JSON，稳定排序、契约校验并计算 RFC 8785 SHA-256。 |
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 CaseFile v2 JSON（v1 仅历史读取兼容）与规范化当前态之间执行原子写入、增量对象创建、完整投影、契约引用映射和规范哈希。 |
@@ -73,7 +74,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile/application/logical_mutation_service.py` | 所有产品写入口可复用的通用 Mutation Preview/Apply 事务门面；只转换 DTO、锁定 Current Draft 并调用领域 Simulation 与唯一物化边界。 |
 | `backend/src/casefile/application/logical_mutation_rollout.py` | 旧 Current Draft 的只读 shadow scanner 与显式 system mechanical normalization；只修复双向投影并保留 before/after hash，不自动改写语义状态。 |
 | `backend/src/casefile/application/workflow_service.py` | `WorkflowService(session)` 稳定门面，只初始化事务依赖并组合内部工作流用例；保留既有公开方法和兼容 helper 导出，不再承载具体规则。 |
-| `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Mutation review/simulate/apply/undo，`mutation_history.py` 拥有严格栈顶 Redo，`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
+| `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Mutation review/simulate/apply/undo，`goal_session.py` 拥有 Goal 投递与公共生命周期边界，`mutation_history.py` 拥有严格栈顶 Redo，`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
 | `backend/src/casefile/application/chat_public_contracts.py` | CaseFile Chat 公共 DTO 的 allowlist 投影边界；不得输出 TaskRun、TaskEvent、原始结果或 Patch 内部字段。 |
 | `backend/src/casefile/application/chat_public_events.py` | 将内部 TaskEvent 严格映射为 Chat Public Event；未知事件必须丢弃，内部 sequence 只作为恢复游标保留。 |
 | `backend/src/casefile/application/workflow_common.py` | Workflow 用例共享的稳定默认配置、TaskRun 创建、冻结输入和小型事务 helper；不拥有 HTTP DTO 或 Worker 编排。 |

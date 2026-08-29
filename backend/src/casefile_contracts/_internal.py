@@ -928,6 +928,98 @@ class PublicAgentFailure(BaseModel):
 
 
 class Status2(StrEnum):
+    interpreting = 'interpreting'
+    running = 'running'
+    waiting_clarification = 'waiting_clarification'
+    waiting_patch_review = 'waiting_patch_review'
+    stale = 'stale'
+    completed = 'completed'
+    cancelled = 'cancelled'
+    superseded = 'superseded'
+    failed = 'failed'
+
+
+class WaitingFor(StrEnum):
+    none = 'none'
+    clarification = 'clarification'
+    patch_review = 'patch_review'
+    stale = 'stale'
+
+
+class PublicGoalSession(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    goal_id: Annotated[int, Field(ge=1)]
+    status: Annotated[Status2, Field(title='PublicGoalStatus')]
+    revision: Annotated[int, Field(ge=0)]
+    waiting_for: Annotated[WaitingFor, Field(title='PublicGoalWaitingFor')]
+    active_run_id: Annotated[int | None, Field(ge=1)]
+    active_patch_id: Annotated[int | None, Field(ge=1)]
+    can_steer: bool
+    can_follow_up: bool
+    can_replace: bool
+    cancellable: bool
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class Mode(StrEnum):
+    steer = 'steer'
+    follow_up = 'follow_up'
+    replace_ = 'replace'
+
+
+class Status3(StrEnum):
+    queued = 'queued'
+    claimed = 'claimed'
+    consumed = 'consumed'
+    cancelled = 'cancelled'
+
+
+class PublicGoalDelivery(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    delivery_id: Annotated[int, Field(ge=1)]
+    goal_id: Annotated[int, Field(ge=1)]
+    successor_goal_id: Annotated[int | None, Field(ge=1)] = None
+    mode: Annotated[Mode, Field(title='PublicGoalDeliveryMode')]
+    status: Annotated[Status3, Field(title='PublicGoalDeliveryStatus')]
+    message_id: Annotated[int, Field(ge=1)]
+    response_message_id: Annotated[int, Field(ge=1)]
+    expected_goal_revision: Annotated[int, Field(ge=1)]
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class Status4(StrEnum):
+    interpreting = 'interpreting'
+    running = 'running'
+    waiting_clarification = 'waiting_clarification'
+    waiting_patch_review = 'waiting_patch_review'
+    stale = 'stale'
+    completed = 'completed'
+    cancelled = 'cancelled'
+    superseded = 'superseded'
+    failed = 'failed'
+
+
+class PublicGoalEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['goal.transition']
+    status: Annotated[Status4, Field(title='PublicGoalEventStatus')]
+    waiting_for: Annotated[WaitingFor, Field(title='PublicGoalEventWaitingFor')]
+    goal: PublicGoalSession
+
+
+class Status5(StrEnum):
     queued = 'queued'
     running = 'running'
     cancelling = 'cancelling'
@@ -951,7 +1043,9 @@ class PublicAgentRun(BaseModel):
         populate_by_name=True,
     )
     run_id: Annotated[int, Field(ge=1)]
-    status: Annotated[Status2, Field(title='PublicRunStatus')]
+    goal_id: Annotated[int | None, Field(ge=1)] = None
+    goal_revision: Annotated[int | None, Field(ge=0)] = None
+    status: Annotated[Status5, Field(title='PublicRunStatus')]
     activity: Annotated[Activity, Field(title='PublicAgentActivity')]
     cancellable: bool
     failure: PublicAgentFailure | None
@@ -1091,7 +1185,7 @@ class PublicPatchActions(BaseModel):
     can_redo: bool
 
 
-class Status3(StrEnum):
+class Status6(StrEnum):
     pending = 'pending'
     applied = 'applied'
     undone = 'undone'
@@ -1110,9 +1204,11 @@ class PublicPatchSet(BaseModel):
         populate_by_name=True,
     )
     patch_id: Annotated[int, Field(ge=1)]
+    goal_id: Annotated[int | None, Field(ge=1)] = None
+    goal_revision: Annotated[int | None, Field(ge=0)] = None
     title: Annotated[str, Field(max_length=200, min_length=1)]
     summary: Annotated[str, Field(max_length=1200, min_length=1)]
-    status: Annotated[Status3, Field(title='PublicPatchStatus')]
+    status: Annotated[Status6, Field(title='PublicPatchStatus')]
     review_rule: Annotated[ReviewRule, Field(title='PublicPatchReviewRule')]
     base_revision: Annotated[int, Field(ge=0)]
     impact: PublicPatchImpact
@@ -1160,10 +1256,11 @@ class Role(StrEnum):
     assistant = 'assistant'
 
 
-class Status4(StrEnum):
+class Status7(StrEnum):
     pending = 'pending'
     completed = 'completed'
     failed = 'failed'
+    cancelled = 'cancelled'
 
 
 class ResponseKind(StrEnum):
@@ -1314,7 +1411,7 @@ class TaskType(StrEnum):
     idea_generation = 'idea_generation'
 
 
-class Status5(StrEnum):
+class Status8(StrEnum):
     queued = 'queued'
     running = 'running'
     cancelling = 'cancelling'
@@ -1405,7 +1502,7 @@ class AgentDiagnosticIssue(BaseModel):
     message: Annotated[str, Field(max_length=240, min_length=1)]
 
 
-class Status6(StrEnum):
+class Status9(StrEnum):
     pending = 'pending'
     running = 'running'
     succeeded = 'succeeded'
@@ -1424,7 +1521,7 @@ class AgentComponentStepView(BaseModel):
     component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     parent_component_id: str | None
     execution_no: Annotated[int, Field(ge=1)]
-    status: Status6
+    status: Status9
     schema_id: Annotated[str, Field(min_length=1)]
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
     output_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')]
@@ -1487,7 +1584,7 @@ class TaskRun(BaseModel):
     task_run_id: Annotated[int, Field(ge=1)]
     project_id: Annotated[int, Field(ge=1)]
     task_type: TaskType
-    status: Status5
+    status: Status8
     stage: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     provider: Provider | None
     model_id: ModelId | None
@@ -2178,7 +2275,7 @@ class ChapterExecution(BaseModel):
     scene_ids: Annotated[list[SceneId], Field(min_length=1)]
 
 
-class Status7(Enum):
+class Status10(Enum):
     introduced = 'introduced'
     reinforced = 'reinforced'
     reinterpreted = 'reinterpreted'
@@ -2190,7 +2287,7 @@ class AudienceExposure(BaseModel):
         populate_by_name=True,
     )
     entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-    status: Status7
+    status: Status10
     first_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
     last_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
 
@@ -3290,7 +3387,7 @@ class PublicAgentMessage(BaseModel):
     message_id: Annotated[int, Field(ge=1)]
     sequence: Annotated[int, Field(ge=1)]
     role: Annotated[Role, Field(title='PublicMessageRole')]
-    status: Annotated[Status4, Field(title='PublicMessageStatus')]
+    status: Annotated[Status7, Field(title='PublicMessageStatus')]
     response_kind: Annotated[ResponseKind, Field(title='PublicResponseKind')]
     body: Annotated[str | None, Field(max_length=20000)]
     interpretation: PublicRoutingInterpretation | None
@@ -3309,6 +3406,8 @@ class PublicAgentMessageReceipt(BaseModel):
     )
     user_message: PublicAgentMessage
     assistant_message: PublicAgentMessage
+    goal: PublicGoalSession | None = None
+    delivery: PublicGoalDelivery | None = None
 
 
 class NarrativeCase(BaseModel):
@@ -3566,6 +3665,9 @@ class Schema_2(BaseModel):
     routing_feedback: PublicRoutingFeedbackReceipt
     run: PublicAgentRun
     event: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7
+    goal_session: PublicGoalSession
+    goal_delivery: PublicGoalDelivery
+    goal_event: PublicGoalEvent
     patch_set: PublicPatchSet
     patch_review: PublicPatchReviewResult
     patch_response: PublicPatchResponse

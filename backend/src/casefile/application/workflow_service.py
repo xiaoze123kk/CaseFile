@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from casefile.application.task_events import append_task_event
 from casefile.application.workflow.agent import AgentWorkflowMixin
 from casefile.application.workflow.content import ContentWorkflowMixin
+from casefile.application.workflow.goal_session import GoalSessionWorkflowMixin
 from casefile.application.workflow.mutation_history import AgentMutationHistoryMixin
 from casefile.application.workflow_common import (
     DEFAULT_BUDGET,
@@ -28,7 +29,12 @@ from casefile.application.workflow_views import (
 from casefile.data_postgres.repositories import ProjectRepository
 
 
-class WorkflowService(ContentWorkflowMixin, AgentWorkflowMixin, AgentMutationHistoryMixin):
+class WorkflowService(
+    ContentWorkflowMixin,
+    GoalSessionWorkflowMixin,
+    AgentWorkflowMixin,
+    AgentMutationHistoryMixin,
+):
     """Transactional facade for the user-visible Agent generation workflow."""
 
     def __init__(self, session: Session) -> None:

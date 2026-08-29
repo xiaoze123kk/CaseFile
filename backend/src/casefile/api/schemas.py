@@ -221,6 +221,19 @@ class AgentMessageCreateRequest(StrictRequest):
     provider: Literal["openai", "deepseek"] = "openai"
     focus: AgentChatFocus | None = None
     routing_hint: AgentChatRoutingHint | None = None
+    delivery_mode: Literal["new_goal", "steer", "follow_up", "replace"] | None = None
+    expected_goal_id: int | None = Field(default=None, ge=1)
+    expected_goal_revision: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def goal_delivery_shape(self) -> Self:
+        control_modes = {"steer", "follow_up", "replace"}
+        if self.delivery_mode in control_modes:
+            if self.expected_goal_id is None or self.expected_goal_revision is None:
+                raise ValueError("steer, follow_up, and replace require expected Goal identity")
+        elif self.expected_goal_id is not None or self.expected_goal_revision is not None:
+            raise ValueError("expected Goal identity requires a control delivery mode")
+        return self
 
 
 class AgentRoutingFeedbackRequest(StrictRequest):
