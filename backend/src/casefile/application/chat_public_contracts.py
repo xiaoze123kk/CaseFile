@@ -165,10 +165,16 @@ def public_patch_review_view(value: dict[str, Any]) -> PublicPatchReviewResult:
 
 
 def public_patch_response_view(value: dict[str, Any]) -> PublicPatchResponse:
+    goal = value.get("goal")
+    continuation = value.get("continuation_run")
     return PublicPatchResponse(
         patch=public_patch_set_view(value),
         review=public_patch_review_view(value),
         revision=int(value.get("draft_revision") or value.get("base_draft_revision") or 0),
+        goal=None if goal is None else PublicGoalSession.model_validate(goal),
+        continuation_run=(
+            None if continuation is None else public_agent_run_view(continuation)
+        ),
     )
 
 

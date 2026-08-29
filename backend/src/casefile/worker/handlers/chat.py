@@ -361,6 +361,24 @@ class ChatHandler:
                         "obligation_count": len(frozen.obligations),
                     },
                 )
+                if (
+                    runtime.mode == "active"
+                    and isinstance(task.input_jsonb.get("goal_session"), dict)
+                    and (
+                        "goal_ambiguous" in qualification.reason_codes
+                        or "goal_missing_info" in qualification.reason_codes
+                    )
+                ):
+                    self._chat._initialize_goal_task(task.id, frozen)
+                    self._chat._pause_goal_for_clarification(
+                        task.id,
+                        context.attempt_id,
+                        missing_info=list(interpreted.candidate.missing_info),
+                        usage=interpreted.usage,
+                    )
+                    context.state.candidate = {"waiting_clarification": True}
+                    context.state.usage = interpreted.usage
+                    return True
                 return False
             if (
                 any(item.kind == "mutation_proposal" for item in frozen.obligations)
@@ -719,6 +737,13 @@ class ChatHandler:
             repair_envelope=repair_envelope,
             repair_usage=None,
             general_mutation_envelope=mutation_envelope,
+            frozen_goal=frozen,
+            goal_checkpoint=GoalExecutionCheckpoint(
+                obligations_hash=frozen.obligations_hash,
+                observations=list(execution.observations),
+                completion=execution.completion,
+                mutation_proof=execution.mutation_proof,
+            ),
         )
         context.state.candidate = execution.result.candidate.model_dump(mode="json")
         context.state.usage = execution.usage

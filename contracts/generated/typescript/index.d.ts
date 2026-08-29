@@ -854,6 +854,8 @@ export interface PublicPatchResponse {
   patch: PublicPatchSet;
   review: PublicPatchReviewResult;
   revision: number;
+  goal: PublicGoalSession | null;
+  continuation_run: PublicAgentRun | null;
 }
 export interface TaskRun {
   task_run_id: number;

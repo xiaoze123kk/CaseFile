@@ -9908,6 +9908,26 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Revision"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicGoalSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "continuation_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicAgentRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -9915,7 +9935,9 @@
         "required": [
           "patch",
           "review",
-          "revision"
+          "revision",
+          "goal",
+          "continuation_run"
         ],
         "title": "PublicPatchResponse"
       },

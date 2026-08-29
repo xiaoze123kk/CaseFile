@@ -1249,6 +1249,8 @@ class PublicPatchResponse(BaseModel):
     patch: PublicPatchSet
     review: PublicPatchReviewResult
     revision: Annotated[int, Field(ge=0)]
+    goal: PublicGoalSession | None
+    continuation_run: PublicAgentRun | None
 
 
 class Role(StrEnum):

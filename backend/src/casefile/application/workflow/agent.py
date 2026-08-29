@@ -6,7 +6,6 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import PublicAgentEvent, PublicAgentRun
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -27,6 +26,7 @@ from casefile.agent_runtime.chat_reference_autofill import (
     autofill_chat_references,
     reference_autofill_enabled,
 )
+from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
 from casefile.application.agent_collaboration import (
     auto_thread_title as _auto_thread_title,
 )
@@ -74,6 +74,7 @@ from casefile.application.closure_repair import (
     repair_completion_payload,
 )
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.goal_session_repository import GoalSessionRepository
 from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
     finalize_task_cancellation,
@@ -85,7 +86,7 @@ from casefile.application.verification_engine import (
 )
 from casefile.application.verification_service import VerificationService
 from casefile.application.workbench_read_model import WorkbenchReadModel
-from casefile.application.workflow.goal_session import public_goal_delivery_view
+from casefile.application.workflow.goal_session import _task_goal_id, public_goal_delivery_view
 from casefile.application.workflow_common import (
     DEFAULT_PROVIDER,
     SUPPORTED_CHAT_VIEWS,
@@ -105,6 +106,7 @@ from casefile.application.workflow_views import (
 from casefile.application.workflow_views import agent_thread_view as _agent_thread_view
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
+    AgentGoalSession,
     AgentMessage,
     AgentPatchOperation,
     AgentPatchSet,
@@ -124,6 +126,7 @@ from casefile.domain.logical_mutation import (
     MutationSet,
     UpdateField,
 )
+from casefile_contracts import PublicAgentEvent, PublicAgentRun
 
 
 class AgentWorkflowMixin(AgentPatchMutationMixin):
@@ -139,6 +142,12 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
     _queue_goal_delivery: Any
     _resolve_goal_delivery: Any
     _finalize_agent_goal_task_success: Any
+    _cancel_agent_goal_aggregate: Any
+    _reject_agent_goal_patch: Any
+    _mark_agent_goal_patch_stale: Any
+    _queue_post_apply_goal_audit: Any
+    _goal_for_patch_set: Any
+    _continue_waiting_goal_delivery: Any
 
     def list_agent_threads(
         self,
@@ -362,6 +371,14 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 run_id,
                 lock=True,
             )
+            goal_id = _task_goal_id(task)
+            if goal_id is not None:
+                goal = GoalSessionRepository(self.session).get_for_update(
+                    project_id=task.project_id,
+                    goal_session_id=goal_id,
+                )
+                self._cancel_agent_goal_aggregate(goal, now=datetime.now(UTC))
+                return public_agent_run_view(_task_view(task))
             if task.status not in TERMINAL_TASK_STATUSES:
                 now = datetime.now(UTC)
                 if task.cancel_requested_at is None:
@@ -542,6 +559,32 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     message_sequence_no=user_message.sequence_no,
                     mode=resolved_delivery_mode,
                 )
+                if resolved_delivery_mode == "steer" and goal.status in {
+                    "waiting_clarification",
+                    "stale",
+                }:
+                    casefile = build_casefile_document(self.session, owned)
+                    continuation = self._continue_waiting_goal_delivery(
+                        owned=owned,
+                        thread=thread,
+                        goal=goal,
+                        delivery=delivery,
+                        current_document=casefile,
+                        validation_snapshot=WorkbenchReadModel(
+                            self.session
+                        ).validation_snapshot(owned),
+                    )
+                    return {
+                        "thread": _agent_thread_view(thread),
+                        "user_message": _agent_message_view(user_message),
+                        "assistant_message": _agent_message_view(
+                            assistant_message,
+                            task=continuation,
+                        ),
+                        "task": _task_view(continuation),
+                        "goal": self._public_goal_session(goal),
+                        "delivery": public_goal_delivery_view(delivery),
+                    }
                 return {
                     "thread": _agent_thread_view(thread),
                     "user_message": _agent_message_view(user_message),
@@ -813,6 +856,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         tools: dict[str, Any] | None = None,
         repair_envelope: dict[str, Any] | None = None,
         general_mutation_envelope: dict[str, Any] | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        goal_checkpoint: GoalExecutionCheckpoint | None = None,
     ) -> dict[str, Any]:
         """Persist one structured chat result; intended as the Worker completion hook."""
 
@@ -1247,7 +1292,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             if routing_summary is not None:
                 routing_summary["tool_metrics"] = tool_metrics
             verification_trigger = str(task.input_jsonb.get("verification_trigger", "chat"))
-            if verification_trigger not in {"chat", "manual"}:
+            if verification_trigger not in {"chat", "manual", "post_apply"}:
                 raise RuntimeError("CaseFile chat TaskRun has an invalid verification trigger")
             verification_observation = VerificationService(self.session).record_chat_result(
                 owned=owned,
@@ -1360,7 +1405,13 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
-            self._finalize_agent_goal_task_success(task, now=now)
+            self._finalize_agent_goal_task_success(
+                task,
+                now=now,
+                patch_set=patch_set,
+                frozen_goal=frozen_goal,
+                checkpoint=goal_checkpoint,
+            )
             if route is not None:
                 assert routing_summary is not None
                 _append_event(
@@ -1416,6 +1467,27 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         accepted_debt_finding_keys: list[str] | None = None,
         debt_acceptance_reason: str | None = None,
     ) -> dict[str, Any]:
+        stale_details: dict[str, int] | None = None
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            patch_set = self._agent_patch_set(owned, patch_set_id, lock=True)
+            if patch_set.status == "pending" and (
+                owned.draft.id != expected_draft_id
+                or owned.draft.revision != expected_revision
+                or owned.draft.revision != patch_set.base_draft_revision
+            ):
+                stale_details = {
+                    "current_revision": owned.draft.revision,
+                    "base_revision": patch_set.base_draft_revision,
+                }
+                self._mark_agent_goal_patch_stale(patch_set)
+        if stale_details is not None:
+            raise ApplicationError(
+                "agent_patch_stale",
+                "生成这条建议后，CaseFile 已发生变化。",
+                status_code=409,
+                details=stale_details,
+            )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             patch_set = self._agent_patch_set(owned, patch_set_id, lock=True)
@@ -1470,6 +1542,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     operation.decision = "rejected"
                     operation.reviewed_at = reviewed_at
                 patch_set.status = "rejected"
+                goal = self._reject_agent_goal_patch(patch_set)
                 self.session.flush()
                 return {
                     **self._patch_set_view(
@@ -1479,6 +1552,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                         validator_issues=[],
                     ),
                     "draft_revision": owned.draft.revision,
+                    "goal": None if goal is None else self._public_goal_session(goal),
+                    "continuation_run": None,
                 }
             registries = {
                 row.id: row
@@ -1644,6 +1719,17 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 else None
             )
             validator_issues = _nonblocking_validator_issues(current_document, applied)
+            continuation = self._queue_post_apply_goal_audit(
+                owned=owned,
+                patch_set=patch_set,
+                current_document=current_document,
+                validation_snapshot=WorkbenchReadModel(self.session).validation_snapshot(owned),
+            )
+            goal = self._goal_for_patch_set(patch_set)
+            if goal is None and continuation is not None:
+                goal_id = _task_goal_id(continuation)
+                if goal_id is not None:
+                    goal = self.session.get(AgentGoalSession, goal_id)
             self.session.flush()
             return {
                 **self._patch_set_view(
@@ -1657,6 +1743,10 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 "pre_apply_verification_run_id": None if pre_run is None else pre_run.id,
                 "post_apply_verification_run_id": None if post_run is None else post_run.id,
                 "simulation": applied_simulation.as_dict(),
+                "goal": None if goal is None else self._public_goal_session(goal),
+                "continuation_run": (
+                    None if continuation is None else _task_view(continuation)
+                ),
             }
 
     def simulate_agent_patch_set(

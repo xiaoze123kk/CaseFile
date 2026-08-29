@@ -1698,6 +1698,8 @@ class ChatCompletionRuntime(_ChatComponent):
         repair_envelope: dict[str, Any] | None = None,
         repair_usage: dict[str, Any] | None = None,
         general_mutation_envelope: dict[str, Any] | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        goal_checkpoint: GoalExecutionCheckpoint | None = None,
     ) -> None:
         suggestions: list[dict[str, Any]] = []
         for suggestion in result.candidate.suggestions:
@@ -1751,6 +1753,8 @@ class ChatCompletionRuntime(_ChatComponent):
                 tools=result.tools.as_dict(),
                 repair_envelope=repair_envelope,
                 general_mutation_envelope=general_mutation_envelope,
+                frozen_goal=frozen_goal,
+                goal_checkpoint=goal_checkpoint,
             )
 
 
@@ -1787,6 +1791,22 @@ class ChatTaskExecutor:
     def _goal_control_pending(self, task_run_id: int) -> bool:
         with self._context.session_factory() as session:
             return WorkflowService(session).has_pending_agent_goal_control(task_run_id)
+
+    def _pause_goal_for_clarification(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        missing_info: list[str],
+        usage: dict[str, Any],
+    ) -> None:
+        with self._context.session_factory() as session:
+            WorkflowService(session).pause_agent_goal_task_for_clarification(
+                task_run_id,
+                attempt_id,
+                missing_info=missing_info,
+                usage=usage,
+            )
 
     def _checkpoint_goal_task(
         self,
@@ -1898,6 +1918,8 @@ class ChatTaskExecutor:
         repair_envelope: dict[str, Any] | None = None,
         repair_usage: dict[str, Any] | None = None,
         general_mutation_envelope: dict[str, Any] | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        goal_checkpoint: GoalExecutionCheckpoint | None = None,
     ) -> None:
         self._completion._complete_chat(
             task_run_id,
@@ -1907,6 +1929,8 @@ class ChatTaskExecutor:
             repair_envelope=repair_envelope,
             repair_usage=repair_usage,
             general_mutation_envelope=general_mutation_envelope,
+            frozen_goal=frozen_goal,
+            goal_checkpoint=goal_checkpoint,
         )
 
 

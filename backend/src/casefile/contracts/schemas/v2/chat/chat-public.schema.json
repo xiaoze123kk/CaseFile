@@ -413,11 +413,23 @@
     "PublicPatchResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["patch", "review", "revision"],
+      "required": ["patch", "review", "revision", "goal", "continuation_run"],
       "properties": {
         "patch": {"$ref": "#/$defs/PublicPatchSet"},
         "review": {"$ref": "#/$defs/PublicPatchReviewResult"},
-        "revision": {"type": "integer", "minimum": 0}
+        "revision": {"type": "integer", "minimum": 0},
+        "goal": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicGoalSession"},
+            {"type": "null"}
+          ]
+        },
+        "continuation_run": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicAgentRun"},
+            {"type": "null"}
+          ]
+        }
       }
     },
     "PublicAgentMessage": {

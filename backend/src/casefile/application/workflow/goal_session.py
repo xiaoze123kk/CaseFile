@@ -6,12 +6,16 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
+from casefile.agent_runtime.goal.contracts import (
+    FrozenGoal,
+    GoalExecutionCheckpoint,
+    GoalObligation,
+)
 from casefile.agent_runtime.goal.policy import stable_hash
+from casefile.application.casefile_v1 import casefile_content_hash
 from casefile.application.errors import ApplicationError
 from casefile.application.goal_session_repository import GoalSessionRepository
 from casefile.application.goal_session_state import (
@@ -28,17 +32,20 @@ from casefile.application.workflow_common import _append_event, _json_hash
 from casefile.data_postgres.models import (
     AgentGoalDelivery,
     AgentGoalObligation,
+    AgentGoalObligationDependency,
     AgentGoalObservation,
     AgentGoalRevision,
     AgentGoalSession,
     AgentGoalTaskRun,
     AgentGoalTransition,
     AgentMessage,
+    AgentPatchSet,
     AgentThread,
     TaskAttempt,
     TaskRun,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
 
 _CONTROL_MODES = frozenset({"steer", "follow_up", "replace"})
 _ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
@@ -48,6 +55,7 @@ _WAITING_BY_STATUS = {
     "stale": "stale",
 }
 GOAL_CHECKPOINTED_PUBLIC_MESSAGE = "已保存当前进度，并将按你的新要求继续处理。"
+GOAL_CLARIFICATION_PUBLIC_PREFIX = "继续处理前还需要你补充："
 
 
 class GoalSessionWorkflowMixin:
@@ -108,79 +116,88 @@ class GoalSessionWorkflowMixin:
             goal = self._goal_session(owned, goal_id, lock=True)
             if goal.status in TERMINAL_GOAL_STATUSES:
                 return self._public_goal_session(goal)
-
-            now = datetime.now(UTC)
-            deliveries = list(
-                self.session.scalars(
-                    select(AgentGoalDelivery)
-                    .where(
-                        AgentGoalDelivery.goal_session_id == goal.id,
-                        AgentGoalDelivery.status.in_(("queued", "claimed")),
-                    )
-                    .with_for_update()
-                )
-            )
-            for delivery in deliveries:
-                delivery.status = "cancelled"
-                delivery.cancelled_at = now
-                delivery.reason_code = "goal_cancelled"
-                response = self.session.get(AgentMessage, delivery.response_message_id)
-                if response is not None and response.status == "pending":
-                    response.status = "cancelled"
-                    response.content_text = None
-
-            tasks = self._goal_tasks(goal, lock=True)
-            for task in tasks:
-                if task.status in TERMINAL_TASK_STATUSES:
-                    continue
-                if task.cancel_requested_at is None:
-                    task.cancel_requested_at = now
-                if task.status == "queued":
-                    finalize_task_cancellation(self.session, task, now=now)
-                    output = (
-                        None
-                        if task.output_message_id is None
-                        else self.session.get(AgentMessage, task.output_message_id)
-                    )
-                    if output is not None:
-                        output.status = "cancelled"
-                        output.content_text = None
-                    _append_event(
-                        self.session,
-                        task,
-                        "task.cancelled",
-                        "cancelled",
-                        {"message": "Goal 已取消，任务尚未开始生成。"},
-                    )
-                elif task.status == "running":
-                    task.status = "cancelling"
-                    task.stage = "cancelling"
-                    _append_event(
-                        self.session,
-                        task,
-                        "task.cancel_requested",
-                        "cancelling",
-                        {"message": "Goal 已取消，正在安全结束当前步骤。"},
-                    )
-
-            try:
-                GoalSessionRepository(self.session).transition(
-                    goal,
-                    target_status="cancelled",
-                    reason_code="user_cancelled",
-                    state_hash=_json_hash(
-                        {
-                            "goal_session_id": goal.id,
-                            "status": "cancelled",
-                            "reason": "user_cancelled",
-                        }
-                    ),
-                    goal_revision_id=goal.current_revision_id,
-                    source_message_id=goal.source_message_id,
-                )
-            except GoalSessionStateError as exc:
-                raise _goal_state_error(exc) from exc
+            self._cancel_agent_goal_aggregate(goal, now=datetime.now(UTC))
             return self._public_goal_session(goal)
+
+    def _cancel_agent_goal_aggregate(
+        self,
+        goal: AgentGoalSession,
+        *,
+        now: datetime,
+    ) -> None:
+        """Single cancellation authority shared by Goal and TaskRun endpoints."""
+
+        if goal.status in TERMINAL_GOAL_STATUSES:
+            return
+        deliveries = list(
+            self.session.scalars(
+                select(AgentGoalDelivery)
+                .where(
+                    AgentGoalDelivery.goal_session_id == goal.id,
+                    AgentGoalDelivery.status.in_(("queued", "claimed")),
+                )
+                .with_for_update()
+            )
+        )
+        for delivery in deliveries:
+            delivery.status = "cancelled"
+            delivery.cancelled_at = now
+            delivery.reason_code = "goal_cancelled"
+            response = self.session.get(AgentMessage, delivery.response_message_id)
+            if response is not None and response.status == "pending":
+                response.status = "cancelled"
+                response.content_text = None
+
+        for task in self._goal_tasks(goal, lock=True):
+            if task.status in TERMINAL_TASK_STATUSES:
+                continue
+            if task.cancel_requested_at is None:
+                task.cancel_requested_at = now
+            if task.status == "queued":
+                finalize_task_cancellation(self.session, task, now=now)
+                output = (
+                    None
+                    if task.output_message_id is None
+                    else self.session.get(AgentMessage, task.output_message_id)
+                )
+                if output is not None:
+                    output.status = "cancelled"
+                    output.content_text = None
+                _append_event(
+                    self.session,
+                    task,
+                    "task.cancelled",
+                    "cancelled",
+                    {"message": "Goal 已取消，任务尚未开始生成。"},
+                )
+            elif task.status == "running":
+                task.status = "cancelling"
+                task.stage = "cancelling"
+                _append_event(
+                    self.session,
+                    task,
+                    "task.cancel_requested",
+                    "cancelling",
+                    {"message": "Goal 已取消，正在安全结束当前步骤。"},
+                )
+
+        try:
+            GoalSessionRepository(self.session).transition(
+                goal,
+                target_status="cancelled",
+                reason_code="user_cancelled",
+                state_hash=_json_hash(
+                    {
+                        "goal_session_id": goal.id,
+                        "status": "cancelled",
+                        "reason": "user_cancelled",
+                    }
+                ),
+                goal_revision_id=goal.current_revision_id,
+                source_message_id=goal.source_message_id,
+            )
+        except GoalSessionStateError as exc:
+            raise _goal_state_error(exc) from exc
 
     def initialize_agent_goal_task(
         self,
@@ -268,6 +285,112 @@ class GoalSessionWorkflowMixin:
                 goal_revision_id=revision.id,
                 source_message_id=source.id,
                 task_run_id=task.id,
+            )
+
+    def pause_agent_goal_task_for_clarification(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        missing_info: list[str],
+        usage: dict[str, Any],
+    ) -> None:
+        """Finish interpretation without executing capabilities and wait for user input."""
+
+        details = [item.strip() for item in missing_info if item.strip()]
+        answer = GOAL_CLARIFICATION_PUBLIC_PREFIX + (
+            "；".join(details) if details else "请明确目标、对象和预期结果。"
+        )
+        with self.session.begin():
+            task = self.session.scalar(
+                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+            )
+            attempt = self.session.scalar(
+                select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
+            )
+            if task is None or attempt is None or attempt.task_run_id != task.id:
+                raise RuntimeError("Goal clarification TaskRun disappeared")
+            if task.status != "running" or attempt.status != "running":
+                raise RuntimeError("Goal clarification no longer owns a running TaskRun")
+            goal_id = _task_goal_id(task)
+            if goal_id is None:
+                raise RuntimeError("Goal clarification TaskRun has no GoalSession lineage")
+            repository = GoalSessionRepository(self.session)
+            goal = repository.get_for_update(
+                project_id=task.project_id,
+                goal_session_id=goal_id,
+            )
+            binding = self.session.scalar(
+                select(AgentGoalTaskRun)
+                .where(
+                    AgentGoalTaskRun.goal_session_id == goal.id,
+                    AgentGoalTaskRun.task_run_id == task.id,
+                    AgentGoalTaskRun.status == "active",
+                )
+                .with_for_update()
+            )
+            output = self.session.get(AgentMessage, task.output_message_id)
+            thread = self.session.get(AgentThread, task.agent_thread_id)
+            if binding is None or output is None or thread is None:
+                raise RuntimeError("Goal clarification lineage disappeared")
+            now = datetime.now(UTC)
+            output.status = "completed"
+            output.content_text = answer
+            thread.last_message_at = now
+            binding.status = "completed"
+            binding.finished_at = now
+            result: dict[str, Any] = {
+                "answer": answer,
+                "referenced_object_ids": [],
+                "referenced_event_ids": [],
+                "referenced_validation_issue_ids": [],
+                "suggested_view": None,
+                "patch_set_id": None,
+                "stale": False,
+                "audit_findings": [],
+                "tool_metrics": {},
+                "waiting_clarification": True,
+            }
+            attempt.status = "succeeded"
+            attempt.candidate_jsonb = result
+            attempt.validation_errors_jsonb = []
+            attempt.usage_jsonb = usage
+            attempt.finished_at = now
+            task.status = "succeeded"
+            task.stage = "waiting_clarification"
+            task.usage_jsonb = usage
+            task.result_jsonb = result
+            task.completed_at = now
+            task.leased_by = None
+            task.lease_expires_at = None
+            repository.transition(
+                goal,
+                target_status="waiting_clarification",
+                reason_code="goal_missing_info",
+                state_hash=stable_hash(
+                    {
+                        "goal_id": goal.id,
+                        "goal_revision_id": goal.current_revision_id,
+                        "missing_info": details,
+                    }
+                ),
+                goal_revision_id=goal.current_revision_id,
+                source_message_id=goal.source_message_id,
+                task_run_id=task.id,
+            )
+            _append_event(
+                self.session,
+                task,
+                "goal.waiting_clarification",
+                "waiting_clarification",
+                {"missing_info": details},
+            )
+            _append_event(
+                self.session,
+                task,
+                "task.succeeded",
+                "waiting_clarification",
+                {"message": answer, "task_type": task.task_type},
             )
 
     def has_pending_agent_goal_control(self, task_run_id: int) -> bool:
@@ -570,6 +693,7 @@ class GoalSessionWorkflowMixin:
         binding: AgentGoalTaskRun,
         task: TaskRun,
         checkpoint: GoalExecutionCheckpoint,
+        patch_set: AgentPatchSet | None = None,
     ) -> None:
         obligations = {
             row.obligation_key: row
@@ -605,9 +729,8 @@ class GoalSessionWorkflowMixin:
                 )
                 if already_persisted is not None:
                     continue
-                if observation.capability == "propose_mutation":
-                    # PatchSet identity is introduced by the M3.8-04 review boundary.
-                    continue
+                if observation.capability == "propose_mutation" and patch_set is None:
+                    raise RuntimeError("Mutation observation requires a PatchSet identity")
                 self.session.add(
                     AgentGoalObservation(
                         project_id=goal.project_id,
@@ -626,7 +749,12 @@ class GoalSessionWorkflowMixin:
                         upstream_hash=upstream_hash,
                         output_hash=observation.output_hash,
                         candidate_hash=observation.candidate_hash,
-                        patch_set_id=None,
+                        patch_set_id=(
+                            patch_set.id
+                            if observation.capability == "propose_mutation"
+                            and patch_set is not None
+                            else None
+                        ),
                         verification_run_id=None,
                         reused_from_observation_id=None,
                         summary_text=observation.summary,
@@ -634,7 +762,15 @@ class GoalSessionWorkflowMixin:
                 )
             prior_outputs.append(observation.output_hash)
 
-    def _finalize_agent_goal_task_success(self, task: TaskRun, *, now: datetime) -> None:
+    def _finalize_agent_goal_task_success(
+        self,
+        task: TaskRun,
+        *,
+        now: datetime,
+        patch_set: AgentPatchSet | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        checkpoint: GoalExecutionCheckpoint | None = None,
+    ) -> None:
         """Project a successful final slice to its binding and GoalSession."""
 
         goal_id = _task_goal_id(task)
@@ -658,25 +794,283 @@ class GoalSessionWorkflowMixin:
         if binding is not None:
             if binding.status != "active":
                 raise RuntimeError("Final Goal TaskRun binding is not active")
+            if frozen_goal is None or checkpoint is None:
+                raise RuntimeError("Goal completion requires its frozen Goal checkpoint")
+            if checkpoint.obligations_hash != frozen_goal.obligations_hash:
+                raise RuntimeError("Goal completion checkpoint does not match its revision")
+            self._persist_goal_checkpoint_observations(
+                goal=goal,
+                binding=binding,
+                task=task,
+                checkpoint=checkpoint,
+                patch_set=patch_set,
+            )
             binding.status = "completed"
             binding.finished_at = now
-        reason_code = "goal_completed" if binding is not None else "single_turn_fallback"
+        waiting_for_patch = False
+        if patch_set is not None and patch_set.status == "pending":
+            waiting_for_patch = True
+            goal.active_patch_set_id = patch_set.id
+        target_status = "waiting_patch_review" if waiting_for_patch else "completed"
+        reason_code = (
+            "goal_waiting_patch_review"
+            if waiting_for_patch
+            else ("goal_completed" if binding is not None else "single_turn_fallback")
+        )
         repository.transition(
             goal,
-            target_status="completed",
+            target_status=target_status,
             reason_code=reason_code,
             state_hash=stable_hash(
                 {
                     "goal_id": goal.id,
-                    "status": "completed",
+                    "status": target_status,
                     "task_run_id": task.id,
                     "goal_revision_id": goal.current_revision_id,
+                    "patch_set_id": None if patch_set is None else patch_set.id,
                 }
             ),
             goal_revision_id=goal.current_revision_id,
             source_message_id=goal.source_message_id,
             task_run_id=task.id,
         )
+
+    def _goal_for_patch_set(
+        self,
+        patch_set: AgentPatchSet,
+        *,
+        lock: bool = False,
+    ) -> AgentGoalSession | None:
+        statement = select(AgentGoalSession).where(
+            AgentGoalSession.project_id == patch_set.project_id,
+            AgentGoalSession.active_patch_set_id == patch_set.id,
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return self.session.scalar(statement)
+
+    def _reject_agent_goal_patch(
+        self, patch_set: AgentPatchSet
+    ) -> AgentGoalSession | None:
+        goal = self._goal_for_patch_set(patch_set, lock=True)
+        if goal is None or goal.status != "waiting_patch_review":
+            return None
+        goal.active_patch_set_id = None
+        GoalSessionRepository(self.session).transition(
+            goal,
+            target_status="waiting_clarification",
+            reason_code="patch_rejected",
+            state_hash=stable_hash(
+                {"goal_id": goal.id, "patch_set_id": patch_set.id, "status": "rejected"}
+            ),
+            goal_revision_id=goal.current_revision_id,
+            source_message_id=patch_set.source_message_id,
+            task_run_id=patch_set.task_run_id,
+        )
+        return goal
+
+    def _mark_agent_goal_patch_stale(self, patch_set: AgentPatchSet) -> None:
+        goal = self._goal_for_patch_set(patch_set, lock=True)
+        if goal is None or goal.status != "waiting_patch_review":
+            return
+        patch_set.status = "stale"
+        goal.active_patch_set_id = None
+        GoalSessionRepository(self.session).transition(
+            goal,
+            target_status="stale",
+            reason_code="patch_baseline_stale",
+            state_hash=stable_hash(
+                {"goal_id": goal.id, "patch_set_id": patch_set.id, "status": "stale"}
+            ),
+            goal_revision_id=goal.current_revision_id,
+            source_message_id=patch_set.source_message_id,
+            task_run_id=patch_set.task_run_id,
+        )
+
+    def _queue_post_apply_goal_audit(
+        self,
+        *,
+        owned: OwnedDraft,
+        patch_set: AgentPatchSet,
+        current_document: dict[str, Any],
+        validation_snapshot: dict[str, Any],
+    ) -> TaskRun | None:
+        """Bind the applied Draft as baseline and queue exactly one audit slice."""
+
+        goal = self._goal_for_patch_set(patch_set, lock=True)
+        if goal is None:
+            return None
+        if goal.status != "waiting_patch_review":
+            raise GoalSessionStateError(
+                "agent_goal_state_conflict",
+                "GoalSession is not waiting for this PatchSet review",
+            )
+        previous = self.session.get(TaskRun, patch_set.task_run_id)
+        thread = self.session.scalar(
+            select(AgentThread)
+            .where(
+                AgentThread.id == goal.thread_id,
+                AgentThread.project_id == goal.project_id,
+            )
+            .with_for_update()
+        )
+        if previous is None or thread is None:
+            raise RuntimeError("Post-apply Goal lineage disappeared")
+        now = datetime.now(UTC)
+        next_sequence = int(
+            self.session.scalar(
+                select(func.coalesce(func.max(AgentMessage.sequence_no), 0) + 1).where(
+                    AgentMessage.thread_id == thread.id
+                )
+            )
+            or 1
+        )
+        instruction = "复核刚应用的工作稿，确认改动已经按审阅结果落位。"
+        system_message = AgentMessage(
+            project_id=goal.project_id,
+            thread_id=thread.id,
+            sequence_no=next_sequence,
+            role="system",
+            status="completed",
+            content_text=instruction,
+            created_by_user_id=None,
+        )
+        response_message = AgentMessage(
+            project_id=goal.project_id,
+            thread_id=thread.id,
+            sequence_no=next_sequence + 1,
+            role="assistant",
+            status="pending",
+            content_text=None,
+            created_by_user_id=None,
+        )
+        self.session.add_all([system_message, response_message])
+        self.session.flush()
+        obligations = [
+            GoalObligation(
+                obligation_id="obl_1",
+                kind="analysis",
+                target_state="baseline",
+                source_excerpt="核对应用后的工作稿与已接受修改是否一致。",
+                depends_on=[],
+            ),
+            GoalObligation(
+                obligation_id="obl_2",
+                kind="audit",
+                target_state="baseline",
+                source_excerpt="审计应用后的工作稿是否出现新的矛盾、断链或时序问题。",
+                depends_on=["obl_1"],
+            ),
+        ]
+        obligations_hash = stable_hash(
+            [item.model_dump(mode="json") for item in obligations]
+        )
+        frozen_goal = FrozenGoal(
+            goal="复核已应用修改后的当前工作稿",
+            obligations=obligations,
+            source_message_hash=stable_hash(instruction),
+            obligations_hash=obligations_hash,
+        )
+        baseline_hash = casefile_content_hash(current_document)
+        state_hash = stable_hash(
+            {
+                "goal_id": goal.id,
+                "patch_set_id": patch_set.id,
+                "draft_id": owned.draft.id,
+                "draft_revision": owned.draft.revision,
+                "baseline_hash": baseline_hash,
+                "frozen_goal": frozen_goal.model_dump(mode="json"),
+            }
+        )
+        goal.draft_id = owned.draft.id
+        repository = GoalSessionRepository(self.session)
+        revision = repository.append_frozen_revision(
+            goal,
+            source_message_id=system_message.id,
+            amendment_kind="post_apply",
+            frozen_goal=frozen_goal,
+            source_excerpt=instruction,
+            state_hash=state_hash,
+            baseline_draft_revision=owned.draft.revision,
+            baseline_hash=baseline_hash,
+        )
+        history = list(
+            self.session.scalars(
+                select(AgentMessage)
+                .where(
+                    AgentMessage.thread_id == thread.id,
+                    AgentMessage.sequence_no < system_message.sequence_no,
+                    AgentMessage.status == "completed",
+                )
+                .order_by(AgentMessage.sequence_no)
+            )
+        )
+        next_input = dict(previous.input_jsonb)
+        next_input.update(
+            {
+                "casefile": current_document,
+                "history": [
+                    {"role": message.role, "content": message.content_text}
+                    for message in history
+                    if message.content_text is not None
+                ],
+                "message": instruction,
+                "validation": validation_snapshot,
+                "routing_hint": {"entrypoint": "preset", "preset_id": "audit"},
+                "verification_trigger": "post_apply",
+                "goal_session": {
+                    "goal_id": goal.id,
+                    "goal_revision": revision.revision_no,
+                    "runtime_version": goal.runtime_version,
+                    "policy_version": goal.policy_version,
+                    "capability_registry_version": goal.capability_registry_version,
+                },
+                "goal_checkpoint": GoalExecutionCheckpoint(
+                    obligations_hash=obligations_hash
+                ).model_dump(mode="json"),
+                "frozen_goal": frozen_goal.model_dump(mode="json"),
+            }
+        )
+        continuation = _continuation_task(
+            previous,
+            input_message_id=system_message.id,
+            output_message_id=response_message.id,
+            input_jsonb=next_input,
+            draft_id=owned.draft.id,
+            input_draft_revision=owned.draft.revision,
+        )
+        self.session.add(continuation)
+        self.session.flush()
+        repository.bind_task_run(
+            goal,
+            goal_revision_id=revision.id,
+            task_run_id=continuation.id,
+            trigger_kind="post_apply",
+        )
+        goal.active_patch_set_id = None
+        repository.transition(
+            goal,
+            target_status="running",
+            reason_code="post_apply_audit_queued",
+            state_hash=state_hash,
+            goal_revision_id=revision.id,
+            source_message_id=system_message.id,
+            task_run_id=continuation.id,
+        )
+        thread.last_message_at = now
+        _append_event(
+            self.session,
+            continuation,
+            "task.queued",
+            "queued",
+            {
+                "message": "应用后 Goal 审计已进入队列",
+                "task_type": continuation.task_type,
+                "model_id": continuation.model_id,
+                "input_hash": continuation.input_hash,
+            },
+        )
+        return continuation
 
     def _resolve_goal_delivery(
         self,
@@ -865,6 +1259,219 @@ class GoalSessionWorkflowMixin:
         self.session.flush()
         return delivery
 
+    def _continue_waiting_goal_delivery(
+        self,
+        *,
+        owned: OwnedDraft,
+        thread: AgentThread,
+        goal: AgentGoalSession,
+        delivery: AgentGoalDelivery,
+        current_document: dict[str, Any],
+        validation_snapshot: dict[str, Any],
+    ) -> TaskRun:
+        """Consume one steer immediately when no active Goal slice can reach a safe point."""
+
+        if goal.status not in {"waiting_clarification", "stale"}:
+            raise GoalSessionStateError(
+                "agent_goal_state_conflict", "GoalSession is not waiting for a steer"
+            )
+        if delivery.mode != "steer" or delivery.status != "queued":
+            raise GoalSessionStateError(
+                "agent_goal_delivery_conflict", "Only the queued FIFO steer may resume a Goal"
+            )
+        require_budget_available(
+            revision_count=goal.revision_count,
+            task_run_slice_count=goal.task_run_slice_count,
+            consumed_control_count=goal.consumed_control_count,
+            add_revisions=1,
+            add_task_run_slices=1,
+            add_consumed_controls=1,
+        )
+        if goal.current_revision_id is None:
+            raise RuntimeError("Waiting GoalSession has no current revision")
+        previous_binding = self.session.scalar(
+            select(AgentGoalTaskRun)
+            .where(AgentGoalTaskRun.goal_session_id == goal.id)
+            .order_by(AgentGoalTaskRun.slice_no.desc())
+            .limit(1)
+        )
+        previous = (
+            None
+            if previous_binding is None
+            else self.session.get(TaskRun, previous_binding.task_run_id)
+        )
+        source = self.session.get(AgentMessage, delivery.source_message_id)
+        response = self.session.get(AgentMessage, delivery.response_message_id)
+        if (
+            previous is None
+            or source is None
+            or not source.content_text
+            or response is None
+            or response.status != "pending"
+        ):
+            raise RuntimeError("Waiting Goal continuation lineage disappeared")
+        frozen_goal = self._frozen_goal_for_revision(
+            goal.current_revision_id,
+            source_message=source.content_text,
+        )
+        now = datetime.now(UTC)
+        state_hash = stable_hash(
+            {
+                "goal_id": goal.id,
+                "delivery_id": delivery.id,
+                "parent_revision": goal.revision_count,
+                "baseline_draft_revision": owned.draft.revision,
+                "frozen_goal": frozen_goal.model_dump(mode="json"),
+            }
+        )
+        repository = GoalSessionRepository(self.session)
+        revision = repository.append_frozen_revision(
+            goal,
+            source_message_id=source.id,
+            amendment_kind="refine",
+            frozen_goal=frozen_goal,
+            source_excerpt=source.content_text,
+            state_hash=state_hash,
+            baseline_draft_revision=owned.draft.revision,
+            baseline_hash=casefile_content_hash(current_document),
+        )
+        history = list(
+            self.session.scalars(
+                select(AgentMessage)
+                .where(
+                    AgentMessage.thread_id == thread.id,
+                    AgentMessage.sequence_no < source.sequence_no,
+                    AgentMessage.status == "completed",
+                )
+                .order_by(AgentMessage.sequence_no)
+            )
+        )
+        next_input = dict(previous.input_jsonb)
+        next_input.update(
+            {
+                "casefile": current_document,
+                "history": [
+                    {"role": message.role, "content": message.content_text}
+                    for message in history
+                    if message.content_text is not None
+                ],
+                "message": source.content_text,
+                "validation": validation_snapshot,
+                "verification_trigger": "chat",
+                "goal_session": {
+                    "goal_id": goal.id,
+                    "goal_revision": revision.revision_no,
+                    "runtime_version": goal.runtime_version,
+                    "policy_version": goal.policy_version,
+                    "capability_registry_version": goal.capability_registry_version,
+                },
+                "goal_checkpoint": GoalExecutionCheckpoint(
+                    obligations_hash=frozen_goal.obligations_hash
+                ).model_dump(mode="json"),
+                "frozen_goal": frozen_goal.model_dump(mode="json"),
+            }
+        )
+        continuation = _continuation_task(
+            previous,
+            input_message_id=source.id,
+            output_message_id=response.id,
+            input_jsonb=next_input,
+            draft_id=owned.draft.id,
+            input_draft_revision=owned.draft.revision,
+        )
+        self.session.add(continuation)
+        self.session.flush()
+        repository.bind_task_run(
+            goal,
+            goal_revision_id=revision.id,
+            task_run_id=continuation.id,
+            trigger_kind="clarification",
+        )
+        repository.transition(
+            goal,
+            target_status="running",
+            reason_code="clarification_received",
+            state_hash=state_hash,
+            goal_revision_id=revision.id,
+            source_message_id=source.id,
+            task_run_id=continuation.id,
+        )
+        delivery.status = "consumed"
+        delivery.consumed_at = now
+        delivery.reason_code = "waiting_goal_resumed"
+        goal.consumed_control_count += 1
+        thread.last_message_at = now
+        _append_event(
+            self.session,
+            continuation,
+            "task.queued",
+            "queued",
+            {
+                "message": "Goal clarification continuation 已进入队列",
+                "task_type": continuation.task_type,
+                "model_id": continuation.model_id,
+                "input_hash": continuation.input_hash,
+            },
+        )
+        return continuation
+
+    def _frozen_goal_for_revision(
+        self,
+        revision_id: int,
+        *,
+        source_message: str,
+    ) -> FrozenGoal:
+        revision = self.session.get(AgentGoalRevision, revision_id)
+        if revision is None:
+            raise RuntimeError("GoalRevision disappeared")
+        rows = list(
+            self.session.scalars(
+                select(AgentGoalObligation)
+                .where(AgentGoalObligation.goal_revision_id == revision.id)
+                .order_by(AgentGoalObligation.ordinal)
+            )
+        )
+        dependencies = list(
+            self.session.scalars(
+                select(AgentGoalObligationDependency).where(
+                    AgentGoalObligationDependency.goal_revision_id == revision.id
+                )
+            )
+        )
+        key_by_id = {row.id: row.obligation_key for row in rows}
+        depends_by_id: dict[int, list[str]] = {row.id: [] for row in rows}
+        for dependency in dependencies:
+            depends_by_id[dependency.obligation_id].append(
+                key_by_id[dependency.depends_on_obligation_id]
+            )
+        kind_by_capability = {
+            "analyze": "analysis",
+            "audit": "audit",
+            "propose_mutation": "mutation_proposal",
+        }
+        obligations = [
+            GoalObligation.model_validate(
+                {
+                    "obligation_id": row.obligation_key,
+                    "kind": kind_by_capability[row.capability],
+                    "target_state": row.target_state,
+                    "source_excerpt": row.source_excerpt,
+                    "depends_on": depends_by_id[row.id],
+                }
+            )
+            for row in rows
+        ]
+        payload = [item.model_dump(mode="json") for item in obligations]
+        obligations_hash = stable_hash(payload)
+        if obligations_hash != revision.obligations_hash:
+            raise RuntimeError("Stored GoalRevision obligation hash is invalid")
+        return FrozenGoal(
+            goal=revision.goal_text,
+            obligations=obligations,
+            source_message_hash=stable_hash(source_message),
+            obligations_hash=obligations_hash,
+        )
+
     def _goal_session(
         self,
         owned: OwnedDraft,
@@ -876,7 +1483,6 @@ class GoalSessionWorkflowMixin:
             AgentGoalSession.id == goal_id,
             AgentGoalSession.project_id == owned.project.id,
             AgentGoalSession.casefile_id == owned.casefile.id,
-            AgentGoalSession.draft_id == owned.draft.id,
         )
         if lock:
             statement = statement.with_for_update()
@@ -886,6 +1492,34 @@ class GoalSessionWorkflowMixin:
                 "agent_goal_not_found",
                 "找不到该 Goal。",
                 status_code=404,
+            )
+        if (
+            goal.status in {"running", "waiting_clarification", "waiting_patch_review"}
+            and (
+                goal.draft_id != owned.draft.id
+                or goal.baseline_draft_revision != owned.draft.revision
+            )
+        ):
+            if goal.active_patch_set_id is not None:
+                patch_set = self.session.get(AgentPatchSet, goal.active_patch_set_id)
+                if patch_set is not None and patch_set.status == "pending":
+                    patch_set.status = "stale"
+                goal.active_patch_set_id = None
+            GoalSessionRepository(self.session).transition(
+                goal,
+                target_status="stale",
+                reason_code="draft_baseline_stale",
+                state_hash=stable_hash(
+                    {
+                        "goal_id": goal.id,
+                        "baseline_draft_id": goal.draft_id,
+                        "baseline_draft_revision": goal.baseline_draft_revision,
+                        "current_draft_id": owned.draft.id,
+                        "current_draft_revision": owned.draft.revision,
+                    }
+                ),
+                goal_revision_id=goal.current_revision_id,
+                source_message_id=goal.source_message_id,
             )
         return goal
 
@@ -983,13 +1617,15 @@ def _continuation_task(
     input_message_id: int,
     output_message_id: int,
     input_jsonb: dict[str, Any],
+    draft_id: int | None = None,
+    input_draft_revision: int | None = None,
 ) -> TaskRun:
     """Create one immutable queued slice using the prior slice's frozen bindings."""
 
     return TaskRun(
         project_id=previous.project_id,
         casefile_id=previous.casefile_id,
-        draft_id=previous.draft_id,
+        draft_id=previous.draft_id if draft_id is None else draft_id,
         brief_version_id=None,
         input_source_record_id=None,
         input_brief_revision=None,
@@ -1006,7 +1642,11 @@ def _continuation_task(
         task_type="casefile_chat",
         status="queued",
         stage="queued",
-        input_draft_revision=previous.input_draft_revision,
+        input_draft_revision=(
+            previous.input_draft_revision
+            if input_draft_revision is None
+            else input_draft_revision
+        ),
         provider=previous.provider,
         model_id=previous.model_id,
         provider_config_version=previous.provider_config_version,
