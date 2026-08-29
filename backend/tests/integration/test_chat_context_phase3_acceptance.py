@@ -70,7 +70,13 @@ def test_phase3_rolling_compaction_freezes_state_and_binds_v5(
     engine, actor_id, master_key = workflow_database
     provider = CapturingChatProvider()
     with (
-        patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
+        patch.dict(
+            os.environ,
+            {
+                "CASEFILE_MASTER_KEY": master_key,
+                "CASEFILE_CHAT_GOAL_ROLLOUT": "off",
+            },
+        ),
         patch.dict(
             os.environ,
             {
@@ -241,6 +247,7 @@ def _run_edit_trial(
         {
             "CASEFILE_MASTER_KEY": master_key,
             "CASEFILE_CHAT_CONTEXT_ROLLOUT": rollout,
+            "CASEFILE_CHAT_GOAL_ROLLOUT": "off",
         },
     ):
         project_id, generation_task_id = _prepare_task(engine, actor_id)

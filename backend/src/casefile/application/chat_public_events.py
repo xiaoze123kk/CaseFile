@@ -25,6 +25,13 @@ _ACTIVITY_EVENTS = {
     "general_mutation.simulated": "preparing_changes",
     "general_mutation.blocked": "checking",
     "general_mutation.bind_failed": "checking",
+    "goal.started": "understanding",
+    "goal.capability_started": "reading",
+    "goal.capability_completed": "checking",
+    "goal.completed": "finalizing",
+    "goal.failed": "finalizing",
+    "goal.qualification_failed": "understanding",
+    "goal.shadow_evaluated": "understanding",
     "task.cancel_requested": "finalizing",
 }
 

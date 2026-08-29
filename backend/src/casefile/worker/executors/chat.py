@@ -69,6 +69,8 @@ from casefile.agent_runtime.general_mutation import (
     CreateMutationCandidate,
     DeleteMutationCandidate,
     GeneralMutationPlannerRequest,
+    MutationPlanV1,
+    MutationPlanV2,
     general_mutation_explicit_system_field_reason,
     general_mutation_explicit_unknown_object_ids,
     general_mutation_request_budget_reason,
@@ -109,6 +111,7 @@ from casefile.data_postgres.models import (
     AgentMessage,
     AgentPatchOperation,
     AgentPatchSet,
+    AgentStepRun,
     AgentThreadContextState,
     TaskEvent,
     TaskRun,
@@ -475,6 +478,44 @@ class _ChatComponent:
 
 
 class ChatRequestRuntime(_ChatComponent):
+    def _goal_cancelled(self, task_run_id: int) -> bool:
+        with self.session_factory() as session:
+            status = session.scalar(select(TaskRun.status).where(TaskRun.id == task_run_id))
+        return status == "cancelling"
+
+    def _load_reusable_goal_step(
+        self,
+        task_run_id: int,
+        component_id: str,
+        input_hash: str,
+        upstream_hashes: dict[str, str],
+    ) -> dict[str, Any] | None:
+        with self.session_factory() as session:
+            rows = list(
+                session.scalars(
+                    select(AgentStepRun)
+                    .where(
+                        AgentStepRun.task_run_id == task_run_id,
+                        AgentStepRun.component_id == component_id,
+                        AgentStepRun.status.in_(("succeeded", "reused")),
+                        AgentStepRun.input_hash == input_hash,
+                    )
+                    .order_by(AgentStepRun.id.desc())
+                )
+            )
+        for row in rows:
+            if dict(row.upstream_hashes_jsonb or {}) != upstream_hashes:
+                continue
+            if not isinstance(row.output_jsonb, dict) or not row.output_hash:
+                continue
+            return {
+                "step_run_id": row.id,
+                "output_hash": row.output_hash,
+                "output": dict(row.output_jsonb),
+                "usage": dict(row.usage_jsonb or {}),
+            }
+        return None
+
     def __init__(
         self,
         session_factory: sessionmaker[Session],
@@ -565,6 +606,34 @@ class ChatRequestRuntime(_ChatComponent):
 
 
 class ChatMutationRuntime(_ChatComponent):
+    def _load_reusable_mutation_planner(
+        self, task_run_id: int, input_hash: str
+    ) -> dict[str, Any] | None:
+        with self.session_factory() as session:
+            rows = list(
+                session.scalars(
+                    select(AgentStepRun)
+                    .where(
+                        AgentStepRun.task_run_id == task_run_id,
+                        AgentStepRun.component_id == GENERAL_MUTATION_COMPONENT_ID,
+                        AgentStepRun.status.in_(("succeeded", "reused")),
+                        AgentStepRun.input_hash == input_hash,
+                    )
+                    .order_by(AgentStepRun.id.desc())
+                )
+            )
+        for row in rows:
+            if dict(row.upstream_hashes_jsonb or {}):
+                continue
+            if not isinstance(row.output_jsonb, dict) or not row.output_hash:
+                continue
+            return {
+                "step_run_id": row.id,
+                "output_hash": row.output_hash,
+                "output": dict(row.output_jsonb),
+            }
+        return None
+
     def _execute_general_mutation(
         self,
         task: TaskRun,
@@ -594,6 +663,14 @@ class ChatMutationRuntime(_ChatComponent):
                 "component_version": GENERAL_MUTATION_PROMPT_VERSION,
                 "schema_id": GENERAL_MUTATION_SCHEMA_ID,
                 "input_hash": task.input_hash,
+                **(
+                    {"parent_component_id": "goal_controller"}
+                    if request.task_understanding is not None
+                    and any(
+                        item.startswith("goal:") for item in request.task_understanding.sub_intents
+                    )
+                    else {}
+                ),
             },
         )
         route = request.route
@@ -713,21 +790,33 @@ class ChatMutationRuntime(_ChatComponent):
             )
             return ({"status": "blocked"} if mode == "suggest" else None), {}
         try:
-            planned = provider.plan_general_mutation(
-                GeneralMutationPlannerRequest(
-                    task_run_id=task.id,
-                    model_id=required_provider_binding(task)[1],
-                    api_key=api_key,
-                    casefile=request.casefile,
-                    message=request.message,
-                    input_hash=task.input_hash,
-                    editable_fields_by_collection=request.editable_fields_by_collection,
-                    emit=emit,
-                    network_retries=_network_retries(task),
+            reusable_step = self._load_reusable_mutation_planner(task.id, task.input_hash)
+            candidate: MutationPlanV1 | MutationPlanV2
+            planned_usage: dict[str, Any]
+            if reusable_step is not None:
+                try:
+                    candidate = MutationPlanV2.model_validate(reusable_step["output"])
+                except Exception:
+                    candidate = MutationPlanV1.model_validate(reusable_step["output"])
+                planned_usage = {}
+            else:
+                planned = provider.plan_general_mutation(
+                    GeneralMutationPlannerRequest(
+                        task_run_id=task.id,
+                        model_id=required_provider_binding(task)[1],
+                        api_key=api_key,
+                        casefile=request.casefile,
+                        message=request.message,
+                        input_hash=task.input_hash,
+                        editable_fields_by_collection=request.editable_fields_by_collection,
+                        emit=emit,
+                        network_retries=_network_retries(task),
+                    )
                 )
-            )
+                candidate = planned.candidate
+                planned_usage = planned.usage
             bound = bind_general_mutation_plan(
-                planned.candidate,
+                candidate,
                 request.casefile,
                 task_run_id=task.id,
                 draft_id=task.draft_id,
@@ -738,16 +827,28 @@ class ChatMutationRuntime(_ChatComponent):
                 bound.mutation_set,
             )
             impact_hash = general_mutation_impact_hash(simulation)
-            artifact = planned.candidate.model_dump(mode="json")
+            artifact = candidate.model_dump(mode="json")
+            if reusable_step is not None and reusable_step["output_hash"] != bound.plan_hash:
+                raise RuntimeError("Reusable General Mutation artifact hash mismatch")
             emit(
-                "agent.step.completed",
+                (
+                    "agent.step.reused"
+                    if reusable_step is not None and reusable_step["output_hash"] == bound.plan_hash
+                    else "agent.step.completed"
+                ),
                 "general_mutation",
                 {
                     "component_id": GENERAL_MUTATION_COMPONENT_ID,
                     "schema_id": GENERAL_MUTATION_SCHEMA_ID,
                     "output_hash": bound.plan_hash,
-                    "usage": planned.usage,
+                    "usage": planned_usage,
                     "_artifact": artifact,
+                    **(
+                        {"resumed_from_step_run_id": reusable_step["step_run_id"]}
+                        if reusable_step is not None
+                        and reusable_step["output_hash"] == bound.plan_hash
+                        else {}
+                    ),
                 },
             )
             emit(
@@ -779,12 +880,9 @@ class ChatMutationRuntime(_ChatComponent):
                     "bound": bound,
                     "simulation": simulation,
                     "impact_hash": impact_hash,
-                }, planned.usage
+                }, planned_usage
             if (
-                any(
-                    isinstance(item, CreateMutationCandidate)
-                    for item in planned.candidate.operations
-                )
+                any(isinstance(item, CreateMutationCandidate) for item in candidate.operations)
                 and not self.config.general_mutation_create_enabled
             ):
                 emit(
@@ -792,12 +890,9 @@ class ChatMutationRuntime(_ChatComponent):
                     "general_mutation",
                     {"reason_code": "general_mutation_create_not_enabled"},
                 )
-                return {"status": "blocked"}, planned.usage
+                return {"status": "blocked"}, planned_usage
             if (
-                any(
-                    isinstance(item, DeleteMutationCandidate)
-                    for item in planned.candidate.operations
-                )
+                any(isinstance(item, DeleteMutationCandidate) for item in candidate.operations)
                 and not self.config.general_mutation_delete_enabled
             ):
                 emit(
@@ -805,20 +900,20 @@ class ChatMutationRuntime(_ChatComponent):
                     "general_mutation",
                     {"reason_code": "general_mutation_delete_not_enabled"},
                 )
-                return {"status": "blocked"}, planned.usage
+                return {"status": "blocked"}, planned_usage
             if not simulation.can_apply and simulation.reason_code != "repair_required":
                 emit(
                     "general_mutation.blocked",
                     "general_mutation",
                     {"reason_code": simulation.reason_code or "simulation_blocked"},
                 )
-                return ({"status": "blocked"} if mode == "suggest" else None), planned.usage
+                return ({"status": "blocked"} if mode == "suggest" else None), planned_usage
             return {
                 "status": "ready",
                 "bound": bound,
                 "simulation": simulation,
                 "impact_hash": impact_hash,
-            }, planned.usage
+            }, planned_usage
         except ContractValidationError as error:
             reason_code = next(
                 (
@@ -956,6 +1051,55 @@ class ChatMutationRuntime(_ChatComponent):
             general_mutation_envelope,
             repair_envelope,
             _merge_numeric_usage(repair_usage, general_mutation_usage),
+        )
+
+    def _execute_goal_mutation(
+        self,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+        """Execute one proposal-only Goal mutation and its bounded closure proof."""
+
+        envelope, mutation_usage = self._execute_general_mutation(task, request, provider, api_key)
+        if envelope is None or envelope.get("status") != "ready" or "bound" not in envelope:
+            return envelope, None, mutation_usage
+        repair_envelope, repair_usage, repair_result = execute_mutation_closure_repair(
+            task,
+            envelope["bound"].mutation_set,
+            provider=provider,
+            api_key=api_key,
+            mode=self.config.closure_repair_mode,
+            emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
+        )
+        if (
+            self.config.closure_repair_mode == "suggest"
+            and repair_result is not None
+            and repair_result.repaired
+        ):
+            repaired_bound = append_repair_companions(
+                envelope["bound"],
+                task.input_jsonb["casefile"],
+                [item.as_dict() for item in repair_result.companion_operations],
+            )
+            repaired_simulation = VerificationEngine(
+                profile="fast",
+                closure_policy_version=repaired_bound.mutation_set.closure_policy_version,
+            ).simulate_mutation_set(task.input_jsonb["casefile"], repaired_bound.mutation_set)
+            if not repaired_simulation.can_apply:
+                raise RuntimeError("Repaired General Mutation proof diverged")
+            envelope = {
+                **envelope,
+                "primary_bound": envelope["bound"],
+                "bound": repaired_bound,
+                "simulation": repaired_simulation,
+                "impact_hash": general_mutation_impact_hash(repaired_simulation),
+            }
+        return (
+            envelope,
+            repair_envelope,
+            _merge_numeric_usage(mutation_usage, repair_usage),
         )
 
 
@@ -1234,6 +1378,7 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v14",
             "casefile-chat-v15",
             "casefile-chat-v16",
+            "casefile-chat-v17",
         }:
             raise RuntimeError(
                 "Context policy "
@@ -1631,6 +1776,20 @@ class ChatTaskExecutor:
     def _load_chat_request(self, task: TaskRun, api_key: str) -> CaseFileChatRequest:
         return self._requests._load_chat_request(task, api_key)
 
+    def _goal_cancelled(self, task_run_id: int) -> bool:
+        return self._requests._goal_cancelled(task_run_id)
+
+    def _load_reusable_goal_step(
+        self,
+        task_run_id: int,
+        component_id: str,
+        input_hash: str,
+        upstream_hashes: dict[str, str],
+    ) -> dict[str, Any] | None:
+        return self._requests._load_reusable_goal_step(
+            task_run_id, component_id, input_hash, upstream_hashes
+        )
+
     def _execute_general_mutation(
         self,
         task: TaskRun,
@@ -1642,6 +1801,15 @@ class ChatTaskExecutor:
 
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
         return self._context._load_previous_chat_routing(task_run_id)
+
+    def _execute_goal_mutation(
+        self,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+        return self._mutation._execute_goal_mutation(task, request, provider, api_key)
 
     def _resolve_mutation_and_repair(
         self,

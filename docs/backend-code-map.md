@@ -1,5 +1,17 @@
 # 后端代码职责地图
 
+## M3.7 Bounded Goal Harness
+
+- `backend/src/casefile/agent_runtime/goal/contracts.py`：Goal Interpreter、冻结义务、单步决策、Observation 与 Completion 的严格内部契约；不属于 Public Chat Schema。
+- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则。
+- `backend/src/casefile/agent_runtime/goal/execution.py`：单个 `TaskRun` 内的 bounded next-action loop；不持有数据库 Session，不跨消息恢复。
+- `backend/src/casefile/agent_runtime/goal/filter.py`：位于显式 preset/issue-action 之后的保守 free-text 候选过滤器。
+- `backend/src/casefile/agent_runtime/goal/provider.py`：Interpreter、Controller、Evidence 与 Finalizer 的 provider-neutral 端口。
+- `backend/src/casefile/worker/handlers/chat.py`：rollout/资格分流、能力适配、取消观察和一次最终持久化。
+- `backend/src/casefile/benchmark/chat_goal_suite.py`、`chat_goal_qualification.py`：M3.7 24×3 正式资格套件、生产路径评分、逐题追踪与聚合门禁；v2 题目必须与冻结 CaseFile fixture 可解，并用最终状态 Oracle 评分 mutation。
+
+Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，也不得直接调用 Apply。Goal Finalizer 只负责作者可见正文，模型生成的引用、finding 与 suggestion 不构成权威结果；结构化结果由 Observation、Completion proof 与 Mutation proof 决定。任何 Goal 失败均在 `_complete_chat()` 前关闭，因此不产生 `AgentPatchSet`。恢复只复用精确 input/upstream/output hash 匹配的 bounded artifact；Mutation 只复用 Planner artifact并重新绑定、模拟。
+
 本文涵盖 `backend/` 下所有受 Git 跟踪的源码文件职责。新增、删除、重命名后端源文件时必须同步更新本文。
 
 ## 数据库代码

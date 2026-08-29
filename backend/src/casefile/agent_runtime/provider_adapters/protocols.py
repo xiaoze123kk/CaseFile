@@ -22,6 +22,14 @@ from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     GeneralMutationPlannerResult,
 )
+from casefile.agent_runtime.goal.provider import (
+    ChatEvidenceCollection,
+    GoalDecisionRequest,
+    GoalDecisionResult,
+    GoalFinalizerRequest,
+    GoalUnderstandingRequest,
+    GoalUnderstandingResult,
+)
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
@@ -85,6 +93,14 @@ class AgentProvider(GenerationProvider, Protocol):
     def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult: ...
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
+
+    def understand_goal(self, request: GoalUnderstandingRequest) -> GoalUnderstandingResult: ...
+
+    def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult: ...
+
+    def collect_chat_evidence(self, request: CaseFileChatRequest) -> ChatEvidenceCollection: ...
+
+    def finalize_goal(self, request: GoalFinalizerRequest) -> CaseFileChatResult: ...
 
     def compact_thread_memory(
         self,

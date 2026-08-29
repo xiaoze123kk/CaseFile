@@ -1,7 +1,7 @@
 """Phase 4 Context Tools acceptance on the real production path.
 
 v6 (hardened routing + structured logic_audit rollout) is the accepted
-default, pairing ``casefile-chat-context-v6`` with the public-language v16
+default, pairing ``casefile-chat-context-v6`` with the active Goal v17
 prompt and v4 toolset. The v5 opt-in test still runs when
 ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v5`` (v9 prompt), the
 v4 opt-in test runs when
@@ -36,7 +36,6 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V10_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.application.services import CaseFileService
@@ -75,7 +74,13 @@ def test_phase4_context_tools_rollout_binds_v7_and_v3_toolset(
     engine, actor_id, master_key = workflow_database
     provider = CapturingChatProvider()
     with (
-        patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
+        patch.dict(
+            os.environ,
+            {
+                "CASEFILE_MASTER_KEY": master_key,
+                "CASEFILE_CHAT_GOAL_ROLLOUT": "off",
+            },
+        ),
         patch.dict(
             os.environ,
             {
@@ -196,7 +201,13 @@ def test_phase4_v4_rollout_binds_v8_v4_toolset_and_full_audit_snapshot(
     engine, actor_id, master_key = workflow_database
     provider = CapturingChatProvider()
     with (
-        patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
+        patch.dict(
+            os.environ,
+            {
+                "CASEFILE_MASTER_KEY": master_key,
+                "CASEFILE_CHAT_GOAL_ROLLOUT": "off",
+            },
+        ),
         patch.dict(
             os.environ,
             {
@@ -285,7 +296,13 @@ def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
     engine, actor_id, master_key = workflow_database
     provider = CapturingChatProvider()
     with (
-        patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
+        patch.dict(
+            os.environ,
+            {
+                "CASEFILE_MASTER_KEY": master_key,
+                "CASEFILE_CHAT_GOAL_ROLLOUT": "off",
+            },
+        ),
         patch.dict(
             os.environ,
             {
@@ -364,7 +381,7 @@ def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
         assert full_validation_issues == list(request.validation_issues)
 
 
-def test_phase4_v6_rollout_binds_v16_v4_toolset_and_hardened_router(
+def test_phase4_v6_rollout_binds_v17_v4_toolset_and_hardened_router(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
@@ -434,13 +451,13 @@ def test_phase4_v6_rollout_binds_v16_v4_toolset_and_hardened_router(
                 first_row.error_code,
                 first_row.error_details_jsonb,
             )
-            assert first_row.prompt_version == CHAT_CONTEXT_PROMPT_V10_VERSION
+            assert first_row.prompt_version == "casefile-chat-v17"
             assert first_row.toolset_version == CHAT_TOOLSET_V4_VERSION
             assert first_row.input_jsonb.get("context_policy_version") == ROLLOUT_V6
 
         assert len(provider.requests) == 1
         request = provider.requests[0]
-        assert request.prompt_version == CHAT_CONTEXT_PROMPT_V10_VERSION
+        assert request.prompt_version == "casefile-chat-v17"
         assert request.toolset_version == CHAT_TOOLSET_V4_VERSION
         assert request.context_policy_version == ROLLOUT_V6
         execution_profile = request.route.execution_profile

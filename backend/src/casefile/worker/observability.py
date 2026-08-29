@@ -21,6 +21,22 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 
+_COMPONENT_ID = re.compile(r"^[a-z][a-z0-9_]{0,79}$")
+
+
+def _parent_component_id(payload: dict[str, Any], component_id: str) -> str | None:
+    explicit = payload.get("parent_component_id")
+    if isinstance(explicit, str) and _COMPONENT_ID.fullmatch(explicit):
+        return explicit
+    if component_id in {
+        "story_world",
+        "evidence_logic",
+        "evidence_matrix",
+        "resolution_governance",
+    }:
+        return "domain_drafters"
+    return None
+
 
 def persist_agent_execution_event(
     session: Session,
@@ -60,12 +76,7 @@ def persist_agent_execution_event(
                 task_run_id=task.id,
                 task_attempt_id=attempt.id,
                 component_id=component_id,
-                parent_component_id=(
-                    "domain_drafters"
-                    if component_id
-                    in {"story_world", "evidence_logic", "evidence_matrix", "resolution_governance"}
-                    else None
-                ),
+                parent_component_id=_parent_component_id(payload, component_id),
                 execution_no=execution_no,
                 status="running",
                 input_hash=str(payload.get("input_hash") or task.input_hash),
@@ -101,7 +112,7 @@ def persist_agent_execution_event(
             task_run_id=task.id,
             task_attempt_id=attempt.id,
             component_id=component_id,
-            parent_component_id=None,
+            parent_component_id=_parent_component_id(payload, component_id),
             execution_no=execution_no,
             status="running",
             input_hash=str(payload.get("input_hash") or task.input_hash),
@@ -188,12 +199,10 @@ def persist_agent_execution_event(
         )
         model_call.finished_at = now
         standalone_call = component_id in {"intent_router", "query_rewriter"} or (
-            component_id.endswith("_finalizer")
+            component_id.endswith("_finalizer") and component_id != "goal_finalizer"
         )
         if step.status == "running" and standalone_call:
-            step.status = (
-                "succeeded" if event_type == "agent.model_call.completed" else "failed"
-            )
+            step.status = "succeeded" if event_type == "agent.model_call.completed" else "failed"
             step.output_hash = step.output_hash or optional_hash(payload.get("output_hash"))
             step.usage_jsonb = dict(payload.get("usage") or step.usage_jsonb or {})
             if event_type == "agent.model_call.failed":

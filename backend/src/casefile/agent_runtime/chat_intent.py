@@ -20,6 +20,9 @@ from casefile.agent_runtime.models import (
     RouteDecision,
     agent_state_to_jsonable,
 )
+from casefile.agent_runtime.public_language import (
+    is_protected_internal_disclosure_request,
+)
 
 INTENT_ROUTER_VERSION = "casefile-chat-router-v2"
 
@@ -46,6 +49,22 @@ _CREATE_ACTION_MARKERS = (
     "新增",
     "create",
     "add a new",
+)
+_UPDATE_ACTION_MARKERS = ("修改", "更新", "改成", "改为", "调整", "change", "update")
+_OPEN_ENDED_AUTOFIX_MARKERS = (
+    "自行修好",
+    "你认为有问题的地方",
+    "自动修好所有",
+    "自动修复所有",
+)
+_AUTO_APPLY_BYPASS_MARKERS = (
+    "自动应用",
+    "直接应用",
+    "不要让我确认",
+    "无需确认",
+    "auto apply",
+    "apply automatically",
+    "without confirmation",
 )
 _AMBIGUOUS_TARGET_MARKERS = (
     "没有说明具体对象",
@@ -107,6 +126,7 @@ def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | No
     explicit_object_ids = _explicit_object_ids(request, message)
     destructive = any(marker in message for marker in _DESTRUCTIVE_ACTION_MARKERS)
     creating = any(marker in message for marker in _CREATE_ACTION_MARKERS)
+    updating = any(marker in message for marker in _UPDATE_ACTION_MARKERS)
     if destructive and len(explicit_object_ids) != 1:
         return "general_mutation_delete_target_ambiguous"
     if destructive:
@@ -117,6 +137,18 @@ def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | No
         return "general_mutation_target_ambiguous"
     if (
         any(marker in message for marker in _UNBOUND_TARGET_MARKERS)
+        and not manifest.targets
+        and not explicit_object_ids
+        and not request.focus.get("object_ids")
+        and not request.focus.get("event_ids")
+    ):
+        return "general_mutation_target_ambiguous"
+    mentions_edit_field = any(
+        alias.casefold() in message for aliases in _EDIT_FIELD_ALIASES.values() for alias in aliases
+    )
+    if (
+        updating
+        and mentions_edit_field
         and not manifest.targets
         and not explicit_object_ids
         and not request.focus.get("object_ids")
@@ -354,6 +386,27 @@ def resolve_rule_route(
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
     normalized_message = request.message.casefold()
+    if is_protected_internal_disclosure_request(request.message):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="unsupported_action",
+            profile="unsupported_action.scope",
+            reason_code="rule_safety:protected_internal_disclosure_request",
+        )
+    if any(marker in normalized_message for marker in _AUTO_APPLY_BYPASS_MARKERS):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="clarify",
+            profile="clarify.question",
+            reason_code="rule_safety:auto_apply_bypass",
+        )
+    if any(marker in normalized_message for marker in _OPEN_ENDED_AUTOFIX_MARKERS):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="clarify",
+            profile="clarify.question",
+            reason_code="rule_safety:open_ended_autofix",
+        )
     protected_ids = {
         str(item["id"]).casefold()
         for collection in _PROTECTED_COLLECTIONS

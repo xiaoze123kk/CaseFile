@@ -632,6 +632,7 @@ class CaseFileChatResult:
     tools: ToolMetrics = field(default_factory=ToolMetrics)
     tool_ledger: dict[str, Any] | None = None
     safe_patch_registry: dict[str, Any] | None = None
+    reused_from_step_run_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

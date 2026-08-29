@@ -63,6 +63,18 @@ from casefile.agent_runtime.general_mutation_prompt import (
     general_mutation_output_type,
     render_general_mutation_prompt,
 )
+from casefile.agent_runtime.goal.contracts import (
+    GoalDecisionOutput,
+    GoalUnderstandingOutput,
+)
+from casefile.agent_runtime.goal.provider import (
+    ChatEvidenceCollection,
+    GoalDecisionRequest,
+    GoalDecisionResult,
+    GoalFinalizerRequest,
+    GoalUnderstandingRequest,
+    GoalUnderstandingResult,
+)
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -111,6 +123,9 @@ from casefile.agent_runtime.prompt import (
     render_chat_finalizer_prompt,
     render_chat_rewrite_prompt,
     render_chat_router_prompt,
+    render_goal_controller_prompt,
+    render_goal_finalizer_prompt,
+    render_goal_interpreter_prompt,
     reverse_parse_input,
     thread_compaction_input,
 )
@@ -245,9 +260,7 @@ class OpenAIAgentsProvider:
             candidate, usage = {}, {}
         return StoryPlannerProviderResult(candidate=candidate, usage=usage)
 
-    def patch_story(
-        self, request: StoryPlannerPatchRequest
-    ) -> StoryPlannerPatchProviderResult:
+    def patch_story(self, request: StoryPlannerPatchRequest) -> StoryPlannerPatchProviderResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         instructions, input_text, _prompt_hash = render_story_planner_patch_prompt(request)
@@ -270,6 +283,7 @@ class OpenAIAgentsProvider:
         except ProviderProtocolError:
             patch, usage = {}, {}
         return StoryPlannerPatchProviderResult(patch=patch, usage=usage)
+
     def plan_general_mutation(
         self,
         request: GeneralMutationPlannerRequest,
@@ -481,6 +495,7 @@ class OpenAIAgentsProvider:
             "casefile-chat-v14",
             "casefile-chat-v15",
             "casefile-chat-v16",
+            "casefile-chat-v17",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -509,52 +524,13 @@ class OpenAIAgentsProvider:
         )
 
     def _chat_v14(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        instructions, input_text = render_chat_executor_prompt(request)
-        tools, context, max_turns = _chat_tool_runtime(request)
         usage_records: list[dict[str, Any]] = []
-        ledger_payload = request.frozen_tool_ledger
-        evidence_summary = ""
-        metrics: ToolMetrics = ToolMetrics()
-        if ledger_payload is not None:
-            evidence_summary = str(ledger_payload.get("evidence_summary") or "")
-        elif tools and context is not None:
-            try:
-                ledger, tool_usage = asyncio.run(
-                    self._gather_chat_evidence(
-                        request,
-                        instructions=instructions,
-                        input_text=input_text,
-                        tools=tools,
-                        context=context,
-                        max_turns=max_turns,
-                    )
-                )
-            except Exception as error:
-                # v15's deterministic Bundle is authoritative.  A bounded
-                # Evidence Agent failure must not block the no-tool Finalizer
-                # from completing against that frozen evidence.
-                if request.prompt_version not in {"casefile-chat-v15", "casefile-chat-v16"}:
-                    raise
-                request.emit(
-                    "model.tool_agent.failed",
-                    "gathering_evidence",
-                    {
-                        "reason_code": "evidence_agent_failed",
-                        "error_class": type(error).__name__,
-                        "fallback": "frozen_bundle",
-                        "tool_calls": context.metrics.calls,
-                        "successful_calls": context.metrics.successful_calls,
-                    },
-                )
-                ledger = None
-                tool_usage = {}
-                evidence_summary = _frozen_evidence_summary(context)
-            if ledger is not None:
-                ledger_payload = ledger.as_dict()
-                evidence_summary = ledger.evidence_summary
-                usage_records.append(tool_usage)
-            else:
-                metrics = context.metrics
+        evidence = self.collect_chat_evidence(request)
+        ledger_payload = evidence.ledger
+        evidence_summary = evidence.evidence_summary
+        metrics = evidence.tools
+        if evidence.usage:
+            usage_records.append(evidence.usage)
         request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
             request,
@@ -604,6 +580,114 @@ class OpenAIAgentsProvider:
             tools=metrics,
             tool_ledger=ledger_payload,
             safe_patch_registry=safe_patch_registry,
+        )
+
+    def collect_chat_evidence(self, request: CaseFileChatRequest) -> ChatEvidenceCollection:
+        instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
+        ledger_payload = request.frozen_tool_ledger
+        evidence_summary = ""
+        usage: dict[str, Any] = {}
+        metrics = ToolMetrics()
+        if ledger_payload is not None:
+            evidence_summary = str(ledger_payload.get("evidence_summary") or "")
+        elif tools and context is not None:
+            try:
+                ledger, usage = asyncio.run(
+                    self._gather_chat_evidence(
+                        request,
+                        instructions=instructions,
+                        input_text=input_text,
+                        tools=tools,
+                        context=context,
+                        max_turns=max_turns,
+                    )
+                )
+            except Exception as error:
+                if request.prompt_version not in {
+                    "casefile-chat-v15",
+                    "casefile-chat-v16",
+                    "casefile-chat-v17",
+                }:
+                    raise
+                request.emit(
+                    "model.tool_agent.failed",
+                    "gathering_evidence",
+                    {
+                        "reason_code": "evidence_agent_failed",
+                        "error_class": type(error).__name__,
+                        "fallback": "frozen_bundle",
+                        "tool_calls": context.metrics.calls,
+                        "successful_calls": context.metrics.successful_calls,
+                    },
+                )
+                ledger = None
+                usage = {}
+                evidence_summary = _frozen_evidence_summary(context)
+            if ledger is not None:
+                ledger_payload = ledger.as_dict()
+                evidence_summary = ledger.evidence_summary
+            else:
+                metrics = context.metrics
+        return ChatEvidenceCollection(
+            ledger=ledger_payload,
+            evidence_summary=evidence_summary,
+            usage=usage,
+            tools=metrics,
+        )
+
+    def understand_goal(self, request: GoalUnderstandingRequest) -> GoalUnderstandingResult:
+        instructions, input_text = render_goal_interpreter_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request.chat,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=GoalUnderstandingOutput,
+                stage="goal_understanding",
+                component_id="goal_interpreter",
+                schema_id="casefile-chat-goal-understanding-v1",
+                temperature=_chat_live_temperature(),
+            )
+        )
+        return GoalUnderstandingResult(
+            candidate=GoalUnderstandingOutput.model_validate(candidate), usage=usage
+        )
+
+    def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult:
+        instructions, input_text = render_goal_controller_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request.chat,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=GoalDecisionOutput,
+                stage="goal_deciding",
+                component_id="goal_controller",
+                schema_id="casefile-chat-goal-decision-v1",
+                temperature=_chat_live_temperature(),
+            )
+        )
+        return GoalDecisionResult(
+            candidate=GoalDecisionOutput.model_validate(candidate), usage=usage
+        )
+
+    def finalize_goal(self, request: GoalFinalizerRequest) -> CaseFileChatResult:
+        instructions, input_text = render_goal_finalizer_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request.chat,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=CaseFileChatCandidateV2,
+                stage="goal_finalizing",
+                component_id="goal_finalizer",
+                schema_id="casefile-chat-output-v2",
+                temperature=_chat_live_temperature(),
+            )
+        )
+        return CaseFileChatResult(
+            candidate=CaseFileChatCandidateV2.model_validate(candidate), usage=usage
         )
 
     async def _gather_chat_evidence(

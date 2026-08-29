@@ -70,6 +70,24 @@ class ChatExecutionResult:
     diagnostics: dict[str, Any]
 
 
+def coordinate_chat_candidate_validation(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Shared final candidate boundary for single-task and Goal execution."""
+
+    result = suppress_general_mutation_finalizer_suggestions(request, result)
+    result = normalize_reference_slots(request, result)
+    result = apply_deterministic_audit_gate(request, result)
+    validate_chat_candidate(request, result)
+    result = apply_route_suggestion_policy(request, result)
+    if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
+        result = normalize_general_mutation_clarification(request, result)
+        result = normalize_internal_disclosure_refusal(request, result)
+        validate_public_language(result, sensitive_values=(request.api_key or "",))
+    return result
+
+
 def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
     merged: dict[str, Any] = {}
     for record in records:
@@ -289,9 +307,6 @@ class ChatExecutionRunner:
                             )
                             for failure in gate.failures
                         )
-            result = suppress_general_mutation_finalizer_suggestions(request, result)
-            result = normalize_reference_slots(request, result)
-            result = apply_deterministic_audit_gate(request, result)
             try:
                 if server_gate_issues:
                     candidate_payload = result.candidate.model_dump(mode="json")
@@ -305,15 +320,7 @@ class ChatExecutionRunner:
                         code=server_gate_issues[0].code,
                         issues=server_gate_issues,
                     )
-                validate_chat_candidate(request, result)
-                result = apply_route_suggestion_policy(request, result)
-                if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
-                    result = normalize_general_mutation_clarification(request, result)
-                    result = normalize_internal_disclosure_refusal(request, result)
-                    validate_public_language(
-                        result,
-                        sensitive_values=(request.api_key or "",),
-                    )
+                result = coordinate_chat_candidate_validation(request, result)
                 if complete is not None:
                     complete(result)
             except Exception as error:
@@ -541,6 +548,7 @@ __all__ = [
     "ChatCompletionValidationError",
     "ChatExecutionResult",
     "ChatExecutionRunner",
+    "coordinate_chat_candidate_validation",
     "prepare_chat_request_artifacts",
     "validate_chat_candidate",
 ]
