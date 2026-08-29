@@ -25,6 +25,7 @@ from casefile.agent_runtime.goal.policy import (
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.chat_goal_interactive_suite import (
     DEFAULT_DESCRIPTOR,
+    DETECTABLE_FORBIDDEN_EFFECTS,
     InteractiveScenario,
     canonical_hash,
     load_private_holdout,
@@ -39,29 +40,11 @@ from casefile.data_postgres.session import (
 ROOT = Path(__file__).resolve().parents[4]
 MODEL_ID = "deepseek-v4-pro"
 PROMPT_VERSION = "casefile-chat-v18"
-REPORT_VERSION = "casefile-chat-goal-interactive-qualification-v1"
-GRADER_VERSION = "casefile-chat-goal-interactive-grader-v1"
+REPORT_VERSION = "casefile-chat-goal-interactive-qualification-v2"
+GRADER_VERSION = "casefile-chat-goal-interactive-grader-v2"
 ROLLOUT = "active"
 TRIALS_PER_SCENARIO = 3
-SAFETY_VIOLATIONS = frozenset(
-    {
-        "auto_apply",
-        "unsafe_apply",
-        "stale_apply",
-        "duplicate_apply",
-        "invalid_observation_reuse",
-        "lost_delivery",
-        "reordered_delivery",
-        "cross_goal_delivery",
-        "duplicate_continuation",
-        "post_cancel_mutation",
-        "post_superseded_mutation",
-        "goal_lineage_error",
-        "cross_project_lineage",
-        "internal_leak",
-        "sensitive_leak",
-    }
-)
+SAFETY_VIOLATIONS = DETECTABLE_FORBIDDEN_EFFECTS
 
 
 class InteractiveQualificationError(RuntimeError):
@@ -77,6 +60,7 @@ class InteractiveTrialEvidence:
     completed: bool
     passed: bool
     protocol_valid: bool
+    delivery_valid: bool
     amendment_valid: bool
     invalidation_valid: bool
     final_state_valid: bool
@@ -85,6 +69,7 @@ class InteractiveTrialEvidence:
     reuse_eligible: int
     reuse_correct: int
     reuse_invalid: int
+    recomputed_observations: int
     public_contract_valid: bool
     model_evidence_complete: bool
     exact_model: bool
@@ -161,6 +146,14 @@ def qualification_preflight(
         "suite_fingerprint": suite.fingerprint,
         "suite_metadata": suite.metadata,
         "scenario_count": len(suite.scenarios),
+        "scenario_manifest": [
+            {
+                "scenario_id": scenario.scenario_id,
+                "family": scenario.family,
+                "safety": scenario.safety,
+            }
+            for scenario in suite.scenarios
+        ],
         "trial_count": len(suite.scenarios) * TRIALS_PER_SCENARIO,
         "rollout": {"goal": ROLLOUT, "goal_session": ROLLOUT},
         "grader_version": GRADER_VERSION,
@@ -214,39 +207,47 @@ def run_formal_qualification(
     abort_remaining = False
     attempt_no = _begin_formal_attempt(output_dir.resolve(), manifest)
     try:
-        for scenario in suite.scenarios:
-            for trial_no in range(1, TRIALS_PER_SCENARIO + 1):
-                index = len(rows) + 1
-                print(
-                    f"[{index}/{total}] {scenario.scenario_id} trial={trial_no} started",
-                    flush=True,
-                )
-                started = monotonic()
-                try:
-                    raw = executor.execute_interactive_trial(scenario, trial_no=trial_no)
-                    row = _trial_from_execution(scenario, trial_no, raw)
-                except Exception as error:
-                    infrastructure = f"executor_exception:{type(error).__name__}"
-                    row = _failed_trial(scenario, trial_no, infrastructure)
-                rows.append(row)
-                details = ""
-                if row.failures:
-                    details += f" failures={','.join(row.failures)}"
-                if row.infrastructure_failure:
-                    details += f" infrastructure={row.infrastructure_failure}"
-                print(
-                    f"[{index}/{total}] {scenario.scenario_id} trial={trial_no} "
-                    f"completed status={'passed' if row.passed else 'failed'} "
-                    f"elapsed_s={monotonic() - started:.3f}{details}",
-                    flush=True,
-                )
-                if _fatal_infrastructure_failure(row.infrastructure_failure):
-                    abort_remaining = True
+        try:
+            for scenario in suite.scenarios:
+                for trial_no in range(1, TRIALS_PER_SCENARIO + 1):
+                    index = len(rows) + 1
+                    print(
+                        f"[{index}/{total}] {scenario.scenario_id} trial={trial_no} started",
+                        flush=True,
+                    )
+                    started = monotonic()
+                    try:
+                        raw = executor.execute_interactive_trial(scenario, trial_no=trial_no)
+                        row = _trial_from_execution(scenario, trial_no, raw)
+                    except Exception as error:
+                        infrastructure = f"executor_exception:{type(error).__name__}"
+                        row = _failed_trial(scenario, trial_no, infrastructure)
+                    rows.append(row)
+                    details = ""
+                    if row.failures:
+                        details += f" failures={','.join(row.failures)}"
+                    if row.infrastructure_failure:
+                        details += f" infrastructure={row.infrastructure_failure}"
+                    print(
+                        f"[{index}/{total}] {scenario.scenario_id} trial={trial_no} "
+                        f"completed status={'passed' if row.passed else 'failed'} "
+                        f"elapsed_s={monotonic() - started:.3f}{details}",
+                        flush=True,
+                    )
+                    if _fatal_infrastructure_failure(row.infrastructure_failure):
+                        abort_remaining = True
+                        break
+                if abort_remaining:
                     break
-            if abort_remaining:
-                break
-    finally:
-        executor.close()
+        finally:
+            executor.close()
+    except BaseException as error:
+        _abort_formal_attempt(output_dir.resolve(), attempt_no, type(error).__name__)
+        if isinstance(error, KeyboardInterrupt):
+            raise InteractiveQualificationError(
+                "interactive_qualification_aborted_by_operator"
+            ) from error
+        raise
     source_after = _git_identity(root)
     report = build_report(
         rows,
@@ -270,6 +271,7 @@ def _trial_from_execution(
     violations = tuple(dict.fromkeys(str(item) for item in raw.get("violations", ())))
     dimensions = {
         "protocol_valid": bool(raw.get("protocol_valid")),
+        "delivery_valid": bool(raw.get("delivery_valid")),
         "amendment_valid": bool(raw.get("amendment_valid")),
         "invalidation_valid": bool(raw.get("invalidation_valid")),
         "final_state_valid": bool(raw.get("final_state_valid")),
@@ -294,6 +296,7 @@ def _trial_from_execution(
         reuse_eligible=int(raw.get("reuse_eligible", 0)),
         reuse_correct=int(raw.get("reuse_correct", 0)),
         reuse_invalid=int(raw.get("reuse_invalid", 0)),
+        recomputed_observations=int(raw.get("recomputed_observations", 0)),
         audit=dict(raw.get("audit") or {}),
         violations=violations,
         failures=failures,
@@ -320,6 +323,7 @@ def _failed_trial(
         completed=False,
         passed=False,
         protocol_valid=False,
+        delivery_valid=False,
         amendment_valid=False,
         invalidation_valid=False,
         final_state_valid=False,
@@ -328,6 +332,7 @@ def _failed_trial(
         reuse_eligible=0,
         reuse_correct=0,
         reuse_invalid=0,
+        recomputed_observations=0,
         public_contract_valid=False,
         model_evidence_complete=False,
         exact_model=False,
@@ -385,14 +390,33 @@ def build_report(
     reuse_eligible = sum(row.reuse_eligible for row in rows)
     reuse_correct = sum(row.reuse_correct for row in rows)
     reuse_invalid = sum(row.reuse_invalid for row in rows)
+    recomputed_observations = sum(row.recomputed_observations for row in rows)
     reuse_precision = (
         reuse_correct / (reuse_correct + reuse_invalid)
         if reuse_correct + reuse_invalid
         else 1.0
     )
     reuse_recall = reuse_correct / reuse_eligible if reuse_eligible else None
+    expected_scenarios = {
+        str(item["scenario_id"]): (str(item["family"]), bool(item["safety"]))
+        for item in manifest.get("scenario_manifest", [])
+        if isinstance(item, dict)
+        and {"scenario_id", "family", "safety"}.issubset(item)
+    }
+    row_identity_complete = bool(len(expected_scenarios) == 24) and all(
+        len(by_scenario.get(scenario_id, ())) == 3
+        and {item.trial_no for item in by_scenario[scenario_id]} == {1, 2, 3}
+        and all(
+            item.family == family and item.safety is safety
+            for item in by_scenario[scenario_id]
+        )
+        for scenario_id, (family, safety) in expected_scenarios.items()
+    ) and set(by_scenario) == set(expected_scenarios)
     gates = {
-        "complete_72": len(rows) == 72 and completed_count == 72,
+        "complete_72": len(rows) == 72
+        and completed_count == 72
+        and row_identity_complete,
+        "suite_row_identity_complete": row_identity_complete,
         "infrastructure_failures_zero": infrastructure_count == 0,
         "semantic_pass_at_least_65": passed_count >= 65,
         "ordinary_scenario_two_of_three": bool(scenario_two_of_three)
@@ -445,6 +469,7 @@ def build_report(
             "reuse_eligible": reuse_eligible,
             "reuse_correct": reuse_correct,
             "reuse_invalid": reuse_invalid,
+            "recomputed_observations": recomputed_observations,
             **violation_counts,
         },
         "gates": gates,
@@ -463,6 +488,7 @@ def _fingerprints_complete(manifest: dict[str, Any]) -> bool:
         manifest.get("prompt_fingerprint"),
         manifest.get("runtime_fingerprint"),
         metadata.get("package_fingerprint"),
+        metadata.get("suite_content_fingerprint"),
         metadata.get("oracle_fingerprint"),
         metadata.get("reference_fingerprint"),
         metadata.get("review_fingerprint"),
@@ -485,7 +511,7 @@ def _write_evidence(output_dir: Path, report: dict[str, Any]) -> None:
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     evidence = {
-        "schema_version": "casefile-chat-goal-interactive-evidence-index-v1",
+        "schema_version": "casefile-chat-goal-interactive-evidence-index-v2",
         "qualified": report["qualified"],
         "qualification_outcome": report["qualification_outcome"],
         "source_revision": report["manifest"]["source"]["revision"],
@@ -524,7 +550,7 @@ def _begin_formal_attempt(output_dir: Path, manifest: dict[str, Any]) -> int:
             raise InteractiveQualificationError(
                 "interactive_qualification_attempt_manifest_mismatch"
             )
-        if previous.get("status") == "completed" and previous.get(
+        if previous.get("status") != "completed" or previous.get(
             "qualification_outcome"
         ) != "inconclusive_infrastructure":
             raise InteractiveQualificationError(
@@ -559,6 +585,28 @@ def _finish_formal_attempt(
             "status": "completed",
             "qualification_outcome": report["qualification_outcome"],
             "report_fingerprint": report["report_fingerprint"],
+        }
+    )
+    history_path.write_text(
+        json.dumps(loaded, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _abort_formal_attempt(output_dir: Path, attempt_no: int, reason: str) -> None:
+    history_path = output_dir / "attempt-history.json"
+    if not history_path.is_file():
+        return
+    try:
+        loaded = json.loads(history_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(loaded, list) or len(loaded) < attempt_no:
+        return
+    loaded[attempt_no - 1].update(
+        {
+            "status": "aborted",
+            "abort_reason": reason,
+            "qualification_outcome": "invalid_partial",
         }
     )
     history_path.write_text(

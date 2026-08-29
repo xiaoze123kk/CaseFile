@@ -168,8 +168,14 @@ class Worker:
             if not self.run_once():
                 time.sleep(self.config.poll_seconds)
 
-    def run_once(self) -> bool:
-        claimed = self._claim_next()
+    def run_once(self, *, task_run_id: int | None = None) -> bool:
+        """Run one claim, optionally restricted to an already known TaskRun."""
+
+        claimed = (
+            self._claim_next()
+            if task_run_id is None
+            else self._queue._claim_specific(task_run_id)
+        )
         if claimed is None:
             return False
         if claimed == "cancelled":

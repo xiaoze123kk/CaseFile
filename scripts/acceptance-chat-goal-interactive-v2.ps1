@@ -1,5 +1,5 @@
 param(
-    [string]$HoldoutSuite = "backend/var/benchmark/private/chat-goal-interactive-v1/suite.json",
+    [string]$HoldoutSuite = "backend/var/benchmark/private/chat-goal-interactive-v2/suite.json",
     [string]$DatabaseUrl,
     [string]$CredentialDatabaseUrl,
     [string]$OutputDirectory,

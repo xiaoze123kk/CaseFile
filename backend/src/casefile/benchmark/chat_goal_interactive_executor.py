@@ -24,13 +24,14 @@ from casefile_contracts import (
 )
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from casefile.agent_runtime.goal.policy import GOAL_CAPABILITY_REGISTRY_VERSION, stable_hash
 from casefile.application.casefile_v1 import casefile_content_hash
 from casefile.application.services import CaseFileService
 from casefile.benchmark.chat_goal_interactive_suite import (
     InteractiveAction,
+    InteractiveExpectedEffects,
     InteractiveScenario,
     canonical_hash,
 )
@@ -51,6 +52,7 @@ from casefile.data_postgres.models import (
     AgentGoalTaskRun,
     AgentGoalTransition,
     AgentModelCall,
+    AgentPatchOperation,
     AgentPatchSet,
     TaskAttempt,
     TaskEvent,
@@ -133,7 +135,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             self.session_factory,
             config=WorkerConfig(worker_id=f"m38-generation-{actor_id}"),
             provider_factory=lambda _task: provider,
-        ).run_once():
+        ).run_once(task_run_id=generation_task_id):
             raise InteractiveExecutorError("interactive_fixture_generation_not_claimed")
         with self.session_factory() as session:
             current = CaseFileService(session).get_draft(actor_id, project_id)
@@ -193,9 +195,13 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 if receipt.goal is None or receipt.assistant_message.run is None:
                     raise InteractiveExecutorError("interactive_initial_goal_missing")
                 initial_goal_id = receipt.goal.goal_id
+                initial_task_run_id = receipt.assistant_message.run.run_id
 
                 for action in scenario.input.actions:
                     if action.at.kind == "safe_point":
+                        target_task_run_id = self._next_goal_task_run_id(
+                            thread_id=thread_id
+                        ) or int(initial_task_run_id)
                         record = self._run_worker_at_safe_point(
                             client=client,
                             headers=headers,
@@ -205,6 +211,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                             actor_id=actor_id,
                             provider=provider,
                             action=action,
+                            target_task_run_id=target_task_run_id,
                             public_payloads=public_payloads,
                         )
                         injection_records.append(record)
@@ -213,6 +220,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                         actor_id=actor_id,
                         provider=provider,
                         goal_id=initial_goal_id,
+                        fallback_task_run_id=int(initial_task_run_id),
                         target_status=(
                             "completed"
                             if action.at.kind == "goal_completed"
@@ -233,7 +241,11 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                     explicit_apply_count += int(result.get("applied", False))
                     external_revision_count += int(result.get("external_revision", False))
 
-                self._drive_remaining(actor_id=actor_id, provider=provider, thread_id=thread_id)
+                self._drive_remaining(
+                    actor_id=actor_id,
+                    provider=provider,
+                    project_id=project_id,
+                )
                 public_payloads.extend(
                     self._public_snapshot(
                         client=client,
@@ -298,6 +310,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         actor_id: int,
         provider: Any,
         action: InteractiveAction,
+        target_task_run_id: int,
         public_payloads: list[Any],
     ) -> dict[str, Any]:
         barrier = _SafePointBarrier()
@@ -309,14 +322,16 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         )
         matched = False
         record: dict[str, Any] = {}
+        observed_safe_points: list[str] = []
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(worker.run_once)
+            future = pool.submit(worker.run_once, task_run_id=target_task_run_id)
             while not future.done():
                 try:
                     notice = barrier.notices.get(timeout=0.25)
                 except queue.Empty:
                     continue
                 try:
+                    observed_safe_points.append(notice.safe_point)
                     if not matched and self._notice_matches(notice, action):
                         self._verify_safe_point_context(
                             notice=notice,
@@ -342,7 +357,32 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                     notice.release.set()
             self._future_result(future)
         if not matched:
-            raise InteractiveExecutorError("interactive_safe_point_not_reached")
+            observed = ",".join(observed_safe_points) or "none"
+            with self.session_factory() as session:
+                task = session.get(TaskRun, target_task_run_id)
+                goal = session.scalar(
+                    select(AgentGoalSession).where(
+                        AgentGoalSession.thread_id == thread_id
+                    )
+                )
+                event_types = list(
+                    session.scalars(
+                        select(TaskEvent.event_type)
+                        .where(TaskEvent.task_run_id == target_task_run_id)
+                        .order_by(TaskEvent.sequence_no)
+                    )
+                )
+                task_state = (
+                    f"{task.status}/{task.error_code or 'none'}"
+                    if task is not None
+                    else "missing"
+                )
+                goal_state = goal.status if goal is not None else "missing"
+            raise InteractiveExecutorError(
+                "interactive_safe_point_not_reached:"
+                f"observed={observed}:task={task_state}:goal={goal_state}:"
+                f"events={','.join(event_types)}"
+            )
         return record
 
     @staticmethod
@@ -435,25 +475,58 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             project_id=project_id,
             thread_id=thread_id,
         )
-        if action.action == "message":
-            assert action.delivery_mode is not None and action.message is not None
-            receipt = self._send_message(
-                client=client,
-                headers=headers,
-                project_id=project_id,
-                thread_id=thread_id,
-                draft_id=draft_id,
-                content=action.message,
-                delivery_mode=action.delivery_mode,
-                goal=goal,
-            )
-            public_payloads.append(receipt.model_dump(mode="json"))
+        if action.action == "messages":
+            if not action.messages:
+                raise InteractiveExecutorError("interactive_message_batch_empty")
+            actual_messages: list[dict[str, Any]] = []
+            for message in action.messages:
+                body = {
+                    "expected_draft_id": draft_id,
+                    "expected_draft_revision": self._draft_revision(draft_id),
+                    "content": message.message,
+                    "provider": "deepseek",
+                    "delivery_mode": message.delivery_mode,
+                    "expected_goal_id": goal.goal_id,
+                    "expected_goal_revision": goal.revision,
+                }
+                response = client.post(
+                    f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+                    headers=headers,
+                    json=body,
+                )
+                payload = response.json()
+                public_payloads.append(payload)
+                if response.status_code == 202:
+                    receipt = PublicAgentMessageReceipt.model_validate(payload)
+                    actual_messages.append(
+                        {
+                            "http_status": 202,
+                            "error_code": None,
+                            "delivery_id": (
+                                None
+                                if receipt.delivery is None
+                                else receipt.delivery.delivery_id
+                            ),
+                            "delivery_mode": message.delivery_mode,
+                        }
+                    )
+                elif response.status_code == 409:
+                    actual_messages.append(
+                        {
+                            "http_status": 409,
+                            "error_code": str(payload.get("code") or ""),
+                            "delivery_id": None,
+                            "delivery_mode": message.delivery_mode,
+                        }
+                    )
+                else:
+                    raise InteractiveExecutorError(
+                        "interactive_message_unexpected_http_status"
+                    )
             return {
-                "delivery_id": None if receipt.delivery is None else receipt.delivery.delivery_id,
+                "messages": actual_messages,
                 "goal_id": goal.goal_id,
                 "task_run_id": task_run_id,
-                "delivery_mode": action.delivery_mode,
-                "created_at": None if receipt.delivery is None else receipt.delivery.created_at,
             }
         if action.action == "cancel":
             payload = self._json_response(
@@ -461,29 +534,49 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                     f"/api/v1/projects/{project_id}/agent/goals/{goal.goal_id}/cancel",
                     headers=headers,
                 ),
-                200,
+                202,
                 "interactive_goal_cancel_failed",
             )
             cancelled = PublicGoalSession.model_validate(payload)
             public_payloads.append(cancelled.model_dump(mode="json"))
             return {"cancelled": True, "goal_id": goal.goal_id, "task_run_id": task_run_id}
         if action.action == "external_revision":
-            with self.session_factory() as session, session.begin():
-                from casefile.data_postgres.models import Draft  # noqa: PLC0415
-
-                draft = session.get(Draft, draft_id)
-                if draft is None:
-                    raise InteractiveExecutorError("interactive_draft_missing")
-                draft.revision += 1
+            with self.session_factory() as session:
+                document = CaseFileService(session).get_draft(actor_id, project_id)[
+                    "content"
+                ]
+            entities = document.get("entities") or []
+            if not entities:
+                raise InteractiveExecutorError("interactive_external_edit_target_missing")
+            target = entities[0]
+            object_id = str(target["id"])
+            description = str(target.get("description") or "")
+            payload = self._json_response(
+                client.patch(
+                    f"/api/v1/projects/{project_id}/draft/objects/{object_id}",
+                    headers=headers,
+                    json={
+                        "expected_draft_id": draft_id,
+                        "expected_revision": self._draft_revision(draft_id),
+                        "changes": {
+                            "description": description + "（并发公开编辑）"
+                        },
+                    },
+                ),
+                200,
+                "interactive_external_edit_failed",
+            )
+            public_payloads.append(payload)
             return {"external_revision": True, "goal_id": goal.goal_id}
-        if goal.active_patch_id is None:
+        patch_id = goal.active_patch_id or self._latest_goal_patch_id(goal.goal_id)
+        if patch_id is None:
             raise InteractiveExecutorError("interactive_active_patch_missing")
         current_revision = self._draft_revision(draft_id)
         if action.action == "patch_reject":
             payload = self._json_response(
                 client.post(
                     f"/api/v1/projects/{project_id}/agent/patch-sets/"
-                    f"{goal.active_patch_id}/apply",
+                    f"{patch_id}/apply",
                     headers=headers,
                     json={
                         "expected_draft_id": draft_id,
@@ -502,7 +595,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             raise InteractiveExecutorError("interactive_action_unsupported")
         if current_revision != self._goal_baseline_revision(goal.goal_id):
             response = client.post(
-                f"/api/v1/projects/{project_id}/agent/patch-sets/{goal.active_patch_id}/apply",
+                f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_id}/apply",
                 headers=headers,
                 json={
                     "expected_draft_id": draft_id,
@@ -520,14 +613,14 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             project_id=project_id,
             draft_id=draft_id,
             base_revision=current_revision,
-            patch_id=goal.active_patch_id,
+            patch_id=patch_id,
         )
         public_payloads.append(review.model_dump(mode="json"))
         if not review.can_apply or review.blockers:
             raise InteractiveExecutorError("interactive_patch_simulation_blocked")
         payload = self._json_response(
             client.post(
-                f"/api/v1/projects/{project_id}/agent/patch-sets/{goal.active_patch_id}/apply",
+                f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_id}/apply",
                 headers=headers,
                 json={
                     "expected_draft_id": draft_id,
@@ -591,6 +684,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         actor_id: int,
         provider: Any,
         goal_id: int,
+        fallback_task_run_id: int | None,
         target_status: str | None,
     ) -> None:
         if target_status is None:
@@ -601,42 +695,75 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 return
             if status in _TERMINAL_GOALS and status != target_status:
                 raise InteractiveExecutorError("interactive_goal_terminal_before_target")
+            task_run_id = self._next_goal_task_run_id(goal_id=goal_id)
+            if task_run_id is None:
+                task_run_id = fallback_task_run_id
+                fallback_task_run_id = None
+            if task_run_id is None:
+                raise InteractiveExecutorError("interactive_goal_task_missing")
             claimed = Worker(
                 self.session_factory,
                 config=self._worker_config(actor_id),
                 provider_factory=lambda _task: provider,
-            ).run_once()
+            ).run_once(task_run_id=task_run_id)
             if not claimed:
                 raise InteractiveExecutorError("interactive_target_status_not_reached")
         raise InteractiveExecutorError("interactive_goal_slice_budget_exceeded")
 
-    def _drive_remaining(self, *, actor_id: int, provider: Any, thread_id: int) -> None:
-        for _ in range(12):
-            with self.session_factory() as session:
-                active = session.scalar(
-                    select(AgentGoalSession).where(
-                        AgentGoalSession.thread_id == thread_id,
-                        AgentGoalSession.status.not_in(tuple(_TERMINAL_GOALS)),
-                    )
-                )
-                queued = int(
-                    session.scalar(
-                        select(func.count(TaskRun.id)).where(
-                            TaskRun.project_id == active.project_id,
-                            TaskRun.status == "queued",
-                        )
-                    )
-                    or 0
-                ) if active is not None else 0
-            if queued == 0:
+    def _drive_remaining(
+        self, *, actor_id: int, provider: Any, project_id: int
+    ) -> None:
+        for _ in range(24):
+            task_run_id = self._next_project_task_run_id(project_id)
+            if task_run_id is None:
                 return
             if not Worker(
                 self.session_factory,
                 config=self._worker_config(actor_id),
                 provider_factory=lambda _task: provider,
-            ).run_once():
+            ).run_once(task_run_id=task_run_id):
                 raise InteractiveExecutorError("interactive_continuation_not_claimed")
         raise InteractiveExecutorError("interactive_remaining_slice_budget_exceeded")
+
+    def _next_goal_task_run_id(
+        self,
+        *,
+        goal_id: int | None = None,
+        thread_id: int | None = None,
+    ) -> int | None:
+        if (goal_id is None) == (thread_id is None):
+            raise ValueError("exactly one Goal task selector is required")
+        statement = (
+            select(TaskRun.id)
+            .join(AgentGoalTaskRun, AgentGoalTaskRun.task_run_id == TaskRun.id)
+            .join(
+                AgentGoalSession,
+                AgentGoalSession.id == AgentGoalTaskRun.goal_session_id,
+            )
+            .where(TaskRun.status.in_(("queued", "running", "cancelling")))
+            .order_by(TaskRun.created_at, TaskRun.id)
+            .limit(1)
+        )
+        if goal_id is not None:
+            statement = statement.where(AgentGoalSession.id == goal_id)
+        else:
+            statement = statement.where(AgentGoalSession.thread_id == thread_id)
+        with self.session_factory() as session:
+            value = session.scalar(statement)
+        return int(value) if value is not None else None
+
+    def _next_project_task_run_id(self, project_id: int) -> int | None:
+        with self.session_factory() as session:
+            value = session.scalar(
+                select(TaskRun.id)
+                .where(
+                    TaskRun.project_id == project_id,
+                    TaskRun.status.in_(("queued", "running", "cancelling")),
+                )
+                .order_by(TaskRun.created_at, TaskRun.id)
+                .limit(1)
+            )
+        return int(value) if value is not None else None
 
     def _public_snapshot(
         self,
@@ -824,6 +951,14 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                     select(AgentPatchSet).where(AgentPatchSet.task_run_id.in_(task_ids))
                 )
             )
+            patch_set_ids = [item.id for item in patch_sets]
+            patch_operations = list(
+                session.scalars(
+                    select(AgentPatchOperation)
+                    .where(AgentPatchOperation.patch_set_id.in_(patch_set_ids))
+                    .order_by(AgentPatchOperation.patch_set_id, AgentPatchOperation.ordinal)
+                )
+            )
         with self.session_factory() as session:
             after = CaseFileService(session).get_draft(actor_id, project_id)["content"]
         if not goals or goals[0].id != initial_goal_id:
@@ -838,14 +973,21 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         if not protocol_valid:
             failures.append("protocol_invalid")
             violations.append("goal_lineage_error")
-        expected = scenario.oracle.expected
-        amendment_valid = self._amendment_valid(expected, revisions, obligations)
+        effects = scenario.oracle.effects
+        amendment_valid = self._amendment_valid(effects, revisions, obligations)
         if not amendment_valid:
             failures.append("amendment_or_lineage_mismatch")
         reuse_eligible, reuse_correct, reuse_invalid = self._reuse_evidence(
             observations, obligations
         )
-        invalidation_valid = reuse_invalid == 0
+        recomputed_observations = self._recomputed_observation_count(
+            observations, obligations
+        )
+        invalidation_valid = bool(
+            reuse_invalid == 0
+            and reuse_correct >= effects.min_reused_observations
+            and recomputed_observations >= effects.min_recomputed_observations
+        )
         if not invalidation_valid:
             failures.append("observation_invalidation_invalid")
             violations.append("invalid_observation_reuse")
@@ -853,8 +995,13 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             scenario=scenario,
             goals=goals,
             bindings=bindings,
+            transitions=transitions,
+            patch_sets=patch_sets,
+            patch_operations=patch_operations,
             before=before,
             after=after,
+            initial_revision=initial_revision,
+            final_revision=self._draft_revision(draft_id),
         )
         if not final_state_valid:
             failures.append("final_state_oracle_failed")
@@ -863,6 +1010,13 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         )
         if not safe_point_consumed or starts_before_consumption:
             failures.append("safe_point_consumption_invalid")
+        delivery_valid = self._delivery_evidence_valid(
+            scenario=scenario,
+            records=injection_records,
+            deliveries=deliveries,
+        )
+        if not delivery_valid:
+            failures.append("delivery_outcome_invalid")
         model_call_events = [
             event
             for event in events
@@ -941,6 +1095,30 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             for left, right in zip(deliveries, deliveries[1:], strict=False)
         ):
             violations.append("reordered_delivery")
+        forbidden = set(scenario.oracle.forbidden)
+        if (
+            "relationship_mutation" in forbidden
+            and any(item.target_collection == "relationships" for item in patch_operations)
+        ):
+            violations.append("relationship_mutation")
+        if "unexpected_patch" in forbidden and patch_sets:
+            violations.append("unexpected_patch")
+        if (
+            "duplicate_goal" in forbidden
+            and len(goals) > scenario.oracle.effects.goal_session_count
+        ):
+            violations.append("duplicate_goal")
+        if "midrun_follow_up_queued" in forbidden and any(
+            outcome.delivery_mode == "follow_up"
+            and outcome.result == "rejected"
+            and actual.get("delivery_id") is not None
+            for outcome, actual in zip(
+                scenario.oracle.message_outcomes,
+                self._actual_message_records(injection_records),
+                strict=False,
+            )
+        ):
+            violations.append("midrun_follow_up_queued")
         terminal_times = {
             (transition.goal_session_id, transition.to_status): transition.occurred_at
             for transition in transitions
@@ -960,11 +1138,17 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             if superseded_at is not None and patch_set.created_at > superseded_at:
                 violations.append("post_superseded_mutation")
         infrastructure_failure = self._infrastructure_failure(tasks, events)
-        completed = bool(
+        quiescent = bool(
             goals
             and all(task.status in {"succeeded", "failed", "cancelled"} for task in tasks)
-            and infrastructure_failure is None
+            and all(call.status in {"succeeded", "failed"} for call in calls)
+            and all(
+                delivery.status in {"consumed", "cancelled"}
+                for delivery in deliveries
+            )
+            and all(goal.status not in {"interpreting", "running"} for goal in goals)
         )
+        completed = quiescent and infrastructure_failure is None
         audit = self._audit_evidence(
             goals=goals,
             revisions=revisions,
@@ -977,6 +1161,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             attempts=attempts,
             calls=calls,
             patch_sets=patch_sets,
+            patch_operations=patch_operations,
             public_payloads=public_payloads,
             initial_revision=initial_revision,
             final_revision=final_revision,
@@ -986,7 +1171,9 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         )
         return {
             "completed": completed,
+            "quiescent": quiescent,
             "protocol_valid": protocol_valid,
+            "delivery_valid": delivery_valid,
             "amendment_valid": amendment_valid,
             "invalidation_valid": invalidation_valid,
             "final_state_valid": final_state_valid,
@@ -995,6 +1182,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             "reuse_eligible": reuse_eligible,
             "reuse_correct": reuse_correct,
             "reuse_invalid": reuse_invalid,
+            "recomputed_observations": recomputed_observations,
             "public_contract_valid": contract_valid and not leak_rules and not sensitive_leak,
             "model_evidence_complete": model_evidence_complete,
             "exact_model": exact_model,
@@ -1025,6 +1213,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         attempts: list[TaskAttempt],
         calls: list[AgentModelCall],
         patch_sets: list[AgentPatchSet],
+        patch_operations: list[AgentPatchOperation],
         public_payloads: list[Any],
         initial_revision: int,
         final_revision: int,
@@ -1185,6 +1374,20 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 }
                 for item in patch_sets
             ],
+            "patch_operations": [
+                {
+                    "id": item.id,
+                    "patch_set_id": item.patch_set_id,
+                    "ordinal": item.ordinal,
+                    "operation_type": item.operation_type,
+                    "target_collection": item.target_collection,
+                    "target_object_key_hash": stable_hash(item.target_object_key),
+                    "field_path": item.field_path,
+                    "origin": item.origin,
+                    "decision": item.decision,
+                }
+                for item in patch_operations
+            ],
             "draft": {
                 "initial_revision": initial_revision,
                 "final_revision": final_revision,
@@ -1236,22 +1439,21 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
 
     @staticmethod
     def _amendment_valid(
-        expected: dict[str, Any],
+        expected: InteractiveExpectedEffects,
         revisions: list[AgentGoalRevision],
         obligations: list[AgentGoalObligation],
     ) -> bool:
-        required = expected.get("amendment_kind")
-        if required is None:
+        values = list(expected.amendment_kinds)
+        if not values:
             return True
-        values = [required] if isinstance(required, str) else list(required)
         matching = [revision for revision in revisions if revision.amendment_kind in values]
         if not all(value in {item.amendment_kind for item in matching} for value in values):
             return False
         target = matching[-1]
-        required_terms = expected.get("goal_text_all") or []
+        required_terms = expected.goal_text_all
         if any(str(term) not in target.goal_text for term in required_terms):
             return False
-        delta = expected.get("obligation_delta")
+        delta = expected.obligation_delta
         if delta is not None:
             parent = next(
                 (item for item in revisions if item.id == target.parent_revision_id), None
@@ -1317,32 +1519,102 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             invalid += int(not valid)
         return eligible, correct, invalid
 
+    @staticmethod
+    def _recomputed_observation_count(
+        observations: list[AgentGoalObservation],
+        obligations: list[AgentGoalObligation],
+    ) -> int:
+        obligation_by_id = {item.id: item for item in obligations}
+        count = 0
+        for target in observations:
+            if target.status != "succeeded":
+                continue
+            target_obligation = obligation_by_id.get(target.obligation_id)
+            if target_obligation is None:
+                continue
+            prior = [
+                source
+                for source in observations
+                if (
+                    source.id != target.id
+                    and source.goal_session_id == target.goal_session_id
+                    and (source_obligation := obligation_by_id.get(source.obligation_id))
+                    is not None
+                    and source_obligation.goal_revision_id
+                    < target_obligation.goal_revision_id
+                    and source_obligation.obligation_key
+                    == target_obligation.obligation_key
+                    and source.capability == target.capability
+                    and source.target_state == target.target_state
+                )
+            ]
+            if prior and any(
+                source.draft_hash != target.draft_hash
+                or obligation_by_id[source.obligation_id].instruction
+                != target_obligation.instruction
+                for source in prior
+            ):
+                count += 1
+        return count
+
     def _final_state_valid(
         self,
         *,
         scenario: InteractiveScenario,
         goals: list[AgentGoalSession],
         bindings: list[AgentGoalTaskRun],
+        transitions: list[AgentGoalTransition],
+        patch_sets: list[AgentPatchSet],
+        patch_operations: list[AgentPatchOperation],
         before: dict[str, Any],
         after: dict[str, Any],
+        initial_revision: int,
+        final_revision: int,
     ) -> bool:
-        expected = scenario.oracle.expected
-        if expected.get("final_status") and goals[-1].status != expected["final_status"]:
+        expected = scenario.oracle.effects
+        if not goals or len(goals) != expected.goal_session_count:
             return False
-        if expected.get("predecessor_status") and goals[0].status != expected["predecessor_status"]:
+        if expected.final_status and goals[-1].status != expected.final_status:
             return False
-        if expected.get("successor_status"):
-            if len(goals) < 2 or goals[-1].status != expected["successor_status"]:
+        if max(goal.revision_count for goal in goals) < expected.revision_count_min:
+            return False
+        if expected.predecessor_status and goals[0].status != expected.predecessor_status:
+            return False
+        if expected.successor_status:
+            if len(goals) < 2 or goals[-1].status != expected.successor_status:
                 return False
             if goals[-1].predecessor_goal_session_id != goals[0].id:
                 return False
-        if expected.get("same_goal") is True and len(goals) != 1:
+        if len(bindings) < expected.min_task_slices:
             return False
-        if expected.get("same_goal") is False and len(goals) < 2:
+        if final_revision - initial_revision != expected.draft_revision_delta:
             return False
-        if expected.get("resumed") and len(bindings) < 2:
+        if not set(expected.patch_statuses).issubset(
+            {patch.status for patch in patch_sets}
+        ):
             return False
-        if expected.get("post_apply_revision"):
+        if not set(expected.patch_operation_types).issubset(
+            {operation.operation_type for operation in patch_operations}
+        ):
+            return False
+        if not set(expected.patch_target_collections).issubset(
+            {operation.target_collection for operation in patch_operations}
+        ):
+            return False
+        for required in expected.required_transitions:
+            goal_id = goals[0].id if required.goal == "initial" else goals[-1].id
+            if not any(
+                item.goal_session_id == goal_id
+                and item.from_status == required.from_status
+                and item.to_status == required.to_status
+                and (
+                    required.reason_code is None
+                    or item.reason_code == required.reason_code
+                )
+                for item in transitions
+            ):
+                return False
+        if expected.post_apply_revision:
             post_apply_revisions = [
                 revision
                 for revision in self._revisions_for(goals)
@@ -1358,11 +1630,11 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 or goals[-1].baseline_hash != latest.baseline_hash
             ):
                 return False
-        if expected.get("verification_trigger") == "post_apply" and not any(
+        if expected.verification_trigger == "post_apply" and not any(
             binding.trigger_kind == "post_apply" for binding in bindings
         ):
             return False
-        state_oracle = expected.get("state_oracle")
+        state_oracle = expected.state_oracle
         if state_oracle:
             task = PublicLanguageTask(
                 task_id=scenario.scenario_id,
@@ -1375,7 +1647,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 expected_change_kinds=(),
                 expected_target_labels=(),
                 expected_field_labels=(),
-                oracle=state_oracle,
+                oracle=state_oracle.model_dump(mode="json"),
             )
             oracle_failures, unsafe = self._grade_oracle(task, before, after)
             if oracle_failures or unsafe:
@@ -1405,20 +1677,80 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         starts = 0
         valid = True
         for record in safe_records:
-            delivery_id = record.get("delivery_id")
-            if delivery_id is None:
-                continue
-            delivery = delivery_by_id.get(int(delivery_id))
-            if delivery is None or delivery.status != "consumed" or delivery.consumed_at is None:
-                valid = False
-                continue
-            starts += sum(
-                event.event_type == "goal.capability_started"
-                and event.occurred_at >= delivery.created_at
-                and event.occurred_at < delivery.consumed_at
-                for event in events
-            )
+            for actual in record.get("messages", []):
+                delivery_id = actual.get("delivery_id")
+                if delivery_id is None:
+                    continue
+                delivery = delivery_by_id.get(int(delivery_id))
+                if delivery is None or delivery.status not in {"consumed", "cancelled"}:
+                    valid = False
+                    continue
+                if delivery.status == "consumed":
+                    if delivery.consumed_at is None:
+                        valid = False
+                        continue
+                    starts += sum(
+                        event.event_type == "goal.capability_started"
+                        and event.occurred_at >= delivery.created_at
+                        and event.occurred_at < delivery.consumed_at
+                        for event in events
+                    )
         return valid, starts
+
+    @staticmethod
+    def _actual_message_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            actual
+            for record in records
+            for actual in record.get("messages", [])
+            if isinstance(actual, dict)
+        ]
+
+    @classmethod
+    def _delivery_evidence_valid(
+        cls,
+        *,
+        scenario: InteractiveScenario,
+        records: list[dict[str, Any]],
+        deliveries: list[AgentGoalDelivery],
+    ) -> bool:
+        actual_messages = cls._actual_message_records(records)
+        expected = scenario.oracle.message_outcomes
+        if len(actual_messages) != len(expected):
+            return False
+        delivery_by_id = {item.id: item for item in deliveries}
+        accepted_ids: list[int] = []
+        for actual, outcome in zip(actual_messages, expected, strict=True):
+            if actual.get("delivery_mode") != outcome.delivery_mode:
+                return False
+            delivery_id = actual.get("delivery_id")
+            if outcome.result == "rejected":
+                if (
+                    actual.get("http_status") != 409
+                    or actual.get("error_code") != outcome.error_code
+                    or delivery_id is not None
+                ):
+                    return False
+                continue
+            if actual.get("http_status") != 202 or delivery_id is None:
+                return False
+            delivery = delivery_by_id.get(int(delivery_id))
+            if (
+                delivery is None
+                or delivery.mode != outcome.delivery_mode
+                or delivery.status != outcome.final_delivery_status
+            ):
+                return False
+            accepted_ids.append(delivery.id)
+        if set(accepted_ids) != set(delivery_by_id):
+            return False
+        accepted_deliveries = [delivery_by_id[item] for item in accepted_ids]
+        return all(
+            left.message_sequence_no < right.message_sequence_no
+            for left, right in zip(
+                accepted_deliveries, accepted_deliveries[1:], strict=False
+            )
+        )
 
     @staticmethod
     def _infrastructure_failure(tasks: list[TaskRun], events: list[TaskEvent]) -> str | None:
@@ -1462,6 +1794,20 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         if revision is None:
             raise InteractiveExecutorError("interactive_draft_missing")
         return int(revision)
+
+    def _latest_goal_patch_id(self, goal_id: int) -> int | None:
+        with self.session_factory() as session:
+            value = session.scalar(
+                select(AgentPatchSet.id)
+                .join(
+                    AgentGoalTaskRun,
+                    AgentGoalTaskRun.task_run_id == AgentPatchSet.task_run_id,
+                )
+                .where(AgentGoalTaskRun.goal_session_id == goal_id)
+                .order_by(AgentPatchSet.id.desc())
+                .limit(1)
+            )
+        return int(value) if value is not None else None
 
     def _worker_config(self, actor_id: int) -> WorkerConfig:
         return WorkerConfig(

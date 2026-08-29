@@ -29,9 +29,21 @@ class TaskQueue:
         self.lease_seconds = lease_seconds
 
     def _claim_next(self) -> tuple[int, int] | Literal["cancelled"] | None:
+        return self._claim(task_run_id=None)
+
+    def _claim_specific(
+        self, task_run_id: int
+    ) -> tuple[int, int] | Literal["cancelled"] | None:
+        """Claim one known TaskRun while preserving the normal lease transaction."""
+
+        return self._claim(task_run_id=task_run_id)
+
+    def _claim(
+        self, *, task_run_id: int | None
+    ) -> tuple[int, int] | Literal["cancelled"] | None:
         now = datetime.now(UTC)
         with self.session_factory() as session, session.begin():
-            task = session.scalar(
+            statement = (
                 select(TaskRun)
                 .where(
                     or_(
@@ -45,6 +57,9 @@ class TaskQueue:
                 .with_for_update(skip_locked=True)
                 .limit(1)
             )
+            if task_run_id is not None:
+                statement = statement.where(TaskRun.id == task_run_id)
+            task = session.scalar(statement)
             if task is None:
                 return None
             if task.status == "cancelling":

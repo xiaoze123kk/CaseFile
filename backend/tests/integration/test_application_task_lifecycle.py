@@ -110,6 +110,30 @@ def test_generation_task_uses_the_registry_version_without_a_deployment_override
         assert task.agent_version == "brief-to-draft-pipeline-v15"
 
 
+def test_worker_can_claim_a_known_task_without_consuming_an_older_queue_item(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        _first_project, first_task_id = _prepare_task(engine, actor_id)
+        _second_project, second_task_id = _prepare_task(engine, actor_id)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="specific-claim-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once(task_run_id=second_task_id) is True
+
+    with factory() as session:
+        first = session.get(TaskRun, first_task_id)
+        second = session.get(TaskRun, second_task_id)
+    assert first is not None and first.status == "queued"
+    assert first.attempt_count == 0
+    assert second is not None and second.status == "succeeded"
+    assert second.attempt_count == 1
+
+
 def test_queued_task_cancels_immediately_and_is_never_claimed(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
