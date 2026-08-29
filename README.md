@@ -1,199 +1,257 @@
 # CaseFile
 
-CaseFile 当前只面向个人用户。仓库已经包含 PostgreSQL 数据底座、目标无关的 CaseFile
-v1 机器契约，以及 SourceRecord、Core Brief、推理对象、引用和 Snapshot 的 FastAPI
-纵向切片。
-不包含 Workspace、Membership、邀请、团队角色、评论或共享项目。
+> 面向个人创作者的互动推理内容结构化设计与验证平台。
 
-## Web 前端
+![CaseFile](apps/web/public/casefile-brand.png)
 
-`apps/web` 是 React 19 + Next.js 16 App Router + TypeScript 实现的本地前端，正式开发基线只有
-建案中心与分析师工作台两个页面。建案、Agent 任务、Brief 审阅、候选生成和显式采用直接使用
-PostgreSQL、HTTP/SSE、Provider 设置与 Worker；分析师工作台的八种主画布统一读取同一份
-Current Draft，Fixture 仅保留给显式本地演示模式。
+CaseFile 把零散的创作想法、文本材料和推理设定，整理成一份可编辑、可验证、可追溯的数字卷宗。它面向推理小说、互动叙事、剧本杀及其他依赖人物、事件、线索、假设与结论关系的内容创作，让作者能够从建案开始，逐步完成 Brief、结构化工作稿、逻辑审阅、叙事规划和场景执行计划。
 
-首次运行先安装 workspace 依赖：
+项目不是一个“输入提示词后直接生成全文”的写作器。CaseFile 的核心是让人、模型与确定性规则共同工作：模型负责提出候选和建议，服务端负责契约、引用、并发与一致性门禁，作者始终拥有采用、修改与确认的最终决定权。
 
-```powershell
-pnpm install
+## 产品工作流
+
+```mermaid
+flowchart LR
+    A[创作想法 / 文本材料] --> B[关键追问与 Brief]
+    B --> C[冻结 BriefVersion]
+    C --> D[TaskRun + Worker]
+    D --> E[多个 Draft 候选]
+    E -->|作者显式采用| F[Current Draft]
+    F --> G[分析师工作台]
+    G --> H[验证 / Agent 建议 / 人工修订]
+    H --> F
+    F --> I[Snapshot + Exposure Plan]
+    I --> J[Narrative Compiler]
+    J --> K[NarrativeIR / NovelPlanIR / ScenePlanIR]
 ```
 
-启动完整本地环境（推荐）：
+一条典型创作路径如下：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+1. 从一句想法、已有原稿或导入文档开始建案。
+2. 通过关键追问补齐创作约束，形成结构化 Brief 候选。
+3. 人工审阅并冻结 Brief，启动可恢复的后台生成任务。
+4. 比较多个不可变工作稿候选，显式采用其中一份作为 Current Draft。
+5. 在工作台核对对象、时间、关系、证据、假设、推理路径和空间信息。
+6. 运行确定性验证，审阅 Agent 的分析、Finding 与修改建议，再决定是否应用。
+7. 固定 Snapshot 与披露顺序，编译出可复验的 NarrativeIR、小说场景规划和场景执行计划。
+
+## 核心能力
+
+| 能力 | 当前实现 |
+|---|---|
+| 建案与素材整理 | 支持创意候选、自由文本建案、SourceRecord 来源保留，以及 `.txt`、`.md`、`.docx`、文本型 PDF 的反向解析与逐项确认。 |
+| Brief 设计 | 通过关键追问、结构化候选、人工审阅和原子确认形成不可变 BriefVersion；原始材料与最终约束保留来源关系。 |
+| 候选生成 | Brief-to-Draft 以持久化 TaskRun、Attempt、Event 和独立 Worker 执行；失败可恢复，进度通过 HTTP/SSE 返回。 |
+| 多工作稿 | 同一 Brief 可生成多个不可变候选；只有作者显式采用后才会创建或切换 Current Draft，旧稿及其历史保持隔离。 |
+| 分析师工作台 | 提供对象目录、时间线、关系图、推理分析、地图、证据对比、验证问题、导出预览和编译中心等统一视图。 |
+| 卷宗 Agent | 持久化 Thread 与消息上下文，支持问答、分析、审计和通用修改建议；Patch 必须经过服务端复验与人工批准，支持 Apply、Undo 与 Redo。 |
+| 验证与推理 | 结合 JSON Schema、稳定引用、时间约束、知识状态、证据—假设矩阵、结论义务和结构锁，产出可定位的 Finding。 |
+| 版本与审计 | Current Draft 使用 revision 乐观并发；Source、候选、Operation、Snapshot、Canon、Exposure revision 和 Audit 保留不可变谱系。 |
+| 叙事编译 | 将冻结的 CaseFile、Exposure 与 Novel Profile 投影为 NarrativeIR，生成经过结构和语义门禁的 NovelPlanIR，并由权威状态引擎规范化为 ScenePlanIR v2。 |
+| Provider 与隐私 | 支持 OpenAI、DeepSeek 与零成本 FakeProvider；用户密钥按 Provider 独立使用 AES-256-GCM 加密，明文不会返回前端。 |
+
+## 当前产品边界
+
+- CaseFile 当前是本地运行的个人创作工具，一个 Project 只有一个所有者。
+- 暂不提供 Workspace、Membership、邀请、团队角色、评论或共享项目。
+- 前端固定使用本地开发身份 `X-CaseFile-User-Id: 1`；这不是生产认证机制，API 默认只应绑定回环地址。
+- Agent 只能提出候选、Finding 与待审 Patch，不能绕过验证或自动 Apply。
+- Current Draft 的事实时间与 Exposure Plan 的披露顺序是两条独立版本链。
+- Narrative Compiler 当前聚焦冻结输入、NarrativeIR、NovelPlanIR 与 ScenePlanIR；最终正文渲染、目标平台适配和发布包仍不属于现阶段交付。
+
+## 界面入口
+
+本地启动后访问 `http://127.0.0.1:3000`：
+
+- `/`：建案中心。从创作输入、关键追问、Brief 审阅一路进入候选生成与采用。
+- `/workbench`：分析师工作台。围绕 Current Draft 进行结构浏览、编辑、验证、Agent 协作与叙事编译。
+
+API 默认位于 `http://127.0.0.1:8000`：
+
+- `/docs`：FastAPI OpenAPI 交互文档。
+- `/health/live`：进程存活检查。
+- `/health/ready`：数据库版本和应用就绪检查。
+- `/api/v1`：CaseFile 业务 API。
+
+## 技术架构
+
+CaseFile 是前后端同仓、运行时分离的模块化单体：
+
+| 层 | 技术与职责 |
+|---|---|
+| Web | Next.js 16、React 19、TypeScript、TanStack Query、React Flow、Dagre、Leaflet、D3。 |
+| API | Python 3.12、FastAPI、Pydantic；负责协议转换、身份/并发门禁和应用服务调用。 |
+| Worker | 基于 PostgreSQL 队列领取 TaskRun，提供 lease、Attempt 恢复、取消、事件持久化和 Provider 调度。 |
+| Domain | 纯 Python 的验证、Logical Mutation、Closure Repair 与 Narrative Compiler，不依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
+| Data | PostgreSQL 18、SQLAlchemy 2、Alembic、psycopg；规范化当前态与不可变版本链并存。 |
+| Contracts | JSON Schema 2020-12 是跨语言事实源，生成 Python/Pydantic 与 TypeScript 契约包。 |
+| Quality | Ruff、mypy、pytest、ESLint、TypeScript、Vitest、Playwright，以及确定性 Benchmark 门禁。 |
+
+关键运行关系：
+
+```text
+Next.js Web ──HTTP/SSE──> FastAPI ──transaction──> PostgreSQL
+                               │                       ▲
+                               └── enqueue TaskRun ────┤
+                                                       │
+Provider <── adapter / frozen input ── Worker <────────┘
 ```
 
-脚本会自动启动 Docker Desktop（如果尚未运行）、准备 PostgreSQL、执行迁移，并在后台启动 API、前端与独立 TaskRun Worker；日志写入 `var/dev/`。依赖已准备好时，可使用 `-SkipDependencySync` 跳过依赖同步。
+## 仓库结构
 
-只启动前端：
+```text
+CaseFile/
+├─ apps/web/              # Next.js 产品前端
+├─ backend/               # FastAPI、应用层、领域层、Worker、迁移与测试
+├─ contracts/             # JSON Schema、OpenAPI 与生成的跨语言契约
+├─ fixtures/              # 合法/非法样例与各类 Benchmark 数据集
+├─ infra/compose/         # 本地 PostgreSQL 与隔离测试库
+├─ scripts/               # 初始化、启动、检查、契约生成与验收入口
+└─ docs/                  # 产品、架构、数据与代码职责说明
+```
+
+## 本地开发
+
+### 环境要求
+
+- Windows + PowerShell
+- Node.js `>= 20.9` 与 `pnpm`
+- Python `3.12` 与 `uv`
+- Docker Desktop（包含 Docker Compose）
+
+### 1. 安装依赖
+
+```powershell
+pnpm install --frozen-lockfile
+uv sync --project backend --extra dev
+```
+
+### 2. 初始化本地环境
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/bootstrap.ps1 -SeedDevUser
+```
+
+初始化脚本会：
+
+- 在缺少 `.env` 时复制 `.env.example`；
+- 生成并保存本地 `CASEFILE_MASTER_KEY`；
+- 启动开发库 `127.0.0.1:55432` 和可丢弃测试库 `127.0.0.1:55433`；
+- 等待 PostgreSQL 健康并迁移开发库到唯一 Alembic head；
+- 创建前端当前使用的本地开发用户。
+
+`.env.example` 中的账号只适用于绑定回环地址的本地容器，不得用于部署环境。已有加密 Provider 密钥后，不要更换 `CASEFILE_MASTER_KEY`。
+
+### 3. 启动完整应用
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1 -SkipDependencySync
+```
+
+脚本会启动或连接 Docker Desktop，准备数据库，并在后台启动 Web、API 与独立 Worker。日志写入 `var/dev/`。默认端口可通过 `-WebPort` 和 `-ApiPort` 调整。
+
+### 分别启动
+
+只启动 Web：
 
 ```powershell
 pnpm dev:web
 ```
 
-也可以使用统一入口：
+启动 API：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
+.\backend\.venv\Scripts\python.exe -m uvicorn casefile.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-浏览器访问 `http://127.0.0.1:3000`。正式路由为：
+启动 Worker：
 
-- `/`：五阶段建案中心，完成最初想法、关键追问、简报生成、Brief 审阅/冻结和三份候选的比较与显式采用
-- `/workbench`：分析师工作台；对象、时间线、关系、推理与空间卷宗共享 Current Draft、revision 和选择状态
+```powershell
+.\backend\.venv\Scripts\python.exe -m casefile.worker
+```
 
-空间卷宗的真实地图默认使用 OpenStreetMap 标准瓦片并保留法定署名。自定义瓦片服务时，
-必须同时设置 `NEXT_PUBLIC_CASEFILE_MAP_TILE_URL` 与
-`NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION`；只设置一项时前端不会发出瓦片请求，并显示中文配置错误。
-瓦片网络失败不会改变或隐藏 WGS84 地点。
+## Provider 设置
 
-旧地址仅提供非永久兼容跳转：`/demo/intake`、`/brief` 跳转到 `/`；`/demo`、
-`/demo/*`、`/reasoning`、`/quality` 跳转到 `/workbench`。正式页面和内部导航不再产生 `/demo` URL。
+启动应用后，在“设置 → 模型与 API”中分别配置 OpenAI 或 DeepSeek：
 
-执行前端完整检查：
+- OpenAI 使用 Responses API。
+- DeepSeek 使用官方 Chat Completions 接口，并支持内置或兼容的自定义模型 ID。
+- 每个 TaskRun 会冻结 Provider、模型、Prompt 与输入身份，Worker 按冻结绑定执行。
+- `CASEFILE_PROVIDER_MODE=live` 使用任务选择的真实 Provider；`fake` 仅用于零成本本地集成测试。
+- 已保存密钥只返回掩码；仍被进行中任务引用的凭据不能删除。
+
+不要把真实 API Key 写入 README、Fixture、Benchmark 报告或 Git 跟踪文件。
+
+## 数据与一致性
+
+- `contracts/schemas/` 是跨语言契约的唯一人工维护事实源，生成目录禁止手改。
+- CaseFile 对象在 Draft 内使用稳定字符串 `object_id`；数据库内部关系使用 `BIGINT IDENTITY`。
+- 写操作同时校验 Current Draft 身份和 revision，防止在切换工作稿后误写。
+- 成功修改只推进一次 Draft revision，并追加不可变 `draft_operations` 记录。
+- Snapshot 对完整 CaseFile 执行契约验证，并以 RFC 8785 Canonical JSON 的 SHA-256 固定内容身份。
+- Brief-to-Draft 完成只产生候选，不会自动覆盖 Current Draft。
+- Exposure Plan 的 revision 不推进 Draft revision，也不修改事件事实时间。
+
+## 检查与测试
+
+前端完整检查：
 
 ```powershell
 pnpm check:web
 ```
 
-## 数据库底座
-
-- Python 3.12
-- PostgreSQL 18
-- SQLAlchemy 2、Alembic、psycopg
-- `BIGINT GENERATED BY DEFAULT AS IDENTITY` 自增主键
-- 不可变 SourceRecord、轻量对象注册表、专用内容表和统一多值引用边；不使用通用 `payload_jsonb`
-- 同一确认 Brief 可重复生成不可变候选，显式采用后才替换唯一 Draft
-- Draft 可变编辑态，以及 Snapshot、Canon 与审计的不可变版本链
-
-当前基线恰好 45 张业务表。原稿、Agent 润色提案和作者修订通过不可变
-`source_records` 保留完整来源链；`brief_intakes`、`brief_intake_questions` 与
-`brief_intake_candidates` 保存乐观并发阶段、追问回答及不可变候选谱系；BriefVersion 可重复创建 `brief_to_draft`
-TaskRun，每个成功 Attempt 保存一份不可变候选，只有作者显式采用才投影到当前 Draft
-并建立 Snapshot。TaskRun/Attempt/Event 与 Snapshot/Canon 均保存可恢复、可审计的
-版本边界。`agent_threads` 和
-`agent_messages` 持久化个人多线程对话，`agent_patch_sets` 和
-`agent_patch_operations` 保存基于 Draft revision 的逐项审阅、整批应用与撤销边界。
-Validator 只覆盖当前确定性门禁；Compiler、Target Adapter、Export 和团队共享协作均未进入本轮。
-
-### 1. 准备环境
+不运行 PostgreSQL 集成测试的仓库检查：
 
 ```powershell
-Copy-Item .env.example .env
-python -m venv backend/.venv
-.\backend\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\backend\.venv\Scripts\python.exe -m pip install -e ".\backend[dev]"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -SkipPostgres
 ```
 
-`.env.example` 中的账号仅供绑定到回环地址的本地容器使用，不得用于部署环境。
-
-### 2. 一键初始化 PostgreSQL
-
-推荐使用幂等 bootstrap。它会在缺少 `.env` 时复制公开的本地默认值，启动开发库与
-独立 `_test` 测试库，等待健康，迁移开发库，并验证唯一 Alembic head 和 45 张业务表：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1 -SeedDevUser
-```
-
-`-SeedDevUser` 可选；启用后会输出本地 API 使用的 `X-CaseFile-User-Id`。脚本不会覆盖
-已有 `.env`、删除 Volume、降级开发库或自动安装/启动 Docker Desktop。
-
-也可以手工启动 PostgreSQL：
-
-```powershell
-docker compose --env-file .env -f infra/compose/docker-compose.yml up -d
-```
-
-开发数据库监听 `127.0.0.1:55432`。Compose 同时启动独立的可丢弃测试实例，监听
-`127.0.0.1:55433`，避免迁移测试降级开发数据库。
-
-### 3. 执行迁移
-
-Alembic 默认使用 `backend/alembic.ini` 中的本地开发连接；部署或自定义环境应显式设置
-`DATABASE_URL`。
-
-```powershell
-.\backend\.venv\Scripts\python.exe -m alembic -c backend/alembic.ini upgrade head
-.\backend\.venv\Scripts\python.exe -m alembic -c backend/alembic.ini current
-```
-
-迁移文件必须命名为 `VyyyyMMddHHmmss__lower_snake_case.py`（大写 `V`、Asia/Shanghai 真实时间戳），并保持单头单链。
-
-新增迁移必须通过统一入口按 Asia/Shanghai 时间生成：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/new-migration.ps1 -Description add_example_table
-```
-
-### 4. 启动 API
-
-API 启动时要求数据库恰好位于应用支持的 Alembic head；版本不匹配会直接失败。
-
-```powershell
-$env:DATABASE_URL = "postgresql+psycopg://casefile:casefile_local_only@127.0.0.1:55432/casefile"
-.\backend\.venv\Scripts\python.exe -m uvicorn casefile.api.app:app --host 127.0.0.1 --port 8000
-```
-
-健康检查位于 `/health/live` 和 `/health/ready`。业务请求统一使用 `/api/v1`，并须携带
-仅供本地开发和测试的身份头：
-
-```text
-X-CaseFile-User-Id: 1
-```
-
-Draft 写请求还须携带当前 revision：
-
-```text
-X-CaseFile-Base-Revision: 1
-```
-
-成功写入通过 `X-CaseFile-Draft-Revision` 返回新 revision；过期 revision 返回 409。
-该身份头不是生产认证机制，API 应只绑定回环地址。
-
-用户可以在“设置 → 模型与 API”分别保存 OpenAI 和 DeepSeek 的 API Key；两套凭据按
-`用户 + Provider` 独立使用 AES-256-GCM 加密，不会互相覆盖。OpenAI 走 Responses API；
-DeepSeek 走官方 `https://api.deepseek.com` Chat Completions 接口，内置当前模型
-`deepseek-v4-flash` 与 `deepseek-v4-pro`，也允许填写兼容的自定义模型 ID。生成请求会
-显式冻结所选 Provider 与模型，Worker 的 `CASEFILE_PROVIDER_MODE=live` 会按任务路由；
-`fake` 仅用于零成本本地集成测试。
-
-设置页可显隐当前正在输入的新密钥，并按 Provider 替换或删除已保存凭据。已保存密钥只
-返回掩码，前端不能取回明文；删除会清空后端密文材料并保留历史任务引用。若仍有排队、
-运行或取消中的任务使用该凭据，删除请求返回 409，待任务结束后可重试。
-
-### 5. 检查
-
-完整检查会运行静态检查、单元测试和可破坏的迁移集成测试。测试 URL 必须显式提供，且
-数据库名必须以 `_test` 结尾，否则脚本会在任何降级前终止。
+完整检查必须显式指向数据库名以 `_test` 结尾的可丢弃 PostgreSQL：
 
 ```powershell
 $env:CASEFILE_TEST_DATABASE_URL = "postgresql+psycopg://casefile:casefile_test_local_only@127.0.0.1:55433/casefile_test"
-powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
-没有启动测试数据库时，可以只运行非 PostgreSQL 检查：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/check.ps1 -SkipPostgres
-```
-
-### 6. A 路径真实浏览器验收
-
-黄金路径使用真实 Next.js 页面、FastAPI、独立 Worker 和 PostgreSQL `*_test` 数据库，
-但 Worker 固定为零成本 `FakeProvider`。测试覆盖“想法 → 追问 → Brief → 审阅冻结 →
-策略 → 深稿候选 → 只读预览 → 显式采用 → 工作台”，并在采用前后直接核对服务端
-Current Draft、窄屏关键操作和 A 路径指标响应。
-
-首次运行安装隔离的 Chromium；以后可省略 `-InstallBrowser`：
+浏览器黄金路径使用真实 Web、API、Worker 和隔离测试库，但固定使用 FakeProvider：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-a-path-e2e.ps1 -WebPort 13000 -InstallBrowser
 ```
 
-脚本只接受数据库名以 `_test` 结尾的 `CASEFILE_TEST_DATABASE_URL`，每次运行前重建该
-测试库的 `public` schema，并拒绝占用中的 Web/API 端口（默认 13000/18000；可通过
-`-WebPort`/`-ApiPort` 调整）。它使用
-临时加密主密钥和假的 Provider 凭据，不读取或输出真实模型密钥；运行日志保存在忽略
-提交的 `var/e2e/`。
+首次运行后可省略 `-InstallBrowser`。
+
+## 契约与迁移
+
+修改跨语言 Schema 后：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-contracts.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-contracts.ps1
+```
+
+新增数据库迁移必须通过统一入口生成：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/new-migration.ps1 -Description add_example_table
+```
+
+迁移文件使用 `VyyyyMMddHHmmss__lower_snake_case.py`，时间按 Asia/Shanghai 生成，并保持唯一 Alembic head 和单链关系。
+
+## 进一步阅读
+
+- [架构边界与模块规则](docs/architecture-boundaries.md)
+- [后端代码职责地图](docs/backend-code-map.md)
+- [前端代码职责地图](docs/frontend-code-map.md)
+- [跨语言契约与 Fixture](docs/contracts-code-map.md)
+- [数据库迁移规范](docs/migration-standards.md)
+- [数据一致性规范](docs/data-consistency.md)
+- [代码质量与 Git 提交规范](docs/code-quality-git.md)
+
+## 开发原则
+
+1. 先保护作者意图，再扩展模型能力。
+2. 模型输出始终是候选；验证、授权与写入边界由服务端掌握。
+3. 当前态可以编辑，来源、任务事件、操作、快照和审计历史保持可追溯。
+4. 契约从 Schema 生成，数据库变化同步更新 ORM、迁移、测试与职责文档。
+5. 保持个人产品边界，不为尚未存在的团队协作提前建模。
