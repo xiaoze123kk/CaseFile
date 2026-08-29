@@ -2,6 +2,12 @@
 
 本目录维护 PostgreSQL 18 的个人版数据库结构。Alembic migration 是结构事实来源，`backend/src/casefile/data_postgres/models/` 的 SQLAlchemy metadata 必须与唯一 head 一致。
 
+## M3.8-00 冻结的迁移契约（尚未实现）
+
+M3.8 计划新增 `agent_goal_sessions`、`agent_goal_revisions`、`agent_goal_obligations`、`agent_goal_obligation_dependencies`、`agent_goal_deliveries`、`agent_goal_observations`、`agent_goal_task_runs`、`agent_goal_transitions` 八张表。精确状态机、关系、预算、不可变边界与 rollout 见 `docs/m3.8-goal-session-runtime.md`。
+
+本节是 M3.8-00 设计冻结，不表示迁移已经存在。M3.8-01 之前当前唯一 head、ORM metadata 和正式业务表数量仍为 66；不得提前修改 foundation table-count 门禁。M3.8-01 必须使用真实 Asia/Shanghai 时间戳创建单链迁移，并在同一阶段同步 ORM、复合归属外键、部分唯一索引、终态不可变触发器、旧 head 升级测试和本文的正式基线/逐表职责。
+
 ## 当前单链基线
 
 ```text

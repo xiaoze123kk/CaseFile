@@ -1,5 +1,11 @@
 # 后端代码职责地图
 
+## M3.8 Persistent GoalSession 规划边界
+
+`docs/m3.8-goal-session-runtime.md` 是 M3.8-00 冻结 ADR。后续实现必须保持三层职责：`agent_runtime/goal/` 只定义无数据库的 Goal Amendment/Checkpoint/State Engine 纯契约与规则；`application/workflow/` 拥有 GoalSession、消息投递、Patch review continuation 和状态转换事务；`worker/handlers/` 只在安全点消费 delivery、收敛当前 TaskRun 并排队下一执行切片。
+
+M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runtime`，不在 API route 中直接读写 Goal 表，也不创建第二条 Patch/Apply 路径。M3.8-00 尚未新增运行时模块；新增、删除或重命名实际源码后，必须在对应阶段把精确路径补入本文和静态架构检查。
+
 ## M3.7 Bounded Goal Harness
 
 - `backend/src/casefile/agent_runtime/goal/contracts.py`：Goal Interpreter、冻结义务、单步决策、Observation 与 Completion 的严格内部契约；不属于 Public Chat Schema。

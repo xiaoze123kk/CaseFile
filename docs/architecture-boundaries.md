@@ -1,5 +1,13 @@
 # 架构边界与模块规则
 
+## M3.8 GoalSession Runtime 冻结边界
+
+M3.8 的完整决策见 `docs/m3.8-goal-session-runtime.md`。该阶段以 `GoalSession > TaskRun` 为核心：GoalSession 可以跨消息和多个顺序 TaskRun 持续，TaskRun 仍是输入、Provider、Prompt、工具集和预算全部冻结的单次执行切片。M3.8 不扩展 TaskRun 六种状态；waiting、stale、superseded 只属于 GoalSession。
+
+运行中输入必须由用户显式标记为 `steer`、`follow_up` 或 `replace`。steer/replace 进入 FIFO 队列，仅在 Controller 前、完整 capability 后或 Finalizer 前的安全点消费；命中后当前 TaskRun 以 `succeeded + checkpointed` 收敛，再原子创建新 GoalRevision 和新 TaskRun。Provider、Binder、Simulation、Verification 与 Apply 事务不得强制中断。
+
+General Mutation、PatchSet 和 `V1EditingService` 继续拥有唯一写入权威。Patch 拒绝进入 clarification，Draft 变化进入 stale 且不自动 rebase，Apply 后的新 Draft revision 作为新 baseline；任何 Goal 自动 Apply、跨 Project、多 Agent、无限循环或模型决定 Observation 复用均被禁止。M3.8-00 只冻结设计，不代表持久化表、API 或 v18 Prompt 已实现。
+
 ## Bounded Goal Controller 边界
 
 M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通用 Agent 框架。它只能调度静态注册的 `analyze`、`audit`、`propose_mutation`，模型输出不得包含自由工具名、对象 ID、字段路径或工具参数。Mutable Plan 只用于下一步选择；完成事实只由冻结 obligations 与权威 Observation 决定。

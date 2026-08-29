@@ -9,6 +9,37 @@ from pathlib import Path
 
 MAX_MAINTAINED_LINES = 3_000
 
+GOAL_SESSION_SPEC_PATH = "docs/m3.8-goal-session-runtime.md"
+GOAL_SESSION_REFERENCE_PATHS = frozenset(
+    {
+        "backend/migrations/README.md",
+        "docs/architecture-boundaries.md",
+        "docs/backend-code-map.md",
+        "docs/contracts-code-map.md",
+        "docs/data-consistency.md",
+    }
+)
+GOAL_SESSION_REQUIRED_MARKERS = frozenset(
+    {
+        "GoalSession > TaskRun",
+        "succeeded + checkpointed",
+        "waiting_clarification",
+        "waiting_patch_review",
+        "delivery_mode?: new_goal | steer | follow_up | replace",
+        "max_goal_revisions = 8",
+        "max_task_run_slices = 12",
+        "max_consumed_steer_or_replace = 6",
+        "agent_goal_sessions",
+        "agent_goal_transitions",
+        "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT=off | shadow | active",
+        "agent_goal_delivery_mode_required",
+        "PublicGoalSession",
+        "PublicGoalDelivery",
+        "不增加 `target_state=\"applied\"`",
+        "no_auto_apply=true",
+    }
+)
+
 STABLE_EXPORTS = {
     "backend/src/casefile/agent_runtime/chat_execution.py": {
         "ChatCompletionValidationError",
@@ -177,9 +208,45 @@ def _agent_route_internal_names(
     return names
 
 
+def _goal_session_spec_violations(repo_root: Path) -> list[Violation]:
+    path = repo_root / GOAL_SESSION_SPEC_PATH
+    if not path.is_file():
+        return [
+            Violation(
+                GOAL_SESSION_SPEC_PATH,
+                0,
+                "M3.8 GoalSession architecture decision is missing",
+            )
+        ]
+    content = path.read_text(encoding="utf-8")
+    violations = [
+        Violation(
+            GOAL_SESSION_SPEC_PATH,
+            0,
+            f"missing frozen M3.8 marker: {marker}",
+        )
+        for marker in sorted(GOAL_SESSION_REQUIRED_MARKERS)
+        if marker not in content
+    ]
+    for relative in sorted(GOAL_SESSION_REFERENCE_PATHS):
+        reference_path = repo_root / relative
+        has_reference = reference_path.is_file() and GOAL_SESSION_SPEC_PATH in (
+            reference_path.read_text(encoding="utf-8")
+        )
+        if not has_reference:
+            violations.append(
+                Violation(
+                    relative,
+                    0,
+                    f"missing reference to frozen M3.8 spec: {GOAL_SESSION_SPEC_PATH}",
+                )
+            )
+    return violations
+
+
 def collect_violations(repo_root: Path) -> list[Violation]:
     source_root = repo_root / "backend" / "src" / "casefile"
-    violations: list[Violation] = []
+    violations: list[Violation] = _goal_session_spec_violations(repo_root)
     dispatch_relative = Path("backend/src/casefile/worker/dispatch.py")
     dispatch_path = repo_root / dispatch_relative
     dispatch_tree = ast.parse(
