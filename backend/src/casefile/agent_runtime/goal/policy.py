@@ -28,7 +28,7 @@ from casefile.agent_runtime.goal.contracts import (
 from casefile.agent_runtime.models import StrictAgentOutput
 
 GOAL_RUNTIME_VERSION = "casefile-chat-goal-runtime-v2"
-GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v5"
+GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v6"
 GOAL_CAPABILITY_REGISTRY_VERSION = "casefile-chat-goal-capabilities-v2"
 GOAL_QUALIFICATION_CONFIDENCE = 0.80
 
@@ -55,7 +55,7 @@ class GoalBudget(StrictAgentOutput):
 class GoalRuntimeConfig(StrictAgentOutput):
     mode: Literal["shadow", "active"]
     runtime_version: Literal["casefile-chat-goal-runtime-v2"] = "casefile-chat-goal-runtime-v2"
-    policy_version: Literal["casefile-chat-goal-policy-v5"] = "casefile-chat-goal-policy-v5"
+    policy_version: Literal["casefile-chat-goal-policy-v6"] = "casefile-chat-goal-policy-v6"
     capability_registry_version: Literal["casefile-chat-goal-capabilities-v2"] = (
         "casefile-chat-goal-capabilities-v2"
     )
@@ -457,12 +457,13 @@ def _normalize_initial_obligations(
     drafts: list[GoalObligationDraft],
     source_message: str,
 ) -> list[GoalObligationDraft]:
-    """Add the grounding step required by an explicitly review-gated edit Goal."""
+    """Canonicalize explicit initial obligations without inventing forbidden work."""
 
     normalized_message = " ".join(source_message.split())
     if not normalized_message:
         return list(drafts)
-    normalized = list(drafts)
+    no_mutation = _requests_no_mutation(normalized_message)
+    normalized = [item for item in drafts if not (no_mutation and item.kind == "mutation_proposal")]
     if "分析" in normalized_message and not any(item.kind == "analysis" for item in normalized):
         if len(normalized) < 6:
             normalized.append(
@@ -477,9 +478,7 @@ def _normalize_initial_obligations(
         if len(normalized) >= 6:
             return normalized
         analysis_indexes = [
-            index
-            for index, item in enumerate(normalized, start=1)
-            if item.kind == "analysis"
+            index for index, item in enumerate(normalized, start=1) if item.kind == "analysis"
         ]
         normalized.append(
             GoalObligationDraft(
@@ -554,17 +553,14 @@ def _normalize_initial_obligations(
             {
                 new_index_by_old[dependency]
                 for dependency in draft.depends_on
-                if dependency in new_index_by_old
-                and new_index_by_old[dependency] < new_index
+                if dependency in new_index_by_old and new_index_by_old[dependency] < new_index
             }
         )
         if draft.kind == "audit" and new_index != 1 and 1 not in dependencies:
             dependencies.insert(0, 1)
         if draft.kind == "mutation_proposal":
             audit_indexes = [
-                index
-                for index, prior in enumerate(remapped, start=1)
-                if prior.kind == "audit"
+                index for index, prior in enumerate(remapped, start=1) if prior.kind == "audit"
             ]
             if audit_indexes and audit_indexes[-1] not in dependencies:
                 dependencies.append(audit_indexes[-1])
@@ -601,7 +597,7 @@ def _select_abandoned_obligation(current: FrozenGoal, source_message: str) -> st
 
 
 def _requests_no_mutation(source_message: str) -> bool:
-    return any(
+    if any(
         marker in source_message
         for marker in (
             "不做修改",
@@ -614,10 +610,23 @@ def _requests_no_mutation(source_message: str) -> bool:
             "只分析并审计",
             "只分析和审计",
         )
+    ):
+        return True
+    return bool(
+        re.search(
+            r"(?:不要|不得|不应|不需|不必|禁止|无须|无需)"
+            r"(?:提出|应用|进行|做|做出|作出)?"
+            r"(?:或(?:提出|应用|进行|做|做出|作出))?"
+            r"(?:任何|新的)?(?:卷宗|候选|内容|数据)?"
+            r"(?:修改|调整|删除|新增|创建)",
+            source_message,
+        )
     )
 
 
 def _is_explicit_mutation_request(source_message: str) -> bool:
+    if _requests_no_mutation(source_message):
+        return False
     return any(
         marker in source_message
         for marker in ("改成", "修改", "调整", "删除", "新增", "创建", "处理掉")

@@ -234,6 +234,63 @@ def test_interactive_executor_injects_steer_at_real_safe_point(
     assert evidence["violations"] == ()
 
 
+def test_read_only_goal_reaches_before_finalizer_without_mutation(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, _actor_id, master_key = workflow_database
+    source = next(item for item in load_dev_suite().scenarios if item.family == "steer_constraint")
+    action = InteractiveAction.model_validate(
+        {
+            "at": {"kind": "safe_point", "safe_point": "before_finalizer"},
+            "action": "messages",
+            "messages": [
+                {
+                    "delivery_mode": "steer",
+                    "message": "不要提出或应用任何修改，只给出分析和审计结论。",
+                }
+            ],
+        }
+    )
+    scenario = source.model_copy(
+        update={
+            "input": source.input.model_copy(
+                update={
+                    "initial_message": "分析并审计“同盟破裂动机”，但不要提出任何卷宗修改。",
+                    "actions": [action],
+                }
+            )
+        }
+    )
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_CHAT_GOAL_ROLLOUT": "active",
+            "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT": "active",
+        },
+    ):
+        executor = PostgresInteractiveGoalExecutor(
+            repo_root=scenario_path_root(),
+            database_url=engine.url.render_as_string(hide_password=False),
+            api_key="fake-interactive-secret",
+            expected_model_id="deepseek-v4-pro",
+            expected_prompt_version="casefile-chat-v20",
+            provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
+                document, source.family
+            ),
+        )
+        try:
+            evidence = executor.execute_interactive_trial(scenario, trial_no=1)
+        finally:
+            executor.close()
+
+    assert evidence["completed"] is True
+    assert evidence["safe_point_consumed"] is True
+    assert evidence["capability_starts_before_consumption"] == 0
+    assert evidence["amendment_valid"] is True
+    assert evidence["violations"] == ()
+
+
 def test_mutation_safe_point_defers_steer_until_patch_identity_exists(
     workflow_database: tuple[Engine, int, str],
 ) -> None:

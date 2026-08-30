@@ -230,6 +230,65 @@ def test_freeze_restores_missing_obligations_for_explicit_replacement_and_edit()
     assert result.qualified is True
 
 
+def test_freeze_removes_model_invented_mutation_from_explicit_read_only_goal() -> None:
+    source = "分析并审计“同盟破裂动机”，但不要提出任何卷宗修改。"
+    output = GoalUnderstandingOutput.model_validate(
+        {
+            "goal": source,
+            "confidence": 0.95,
+            "ambiguous": False,
+            "missing_info": [],
+            "obligations": [
+                {
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "审计“同盟破裂动机”",
+                },
+                {
+                    "kind": "mutation_proposal",
+                    "target_state": "baseline",
+                    "source_excerpt": "不要提出任何卷宗修改",
+                    "depends_on": [1],
+                },
+            ],
+        }
+    )
+
+    frozen = freeze_goal(output, source)
+
+    assert [item.kind for item in frozen.obligations] == ["audit", "analysis"]
+    assert all(item.kind != "mutation_proposal" for item in frozen.obligations)
+
+
+def test_freeze_does_not_restore_mutation_from_explicit_read_only_goal() -> None:
+    source = "分析并审计“同盟破裂动机”，但不要提出或应用任何修改。"
+    output = GoalUnderstandingOutput.model_validate(
+        {
+            "goal": source,
+            "confidence": 0.95,
+            "ambiguous": False,
+            "missing_info": [],
+            "obligations": [
+                {
+                    "kind": "analysis",
+                    "target_state": "baseline",
+                    "source_excerpt": "分析“同盟破裂动机”",
+                },
+                {
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "审计“同盟破裂动机”",
+                    "depends_on": [1],
+                },
+            ],
+        }
+    )
+
+    frozen = freeze_goal(output, source)
+
+    assert [item.kind for item in frozen.obligations] == ["analysis", "audit"]
+
+
 def test_amendment_assigns_stable_new_keys_and_validates_new_excerpt() -> None:
     current = freeze_goal(understanding(), SOURCE)
     source = "再增加一项：复查新的证据链。"
@@ -370,9 +429,10 @@ def test_amendment_normalizes_paraphrase_and_absent_mutation_removal() -> None:
 
 
 def test_constraint_amendment_preserves_existing_observation_identity() -> None:
+    initial_source = "先分析时间线，再审计矛盾。"
     current = freeze_goal(
         understanding().model_copy(update={"obligations": understanding().obligations[:2]}),
-        SOURCE,
+        initial_source,
     )
     source = "不要提出或应用任何修改，只给出分析和审计结论。"
     candidate = GoalAmendmentOutput.model_validate(
