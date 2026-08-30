@@ -1,6 +1,22 @@
 {
-  "schema_version": "casefile-chat-goal-interactive-descriptor-v2-draft",
+  "schema_version": "casefile-chat-goal-interactive-descriptor-v2",
   "suite_id": "casefile-chat-goal-interactive-holdout-v2",
-  "status": "awaiting_independent_reviewer_attestation",
-  "formal_preflight_allowed": false
+  "suite_role": "holdout",
+  "gate_policy_version": "casefile-chat-goal-interactive-gate-v2",
+  "task_count": 24,
+  "family_distribution": {
+    "steer_refine": 3,
+    "steer_constraint": 3,
+    "steer_obligation": 3,
+    "replace_lineage": 3,
+    "follow_up_lineage": 3,
+    "clarification_resume": 3,
+    "patch_review_resume": 3,
+    "stale_interrupt_safety": 3
+  },
+  "suite_content_fingerprint": "a029902ea20746bb66c511695ea6aa76a5e293f8636cb2c3ed6a4a41fd4f147f",
+  "private_package_fingerprint": "afa4bcafec173e1ad0ccf50fbe1c35408bc05d40268386aa05a088298856ad52",
+  "oracle_fingerprint": "9f38e8298be6bf3a6d12b7edd73d4766a3a18348e31082d79b337d890bb7b5c6",
+  "reference_fingerprint": "9d85a4cff258e589f4147f97abdc421c0c501a9a62b587f630aa24b3e3350366",
+  "review_fingerprint": "963bd4dc53634d1a25b0edf92bcfef87fda844174af563a45dcff16034b26ae6"
 }
