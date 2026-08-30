@@ -9,6 +9,7 @@ import pytest
 from casefile.benchmark.chat_goal_interactive_qualification import (
     InteractiveTrialEvidence,
     _fatal_infrastructure_failure,
+    _local_pro_api_key,
     _stable_executor_reason,
     build_report,
 )
@@ -240,6 +241,20 @@ def test_fatal_infrastructure_detection_accepts_stable_reason_suffix() -> None:
     assert not _fatal_infrastructure_failure(
         "executor_exception:InteractiveExecutorError:interactive_goal_terminal_before_target"
     )
+
+
+def test_formal_qualification_reads_pro_key_only_from_local_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CASEFILE_DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    with pytest.raises(
+        RuntimeError, match="interactive_qualification_local_pro_credential_required"
+    ):
+        _local_pro_api_key()
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "local-test-secret")
+    assert _local_pro_api_key() == "local-test-secret"
 
 
 def _passing_rows() -> list[InteractiveTrialEvidence]:

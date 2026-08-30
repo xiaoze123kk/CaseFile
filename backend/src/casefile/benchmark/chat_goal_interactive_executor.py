@@ -14,14 +14,6 @@ from threading import Event
 from typing import Any
 from unittest.mock import patch as mock_patch
 
-from casefile_contracts import (
-    PublicAgentMessage,
-    PublicAgentMessageReceipt,
-    PublicAgentRun,
-    PublicGoalEvent,
-    PublicGoalSession,
-    PublicPatchResponse,
-)
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -60,6 +52,14 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from casefile_contracts import (
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicGoalEvent,
+    PublicGoalSession,
+    PublicPatchResponse,
+)
 
 _TERMINAL_GOALS = {"completed", "cancelled", "superseded", "failed"}
 
@@ -357,6 +357,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 finally:
                     notice.release.set()
             self._future_result(future)
+            self._raise_if_fatal_task_failure(target_task_run_id)
         if not matched:
             observed = ",".join(observed_safe_points) or "none"
             with self.session_factory() as session:
@@ -707,6 +708,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 config=self._worker_config(actor_id),
                 provider_factory=lambda _task: provider,
             ).run_once(task_run_id=task_run_id)
+            self._raise_if_fatal_task_failure(task_run_id)
             if not claimed:
                 raise InteractiveExecutorError("interactive_target_status_not_reached")
         raise InteractiveExecutorError("interactive_goal_slice_budget_exceeded")
@@ -718,13 +720,30 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             task_run_id = self._next_project_task_run_id(project_id)
             if task_run_id is None:
                 return
-            if not Worker(
+            claimed = Worker(
                 self.session_factory,
                 config=self._worker_config(actor_id),
                 provider_factory=lambda _task: provider,
-            ).run_once(task_run_id=task_run_id):
+            ).run_once(task_run_id=task_run_id)
+            self._raise_if_fatal_task_failure(task_run_id)
+            if not claimed:
                 raise InteractiveExecutorError("interactive_continuation_not_claimed")
         raise InteractiveExecutorError("interactive_remaining_slice_budget_exceeded")
+
+    def _raise_if_fatal_task_failure(self, task_run_id: int) -> None:
+        with self.session_factory() as session:
+            task = session.get(TaskRun, task_run_id)
+            error_code = (
+                task.error_code
+                if task is not None and task.status == "failed"
+                else None
+            )
+        stable_reason = {
+            "provider_4xx": "interactive_provider_4xx",
+            "provider_authentication_failed": "interactive_provider_authentication_failed",
+        }.get(error_code)
+        if stable_reason is not None:
+            raise InteractiveExecutorError(stable_reason)
 
     def _next_goal_task_run_id(
         self,

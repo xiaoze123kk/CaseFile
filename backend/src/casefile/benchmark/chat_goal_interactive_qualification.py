@@ -30,7 +30,6 @@ from casefile.benchmark.chat_goal_interactive_suite import (
     canonical_hash,
     load_private_holdout,
 )
-from casefile.benchmark.chat_live_eval import _saved_provider_credential
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
     create_database_engine,
@@ -121,16 +120,8 @@ def qualification_preflight(
         engine.dispose()
     if active_tasks:
         raise InteractiveQualificationError("interactive_qualification_active_tasks_present")
-    saved = _saved_provider_credential(
-        database_url=credential_database_url,
-        actor_id=actor_id,
-        provider_name="deepseek",
-        requested_model=MODEL_ID,
-    )
-    if saved is None or saved[1] != MODEL_ID:
-        raise InteractiveQualificationError(
-            "interactive_qualification_saved_pro_credential_required"
-        )
+    _ = credential_database_url, actor_id
+    _local_pro_api_key()
     prompt = load_prompt("casefile_chat", PROMPT_VERSION)
     manifest = {
         "schema_version": REPORT_VERSION,
@@ -139,6 +130,7 @@ def qualification_preflight(
         "database_revision": revision,
         "active_task_count": active_tasks,
         "model_id": MODEL_ID,
+        "credential_source": "local_environment",
         "prompt_version": PROMPT_VERSION,
         "prompt_fingerprint": prompt.system_prompt_sha256,
         "runtime_fingerprint": _runtime_fingerprint(),
@@ -181,16 +173,7 @@ def run_formal_qualification(
     suite = load_private_holdout(
         holdout_suite_path.resolve(), descriptor_path=root / DEFAULT_DESCRIPTOR.relative_to(ROOT)
     )
-    saved = _saved_provider_credential(
-        database_url=credential_database_url,
-        actor_id=actor_id,
-        provider_name="deepseek",
-        requested_model=MODEL_ID,
-    )
-    if saved is None:
-        raise InteractiveQualificationError(
-            "interactive_qualification_saved_pro_credential_required"
-        )
+    api_key = _local_pro_api_key()
     from casefile.benchmark.chat_goal_interactive_executor import (  # noqa: PLC0415
         PostgresInteractiveGoalExecutor,
     )
@@ -198,7 +181,7 @@ def run_formal_qualification(
     executor = PostgresInteractiveGoalExecutor(
         repo_root=root,
         database_url=database_url,
-        api_key=saved[0],
+        api_key=api_key,
         expected_model_id=MODEL_ID,
         expected_prompt_version=PROMPT_VERSION,
     )
@@ -323,6 +306,16 @@ def _stable_executor_reason(error: Exception) -> str:
     ):
         return reason
     return "unclassified"
+
+
+def _local_pro_api_key() -> str:
+    for name in ("CASEFILE_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    raise InteractiveQualificationError(
+        "interactive_qualification_local_pro_credential_required"
+    )
 
 
 def _failed_trial(
@@ -672,6 +665,8 @@ def _fatal_infrastructure_failure(value: str | None) -> bool:
         "executor_exception:InterfaceError",
         "executor_exception:OperationalError",
         "executor_exception:ProgrammingError",
+        "executor_exception:InteractiveExecutorError:interactive_provider_4xx",
+        "executor_exception:InteractiveExecutorError:interactive_provider_authentication_failed",
     }
     return any(
         value == prefix or value.startswith(f"{prefix}:")
