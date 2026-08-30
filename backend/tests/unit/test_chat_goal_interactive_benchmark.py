@@ -5,8 +5,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+
 from casefile.benchmark.chat_goal_interactive_qualification import (
     InteractiveTrialEvidence,
+    _fatal_infrastructure_failure,
     _stable_executor_reason,
     build_report,
 )
@@ -228,6 +230,16 @@ def test_executor_failure_reason_keeps_only_stable_interactive_codes() -> None:
         == "interactive_goal_terminal_before_target"
     )
     assert _stable_executor_reason(RuntimeError("provider secret detail")) == "unclassified"
+
+
+def test_fatal_infrastructure_detection_accepts_stable_reason_suffix() -> None:
+    assert _fatal_infrastructure_failure(
+        "executor_exception:OperationalError:unclassified"
+    )
+    assert _fatal_infrastructure_failure("provider_transport:provider_authentication_failed")
+    assert not _fatal_infrastructure_failure(
+        "executor_exception:InteractiveExecutorError:interactive_goal_terminal_before_target"
+    )
 
 
 def _passing_rows() -> list[InteractiveTrialEvidence]:

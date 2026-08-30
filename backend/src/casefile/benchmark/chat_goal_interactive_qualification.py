@@ -661,7 +661,9 @@ def _database_name(database_url: str) -> str:
 
 
 def _fatal_infrastructure_failure(value: str | None) -> bool:
-    return value in {
+    if value is None:
+        return False
+    fatal_prefixes = {
         "provider_transport:provider_4xx",
         "provider_transport:provider_authentication_failed",
         "executor_exception:AuthenticationError",
@@ -671,6 +673,10 @@ def _fatal_infrastructure_failure(value: str | None) -> bool:
         "executor_exception:OperationalError",
         "executor_exception:ProgrammingError",
     }
+    return any(
+        value == prefix or value.startswith(f"{prefix}:")
+        for prefix in fatal_prefixes
+    )
 
 
 def main() -> None:
