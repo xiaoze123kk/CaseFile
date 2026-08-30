@@ -75,8 +75,7 @@ class _InteractiveFamilyFakeProvider(_InteractiveFakeProvider):
             if self.family == "clarification_resume"
             else (
                 _mutation_understanding(request.chat.message)
-                if self.family
-                in {"patch_review_resume", "stale_interrupt_safety"}
+                if self.family in {"patch_review_resume", "stale_interrupt_safety"}
                 else _understanding_for_message(request.chat.message)
             )
         )
@@ -107,13 +106,12 @@ class _InteractiveFamilyFakeProvider(_InteractiveFakeProvider):
                     "depends_on": [request.current_goal.obligations[-1].obligation_id],
                 }
             )
-        amendment = GoalAmendmentOutput.model_validate(
-            {
-                "amendment_kind": kind,
-                "goal": request.chat.message,
-                "obligations": obligations,
-            }
-        )
+        payload: dict[str, Any] = {
+            "amendment_kind": kind,
+            "goal": request.chat.message,
+            "obligations": obligations,
+        }
+        amendment = GoalAmendmentOutput.model_validate(payload)
         return FakeProvider(goal_amendment=amendment).amend_goal(request)
 
     def decide_goal(self, request: Any) -> Any:
@@ -206,7 +204,9 @@ def test_interactive_executor_injects_steer_at_real_safe_point(
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
             expected_prompt_version="casefile-chat-v20",
-            provider_factory=lambda document, _secret: _InteractiveFakeProvider(document),
+            provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
+                document, source.family
+            ),
         )
         try:
             evidence = executor.execute_interactive_trial(scenario, trial_no=1)
@@ -225,11 +225,90 @@ def test_interactive_executor_injects_steer_at_real_safe_point(
         evidence["observed_call_prompt_versions"],
     )
     audit = evidence["audit"]
-    assert canonical_hash(
-        {key: value for key, value in audit.items() if key != "audit_fingerprint"}
-    ) == audit["audit_fingerprint"]
+    assert (
+        canonical_hash({key: value for key, value in audit.items() if key != "audit_fingerprint"})
+        == audit["audit_fingerprint"]
+    )
     assert audit["model_calls"]
     assert audit["attempts"]
+    assert evidence["violations"] == ()
+
+
+def test_mutation_safe_point_defers_steer_until_patch_identity_exists(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, _actor_id, master_key = workflow_database
+    source = next(
+        item for item in load_dev_suite().scenarios if item.family == "patch_review_resume"
+    )
+    steer = InteractiveAction.model_validate(
+        {
+            "at": {
+                "kind": "safe_point",
+                "safe_point": "after_capability",
+                "capability": "propose_mutation",
+                "ordinal": 2,
+            },
+            "action": "messages",
+            "messages": [
+                {
+                    "delivery_mode": "steer",
+                    "message": "保持原修改，但不得跳过作者确认。",
+                }
+            ],
+        }
+    )
+    oracle = source.oracle.model_copy(
+        update={
+            "effects": source.oracle.effects.model_copy(
+                update={
+                    "revision_count_min": 3,
+                    "amendment_kinds": ["post_apply", "add_constraint"],
+                    "min_task_slices": 3,
+                }
+            ),
+            "message_outcomes": [
+                InteractiveExpectedMessageOutcome(
+                    delivery_mode="steer",
+                    result="accepted",
+                    final_delivery_status="consumed",
+                )
+            ],
+        }
+    )
+    scenario = source.model_copy(
+        update={
+            "input": source.input.model_copy(update={"actions": [steer, *source.input.actions]}),
+            "oracle": oracle,
+        }
+    )
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_CHAT_GOAL_ROLLOUT": "active",
+            "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT": "active",
+        },
+    ):
+        executor = PostgresInteractiveGoalExecutor(
+            repo_root=scenario_path_root(),
+            database_url=engine.url.render_as_string(hide_password=False),
+            api_key="fake-interactive-secret",
+            expected_model_id="deepseek-v4-pro",
+            expected_prompt_version="casefile-chat-v20",
+            provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
+                document, source.family
+            ),
+        )
+        try:
+            evidence = executor.execute_interactive_trial(scenario, trial_no=1)
+        finally:
+            executor.close()
+
+    assert evidence["completed"] is True
+    assert evidence["safe_point_consumed"] is True
+    assert evidence["capability_starts_before_consumption"] == 0
+    assert evidence["final_state_valid"] is True
     assert evidence["violations"] == ()
 
 
@@ -469,7 +548,7 @@ def _clarification_understanding(message: str) -> GoalUnderstandingOutput:
                     "target_state": "baseline",
                     "source_excerpt": message,
                     "depends_on": [1],
-                }
+                },
             ],
         }
     )

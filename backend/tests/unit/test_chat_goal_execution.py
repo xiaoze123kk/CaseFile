@@ -111,14 +111,12 @@ def test_goal_loop_completes_with_one_finalizer() -> None:
     )
     assert result.completion.allowed
     assert len(result.observations) == 2
-    assert result.decision_calls == 3
+    assert result.decision_calls == 2
     assert result.result.candidate.suggestions == []
 
 
 def test_goal_loop_checkpoints_after_capability_and_resumes_without_repeating_it() -> None:
-    first = GoalExecutionRunner(
-        FakeProvider(goal_decisions=(_decision("analyze", "obl_1"),))
-    ).run(
+    first = GoalExecutionRunner(FakeProvider(goal_decisions=(_decision("analyze", "obl_1"),))).run(
         _request(),
         _goal(),
         budget=GoalBudget(),
@@ -150,7 +148,7 @@ def test_goal_loop_checkpoints_after_capability_and_resumes_without_repeating_it
         ["obl_1"],
         ["obl_2"],
     ]
-    assert resumed.decision_calls == 2
+    assert resumed.decision_calls == 1
 
 
 def test_goal_loop_checkpoints_before_finalizer_and_only_finalizes_after_resume() -> None:
@@ -216,13 +214,15 @@ def test_finish_gets_one_feedback_then_fails_closed() -> None:
         )
 
 
-def test_repeated_action_is_no_progress() -> None:
+def test_repeated_completed_action_advances_to_next_ready_obligation() -> None:
     repeated = _decision("analyze", "obl_1")
     provider = FakeProvider(goal_decisions=(repeated, repeated))
-    with pytest.raises(GoalExecutionError, match="goal_no_progress"):
-        GoalExecutionRunner(provider).run(
-            _request(), _goal(), budget=GoalBudget(), execute_capability=_capability
-        )
+    result = GoalExecutionRunner(provider).run(
+        _request(), _goal(), budget=GoalBudget(), execute_capability=_capability
+    )
+
+    assert isinstance(result, GoalExecutionResult)
+    assert [item.obligation_ids for item in result.observations] == [["obl_1"], ["obl_2"]]
 
 
 def test_goal_loop_normalizes_incomplete_model_plan_items() -> None:

@@ -9,11 +9,11 @@ M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runti
 ## M3.7 Bounded Goal Harness
 
 - `backend/src/casefile/agent_runtime/goal/contracts.py`：Goal Interpreter、冻结义务、单步决策、Observation 与 Completion 的严格内部契约；不属于 Public Chat Schema。
-- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则。
+- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则；v3 规范化初始 grounding、显式 constraint/refine 结构，并拒绝重复执行已完成义务。
 - `backend/src/casefile/agent_runtime/goal/execution.py`：单个 `TaskRun` 内的 bounded next-action loop；在 Controller 前、完整 capability 后和 Finalizer 前产生可哈希 Checkpoint，并可从 obligations-hash 匹配的 Checkpoint 恢复；不持有数据库 Session。
 - `backend/src/casefile/agent_runtime/goal/filter.py`：位于显式 preset/issue-action 之后的保守 free-text 候选过滤器。
 - `backend/src/casefile/agent_runtime/goal/provider.py`：Interpreter、Controller、Evidence 与 Finalizer 的 provider-neutral 端口。
-- `backend/src/casefile/worker/handlers/chat.py`：rollout/资格分流、能力适配、取消观察、Goal safe-point 轮询、Checkpoint continuation 委派和最终持久化；Provider/Binder/Simulation/Verification 内不轮询。
+- `backend/src/casefile/worker/handlers/chat.py`：rollout/资格分流、能力适配、取消观察、Goal safe-point 轮询、Checkpoint continuation 委派和最终持久化；Mutation 后 steer 先形成带 PatchSet identity 的待审 slice，再由 post-apply continuation 在新 capability 前消费；Provider/Binder/Simulation/Verification 内不轮询。
 - `backend/src/casefile/benchmark/chat_goal_suite.py`、`chat_goal_qualification.py`：M3.7 24×3 正式资格套件、生产路径评分、逐题追踪与聚合门禁；v2 题目必须与冻结 CaseFile fixture 可解，并用最终状态 Oracle 评分 mutation。
 - `backend/src/casefile/benchmark/chat_goal_interactive_suite.py`：M3.8-07 Interactive Goal v2 的严格私有 Holdout loader、8-family typed oracle/reference、RFC 8785 指纹、路径/泄漏/独立双 attestation 校验；正式 coverage matrix 强制 add/remove obligation、三类 safe point/capability、混合 FIFO、提前 follow-up 拒绝、三类 PatchOperation、至少三个 fixture、Patch/stale/cancel 生命周期。仓库只跟踪 fail-closed descriptor 与 8 题公开 Fake dev suite。
 - `backend/src/casefile/benchmark/chat_goal_interactive_executor.py`：以真实公共 HTTP、后台 Worker、PostgreSQL、continuation 与 Patch Review 路径执行交互 trial；通过默认关闭的 Worker 组合端口在三类 safe point 建立确定性 barrier，并使用已知 TaskRun 的真实 lease claim 隔离同一数据库中的 trial，不新增公共 API 或运行时配置。

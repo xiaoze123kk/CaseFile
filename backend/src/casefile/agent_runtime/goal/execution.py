@@ -135,6 +135,21 @@ class GoalExecutionRunner:
                     decision_calls=decision_calls,
                     safe_point="before_controller",
                 )
+            completed_ids = {
+                obligation_id
+                for observation in observations
+                if observation.status == "completed"
+                for obligation_id in observation.obligation_ids
+            }
+            if completed_ids == {item.obligation_id for item in goal.obligations}:
+                checked_completion = complete_goal(
+                    goal,
+                    tuple(observations),
+                    expected_obligations_hash=goal.obligations_hash,
+                )
+                if checked_completion.allowed:
+                    completion = checked_completion
+                    break
             if decision_calls >= budget.max_decision_calls:
                 raise GoalExecutionError("goal_budget_exhausted")
             if provider_operations >= budget.max_provider_operations:

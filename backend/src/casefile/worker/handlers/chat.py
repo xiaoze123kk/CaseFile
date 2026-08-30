@@ -282,9 +282,7 @@ class ChatHandler:
                 amended_goal=frozen,
                 amendment_kind=normalized_amendment.amendment_kind,
             )
-            checkpoint = GoalExecutionCheckpoint(
-                obligations_hash=frozen.obligations_hash
-            )
+            checkpoint = GoalExecutionCheckpoint(obligations_hash=frozen.obligations_hash)
             context.emit(
                 task.id,
                 "goal.amended",
@@ -676,9 +674,7 @@ class ChatHandler:
                     route_hash=capability_request.route.route_hash,
                     ledger_hash=ledger_hash,
                     candidate_hash=(
-                        None
-                        if action.target_state == "baseline"
-                        else candidate_state_hash
+                        None if action.target_state == "baseline" else candidate_state_hash
                     ),
                     usage=evidence.usage,
                     tools=evidence.tools,
@@ -730,9 +726,10 @@ class ChatHandler:
         def should_interrupt(_safe_point: str) -> bool:
             if self._goal_safe_point_observer is not None:
                 self._goal_safe_point_observer(task.id, context.attempt_id, _safe_point)
-            # M3.8-04 will materialize mutation observations with PatchSet
-            # identity. Until then a Planner/Binder result stays in its slice.
-            return mutation_envelope is None and self._chat._goal_control_pending(task.id)
+            control_mode = self._chat._goal_pending_control_mode(task.id)
+            return control_mode is not None and (
+                mutation_envelope is None or control_mode == "steer"
+            )
 
         try:
             execution = GoalExecutionRunner(
@@ -756,6 +753,34 @@ class ChatHandler:
             )
             raise
         if isinstance(execution, GoalCheckpointResult):
+            if mutation_envelope is not None:
+                if (
+                    execution.safe_point != "after_capability"
+                    or not execution.checkpoint.observations
+                    or execution.checkpoint.observations[-1].capability != "propose_mutation"
+                ):
+                    raise GoalExecutionError("goal_checkpoint_invalid")
+                pending_result = CaseFileChatResult(
+                    candidate=CaseFileChatCandidateV2(
+                        answer="修改建议已准备完成，等待你审阅后再应用。"
+                    ),
+                    usage=execution.usage,
+                    tools=execution.tools,
+                )
+                self._complete_chat(
+                    task.id,
+                    context.attempt_id,
+                    pending_result,
+                    route=self._goal_completion_route(frozen, budget=task.budget_jsonb),
+                    repair_envelope=repair_envelope,
+                    repair_usage=None,
+                    general_mutation_envelope=mutation_envelope,
+                    frozen_goal=frozen,
+                    goal_checkpoint=execution.checkpoint,
+                )
+                context.state.candidate = pending_result.candidate.model_dump(mode="json")
+                context.state.usage = execution.usage
+                return True
             control = self._chat._claim_goal_control(task.id, context.attempt_id)
             if control is None:
                 raise GoalExecutionError("goal_delivery_missing")
@@ -979,9 +1004,7 @@ def _goal_ledger_refs(ledger: dict[str, Any], key: str) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
     return tuple(
-        dict.fromkeys(
-            value.strip() for value in raw if isinstance(value, str) and value.strip()
-        )
+        dict.fromkeys(value.strip() for value in raw if isinstance(value, str) and value.strip())
     )[:50]
 
 

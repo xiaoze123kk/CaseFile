@@ -506,15 +506,20 @@ class GoalSessionWorkflowMixin:
     def has_pending_agent_goal_control(self, task_run_id: int) -> bool:
         """Report whether the FIFO head is queued or has a recoverable claim."""
 
+        return self.pending_agent_goal_control_mode(task_run_id) is not None
+
+    def pending_agent_goal_control_mode(self, task_run_id: int) -> str | None:
+        """Return the actionable FIFO control mode without claiming the delivery."""
+
         if _goal_session_rollout() != "active":
-            return False
+            return None
         with self.session.begin():
             task = self.session.get(TaskRun, task_run_id)
             if task is None:
-                return False
+                return None
             goal_id = _task_goal_id(task)
             if goal_id is None:
-                return False
+                return None
             delivery = self.session.scalar(
                 select(AgentGoalDelivery)
                 .where(
@@ -526,12 +531,12 @@ class GoalSessionWorkflowMixin:
                 .limit(1)
             )
             if delivery is None:
-                return False
+                return None
             if delivery.status == "queued" or (
                 delivery.lease_expires_at is not None
                 and delivery.lease_expires_at < datetime.now(UTC)
             ):
-                return True
+                return delivery.mode
             attempt = self.session.scalar(
                 select(TaskAttempt)
                 .where(
@@ -541,10 +546,11 @@ class GoalSessionWorkflowMixin:
                 .order_by(TaskAttempt.attempt_no.desc())
                 .limit(1)
             )
-            return attempt is not None and delivery.claimed_by == _goal_delivery_claim_owner(
-                task.id,
-                attempt.id,
-            )
+            if attempt is not None and delivery.claimed_by == _goal_delivery_claim_owner(
+                task.id, attempt.id
+            ):
+                return delivery.mode
+            return None
 
     def claim_agent_goal_control(
         self,
@@ -962,10 +968,7 @@ class GoalSessionWorkflowMixin:
                 claim_owner=_goal_delivery_claim_owner(task.id, attempt.id),
                 mode="replace",
             )
-            if (
-                binding is None
-                or binding.goal_revision_id != goal.current_revision_id
-            ):
+            if binding is None or binding.goal_revision_id != goal.current_revision_id:
                 raise GoalSessionStateError(
                     "agent_goal_delivery_conflict", "The FIFO replace is no longer current"
                 )
@@ -1276,8 +1279,7 @@ class GoalSessionWorkflowMixin:
             or continuation_goal.get("capability_registry_version")
             != goal.capability_registry_version
             or source_revision.obligations_hash != target_revision.obligations_hash
-            or source_revision.baseline_draft_revision
-            != target_revision.baseline_draft_revision
+            or source_revision.baseline_draft_revision != target_revision.baseline_draft_revision
             or source_revision.baseline_hash != target_revision.baseline_hash
         ):
             return
@@ -1290,9 +1292,7 @@ class GoalSessionWorkflowMixin:
             tuple[str, str, str, str, str, str | None], tuple[int, str]
         ] = {}
         prior_outputs: list[str] = []
-        for index, checkpoint_observation in enumerate(
-            continuation_checkpoint.observations
-        ):
+        for index, checkpoint_observation in enumerate(continuation_checkpoint.observations):
             expected_upstream_hash = stable_hash(
                 {
                     "obligations": continuation_checkpoint.obligations_hash,
@@ -1341,9 +1341,7 @@ class GoalSessionWorkflowMixin:
                 continue
             source_task = self.session.get(TaskRun, observation.task_run_id)
             source_goal = (
-                source_task.input_jsonb.get("goal_session")
-                if source_task is not None
-                else None
+                source_task.input_jsonb.get("goal_session") if source_task is not None else None
             )
             target_obligation = target_obligations.get(source_obligation.obligation_key)
             checkpoint_identity = checkpoint_identities.get(
@@ -1469,11 +1467,7 @@ class GoalSessionWorkflowMixin:
             waiting_for_patch = True
             goal.active_patch_set_id = patch_set.id
         target_status = "waiting_patch_review" if waiting_for_patch else "completed"
-        reason_code = (
-            "goal_waiting_patch_review"
-            if waiting_for_patch
-            else "goal_completed"
-        )
+        reason_code = "goal_waiting_patch_review" if waiting_for_patch else "goal_completed"
         repository.transition(
             goal,
             target_status=target_status,
@@ -1506,9 +1500,7 @@ class GoalSessionWorkflowMixin:
             statement = statement.with_for_update()
         return self.session.scalar(statement)
 
-    def _reject_agent_goal_patch(
-        self, patch_set: AgentPatchSet
-    ) -> AgentGoalSession | None:
+    def _reject_agent_goal_patch(self, patch_set: AgentPatchSet) -> AgentGoalSession | None:
         goal = self._goal_for_patch_set(patch_set, lock=True)
         if goal is None or goal.status != "waiting_patch_review":
             return None
@@ -1619,9 +1611,7 @@ class GoalSessionWorkflowMixin:
                 depends_on=["obl_1"],
             ),
         ]
-        obligations_hash = stable_hash(
-            [item.model_dump(mode="json") for item in obligations]
-        )
+        obligations_hash = stable_hash([item.model_dump(mode="json") for item in obligations])
         frozen_goal = FrozenGoal(
             goal="复核已应用修改后的当前工作稿",
             obligations=obligations,
@@ -2175,12 +2165,8 @@ class GoalSessionWorkflowMixin:
                 "找不到该 Goal。",
                 status_code=404,
             )
-        if (
-            goal.status in {"running", "waiting_clarification", "waiting_patch_review"}
-            and (
-                goal.draft_id != owned.draft.id
-                or goal.baseline_draft_revision != owned.draft.revision
-            )
+        if goal.status in {"running", "waiting_clarification", "waiting_patch_review"} and (
+            goal.draft_id != owned.draft.id or goal.baseline_draft_revision != owned.draft.revision
         ):
             if goal.active_patch_set_id is not None:
                 patch_set = self.session.get(AgentPatchSet, goal.active_patch_set_id)
@@ -2236,10 +2222,7 @@ class GoalSessionWorkflowMixin:
                     TaskRun.status.in_(_ACTIVE_TASK_STATUSES),
                     (
                         (TaskRun.input_message_id == goal.source_message_id)
-                        | (
-                            TaskRun.input_jsonb["goal_session"]["goal_id"].as_integer()
-                            == goal.id
-                        )
+                        | (TaskRun.input_jsonb["goal_session"]["goal_id"].as_integer() == goal.id)
                         | TaskRun.id.in_(
                             select(AgentGoalTaskRun.task_run_id).where(
                                 AgentGoalTaskRun.goal_session_id == goal.id
@@ -2333,9 +2316,7 @@ def _continuation_task(
         status="queued",
         stage="queued",
         input_draft_revision=(
-            previous.input_draft_revision
-            if input_draft_revision is None
-            else input_draft_revision
+            previous.input_draft_revision if input_draft_revision is None else input_draft_revision
         ),
         provider=previous.provider,
         model_id=previous.model_id,

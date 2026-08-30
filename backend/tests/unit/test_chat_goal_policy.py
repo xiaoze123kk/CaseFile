@@ -89,15 +89,80 @@ def test_freeze_is_deterministic_and_qualifies() -> None:
     assert qualify_goal(understanding(), first, budget=GoalBudget()).qualified
 
 
-def test_freeze_rejects_non_verbatim_authorization_and_forward_dependency() -> None:
+def test_freeze_canonicalizes_non_verbatim_excerpt_and_rejects_forward_dependency() -> None:
     payload = understanding().model_dump(mode="json")
     payload["obligations"][2]["source_excerpt"] = "模型自己想改"
-    with pytest.raises(GoalPolicyError, match="goal_source_excerpt_invalid"):
-        freeze_goal(GoalUnderstandingOutput.model_validate(payload), SOURCE)
+    frozen = freeze_goal(GoalUnderstandingOutput.model_validate(payload), SOURCE)
+    assert frozen.obligations[2].source_excerpt == SOURCE
     payload = understanding().model_dump(mode="json")
     payload["obligations"][0]["depends_on"] = [2]
     with pytest.raises(GoalPolicyError, match="goal_dependency_invalid"):
         freeze_goal(GoalUnderstandingOutput.model_validate(payload), SOURCE)
+
+
+def test_freeze_adds_analysis_before_audit_only_mutation_plan() -> None:
+    source = "先审计事件，再把事件标题改成夜访；所有修改都必须等待作者确认。"
+    output = GoalUnderstandingOutput.model_validate(
+        {
+            "goal": source,
+            "confidence": 0.95,
+            "ambiguous": False,
+            "missing_info": [],
+            "obligations": [
+                {
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "先审计事件",
+                },
+                {
+                    "kind": "mutation_proposal",
+                    "target_state": "baseline",
+                    "source_excerpt": "把事件标题改成夜访",
+                    "depends_on": [1],
+                },
+            ],
+        }
+    )
+
+    frozen = freeze_goal(output, source)
+
+    assert [item.kind for item in frozen.obligations] == [
+        "analysis",
+        "audit",
+        "mutation_proposal",
+    ]
+    assert frozen.obligations[1].depends_on == ["obl_1"]
+    assert frozen.obligations[2].depends_on == ["obl_2"]
+
+
+def test_freeze_preserves_audit_first_mutation_plan_without_explicit_review_gate() -> None:
+    source = "先审计事件，再把事件标题改成夜访。"
+    output = GoalUnderstandingOutput.model_validate(
+        {
+            "goal": source,
+            "confidence": 0.95,
+            "ambiguous": False,
+            "missing_info": [],
+            "obligations": [
+                {
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "先审计事件",
+                },
+                {
+                    "kind": "mutation_proposal",
+                    "target_state": "baseline",
+                    "source_excerpt": "把事件标题改成夜访",
+                    "depends_on": [1],
+                },
+            ],
+        }
+    )
+
+    frozen = freeze_goal(output, source)
+
+    assert [item.kind for item in frozen.obligations] == ["audit", "mutation_proposal"]
+    assert frozen.obligations[1].depends_on == ["obl_1"]
 
 
 def test_amendment_assigns_stable_new_keys_and_validates_new_excerpt() -> None:
@@ -129,9 +194,7 @@ def test_amendment_assigns_stable_new_keys_and_validates_new_excerpt() -> None:
         }
     )
 
-    amended = apply_goal_amendment(
-        current, amendment, source, budget=GoalBudget(max_plan_items=6)
-    )
+    amended = apply_goal_amendment(current, amendment, source, budget=GoalBudget(max_plan_items=6))
 
     assert [item.obligation_id for item in amended.obligations] == [
         "obl_1",
@@ -240,6 +303,68 @@ def test_amendment_normalizes_paraphrase_and_absent_mutation_removal() -> None:
     assert [item.obligation_id for item in amended.obligations] == ["obl_1", "obl_2"]
 
 
+def test_constraint_amendment_preserves_existing_observation_identity() -> None:
+    current = freeze_goal(
+        understanding().model_copy(update={"obligations": understanding().obligations[:2]}),
+        SOURCE,
+    )
+    source = "不要提出或应用任何修改，只给出分析和审计结论。"
+    candidate = GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "refine",
+            "goal": source,
+            "obligations": [
+                {
+                    "obligation_ref": item.obligation_id,
+                    "kind": item.kind,
+                    "target_state": item.target_state,
+                    "source_excerpt": source,
+                    "depends_on": item.depends_on,
+                }
+                for item in current.obligations
+            ],
+        }
+    )
+
+    normalized = normalize_goal_amendment(current, candidate, source)
+    amended = apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+
+    assert normalized.amendment_kind == "add_constraint"
+    assert [item.source_excerpt for item in amended.obligations] == [
+        item.source_excerpt for item in current.obligations
+    ]
+    assert amended.obligations_hash == current.obligations_hash
+
+
+def test_scope_refine_invalidates_prior_observation_identity() -> None:
+    current = freeze_goal(
+        understanding().model_copy(update={"obligations": understanding().obligations[:2]}),
+        SOURCE,
+    )
+    source = "最终只聚焦知情状态冲突，其他结论不展开。"
+    candidate = GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "refine",
+            "goal": source,
+            "obligations": [
+                {
+                    "obligation_ref": item.obligation_id,
+                    "kind": item.kind,
+                    "target_state": item.target_state,
+                    "source_excerpt": item.source_excerpt,
+                    "depends_on": item.depends_on,
+                }
+                for item in current.obligations
+            ],
+        }
+    )
+
+    amended = apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+
+    assert amended.obligations_hash != current.obligations_hash
+    assert {item.source_excerpt for item in amended.obligations} == {source}
+
+
 def test_amendment_does_not_keep_existing_mutation_after_remove_request() -> None:
     current = freeze_goal(understanding(), SOURCE)
     source = "不要提出修改。"
@@ -270,9 +395,7 @@ def test_goal_finalizer_v2_accepts_one_authoritative_observation() -> None:
     one_obligation = current.model_copy(
         update={
             "obligations": current.obligations[:1],
-            "obligations_hash": stable_hash(
-                [current.obligations[0].model_dump(mode="json")]
-            ),
+            "obligations_hash": stable_hash([current.obligations[0].model_dump(mode="json")]),
         }
     )
     completion = complete_goal(
@@ -287,9 +410,7 @@ def test_goal_finalizer_v2_accepts_one_authoritative_observation() -> None:
         "focus": {},
         "validation": {},
         "goal": one_obligation.model_dump(mode="json"),
-        "observations": [
-            observation(1, "obl_1", "analyze", "baseline").model_dump(mode="json")
-        ],
+        "observations": [observation(1, "obl_1", "analyze", "baseline").model_dump(mode="json")],
         "completion": completion.model_dump(mode="json"),
         "mutation_proof": None,
     }
@@ -394,6 +515,36 @@ def test_non_authoritative_action_is_rebuilt_from_first_ready_obligation() -> No
     validate_decision(frozen, normalized, ())
 
 
+def test_completed_action_is_rebuilt_to_next_ready_obligation() -> None:
+    frozen = freeze_goal(understanding(), SOURCE)
+    repeated = GoalDecisionOutput.model_validate(
+        {
+            "plan_items": [
+                {"obligation_id": item.obligation_id, "status": "pending"}
+                for item in frozen.obligations
+            ],
+            "action": {
+                "action": "invoke_capability",
+                "capability": "analyze",
+                "obligation_ids": ["obl_1"],
+                "target_state": "baseline",
+            },
+        }
+    )
+
+    normalized = normalize_decision_plan(
+        frozen,
+        repeated,
+        (observation(1, "obl_1", "analyze", "baseline"),),
+    )
+
+    assert normalized.action == InvokeCapabilityAction(
+        capability="audit",
+        obligation_ids=["obl_2"],
+        target_state="baseline",
+    )
+
+
 def test_completed_server_observations_override_repeated_model_action() -> None:
     frozen = freeze_goal(understanding(), SOURCE)
     repeated = GoalDecisionOutput.model_validate(
@@ -428,9 +579,7 @@ def test_completed_server_observations_override_repeated_model_action() -> None:
 
 
 def test_non_ambiguous_missing_info_text_does_not_veto_actionable_goal() -> None:
-    output = understanding().model_copy(
-        update={"missing_info": ["模型附带的非阻断说明"]}
-    )
+    output = understanding().model_copy(update={"missing_info": ["模型附带的非阻断说明"]})
     frozen = freeze_goal(output, SOURCE)
 
     assert qualify_goal(output, frozen, budget=GoalBudget()).qualified is True
