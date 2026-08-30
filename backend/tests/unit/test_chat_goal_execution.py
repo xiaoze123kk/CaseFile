@@ -16,7 +16,10 @@ from casefile.agent_runtime.goal.filter import goal_candidate_filter
 from casefile.agent_runtime.goal.policy import GoalBudget, freeze_goal, stable_hash
 from casefile.agent_runtime.models import CaseFileChatCandidateV2, CaseFileChatRequest
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
-from casefile.agent_runtime.public_language import PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL
+from casefile.agent_runtime.public_language import (
+    PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+    PUBLIC_GOAL_SAFE_TERMINAL,
+)
 from casefile.worker.handlers.chat import _goal_ledger_refs
 
 SOURCE = "先分析时间线，再审计矛盾。"
@@ -334,6 +337,25 @@ def test_mutation_goal_uses_safe_public_answer_after_language_violation() -> Non
     )
 
     assert result.result.candidate.answer == PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL
+
+
+def test_read_only_goal_uses_safe_public_answer_after_language_violation() -> None:
+    provider = FakeProvider(
+        goal_decisions=(
+            _decision("analyze", "obl_1"),
+            _decision("audit", "obl_2"),
+            _finish(),
+        ),
+        goal_final_candidate=CaseFileChatCandidateV2(
+            answer="已根据 input_hash 完成内部 Finalizer 处理。",
+        ),
+    )
+
+    result = GoalExecutionRunner(provider).run(
+        _request(), _goal(), budget=GoalBudget(), execute_capability=_capability
+    )
+
+    assert result.result.candidate.answer == PUBLIC_GOAL_SAFE_TERMINAL
 
 
 def test_goal_loop_bounds_observation_summary_without_discarding_proof() -> None:

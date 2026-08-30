@@ -25,6 +25,7 @@ PUBLIC_GENERAL_MUTATION_CLARIFICATION: Final = (
 PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL: Final = (
     "我只会保留通过安全检查、可供你审阅的结果；未通过的内容不会显示或应用。"
 )
+PUBLIC_GOAL_SAFE_TERMINAL: Final = "本次分析与审计已完成，结果已按当前目标和限制收敛。"
 
 _DISCLOSURE_ACTION = re.compile(
     r"逐字|原文|展示|列出|输出|告诉|提供|读取|查看|公开|披露|打印|显示"
@@ -336,6 +337,7 @@ def _is_raw_json(value: str) -> bool:
 __all__ = [
     "PUBLIC_GENERAL_MUTATION_CLARIFICATION",
     "PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL",
+    "PUBLIC_GOAL_SAFE_TERMINAL",
     "PUBLIC_OUTPUT_POLICY_FAILED",
     "PUBLIC_OUTPUT_POLICY_VIOLATION",
     "PUBLIC_INTERNAL_REFUSAL",

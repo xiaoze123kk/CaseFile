@@ -29,6 +29,7 @@ from casefile.agent_runtime.goal.provider import (
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
 from casefile.agent_runtime.public_language import (
     PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+    PUBLIC_GOAL_SAFE_TERMINAL,
     PublicLanguageValidationError,
 )
 
@@ -356,11 +357,13 @@ class GoalExecutionRunner:
         try:
             finalized = coordinate_chat_candidate_validation(request, finalized)
         except PublicLanguageValidationError:
-            if mutation_proof is None:
-                raise
             finalized = _replace_goal_answer(
                 finalized,
-                PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+                (
+                    PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL
+                    if mutation_proof is not None
+                    else PUBLIC_GOAL_SAFE_TERMINAL
+                ),
             )
             finalized = coordinate_chat_candidate_validation(request, finalized)
         finalizer_artifact = finalized.candidate.model_dump(mode="json")

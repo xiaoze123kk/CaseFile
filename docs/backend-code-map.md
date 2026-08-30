@@ -9,7 +9,7 @@ M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runti
 ## M3.7 Bounded Goal Harness
 
 - `backend/src/casefile/agent_runtime/goal/contracts.py`：Goal Interpreter、冻结义务、单步决策、Observation 与 Completion 的严格内部契约；不属于 Public Chat Schema。
-- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则；v4 规范化 review-gated grounding、未解析指代、无修改 clarification 及显式 constraint/refine 结构，并拒绝重复执行已完成义务。
+- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则；v5 补齐明确请求的义务、规范化 review-gated grounding、显式 replace/abandonment、未解析指代、无修改 clarification 及 constraint/refine 结构，并拒绝重复执行已完成义务。
 - `backend/src/casefile/agent_runtime/goal/execution.py`：单个 `TaskRun` 内的 bounded next-action loop；在 Controller 前、完整 capability 后和 Finalizer 前产生可哈希 Checkpoint，并可从 obligations-hash 匹配的 Checkpoint 恢复；不持有数据库 Session。
 - `backend/src/casefile/agent_runtime/goal/filter.py`：位于显式 preset/issue-action 之后的保守 free-text 候选过滤器。
 - `backend/src/casefile/agent_runtime/goal/provider.py`：Interpreter、Controller、Evidence 与 Finalizer 的 provider-neutral 端口。

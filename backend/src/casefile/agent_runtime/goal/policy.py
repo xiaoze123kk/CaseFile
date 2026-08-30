@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -27,7 +28,7 @@ from casefile.agent_runtime.goal.contracts import (
 from casefile.agent_runtime.models import StrictAgentOutput
 
 GOAL_RUNTIME_VERSION = "casefile-chat-goal-runtime-v2"
-GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v4"
+GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v5"
 GOAL_CAPABILITY_REGISTRY_VERSION = "casefile-chat-goal-capabilities-v2"
 GOAL_QUALIFICATION_CONFIDENCE = 0.80
 
@@ -54,7 +55,7 @@ class GoalBudget(StrictAgentOutput):
 class GoalRuntimeConfig(StrictAgentOutput):
     mode: Literal["shadow", "active"]
     runtime_version: Literal["casefile-chat-goal-runtime-v2"] = "casefile-chat-goal-runtime-v2"
-    policy_version: Literal["casefile-chat-goal-policy-v4"] = "casefile-chat-goal-policy-v4"
+    policy_version: Literal["casefile-chat-goal-policy-v5"] = "casefile-chat-goal-policy-v5"
     capability_registry_version: Literal["casefile-chat-goal-capabilities-v2"] = (
         "casefile-chat-goal-capabilities-v2"
     )
@@ -145,15 +146,21 @@ def qualify_goal(
     reasons: list[str] = []
     if len(frozen.obligations) < 2:
         reasons.append("goal_too_few_obligations")
-    if output.confidence < GOAL_QUALIFICATION_CONFIDENCE:
+    explicit_replacement = _is_explicit_replacement(frozen)
+    if output.confidence < GOAL_QUALIFICATION_CONFIDENCE and not explicit_replacement:
         reasons.append("goal_confidence_low")
-    deterministically_ambiguous = _has_unresolved_reference(frozen)
-    if output.ambiguous or deterministically_ambiguous:
+    deterministically_ambiguous = _has_unresolved_reference(frozen) and not explicit_replacement
+    if (output.ambiguous and not explicit_replacement) or deterministically_ambiguous:
         reasons.append("goal_ambiguous")
     # ``missing_info`` is model-authored explanatory text, not an authoritative
     # stop signal. Only the typed ambiguous flag and the later deterministic
     # mutation preflight may reject an otherwise self-contained Goal.
-    if (output.missing_info and output.ambiguous) or deterministically_ambiguous:
+    if (
+        output.missing_info
+        and output.ambiguous
+        and not explicit_replacement
+        or deterministically_ambiguous
+    ):
         reasons.append("goal_missing_info")
     if len(frozen.obligations) > budget.max_plan_items:
         reasons.append("goal_plan_budget_exceeded")
@@ -274,6 +281,15 @@ def normalize_goal_amendment(
 
     normalized_message = " ".join(source_message.split())
     if normalized_message and len(normalized_message) <= 2_000:
+        abandoned = _select_abandoned_obligation(current, normalized_message)
+        if abandoned is not None:
+            return _canonical_amendment(
+                current,
+                [item for item in current.obligations if item.obligation_id != abandoned],
+                amendment_kind="remove_obligation",
+                source_message=normalized_message,
+                removal_source_excerpt=normalized_message,
+            )
         if (
             _requests_no_mutation(normalized_message)
             and not any(item.kind == "mutation_proposal" for item in current.obligations)
@@ -443,21 +459,34 @@ def _normalize_initial_obligations(
 ) -> list[GoalObligationDraft]:
     """Add the grounding step required by an explicitly review-gated edit Goal."""
 
-    if not _requires_analysis_before_review_gated_mutation(source_message):
-        return list(drafts)
     normalized_message = " ".join(source_message.split())
     if not normalized_message:
         return list(drafts)
     normalized = list(drafts)
+    if "分析" in normalized_message and not any(item.kind == "analysis" for item in normalized):
+        if len(normalized) < 6:
+            normalized.append(
+                GoalObligationDraft(
+                    kind="analysis",
+                    target_state="baseline",
+                    source_excerpt=normalized_message,
+                    depends_on=[],
+                )
+            )
     if not any(item.kind == "audit" for item in normalized) and "审计" in normalized_message:
         if len(normalized) >= 6:
             return normalized
+        analysis_indexes = [
+            index
+            for index, item in enumerate(normalized, start=1)
+            if item.kind == "analysis"
+        ]
         normalized.append(
             GoalObligationDraft(
                 kind="audit",
                 target_state="baseline",
                 source_excerpt=normalized_message,
-                depends_on=[],
+                depends_on=analysis_indexes[-1:] if analysis_indexes else [],
             )
         )
     if not any(item.kind == "mutation_proposal" for item in normalized):
@@ -471,6 +500,23 @@ def _normalize_initial_obligations(
                 depends_on=[],
             )
         )
+    if not _requires_analysis_before_review_gated_mutation(source_message):
+        mutation_index = next(
+            (
+                index
+                for index, item in enumerate(normalized, start=1)
+                if item.kind == "mutation_proposal" and not item.depends_on
+            ),
+            None,
+        )
+        audit_indexes = [
+            index for index, item in enumerate(normalized, start=1) if item.kind == "audit"
+        ]
+        if mutation_index is not None and audit_indexes and audit_indexes[-1] < mutation_index:
+            normalized[mutation_index - 1] = normalized[mutation_index - 1].model_copy(
+                update={"depends_on": [audit_indexes[-1]]}
+            )
+        return normalized
     if not any(item.kind == "analysis" for item in normalized):
         if len(normalized) >= 6:
             return normalized
@@ -529,6 +575,29 @@ def _normalize_initial_obligations(
 def _has_unresolved_reference(frozen: FrozenGoal) -> bool:
     source = " ".join(item.source_excerpt for item in frozen.obligations)
     return any(marker in source for marker in ("那个事件", "那个人", "那条信息"))
+
+
+def _is_explicit_replacement(frozen: FrozenGoal) -> bool:
+    source = " ".join(item.source_excerpt for item in frozen.obligations)
+    return "替换当前目标" in source and not _has_unresolved_reference(frozen)
+
+
+def _select_abandoned_obligation(current: FrozenGoal, source_message: str) -> str | None:
+    match = re.search(r"放弃([^，。；;]+)", source_message)
+    if match is None or len(current.obligations) < 2:
+        return None
+    target = match.group(1)
+    for suffix in ("分析", "审计", "复查", "修改", "任务", "义务"):
+        target = target.replace(suffix, "")
+    target = target.strip()
+    if not target:
+        return None
+    matches = [
+        item.obligation_id
+        for item in current.obligations
+        if target in item.source_excerpt or target in item.source_excerpt.replace("分析", "")
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _requests_no_mutation(source_message: str) -> bool:
