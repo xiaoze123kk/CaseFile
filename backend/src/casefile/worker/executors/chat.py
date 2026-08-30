@@ -1381,6 +1381,7 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v16",
             "casefile-chat-v17",
             "casefile-chat-v18",
+            "casefile-chat-v19",
         }:
             raise RuntimeError(
                 "Context policy "

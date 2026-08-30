@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from casefile.agent_runtime.general_mutation import GENERAL_MUTATION_PROMPT_VERSION
 from casefile.agent_runtime.goal.policy import GOAL_CAPABILITY_REGISTRY_VERSION, stable_hash
 from casefile.application.casefile_v1 import casefile_content_hash
 from casefile.application.services import CaseFileService
@@ -990,6 +991,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         )
         if not invalidation_valid:
             failures.append("observation_invalidation_invalid")
+        if reuse_invalid:
             violations.append("invalid_observation_reuse")
         final_state_valid = self._final_state_valid(
             scenario=scenario,
@@ -1053,7 +1055,11 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
             task.prompt_version == self.expected_prompt_version for task in tasks
         ) and all(
             call.prompt_version
-            in {self.expected_prompt_version, GOAL_CAPABILITY_REGISTRY_VERSION}
+            in {
+                self.expected_prompt_version,
+                GOAL_CAPABILITY_REGISTRY_VERSION,
+                GENERAL_MUTATION_PROMPT_VERSION,
+            }
             for call in calls
         )
         leak_rules: set[str] = set()

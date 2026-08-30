@@ -1151,6 +1151,7 @@ class FakeProvider:
             "casefile-chat-v16",
             "casefile-chat-v17",
             "casefile-chat-v18",
+            "casefile-chat-v19",
         }:
             return self._chat_v14(request)
         render_chat_executor_prompt(request)

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from casefile.benchmark.chat_goal_interactive_qualification import (
     InteractiveTrialEvidence,
+    _stable_executor_reason,
     build_report,
 )
 from casefile.benchmark.chat_goal_interactive_suite import (
@@ -219,6 +220,14 @@ def test_report_rejects_incomplete_or_tampered_trial_evidence() -> None:
     )
     assert missing_fingerprint["qualified"] is False
     assert missing_fingerprint["gates"]["evidence_fingerprints_complete"] is False
+
+
+def test_executor_failure_reason_keeps_only_stable_interactive_codes() -> None:
+    assert (
+        _stable_executor_reason(RuntimeError("interactive_goal_terminal_before_target"))
+        == "interactive_goal_terminal_before_target"
+    )
+    assert _stable_executor_reason(RuntimeError("provider secret detail")) == "unclassified"
 
 
 def _passing_rows() -> list[InteractiveTrialEvidence]:

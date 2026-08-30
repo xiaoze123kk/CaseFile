@@ -39,7 +39,7 @@ from casefile.data_postgres.session import (
 
 ROOT = Path(__file__).resolve().parents[4]
 MODEL_ID = "deepseek-v4-pro"
-PROMPT_VERSION = "casefile-chat-v18"
+PROMPT_VERSION = "casefile-chat-v19"
 REPORT_VERSION = "casefile-chat-goal-interactive-qualification-v2"
 GRADER_VERSION = "casefile-chat-goal-interactive-grader-v2"
 ROLLOUT = "active"
@@ -220,7 +220,10 @@ def run_formal_qualification(
                         raw = executor.execute_interactive_trial(scenario, trial_no=trial_no)
                         row = _trial_from_execution(scenario, trial_no, raw)
                     except Exception as error:
-                        infrastructure = f"executor_exception:{type(error).__name__}"
+                        reason = _stable_executor_reason(error)
+                        infrastructure = (
+                            f"executor_exception:{type(error).__name__}:{reason}"
+                        )
                         row = _failed_trial(scenario, trial_no, infrastructure)
                     rows.append(row)
                     details = ""
@@ -310,6 +313,16 @@ def _trial_from_execution(
 
 
 MappingLike = dict[str, Any]
+
+
+def _stable_executor_reason(error: Exception) -> str:
+    reason = str(error).partition(":")[0]
+    if reason.startswith("interactive_") and all(
+        character.islower() or character.isdigit() or character == "_"
+        for character in reason
+    ):
+        return reason
+    return "unclassified"
 
 
 def _failed_trial(

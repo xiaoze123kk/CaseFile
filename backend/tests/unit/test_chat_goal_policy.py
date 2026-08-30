@@ -271,6 +271,30 @@ def test_non_authoritative_plan_items_are_rebuilt_from_server_facts() -> None:
     ]
 
 
+def test_non_authoritative_action_is_rebuilt_from_first_ready_obligation() -> None:
+    frozen = freeze_goal(understanding(), SOURCE)
+    invalid = GoalDecisionOutput.model_validate(
+        {
+            "plan_items": [{"obligation_id": "obl_2", "status": "in_progress"}],
+            "action": {
+                "action": "invoke_capability",
+                "capability": "audit",
+                "obligation_ids": ["obl_2"],
+                "target_state": "baseline",
+            },
+        }
+    )
+
+    normalized = normalize_decision_plan(frozen, invalid, ())
+
+    assert normalized.action == InvokeCapabilityAction(
+        capability="analyze",
+        obligation_ids=["obl_1"],
+        target_state="baseline",
+    )
+    validate_decision(frozen, normalized, ())
+
+
 def test_completed_server_observations_override_repeated_model_action() -> None:
     frozen = freeze_goal(understanding(), SOURCE)
     repeated = GoalDecisionOutput.model_validate(

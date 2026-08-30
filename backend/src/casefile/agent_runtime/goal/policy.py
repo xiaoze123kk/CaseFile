@@ -289,11 +289,39 @@ def normalize_decision_plan(
     decision: GoalDecisionOutput,
     observations: tuple[GoalObservation, ...],
 ) -> GoalDecisionOutput:
-    """Rebuild non-authoritative plan display from frozen server facts."""
+    """Rebuild the next action and plan display from frozen server facts."""
 
     completed = _completed_ids(observations)
     known_ids = {item.obligation_id for item in frozen.obligations}
-    action = FinishGoalAction() if completed == known_ids else decision.action
+    if completed == known_ids:
+        action: FinishGoalAction | InvokeCapabilityAction = FinishGoalAction()
+    elif not isinstance(decision.action, InvokeCapabilityAction):
+        action = decision.action
+    elif _action_is_authorized(frozen, decision.action, completed):
+        action = decision.action
+    else:
+        ready = next(
+            (
+                obligation
+                for obligation in frozen.obligations
+                if obligation.obligation_id not in completed
+                and set(obligation.depends_on).issubset(completed)
+            ),
+            None,
+        )
+        if ready is None:
+            action = decision.action
+        else:
+            capability = next(
+                definition.capability
+                for definition in CAPABILITY_REGISTRY.values()
+                if definition.obligation_kind == ready.kind
+            )
+            action = InvokeCapabilityAction(
+                capability=capability,
+                obligation_ids=[ready.obligation_id],
+                target_state=ready.target_state,
+            )
     in_progress = (
         set(action.obligation_ids) if isinstance(action, InvokeCapabilityAction) else set()
     )
@@ -311,6 +339,23 @@ def normalize_decision_plan(
         for obligation in frozen.obligations
     ]
     return decision.model_copy(update={"plan_items": plan_items, "action": action})
+
+
+def _action_is_authorized(
+    frozen: FrozenGoal,
+    action: InvokeCapabilityAction,
+    completed: set[str],
+) -> bool:
+    by_id = {item.obligation_id: item for item in frozen.obligations}
+    definition = CAPABILITY_REGISTRY[action.capability]
+    return bool(action.obligation_ids) and all(
+        (obligation := by_id.get(obligation_id)) is not None
+        and obligation.kind == definition.obligation_kind
+        and obligation.target_state == action.target_state
+        and action.target_state in definition.allowed_target_states
+        and set(obligation.depends_on).issubset(completed)
+        for obligation_id in action.obligation_ids
+    )
 
 
 def goal_capability_message(

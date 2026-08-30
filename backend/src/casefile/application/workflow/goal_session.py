@@ -1445,6 +1445,25 @@ class GoalSessionWorkflowMixin:
             )
             binding.status = "completed"
             binding.finished_at = now
+        else:
+            repository.transition(
+                goal,
+                target_status="completed",
+                reason_code="single_turn_fallback",
+                state_hash=stable_hash(
+                    {
+                        "goal_id": goal.id,
+                        "status": "completed",
+                        "task_run_id": task.id,
+                        "goal_revision_id": None,
+                        "patch_set_id": None,
+                    }
+                ),
+                goal_revision_id=None,
+                source_message_id=goal.source_message_id,
+                task_run_id=task.id,
+            )
+            return
         waiting_for_patch = False
         if patch_set is not None and patch_set.status == "pending":
             waiting_for_patch = True
@@ -1453,7 +1472,7 @@ class GoalSessionWorkflowMixin:
         reason_code = (
             "goal_waiting_patch_review"
             if waiting_for_patch
-            else ("goal_completed" if binding is not None else "single_turn_fallback")
+            else "goal_completed"
         )
         repository.transition(
             goal,
