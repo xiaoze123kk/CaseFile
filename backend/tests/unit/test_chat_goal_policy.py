@@ -4,6 +4,8 @@ import pytest
 from casefile.agent_runtime.goal.contracts import (
     GoalAmendmentOutput,
     GoalDecisionOutput,
+    GoalFinalizerInputV1,
+    GoalFinalizerInputV2,
     GoalObservation,
     GoalUnderstandingOutput,
     InvokeCapabilityAction,
@@ -16,10 +18,12 @@ from casefile.agent_runtime.goal.policy import (
     freeze_goal,
     goal_capability_message,
     normalize_decision_plan,
+    normalize_goal_amendment,
     qualify_goal,
     stable_hash,
     validate_decision,
 )
+from pydantic import ValidationError
 
 SOURCE = "先分析时间线，再审计矛盾；如果确认有问题，把事件标题改成夜访，然后复查修改结果。"
 
@@ -198,6 +202,101 @@ def test_amendment_rejects_remove_shape_and_dependency_cycle() -> None:
             "明确放弃最后一项",
             budget=GoalBudget(),
         )
+
+
+def test_amendment_normalizes_paraphrase_and_absent_mutation_removal() -> None:
+    initial = understanding().model_copy(
+        update={
+            "goal": "分析同盟破裂动机并审计论证",
+            "obligations": understanding().obligations[:2],
+        }
+    )
+    current = freeze_goal(initial, SOURCE)
+    source = "随后核对证据来源与动机结论的对应关系，但不要提出修改。"
+    candidate = GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "remove_obligation",
+            "goal": source,
+            "obligations": [
+                {
+                    "obligation_ref": item.obligation_id,
+                    "kind": item.kind,
+                    "target_state": item.target_state,
+                    "source_excerpt": "核对证据与结论关系",
+                    "depends_on": item.depends_on,
+                }
+                for item in current.obligations
+            ],
+            "removal_source_excerpt": "不要提出修改",
+        }
+    )
+
+    normalized = normalize_goal_amendment(current, candidate, source)
+    amended = apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+
+    assert normalized.amendment_kind == "refine"
+    assert normalized.removal_source_excerpt is None
+    assert {item.source_excerpt for item in normalized.obligations} == {source}
+    assert [item.obligation_id for item in amended.obligations] == ["obl_1", "obl_2"]
+
+
+def test_amendment_does_not_keep_existing_mutation_after_remove_request() -> None:
+    current = freeze_goal(understanding(), SOURCE)
+    source = "不要提出修改。"
+    candidate = GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "remove_obligation",
+            "goal": current.goal,
+            "obligations": [
+                {
+                    "obligation_ref": item.obligation_id,
+                    "kind": item.kind,
+                    "target_state": item.target_state,
+                    "source_excerpt": item.source_excerpt,
+                    "depends_on": item.depends_on,
+                }
+                for item in current.obligations
+            ],
+            "removal_source_excerpt": source,
+        }
+    )
+
+    with pytest.raises(GoalPolicyError, match="goal_amendment_shape_invalid"):
+        apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+
+
+def test_goal_finalizer_v2_accepts_one_authoritative_observation() -> None:
+    current = freeze_goal(understanding(), SOURCE)
+    one_obligation = current.model_copy(
+        update={
+            "obligations": current.obligations[:1],
+            "obligations_hash": stable_hash(
+                [current.obligations[0].model_dump(mode="json")]
+            ),
+        }
+    )
+    completion = complete_goal(
+        one_obligation,
+        (observation(1, "obl_1", "analyze", "baseline"),),
+    )
+    payload = {
+        "input_hash": stable_hash("finalizer-input"),
+        "casefile": {},
+        "thread_history": [],
+        "author_message": "最终只聚焦知情状态冲突，其他结论不展开。",
+        "focus": {},
+        "validation": {},
+        "goal": one_obligation.model_dump(mode="json"),
+        "observations": [
+            observation(1, "obl_1", "analyze", "baseline").model_dump(mode="json")
+        ],
+        "completion": completion.model_dump(mode="json"),
+        "mutation_proof": None,
+    }
+
+    with pytest.raises(ValidationError):
+        GoalFinalizerInputV1.model_validate(payload)
+    assert len(GoalFinalizerInputV2.model_validate(payload).observations) == 1
 
 
 def test_qualification_rejects_candidate_without_mutation_and_budget_overflow() -> None:

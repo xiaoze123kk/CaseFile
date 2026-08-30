@@ -1006,7 +1006,7 @@ class ContentWorkflowMixin:
                     "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT", "off"
                 ).strip().lower()
                 prompt_version = (
-                    "casefile-chat-v19"
+                    "casefile-chat-v20"
                     if goal_session_rollout == "active"
                     else "casefile-chat-v17"
                 )

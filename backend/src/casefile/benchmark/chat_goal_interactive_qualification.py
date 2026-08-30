@@ -38,7 +38,7 @@ from casefile.data_postgres.session import (
 
 ROOT = Path(__file__).resolve().parents[4]
 MODEL_ID = "deepseek-v4-pro"
-PROMPT_VERSION = "casefile-chat-v19"
+PROMPT_VERSION = "casefile-chat-v20"
 REPORT_VERSION = "casefile-chat-goal-interactive-qualification-v2"
 GRADER_VERSION = "casefile-chat-goal-interactive-grader-v2"
 ROLLOUT = "active"

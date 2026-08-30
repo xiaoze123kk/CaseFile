@@ -86,6 +86,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v17",
         "casefile-chat-v18",
         "casefile-chat-v19",
+        "casefile-chat-v20",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -324,6 +325,7 @@ def _with_chat_repair_feedback(
             "casefile-chat-v17",
             "casefile-chat-v18",
             "casefile-chat-v19",
+            "casefile-chat-v20",
         }
         else "只修正引用槽"
     )
@@ -360,6 +362,7 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
             "casefile-chat-v17",
             "casefile-chat-v18",
             "casefile-chat-v19",
+            "casefile-chat-v20",
         }
         and request.target_locked_repair is not None
     ):
@@ -458,6 +461,7 @@ def render_chat_finalizer_prompt(
         "casefile-chat-v17",
         "casefile-chat-v18",
         "casefile-chat-v19",
+        "casefile-chat-v20",
     }:
         instructions = _with_chat_repair_feedback(instructions, request)
     if repair_plan:

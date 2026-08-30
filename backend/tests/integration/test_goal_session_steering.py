@@ -155,7 +155,7 @@ def _create_goal(
     return thread_id, int(created["goal"].goal_id), int(created["task"]["task_run_id"])
 
 
-def test_waiting_steer_uses_v18_amendment_and_stable_obligation_keys(
+def test_waiting_steer_uses_current_amendment_and_stable_obligation_keys(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
@@ -231,7 +231,7 @@ def test_waiting_steer_uses_v18_amendment_and_stable_obligation_keys(
             )
             assert goal.revision_count == 2
             assert delivery is not None and delivery.status == "consumed"
-            assert continuation is not None and continuation.prompt_version == "casefile-chat-v19"
+            assert continuation is not None and continuation.prompt_version == "casefile-chat-v20"
             assert [row.amendment_kind for row in revisions] == ["initial", "refine"]
             assert revisions[0].obligations_hash == revisions[1].obligations_hash
             assert amendment_calls == 1

@@ -20,6 +20,7 @@ from casefile.agent_runtime.goal.policy import (
     apply_goal_amendment,
     complete_goal,
     freeze_goal,
+    normalize_goal_amendment,
     qualify_goal,
 )
 
@@ -42,4 +43,5 @@ __all__ = [
     "complete_goal",
     "freeze_goal",
     "qualify_goal",
+    "normalize_goal_amendment",
 ]

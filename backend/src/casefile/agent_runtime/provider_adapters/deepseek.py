@@ -578,6 +578,7 @@ class DeepSeekAgentsProvider:
             "casefile-chat-v17",
             "casefile-chat-v18",
             "casefile-chat-v19",
+            "casefile-chat-v20",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -696,6 +697,7 @@ class DeepSeekAgentsProvider:
                     "casefile-chat-v17",
                     "casefile-chat-v18",
                     "casefile-chat-v19",
+                    "casefile-chat-v20",
                 }:
                     raise
                 request.emit(

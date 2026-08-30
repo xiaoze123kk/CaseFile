@@ -205,7 +205,7 @@ def test_interactive_executor_injects_steer_at_real_safe_point(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v19",
+            expected_prompt_version="casefile-chat-v20",
             provider_factory=lambda document, _secret: _InteractiveFakeProvider(document),
         )
         try:
@@ -253,7 +253,7 @@ def test_public_dev_suite_executes_every_interactive_family(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v19",
+            expected_prompt_version="casefile-chat-v20",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, family
             ),
@@ -383,7 +383,7 @@ def test_interactive_executor_covers_queued_fifo_and_early_follow_up_rejection(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v19",
+            expected_prompt_version="casefile-chat-v20",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, "steer_refine"
             ),

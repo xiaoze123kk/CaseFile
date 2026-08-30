@@ -14,6 +14,14 @@ from threading import Event
 from typing import Any
 from unittest.mock import patch as mock_patch
 
+from casefile_contracts import (
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicGoalEvent,
+    PublicGoalSession,
+    PublicPatchResponse,
+)
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -52,14 +60,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from casefile_contracts import (
-    PublicAgentMessage,
-    PublicAgentMessageReceipt,
-    PublicAgentRun,
-    PublicGoalEvent,
-    PublicGoalSession,
-    PublicPatchResponse,
-)
 
 _TERMINAL_GOALS = {"completed", "cancelled", "superseded", "failed"}
 
@@ -738,6 +738,8 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 if task is not None and task.status == "failed"
                 else None
             )
+        if error_code is None:
+            return
         stable_reason = {
             "provider_4xx": "interactive_provider_4xx",
             "provider_authentication_failed": "interactive_provider_authentication_failed",

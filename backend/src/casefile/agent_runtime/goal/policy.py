@@ -13,6 +13,7 @@ from pydantic import Field
 from casefile.agent_runtime.goal.contracts import (
     FinishGoalAction,
     FrozenGoal,
+    GoalAmendmentObligationDraft,
     GoalAmendmentOutput,
     GoalCompletionDecision,
     GoalDecisionOutput,
@@ -175,6 +176,8 @@ def apply_goal_amendment(
 ) -> FrozenGoal:
     """Validate a model amendment and assign stable server-owned obligation keys."""
 
+    amendment = normalize_goal_amendment(current, amendment, source_message)
+
     existing = {item.obligation_id: item for item in current.obligations}
     refs = [item.obligation_ref for item in amendment.obligations]
     ref_set = set(refs)
@@ -254,6 +257,65 @@ def apply_goal_amendment(
         source_message_hash=stable_hash(source_message),
         obligations_hash=stable_hash(payload),
     )
+
+
+def normalize_goal_amendment(
+    current: FrozenGoal,
+    amendment: GoalAmendmentOutput,
+    source_message: str,
+) -> GoalAmendmentOutput:
+    """Canonicalize safe projection details before strict policy validation.
+
+    The projection owns structural intent. A remove label with no removed
+    obligation is therefore a refine, while a paraphrased excerpt on an
+    otherwise unchanged obligation can safely point at the complete author
+    message. New obligations and capability/target changes remain strict.
+    """
+
+    existing = {item.obligation_id: item for item in current.obligations}
+    refs = [item.obligation_ref for item in amendment.obligations]
+    existing_refs = {ref for ref in refs if ref.startswith("obl_")}
+    new_refs = [ref for ref in refs if ref.startswith("new_")]
+    removed = set(existing) - existing_refs
+    normalized = amendment
+    removal_excerpt = amendment.removal_source_excerpt or ""
+    removes_absent_mutation = (
+        amendment.amendment_kind == "remove_obligation"
+        and not removed
+        and not new_refs
+        and all(item.kind != "mutation_proposal" for item in current.obligations)
+        and any(marker in removal_excerpt for marker in ("修改", "改动", "补丁", "Patch"))
+    )
+    if removes_absent_mutation:
+        normalized = amendment.model_copy(
+            update={"amendment_kind": "refine", "removal_source_excerpt": None}
+        )
+
+    normalized_message = " ".join(source_message.split())
+    if (
+        normalized.amendment_kind not in {"refine", "add_constraint"}
+        or not normalized_message
+        or len(normalized_message) > 2_000
+    ):
+        return normalized
+
+    obligations: list[GoalAmendmentObligationDraft] = []
+    changed = False
+    for draft in normalized.obligations:
+        prior = existing.get(draft.obligation_ref)
+        excerpt_is_grounded = " ".join(draft.source_excerpt.split()) in normalized_message
+        if (
+            prior is not None
+            and prior.kind == draft.kind
+            and prior.target_state == draft.target_state
+            and prior.source_excerpt != draft.source_excerpt
+            and not excerpt_is_grounded
+        ):
+            obligations.append(draft.model_copy(update={"source_excerpt": normalized_message}))
+            changed = True
+        else:
+            obligations.append(draft)
+    return normalized.model_copy(update={"obligations": obligations}) if changed else normalized
 
 
 def validate_decision(
@@ -505,6 +567,7 @@ __all__ = [
     "freeze_goal",
     "goal_capability_message",
     "normalize_decision_plan",
+    "normalize_goal_amendment",
     "qualify_goal",
     "stable_hash",
     "validate_decision",

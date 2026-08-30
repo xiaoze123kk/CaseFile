@@ -176,6 +176,12 @@ class GoalFinalizerInputV1(StrictAgentOutput):
     mutation_proof: dict[str, Any] | None = None
 
 
+class GoalFinalizerInputV2(GoalFinalizerInputV1):
+    """Finalizer input after a valid amendment leaves one obligation."""
+
+    observations: list[GoalObservation] = Field(min_length=1, max_length=4)
+
+
 def jsonable(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
@@ -200,6 +206,7 @@ __all__ = [
     "GoalPlanItem",
     "GoalTargetState",
     "GoalFinalizerInputV1",
+    "GoalFinalizerInputV2",
     "GoalInterpreterInputV1",
     "GoalUnderstandingOutput",
     "InvokeCapabilityAction",

@@ -79,6 +79,7 @@ from casefile.agent_runtime.goal.contracts import (
     GoalControllerInputV1,
     GoalDecisionOutput,
     GoalFinalizerInputV1,
+    GoalFinalizerInputV2,
     GoalInterpreterInputV1,
     GoalUnderstandingOutput,
 )
@@ -174,6 +175,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-goal-amendment-input-v1": GoalAmendmentInputV1,
         "casefile-chat-goal-controller-input-v1": GoalControllerInputV1,
         "casefile-chat-goal-finalizer-input-v1": GoalFinalizerInputV1,
+        "casefile-chat-goal-finalizer-input-v2": GoalFinalizerInputV2,
         "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
         "closure-repair-input-v1": ClosureRepairPromptInputV1,
         "closure-repair-input-v2": ClosureRepairPromptInputV2,

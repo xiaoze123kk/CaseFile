@@ -5,7 +5,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from casefile.benchmark.chat_goal_interactive_qualification import (
     InteractiveTrialEvidence,
     _fatal_infrastructure_failure,

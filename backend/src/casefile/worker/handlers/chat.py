@@ -34,6 +34,7 @@ from casefile.agent_runtime.goal.policy import (
     apply_goal_amendment,
     freeze_goal,
     goal_capability_message,
+    normalize_goal_amendment,
     qualify_goal,
     stable_hash,
 )
@@ -264,9 +265,14 @@ class ChatHandler:
             amendment = provider.amend_goal(
                 GoalAmendmentRequest(chat=request, current_goal=previous_goal)
             )
-            frozen = apply_goal_amendment(
+            normalized_amendment = normalize_goal_amendment(
                 previous_goal,
                 amendment.candidate,
+                request.message,
+            )
+            frozen = apply_goal_amendment(
+                previous_goal,
+                normalized_amendment,
                 request.message,
                 budget=runtime.budget,
             )
@@ -274,7 +280,7 @@ class ChatHandler:
                 task.id,
                 delivery_id=int(raw_pending_delivery["delivery_id"]),
                 amended_goal=frozen,
-                amendment_kind=amendment.candidate.amendment_kind,
+                amendment_kind=normalized_amendment.amendment_kind,
             )
             checkpoint = GoalExecutionCheckpoint(
                 obligations_hash=frozen.obligations_hash
@@ -284,7 +290,7 @@ class ChatHandler:
                 "goal.amended",
                 "goal",
                 {
-                    "amendment_kind": amendment.candidate.amendment_kind,
+                    "amendment_kind": normalized_amendment.amendment_kind,
                     "obligation_count": len(frozen.obligations),
                 },
             )
@@ -798,9 +804,14 @@ class ChatHandler:
             amendment = provider.amend_goal(
                 GoalAmendmentRequest(chat=control_request, current_goal=frozen)
             )
-            amended_goal = apply_goal_amendment(
+            normalized_amendment = normalize_goal_amendment(
                 frozen,
                 amendment.candidate,
+                control_request.message,
+            )
+            amended_goal = apply_goal_amendment(
+                frozen,
+                normalized_amendment,
                 control_request.message,
                 budget=runtime.budget,
             )
@@ -814,7 +825,7 @@ class ChatHandler:
                 tools=execution.tools.as_dict(),
                 delivery_id=int(control["delivery_id"]),
                 amended_goal=amended_goal,
-                amendment_kind=amendment.candidate.amendment_kind,
+                amendment_kind=normalized_amendment.amendment_kind,
             )
             context.state.candidate = {
                 "checkpointed": True,
