@@ -27,7 +27,7 @@ from casefile.agent_runtime.goal.contracts import (
 from casefile.agent_runtime.models import StrictAgentOutput
 
 GOAL_RUNTIME_VERSION = "casefile-chat-goal-runtime-v2"
-GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v3"
+GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v4"
 GOAL_CAPABILITY_REGISTRY_VERSION = "casefile-chat-goal-capabilities-v2"
 GOAL_QUALIFICATION_CONFIDENCE = 0.80
 
@@ -54,7 +54,7 @@ class GoalBudget(StrictAgentOutput):
 class GoalRuntimeConfig(StrictAgentOutput):
     mode: Literal["shadow", "active"]
     runtime_version: Literal["casefile-chat-goal-runtime-v2"] = "casefile-chat-goal-runtime-v2"
-    policy_version: Literal["casefile-chat-goal-policy-v3"] = "casefile-chat-goal-policy-v3"
+    policy_version: Literal["casefile-chat-goal-policy-v4"] = "casefile-chat-goal-policy-v4"
     capability_registry_version: Literal["casefile-chat-goal-capabilities-v2"] = (
         "casefile-chat-goal-capabilities-v2"
     )
@@ -147,12 +147,13 @@ def qualify_goal(
         reasons.append("goal_too_few_obligations")
     if output.confidence < GOAL_QUALIFICATION_CONFIDENCE:
         reasons.append("goal_confidence_low")
-    if output.ambiguous:
+    deterministically_ambiguous = _has_unresolved_reference(frozen)
+    if output.ambiguous or deterministically_ambiguous:
         reasons.append("goal_ambiguous")
     # ``missing_info`` is model-authored explanatory text, not an authoritative
     # stop signal. Only the typed ambiguous flag and the later deterministic
     # mutation preflight may reject an otherwise self-contained Goal.
-    if output.missing_info and output.ambiguous:
+    if (output.missing_info and output.ambiguous) or deterministically_ambiguous:
         reasons.append("goal_missing_info")
     if len(frozen.obligations) > budget.max_plan_items:
         reasons.append("goal_plan_budget_exceeded")
@@ -271,6 +272,53 @@ def normalize_goal_amendment(
     message. New obligations and capability/target changes remain strict.
     """
 
+    normalized_message = " ".join(source_message.split())
+    if normalized_message and len(normalized_message) <= 2_000:
+        if (
+            _requests_no_mutation(normalized_message)
+            and not any(item.kind == "mutation_proposal" for item in current.obligations)
+            and amendment.amendment_kind == "remove_obligation"
+        ):
+            return _canonical_amendment(
+                current,
+                current.obligations,
+                amendment_kind="refine",
+                source_message=normalized_message,
+                rebind_excerpts=True,
+            )
+        if _requests_no_mutation(normalized_message) and any(
+            item.kind == "mutation_proposal" or item.target_state == "candidate"
+            for item in current.obligations
+        ):
+            retained = [
+                item
+                for item in current.obligations
+                if item.kind != "mutation_proposal" and item.target_state != "candidate"
+            ]
+            if retained:
+                return _canonical_amendment(
+                    current,
+                    retained,
+                    amendment_kind="remove_obligation",
+                    source_message=normalized_message,
+                    removal_source_excerpt=normalized_message,
+                )
+        if _is_scope_refine_message(normalized_message):
+            return _canonical_amendment(
+                current,
+                current.obligations,
+                amendment_kind="refine",
+                source_message=normalized_message,
+                rebind_excerpts=True,
+            )
+        if _is_constraint_message(normalized_message):
+            return _canonical_amendment(
+                current,
+                current.obligations,
+                amendment_kind="add_constraint",
+                source_message=normalized_message,
+            )
+
     existing = {item.obligation_id: item for item in current.obligations}
     refs = [item.obligation_ref for item in amendment.obligations]
     existing_refs = {ref for ref in refs if ref.startswith("obl_")}
@@ -297,7 +345,6 @@ def normalize_goal_amendment(
             update={"amendment_kind": "refine", "removal_source_excerpt": None}
         )
 
-    normalized_message = " ".join(source_message.split())
     if (
         normalized.amendment_kind not in {"refine", "add_constraint"}
         or not normalized_message
@@ -361,43 +408,151 @@ def normalize_goal_amendment(
     return normalized.model_copy(update={"obligations": obligations}) if changed else normalized
 
 
+def _canonical_amendment(
+    current: FrozenGoal,
+    obligations: list[GoalObligation],
+    *,
+    amendment_kind: Literal["refine", "add_constraint", "remove_obligation"],
+    source_message: str,
+    removal_source_excerpt: str | None = None,
+    rebind_excerpts: bool = False,
+) -> GoalAmendmentOutput:
+    retained_ids = {item.obligation_id for item in obligations}
+    return GoalAmendmentOutput(
+        amendment_kind=amendment_kind,
+        goal=f"{current.goal}；{source_message}",
+        obligations=[
+            GoalAmendmentObligationDraft(
+                obligation_ref=item.obligation_id,
+                kind=item.kind,
+                target_state=item.target_state,
+                source_excerpt=source_message if rebind_excerpts else item.source_excerpt,
+                depends_on=[
+                    dependency for dependency in item.depends_on if dependency in retained_ids
+                ],
+            )
+            for item in obligations
+        ],
+        removal_source_excerpt=removal_source_excerpt,
+    )
+
+
 def _normalize_initial_obligations(
     drafts: list[GoalObligationDraft],
     source_message: str,
 ) -> list[GoalObligationDraft]:
     """Add the grounding step required by an explicitly review-gated edit Goal."""
 
-    if (
-        len(drafts) >= 6
-        or not any(item.kind == "mutation_proposal" for item in drafts)
-        or any(item.kind == "analysis" for item in drafts)
-        or not _requires_analysis_before_review_gated_mutation(source_message)
-    ):
-        return list(drafts)
-    first_audit = next(
-        (index for index, item in enumerate(drafts, start=1) if item.kind == "audit"),
-        None,
-    )
-    if first_audit is None:
+    if not _requires_analysis_before_review_gated_mutation(source_message):
         return list(drafts)
     normalized_message = " ".join(source_message.split())
     if not normalized_message:
         return list(drafts)
-    shifted: list[GoalObligationDraft] = []
-    for index, draft in enumerate(drafts, start=1):
-        dependencies = [dependency + 1 for dependency in draft.depends_on]
-        if index == first_audit and not dependencies:
-            dependencies = [1]
-        shifted.append(draft.model_copy(update={"depends_on": dependencies}))
-    return [
-        GoalObligationDraft(
-            kind="analysis",
-            target_state="baseline",
-            source_excerpt=normalized_message,
-            depends_on=[],
-        ),
-        *shifted,
-    ]
+    normalized = list(drafts)
+    if not any(item.kind == "audit" for item in normalized) and "审计" in normalized_message:
+        if len(normalized) >= 6:
+            return normalized
+        normalized.append(
+            GoalObligationDraft(
+                kind="audit",
+                target_state="baseline",
+                source_excerpt=normalized_message,
+                depends_on=[],
+            )
+        )
+    if not any(item.kind == "mutation_proposal" for item in normalized):
+        if len(normalized) >= 6 or not _is_explicit_mutation_request(normalized_message):
+            return normalized
+        normalized.append(
+            GoalObligationDraft(
+                kind="mutation_proposal",
+                target_state="baseline",
+                source_excerpt=normalized_message,
+                depends_on=[],
+            )
+        )
+    if not any(item.kind == "analysis" for item in normalized):
+        if len(normalized) >= 6:
+            return normalized
+        normalized.insert(
+            0,
+            GoalObligationDraft(
+                kind="analysis",
+                target_state="baseline",
+                source_excerpt=normalized_message,
+                depends_on=[],
+            ),
+        )
+        old_indexes: list[int | None] = [None, *range(1, len(normalized))]
+    else:
+        first_analysis = next(
+            index for index, item in enumerate(normalized, start=1) if item.kind == "analysis"
+        )
+        reordered_indexes = [
+            first_analysis,
+            *(index for index in range(1, len(normalized) + 1) if index != first_analysis),
+        ]
+        normalized = [normalized[index - 1] for index in reordered_indexes]
+        old_indexes = list(reordered_indexes)
+
+    new_index_by_old = {
+        old_index: new_index
+        for new_index, old_index in enumerate(old_indexes, start=1)
+        if old_index is not None
+    }
+    remapped: list[GoalObligationDraft] = []
+    for new_index, (_old_index, draft) in enumerate(
+        zip(old_indexes, normalized, strict=True), start=1
+    ):
+        dependencies = sorted(
+            {
+                new_index_by_old[dependency]
+                for dependency in draft.depends_on
+                if dependency in new_index_by_old
+                and new_index_by_old[dependency] < new_index
+            }
+        )
+        if draft.kind == "audit" and new_index != 1 and 1 not in dependencies:
+            dependencies.insert(0, 1)
+        if draft.kind == "mutation_proposal":
+            audit_indexes = [
+                index
+                for index, prior in enumerate(remapped, start=1)
+                if prior.kind == "audit"
+            ]
+            if audit_indexes and audit_indexes[-1] not in dependencies:
+                dependencies.append(audit_indexes[-1])
+        remapped.append(draft.model_copy(update={"depends_on": sorted(set(dependencies))}))
+    return remapped
+
+
+def _has_unresolved_reference(frozen: FrozenGoal) -> bool:
+    source = " ".join(item.source_excerpt for item in frozen.obligations)
+    return any(marker in source for marker in ("那个事件", "那个人", "那条信息"))
+
+
+def _requests_no_mutation(source_message: str) -> bool:
+    return any(
+        marker in source_message
+        for marker in (
+            "不做修改",
+            "不要修改",
+            "不修改",
+            "不删除",
+            "不新增",
+            "不创建",
+            "不要提出修改",
+            "只分析并审计",
+            "只分析和审计",
+        )
+    )
+
+
+def _is_explicit_mutation_request(source_message: str) -> bool:
+    return any(
+        marker in source_message
+        for marker in ("改成", "修改", "调整", "删除", "新增", "创建", "处理掉")
+    )
 
 
 def _requires_analysis_before_review_gated_mutation(source_message: str) -> bool:

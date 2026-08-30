@@ -165,6 +165,40 @@ def test_freeze_preserves_audit_first_mutation_plan_without_explicit_review_gate
     assert frozen.obligations[1].depends_on == ["obl_1"]
 
 
+def test_freeze_canonicalizes_review_gated_order_and_restores_missing_mutation() -> None:
+    source = "先审计事件，再把事件标题改成夜访；所有修改都必须等待作者确认。"
+    output = GoalUnderstandingOutput.model_validate(
+        {
+            "goal": source,
+            "confidence": 0.95,
+            "ambiguous": False,
+            "missing_info": [],
+            "obligations": [
+                {
+                    "kind": "audit",
+                    "target_state": "baseline",
+                    "source_excerpt": "先审计事件",
+                },
+                {
+                    "kind": "analysis",
+                    "target_state": "baseline",
+                    "source_excerpt": "事件标题",
+                },
+            ],
+        }
+    )
+
+    frozen = freeze_goal(output, source)
+
+    assert [item.kind for item in frozen.obligations] == [
+        "analysis",
+        "audit",
+        "mutation_proposal",
+    ]
+    assert frozen.obligations[1].depends_on == ["obl_1"]
+    assert frozen.obligations[2].depends_on == ["obl_2"]
+
+
 def test_amendment_assigns_stable_new_keys_and_validates_new_excerpt() -> None:
     current = freeze_goal(understanding(), SOURCE)
     source = "再增加一项：复查新的证据链。"
@@ -334,6 +368,7 @@ def test_constraint_amendment_preserves_existing_observation_identity() -> None:
         item.source_excerpt for item in current.obligations
     ]
     assert amended.obligations_hash == current.obligations_hash
+    assert source in amended.goal
 
 
 def test_scope_refine_invalidates_prior_observation_identity() -> None:
@@ -359,13 +394,64 @@ def test_scope_refine_invalidates_prior_observation_identity() -> None:
         }
     )
 
-    amended = apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+    candidate = candidate.model_copy(
+        update={
+            "amendment_kind": "remove_obligation",
+            "obligations": candidate.obligations[1:],
+            "removal_source_excerpt": source,
+        }
+    )
+    normalized = normalize_goal_amendment(current, candidate, source)
+    amended = apply_goal_amendment(current, normalized, source, budget=GoalBudget())
 
+    assert normalized.amendment_kind == "refine"
+    assert [item.obligation_ref for item in normalized.obligations] == ["obl_1", "obl_2"]
     assert amended.obligations_hash != current.obligations_hash
     assert {item.source_excerpt for item in amended.obligations} == {source}
+    assert source in amended.goal
 
 
-def test_amendment_does_not_keep_existing_mutation_after_remove_request() -> None:
+def test_clarification_no_mutation_removes_model_retained_mutation() -> None:
+    current = freeze_goal(understanding(), SOURCE)
+    source = "目标是人物 林研究员；先分析职责，再审计，不修改名称。"
+    candidate = GoalAmendmentOutput.model_validate(
+        {
+            "amendment_kind": "refine",
+            "goal": source,
+            "obligations": [
+                {
+                    "obligation_ref": item.obligation_id,
+                    "kind": item.kind,
+                    "target_state": item.target_state,
+                    "source_excerpt": item.source_excerpt,
+                    "depends_on": item.depends_on,
+                }
+                for item in current.obligations
+            ],
+        }
+    )
+
+    normalized = normalize_goal_amendment(current, candidate, source)
+    amended = apply_goal_amendment(current, normalized, source, budget=GoalBudget())
+
+    assert normalized.amendment_kind == "remove_obligation"
+    assert normalized.removal_source_excerpt == source
+    assert [item.kind for item in amended.obligations] == ["analysis", "audit"]
+    assert all(item.target_state == "baseline" for item in amended.obligations)
+
+
+def test_unresolved_demonstrative_requires_clarification() -> None:
+    source = "先分析那个人的职责，再审计问题，然后调整名称。"
+    output = understanding().model_copy(update={"ambiguous": False, "missing_info": []})
+    frozen = freeze_goal(output, source)
+
+    result = qualify_goal(output, frozen, budget=GoalBudget())
+
+    assert result.qualified is False
+    assert result.reason_codes == ("goal_ambiguous", "goal_missing_info")
+
+
+def test_amendment_removes_existing_mutation_after_remove_request() -> None:
     current = freeze_goal(understanding(), SOURCE)
     source = "不要提出修改。"
     candidate = GoalAmendmentOutput.model_validate(
@@ -386,8 +472,9 @@ def test_amendment_does_not_keep_existing_mutation_after_remove_request() -> Non
         }
     )
 
-    with pytest.raises(GoalPolicyError, match="goal_amendment_shape_invalid"):
-        apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+    amended = apply_goal_amendment(current, candidate, source, budget=GoalBudget())
+
+    assert [item.kind for item in amended.obligations] == ["analysis", "audit"]
 
 
 def test_goal_finalizer_v2_accepts_one_authoritative_observation() -> None:
