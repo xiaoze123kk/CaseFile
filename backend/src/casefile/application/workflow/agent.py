@@ -27,6 +27,7 @@ from casefile.agent_runtime.chat_reference_autofill import (
     autofill_chat_references,
     reference_autofill_enabled,
 )
+from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
 from casefile.application.agent_collaboration import (
     auto_thread_title as _auto_thread_title,
 )
@@ -74,6 +75,7 @@ from casefile.application.closure_repair import (
     repair_completion_payload,
 )
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.goal_session_repository import GoalSessionRepository
 from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
     finalize_task_cancellation,
@@ -85,6 +87,7 @@ from casefile.application.verification_engine import (
 )
 from casefile.application.verification_service import VerificationService
 from casefile.application.workbench_read_model import WorkbenchReadModel
+from casefile.application.workflow.goal_session import _task_goal_id, public_goal_delivery_view
 from casefile.application.workflow_common import (
     DEFAULT_PROVIDER,
     SUPPORTED_CHAT_VIEWS,
@@ -104,6 +107,7 @@ from casefile.application.workflow_views import (
 from casefile.application.workflow_views import agent_thread_view as _agent_thread_view
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
+    AgentGoalSession,
     AgentMessage,
     AgentPatchOperation,
     AgentPatchSet,
@@ -133,6 +137,18 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
     _provider_setting: Any
     _queue_task: Any
     _require_current_draft: Any
+    _create_goal_session: Any
+    _public_goal_session: Any
+    _queue_goal_delivery: Any
+    _resolve_goal_delivery: Any
+    _finalize_agent_goal_task_success: Any
+    _cancel_agent_goal_aggregate: Any
+    _reject_agent_goal_patch: Any
+    _mark_agent_goal_patch_stale: Any
+    _queue_post_apply_goal_audit: Any
+    _goal_for_patch_set: Any
+    _continue_waiting_goal_delivery: Any
+    _supersede_waiting_goal_for_replace: Any
 
     def list_agent_threads(
         self,
@@ -356,6 +372,14 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 run_id,
                 lock=True,
             )
+            goal_id = _task_goal_id(task)
+            if goal_id is not None:
+                goal = GoalSessionRepository(self.session).get_for_update(
+                    project_id=task.project_id,
+                    goal_session_id=goal_id,
+                )
+                self._cancel_agent_goal_aggregate(goal, now=datetime.now(UTC))
+                return public_agent_run_view(_task_view(task))
             if task.status not in TERMINAL_TASK_STATUSES:
                 now = datetime.now(UTC)
                 if task.cancel_requested_at is None:
@@ -422,6 +446,9 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         focus: dict[str, Any] | None = None,
         routing_hint: dict[str, Any] | None = None,
         verification_trigger: str = "chat",
+        delivery_mode: str | None = None,
+        expected_goal_id: int | None = None,
+        expected_goal_revision: int | None = None,
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
         content = content.strip()
@@ -447,6 +474,12 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     "已归档的 Agent 对话不能接收新消息。",
                     status_code=409,
                 )
+            resolved_delivery_mode, goal = self._resolve_goal_delivery(
+                thread,
+                delivery_mode=delivery_mode,
+                expected_goal_id=expected_goal_id,
+                expected_goal_revision=expected_goal_revision,
+            )
             active_task = self.session.scalar(
                 select(TaskRun.id)
                 .where(
@@ -455,14 +488,22 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 )
                 .limit(1)
             )
-            if active_task is not None:
+            if active_task is not None and resolved_delivery_mode not in {
+                "steer",
+                "follow_up",
+                "replace",
+            }:
                 raise ApplicationError(
                     "agent_thread_busy",
                     "请等待当前 Agent 回复后再发送下一条消息。",
                     status_code=409,
                     details={"task_run_id": active_task},
                 )
-            setting = self._provider_setting(actor_user_id, provider)
+            setting = (
+                None
+                if resolved_delivery_mode in {"steer", "follow_up", "replace"}
+                else self._provider_setting(actor_user_id, provider)
+            )
             history = list(
                 self.session.scalars(
                     select(AgentMessage)
@@ -508,7 +549,107 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 thread.title = _auto_thread_title(content)
             now = datetime.now(UTC)
             thread.last_message_at = now
+            queued_delivery = None
+            successor_created = False
+            if resolved_delivery_mode in {"steer", "follow_up", "replace"}:
+                if goal is None:
+                    raise RuntimeError("Goal control delivery resolved without a GoalSession")
+                delivery = self._queue_goal_delivery(
+                    goal,
+                    thread_id=thread.id,
+                    source_message_id=user_message.id,
+                    response_message_id=assistant_message.id,
+                    message_sequence_no=user_message.sequence_no,
+                    mode=resolved_delivery_mode,
+                )
+                queued_delivery = delivery
+                if resolved_delivery_mode == "steer" and goal.status in {
+                    "waiting_clarification",
+                    "stale",
+                }:
+                    casefile = build_casefile_document(self.session, owned)
+                    continuation = self._continue_waiting_goal_delivery(
+                        owned=owned,
+                        thread=thread,
+                        goal=goal,
+                        delivery=delivery,
+                        current_document=casefile,
+                        validation_snapshot=WorkbenchReadModel(
+                            self.session
+                        ).validation_snapshot(owned),
+                    )
+                    return {
+                        "thread": _agent_thread_view(thread),
+                        "user_message": _agent_message_view(user_message),
+                        "assistant_message": _agent_message_view(
+                            assistant_message,
+                            task=continuation,
+                        ),
+                        "task": _task_view(continuation),
+                        "goal": self._public_goal_session(goal),
+                        "delivery": public_goal_delivery_view(delivery),
+                    }
+                if resolved_delivery_mode == "replace" and goal.status in {
+                    "waiting_clarification",
+                    "waiting_patch_review",
+                    "stale",
+                }:
+                    predecessor = goal
+                    self._supersede_waiting_goal_for_replace(
+                        predecessor,
+                        delivery=delivery,
+                    )
+                    casefile = build_casefile_document(self.session, owned)
+                    goal = self._create_goal_session(
+                        owned,
+                        thread,
+                        source_message_id=user_message.id,
+                        actor_user_id=actor_user_id,
+                        baseline_hash=casefile_content_hash(casefile),
+                        predecessor_goal_session_id=predecessor.id,
+                    )
+                    delivery.status = "consumed"
+                    delivery.consumed_at = now
+                    delivery.reason_code = "replace_successor_created"
+                    setting = self._provider_setting(actor_user_id, provider)
+                    successor_created = True
+                    resolved_delivery_mode = "new_goal"
+                elif resolved_delivery_mode == "follow_up":
+                    predecessor = goal
+                    casefile = build_casefile_document(self.session, owned)
+                    goal = self._create_goal_session(
+                        owned,
+                        thread,
+                        source_message_id=user_message.id,
+                        actor_user_id=actor_user_id,
+                        baseline_hash=casefile_content_hash(casefile),
+                        predecessor_goal_session_id=predecessor.id,
+                    )
+                    delivery.status = "consumed"
+                    delivery.consumed_at = now
+                    delivery.reason_code = "follow_up_successor_created"
+                    setting = self._provider_setting(actor_user_id, provider)
+                    successor_created = True
+                    resolved_delivery_mode = "new_goal"
+                else:
+                    return {
+                        "thread": _agent_thread_view(thread),
+                        "user_message": _agent_message_view(user_message),
+                        "assistant_message": _agent_message_view(assistant_message),
+                        "task": None,
+                        "goal": self._public_goal_session(goal),
+                        "delivery": public_goal_delivery_view(delivery),
+                    }
+
             casefile = build_casefile_document(self.session, owned)
+            if resolved_delivery_mode == "new_goal" and not successor_created:
+                goal = self._create_goal_session(
+                    owned,
+                    thread,
+                    source_message_id=user_message.id,
+                    actor_user_id=actor_user_id,
+                    baseline_hash=casefile_content_hash(casefile),
+                )
             focus_values = focus if isinstance(focus, dict) else None
             validation_snapshot = WorkbenchReadModel(self.session).validation_snapshot(owned)
             known_issue_ids = frozenset(
@@ -549,6 +690,16 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     thread_id=thread.id,
                 ),
             }
+            if goal is not None:
+                frozen_input["goal_session"] = {
+                    "goal_id": goal.id,
+                    "goal_revision": goal.revision_count,
+                    "runtime_version": goal.runtime_version,
+                    "policy_version": goal.policy_version,
+                    "capability_registry_version": goal.capability_registry_version,
+                }
+            if setting is None:
+                raise RuntimeError("TaskRun delivery resolved without a provider setting")
             task = self._new_task(
                 owned,
                 actor_user_id=actor_user_id,
@@ -575,6 +726,12 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     task=task,
                 ),
                 "task": task_result,
+                "goal": None if goal is None else self._public_goal_session(goal),
+                "delivery": (
+                    None
+                    if queued_delivery is None
+                    else public_goal_delivery_view(queued_delivery)
+                ),
             }
 
     def rerun_verification(
@@ -750,6 +907,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         tools: dict[str, Any] | None = None,
         repair_envelope: dict[str, Any] | None = None,
         general_mutation_envelope: dict[str, Any] | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        goal_checkpoint: GoalExecutionCheckpoint | None = None,
     ) -> dict[str, Any]:
         """Persist one structured chat result; intended as the Worker completion hook."""
 
@@ -1184,7 +1343,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             if routing_summary is not None:
                 routing_summary["tool_metrics"] = tool_metrics
             verification_trigger = str(task.input_jsonb.get("verification_trigger", "chat"))
-            if verification_trigger not in {"chat", "manual"}:
+            if verification_trigger not in {"chat", "manual", "post_apply"}:
                 raise RuntimeError("CaseFile chat TaskRun has an invalid verification trigger")
             verification_observation = VerificationService(self.session).record_chat_result(
                 owned=owned,
@@ -1297,6 +1456,13 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
+            self._finalize_agent_goal_task_success(
+                task,
+                now=now,
+                patch_set=patch_set,
+                frozen_goal=frozen_goal,
+                checkpoint=goal_checkpoint,
+            )
             if route is not None:
                 assert routing_summary is not None
                 _append_event(
@@ -1352,6 +1518,27 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         accepted_debt_finding_keys: list[str] | None = None,
         debt_acceptance_reason: str | None = None,
     ) -> dict[str, Any]:
+        stale_details: dict[str, int] | None = None
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            patch_set = self._agent_patch_set(owned, patch_set_id, lock=True)
+            if patch_set.status == "pending" and (
+                owned.draft.id != expected_draft_id
+                or owned.draft.revision != expected_revision
+                or owned.draft.revision != patch_set.base_draft_revision
+            ):
+                stale_details = {
+                    "current_revision": owned.draft.revision,
+                    "base_revision": patch_set.base_draft_revision,
+                }
+                self._mark_agent_goal_patch_stale(patch_set)
+        if stale_details is not None:
+            raise ApplicationError(
+                "agent_patch_stale",
+                "生成这条建议后，CaseFile 已发生变化。",
+                status_code=409,
+                details=stale_details,
+            )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             patch_set = self._agent_patch_set(owned, patch_set_id, lock=True)
@@ -1406,6 +1593,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     operation.decision = "rejected"
                     operation.reviewed_at = reviewed_at
                 patch_set.status = "rejected"
+                goal = self._reject_agent_goal_patch(patch_set)
                 self.session.flush()
                 return {
                     **self._patch_set_view(
@@ -1415,6 +1603,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                         validator_issues=[],
                     ),
                     "draft_revision": owned.draft.revision,
+                    "goal": None if goal is None else self._public_goal_session(goal),
+                    "continuation_run": None,
                 }
             registries = {
                 row.id: row
@@ -1580,6 +1770,17 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 else None
             )
             validator_issues = _nonblocking_validator_issues(current_document, applied)
+            continuation = self._queue_post_apply_goal_audit(
+                owned=owned,
+                patch_set=patch_set,
+                current_document=current_document,
+                validation_snapshot=WorkbenchReadModel(self.session).validation_snapshot(owned),
+            )
+            goal = self._goal_for_patch_set(patch_set)
+            if goal is None and continuation is not None:
+                goal_id = _task_goal_id(continuation)
+                if goal_id is not None:
+                    goal = self.session.get(AgentGoalSession, goal_id)
             self.session.flush()
             return {
                 **self._patch_set_view(
@@ -1593,6 +1794,10 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 "pre_apply_verification_run_id": None if pre_run is None else pre_run.id,
                 "post_apply_verification_run_id": None if post_run is None else post_run.id,
                 "simulation": applied_simulation.as_dict(),
+                "goal": None if goal is None else self._public_goal_session(goal),
+                "continuation_run": (
+                    None if continuation is None else _task_view(continuation)
+                ),
             }
 
     def simulate_agent_patch_set(
@@ -2088,11 +2293,14 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     for operation in operations
                     if operation.decision == "accepted" and operation.target_object_id in registries
                 ]
-                validator_issues = _nonblocking_validator_issues(
-                    projection_document, accepted
-                )
+                validator_issues = _nonblocking_validator_issues(projection_document, accepted)
+        source_task = self.session.get(TaskRun, patch_set.task_run_id)
+        goal_value = None if source_task is None else source_task.input_jsonb.get("goal_session")
+        goal = goal_value if isinstance(goal_value, dict) else {}
         return {
             "patch_set_id": patch_set.id,
+            "goal_id": goal.get("goal_id"),
+            "goal_revision": goal.get("goal_revision"),
             "thread_id": patch_set.thread_id,
             "source_message_id": patch_set.source_message_id,
             "task_run_id": patch_set.task_run_id,
@@ -2174,8 +2382,7 @@ def _patch_object_labels(document: dict[str, Any]) -> dict[str, dict[str, str | 
                 (
                     candidate.strip()[:240]
                     for key in ("name", "title")
-                    if isinstance((candidate := value.get(key)), str)
-                    and candidate.strip()
+                    if isinstance((candidate := value.get(key)), str) and candidate.strip()
                 ),
                 None,
             )

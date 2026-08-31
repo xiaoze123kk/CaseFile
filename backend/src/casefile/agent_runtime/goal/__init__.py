@@ -2,6 +2,7 @@
 
 from casefile.agent_runtime.goal.contracts import (
     FrozenGoal,
+    GoalAmendmentOutput,
     GoalCompletionDecision,
     GoalDecisionOutput,
     GoalObligation,
@@ -16,8 +17,10 @@ from casefile.agent_runtime.goal.policy import (
     GoalBudget,
     GoalPolicyError,
     GoalQualification,
+    apply_goal_amendment,
     complete_goal,
     freeze_goal,
+    normalize_goal_amendment,
     qualify_goal,
 )
 
@@ -27,6 +30,7 @@ __all__ = [
     "GOAL_POLICY_VERSION",
     "GOAL_RUNTIME_VERSION",
     "GoalBudget",
+    "GoalAmendmentOutput",
     "GoalCompletionDecision",
     "GoalDecisionOutput",
     "GoalObservation",
@@ -35,7 +39,9 @@ __all__ = [
     "GoalQualification",
     "GoalUnderstandingOutput",
     "InvokeCapabilityAction",
+    "apply_goal_amendment",
     "complete_goal",
     "freeze_goal",
     "qualify_goal",
+    "normalize_goal_amendment",
 ]

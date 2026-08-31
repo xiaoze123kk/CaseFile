@@ -148,8 +148,12 @@ def agent_message_view(
 
 
 def task_view(task: TaskRun) -> dict[str, Any]:
+    goal_value = task.input_jsonb.get("goal_session")
+    goal = goal_value if isinstance(goal_value, dict) else {}
     return {
         "task_run_id": task.id,
+        "goal_id": goal.get("goal_id"),
+        "goal_revision": goal.get("goal_revision"),
         "project_id": task.project_id,
         "task_type": task.task_type,
         "prompt_version": task.prompt_version,

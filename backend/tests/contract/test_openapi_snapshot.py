@@ -36,6 +36,15 @@ def test_agent_json_routes_publish_generated_public_models() -> None:
         "/api/v1/projects/{project_id}/agent/runs/{run_id}/events": {
             "get": "#/components/schemas/PublicAgentEvent",
         },
+        "/api/v1/projects/{project_id}/agent/goals/{goal_id}": {
+            "get": "#/components/schemas/PublicGoalSession",
+        },
+        "/api/v1/projects/{project_id}/agent/goals/{goal_id}/cancel": {
+            "post": "#/components/schemas/PublicGoalSession",
+        },
+        "/api/v1/projects/{project_id}/agent/goals/{goal_id}/events": {
+            "get": "#/components/schemas/PublicGoalEvent",
+        },
         "/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate": {
             "post": "#/components/schemas/PublicPatchReviewResult",
         },

@@ -641,5 +641,29 @@ def test_agent_message_request_accepts_all_hint_shapes_and_omits_old_field() -> 
     assert legacy.routing_hint is None
 
 
+def test_agent_message_request_validates_goal_delivery_concurrency_token() -> None:
+    base = {
+        "expected_draft_id": 1,
+        "expected_draft_revision": 1,
+        "content": "补充约束。",
+    }
+    control = AgentMessageCreateRequest.model_validate(
+        {
+            **base,
+            "delivery_mode": "steer",
+            "expected_goal_id": 7,
+            "expected_goal_revision": 2,
+        }
+    )
+    assert control.delivery_mode == "steer"
+    assert control.expected_goal_id == 7
+    assert control.expected_goal_revision == 2
+
+    with pytest.raises(ValidationError):
+        AgentMessageCreateRequest.model_validate({**base, "delivery_mode": "replace"})
+    with pytest.raises(ValidationError):
+        AgentMessageCreateRequest.model_validate({**base, "expected_goal_id": 7})
+
+
 def test_allowed_preset_ids_match_rule_table() -> None:
     assert ALLOWED_PRESET_IDS == frozenset(PRESET_ROUTE_TABLE)

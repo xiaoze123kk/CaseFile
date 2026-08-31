@@ -104,6 +104,12 @@ class AgentMessage(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ),
         UniqueConstraint("project_id", "id", name="uq_agent_messages_project_id_id"),
         UniqueConstraint(
+            "project_id",
+            "thread_id",
+            "id",
+            name="uq_agent_messages_thread_lineage_id",
+        ),
+        UniqueConstraint(
             "thread_id",
             "sequence_no",
             name="uq_agent_messages_thread_sequence_no",
@@ -111,7 +117,7 @@ class AgentMessage(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("sequence_no >= 1", name="sequence_no_positive"),
         CheckConstraint("role IN ('user', 'assistant', 'system')", name="role_allowed"),
         CheckConstraint(
-            "status IN ('pending', 'completed', 'failed')",
+            "status IN ('pending', 'completed', 'failed', 'cancelled')",
             name="status_allowed",
         ),
         CheckConstraint(
@@ -122,6 +128,7 @@ class AgentMessage(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "(status = 'pending' AND role = 'assistant' AND content_text IS NULL) OR "
             "(status = 'failed' AND role = 'assistant') OR "
+            "(status = 'cancelled' AND role = 'assistant' AND content_text IS NULL) OR "
             "(status = 'completed' AND content_text IS NOT NULL "
             "AND length(btrim(content_text)) > 0)",
             name="content_shape",

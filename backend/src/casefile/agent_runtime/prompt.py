@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from casefile.agent_runtime.context.thread_memory import ThreadCompactionRequest
 from casefile.agent_runtime.goal.provider import (
+    GoalAmendmentRequest,
     GoalDecisionRequest,
     GoalFinalizerRequest,
     GoalUnderstandingRequest,
@@ -83,6 +84,9 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v15",
         "casefile-chat-v16",
         "casefile-chat-v17",
+        "casefile-chat-v18",
+        "casefile-chat-v19",
+        "casefile-chat-v20",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -316,7 +320,13 @@ def _with_chat_repair_feedback(
     lines = "".join(f"- {item}\n" for item in request.repair_feedback)
     repair_scope = (
         "只执行下列最小修复"
-        if request.prompt_version in {"casefile-chat-v16", "casefile-chat-v17"}
+        if request.prompt_version in {
+            "casefile-chat-v16",
+            "casefile-chat-v17",
+            "casefile-chat-v18",
+            "casefile-chat-v19",
+            "casefile-chat-v20",
+        }
         else "只修正引用槽"
     )
     return (
@@ -345,7 +355,15 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
     """Resolve the no-tool finalizer output schema for a v14 route."""
 
     if (
-        request.prompt_version in {"casefile-chat-v15", "casefile-chat-v16", "casefile-chat-v17"}
+        request.prompt_version
+        in {
+            "casefile-chat-v15",
+            "casefile-chat-v16",
+            "casefile-chat-v17",
+            "casefile-chat-v18",
+            "casefile-chat-v19",
+            "casefile-chat-v20",
+        }
         and request.target_locked_repair is not None
     ):
         return CaseFileChatTargetLockedRepairOutput
@@ -438,7 +456,13 @@ def render_chat_finalizer_prompt(
         toolset_version=definition.package.runtime_toolset_version,
     )
     instructions = rendered.instructions
-    if request.prompt_version in {"casefile-chat-v16", "casefile-chat-v17"}:
+    if request.prompt_version in {
+        "casefile-chat-v16",
+        "casefile-chat-v17",
+        "casefile-chat-v18",
+        "casefile-chat-v19",
+        "casefile-chat-v20",
+    }:
         instructions = _with_chat_repair_feedback(instructions, request)
     if repair_plan:
         instructions += (
@@ -487,6 +511,25 @@ def render_goal_interpreter_prompt(request: GoalUnderstandingRequest) -> tuple[s
     rendered = render_prompt_package(
         definition.package,
         "goal_interpreter",
+        payload,
+        agent_version=agent_version_for_task("casefile_chat", request.chat.prompt_version),
+        toolset_version=definition.package.runtime_toolset_version,
+    )
+    return rendered.instructions, rendered.input_text
+
+
+def render_goal_amendment_prompt(request: GoalAmendmentRequest) -> tuple[str, str]:
+    definition = load_prompt("casefile_chat", request.chat.prompt_version)
+    if definition.package is None:
+        raise ValueError("Goal amendment requires a Prompt Package")
+    payload = {
+        "input_hash": request.chat.input_hash,
+        "current_goal": request.current_goal.model_dump(mode="json"),
+        "author_message": request.chat.message,
+    }
+    rendered = render_prompt_package(
+        definition.package,
+        "goal_amendment",
         payload,
         agent_version=agent_version_for_task("casefile_chat", request.chat.prompt_version),
         toolset_version=definition.package.runtime_toolset_version,

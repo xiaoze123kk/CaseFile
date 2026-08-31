@@ -238,6 +238,8 @@ def test_public_chat_run_boundary_recovery_cancellation_failure_and_permissions(
         assert public_run.status_code == 200
         assert public_run.json() == {
             "run_id": queued_run_id,
+            "goal_id": None,
+            "goal_revision": None,
             "status": "queued",
             "activity": "understanding",
             "cancellable": True,

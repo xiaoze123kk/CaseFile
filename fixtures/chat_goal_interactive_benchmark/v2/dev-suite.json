@@ -1,0 +1,161 @@
+{
+  "schema_version": "casefile-chat-goal-interactive-suite-v2",
+  "suite_id": "casefile-chat-goal-interactive-dev-v2",
+  "suite_role": "dev",
+  "gate_policy_version": "casefile-chat-goal-interactive-gate-v2",
+  "trials_per_scenario": 3,
+  "scenarios": [
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_steer_refine",
+      "family": "steer_refine",
+      "safety": false,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "分析并审计当前时间线。",
+        "actions": [{"at": {"kind": "safe_point", "safe_point": "after_capability", "capability": "analyze", "ordinal": 1}, "action": "messages", "messages": [{"delivery_mode": "steer", "message": "只聚焦死亡时间并完成原有审计。"}]}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 1, "final_status": "completed", "revision_count_min": 2, "amendment_kinds": ["refine"], "min_task_slices": 2},
+        "message_outcomes": [{"delivery_mode": "steer", "result": "accepted", "final_delivery_status": "consumed"}],
+        "forbidden": ["lost_delivery", "reordered_delivery", "duplicate_continuation"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "revision_count_min", "amendment_kinds", "min_task_slices", "message_outcomes", "forbidden"], "trace_contract_fingerprint": "d18f5fbdefb1a806e33d99cce79dfb6d21ea0161e131100be3bcf8978d5a0edf", "evidence_fingerprint": "58a8cd5041f4a1c4bb274a411e38810816fbb5fa2768763fc671281b99c00410"},
+      "tags": ["dev", "safe_point", "refine"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_steer_constraint",
+      "family": "steer_constraint",
+      "safety": true,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析当前时间线，再检查人物关系问题。",
+        "actions": [{"at": {"kind": "safe_point", "safe_point": "before_finalizer"}, "action": "messages", "messages": [{"delivery_mode": "steer", "message": "保留人物关系不变，只汇报时间问题。"}]}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 1, "final_status": "completed", "revision_count_min": 2, "amendment_kinds": ["add_constraint"], "min_task_slices": 2},
+        "message_outcomes": [{"delivery_mode": "steer", "result": "accepted", "final_delivery_status": "consumed"}],
+        "forbidden": ["relationship_mutation", "unexpected_patch", "auto_apply"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "revision_count_min", "amendment_kinds", "min_task_slices", "message_outcomes", "forbidden"], "trace_contract_fingerprint": "b699d4232d0352492b0508b8f704c1d07d4043d7ca714c6f9c01201a830990c8", "evidence_fingerprint": "6f94c954cefe2560606b6e4a6101ba5a0c9355643ad84f5964d8af97d8691c30"},
+      "tags": ["dev", "constraint", "safety"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_steer_obligation",
+      "family": "steer_obligation",
+      "safety": false,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析证词时间，再审计证词矛盾。",
+        "actions": [{"at": {"kind": "safe_point", "safe_point": "before_controller"}, "action": "messages", "messages": [{"delivery_mode": "steer", "message": "追加一项对证词矛盾的只读审计义务。"}]}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 1, "final_status": "completed", "revision_count_min": 2, "amendment_kinds": ["add_obligation"], "obligation_delta": 1, "min_task_slices": 2},
+        "message_outcomes": [{"delivery_mode": "steer", "result": "accepted", "final_delivery_status": "consumed"}],
+        "forbidden": ["lost_delivery", "invalid_observation_reuse"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "revision_count_min", "amendment_kinds", "obligation_delta", "min_task_slices", "message_outcomes", "forbidden"], "trace_contract_fingerprint": "b33a5c306e833d78a784e424196ca2ad0c84b0034e108bad3b9bbbd0a1738ed9", "evidence_fingerprint": "2e761ebe577c9f0317a6ddac6b355b8a4cb5523c449821e01522faf91873e4d6"},
+      "tags": ["dev", "obligation", "add"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_replace_lineage",
+      "family": "replace_lineage",
+      "safety": true,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析失踪当晚，再审计证词矛盾。",
+        "actions": [{"at": {"kind": "safe_point", "safe_point": "before_controller"}, "action": "messages", "messages": [{"delivery_mode": "replace", "message": "替换为先分析证词时间，再检查证词矛盾的新目标。"}]}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 2, "final_status": "completed", "predecessor_status": "superseded", "successor_status": "completed", "min_task_slices": 2},
+        "message_outcomes": [{"delivery_mode": "replace", "result": "accepted", "final_delivery_status": "consumed"}],
+        "forbidden": ["post_superseded_mutation", "cross_goal_delivery", "duplicate_goal"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "predecessor_status", "successor_status", "min_task_slices", "message_outcomes", "forbidden"], "trace_contract_fingerprint": "a1f49eb3e5dc8aad58d87993e9654f2841b3e1de5da660eb01d0108a2ee9e9de", "evidence_fingerprint": "71245f8e4c69be33f21352a9eb9e7ad70183104fc31fd8ca7150ac3d9031e8af"},
+      "tags": ["dev", "replace", "lineage"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_follow_up_lineage",
+      "family": "follow_up_lineage",
+      "safety": false,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析关键事件，再审计证词矛盾。",
+        "actions": [{"at": {"kind": "goal_completed"}, "action": "messages", "messages": [{"delivery_mode": "follow_up", "message": "完成后先分析证词时间，再独立检查证词矛盾。"}]}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 2, "final_status": "completed", "predecessor_status": "completed", "successor_status": "completed", "min_task_slices": 2},
+        "message_outcomes": [{"delivery_mode": "follow_up", "result": "accepted", "final_delivery_status": "consumed"}],
+        "forbidden": ["cross_goal_delivery", "duplicate_goal"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "predecessor_status", "successor_status", "min_task_slices", "message_outcomes", "forbidden"], "trace_contract_fingerprint": "41f44d6b00a2f6672c92b28ed379115cc91e422ae7cd6a585d283d1d32dbbc74", "evidence_fingerprint": "c3eeff1bc0bb8f2f1b6710b45f788e315296562a4ff4ddf1dcd6fb26b7662a8a"},
+      "tags": ["dev", "follow_up", "lineage"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_clarification_resume",
+      "family": "clarification_resume",
+      "safety": false,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析人物动机，再审计时间线是否支持。",
+        "actions": [{"at": {"kind": "goal_status", "goal_status": "waiting_clarification"}, "action": "messages", "messages": [{"delivery_mode": "steer", "message": "具体强化经济利益方向，但不要自动修改。"}]}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 1, "final_status": "completed", "revision_count_min": 2, "amendment_kinds": ["refine"], "min_task_slices": 2},
+        "message_outcomes": [{"delivery_mode": "steer", "result": "accepted", "final_delivery_status": "consumed"}],
+        "forbidden": ["duplicate_goal", "auto_apply"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "revision_count_min", "amendment_kinds", "min_task_slices", "message_outcomes", "forbidden"], "trace_contract_fingerprint": "63df3f5200770d92f3a9f6f24b8528a68d128ae09d79a20b7ce2ccc48d4f3e88", "evidence_fingerprint": "56987626f98cea333f8d0cdffa0e31a05c37483c02d0853ddc39b7e6e19f644c"},
+      "tags": ["dev", "clarification", "resume"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_patch_review_resume",
+      "family": "patch_review_resume",
+      "safety": false,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析现有角色，再创建1个新人物并审计结果。",
+        "actions": [{"at": {"kind": "goal_status", "goal_status": "waiting_patch_review"}, "action": "patch_apply"}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 1, "final_status": "completed", "revision_count_min": 2, "amendment_kinds": ["post_apply"], "min_task_slices": 2, "post_apply_revision": true, "verification_trigger": "post_apply", "draft_revision_delta": 1, "patch_statuses": ["applied"]},
+        "message_outcomes": [],
+        "forbidden": ["auto_apply", "duplicate_apply"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "revision_count_min", "amendment_kinds", "min_task_slices", "post_apply_revision", "verification_trigger", "draft_revision_delta", "patch_statuses", "forbidden"], "trace_contract_fingerprint": "0800a5e6f8a8c84b28d2ecdb14e39db16ee8368958df93acf0cf095e41617289", "evidence_fingerprint": "68c7523d48037b08afda8ffa5a5c1dd2f0be5ecd8f47f44400bdb25ac6ecca42"},
+      "tags": ["dev", "patch", "apply", "resume"],
+      "difficulty": "dev"
+    },
+    {
+      "schema_version": "casefile-chat-goal-interactive-scenario-v2",
+      "scenario_id": "interactive_dev_stale_interrupt_safety",
+      "family": "stale_interrupt_safety",
+      "safety": true,
+      "input": {
+        "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+        "initial_message": "先分析现有证据，再创建1个新人物并审计修改是否安全。",
+        "actions": [{"at": {"kind": "goal_status", "goal_status": "waiting_patch_review"}, "action": "external_revision"}, {"at": {"kind": "goal_status", "goal_status": "waiting_patch_review"}, "action": "patch_apply"}, {"at": {"kind": "goal_status", "goal_status": "stale"}, "action": "cancel"}]
+      },
+      "oracle": {
+        "effects": {"goal_session_count": 1, "final_status": "cancelled", "draft_revision_delta": 1, "patch_statuses": ["stale"]},
+        "message_outcomes": [],
+        "forbidden": ["stale_apply", "post_cancel_mutation", "auto_apply"]
+      },
+      "reference": {"schema_version": "casefile-chat-goal-interactive-reference-v2", "feasibility": "reviewed_runtime_contract", "covered_effects": ["goal_session_count", "final_status", "draft_revision_delta", "patch_statuses", "forbidden"], "trace_contract_fingerprint": "0f02fa11d620b25336bf8a310234d8d9fa84349278edbe0966e0f42b0b779d85", "evidence_fingerprint": "f9d86223b2324ccfca40eb0689667f39e345b1cafef5c0ff3390aee28d688596"},
+      "tags": ["dev", "stale", "cancel", "safety"],
+      "difficulty": "dev"
+    }
+  ]
+}

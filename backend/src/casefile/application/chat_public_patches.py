@@ -410,6 +410,16 @@ def public_patch_set_payload(value: Mapping[str, Any]) -> dict[str, Any]:
     impact_summary += "。"
     return {
         "patch_id": int(value["patch_set_id"]),
+        "goal_id": (
+            int(value["goal_id"])
+            if isinstance(value.get("goal_id"), int) and int(value["goal_id"]) >= 1
+            else None
+        ),
+        "goal_revision": (
+            int(value["goal_revision"])
+            if isinstance(value.get("goal_revision"), int) and int(value["goal_revision"]) >= 0
+            else None
+        ),
         "title": "修改建议",
         "summary": summary,
         "status": status,
@@ -486,9 +496,7 @@ def resolve_public_warning_ids(
 ) -> list[str]:
     raw_keys = simulation.get("authorization_required_finding_keys")
     keys = (
-        [str(key) for key in raw_keys if isinstance(key, str)]
-        if isinstance(raw_keys, list)
-        else []
+        [str(key) for key in raw_keys if isinstance(key, str)] if isinstance(raw_keys, list) else []
     )
     key_by_id = {public_warning_id(patch_id, key): key for key in keys}
     accepted = set(accepted_warning_ids)

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from casefile.agent_runtime.chat_execution import coordinate_chat_candidate_validation
 from casefile.agent_runtime.goal.contracts import (
     FrozenGoal,
     GoalCompletionDecision,
+    GoalExecutionCheckpoint,
     GoalObservation,
     InvokeCapabilityAction,
 )
@@ -28,6 +29,7 @@ from casefile.agent_runtime.goal.provider import (
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
 from casefile.agent_runtime.public_language import (
     PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+    PUBLIC_GOAL_SAFE_TERMINAL,
     PublicLanguageValidationError,
 )
 
@@ -66,6 +68,8 @@ class GoalProvider(Protocol):
 
 GoalCapabilityExecutor = Callable[[InvokeCapabilityAction, int], GoalCapabilityResult]
 CancellationProbe = Callable[[], bool]
+GoalSafePoint = Literal["before_controller", "after_capability", "before_finalizer"]
+InterruptionProbe = Callable[[GoalSafePoint], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +78,15 @@ class GoalExecutionResult:
     observations: tuple[GoalObservation, ...]
     completion: GoalCompletionDecision
     mutation_proof: dict[str, Any] | None
+    usage: dict[str, Any]
+    tools: ToolMetrics
+    decision_calls: int
+
+
+@dataclass(frozen=True, slots=True)
+class GoalCheckpointResult:
+    checkpoint: GoalExecutionCheckpoint
+    safe_point: GoalSafePoint
     usage: dict[str, Any]
     tools: ToolMetrics
     decision_calls: int
@@ -91,9 +104,13 @@ class GoalExecutionRunner:
         budget: GoalBudget,
         execute_capability: GoalCapabilityExecutor,
         is_cancelled: CancellationProbe = lambda: False,
+        should_interrupt: InterruptionProbe = lambda _safe_point: False,
+        checkpoint: GoalExecutionCheckpoint | None = None,
         initial_provider_operations: int = 0,
-    ) -> GoalExecutionResult:
-        observations: list[GoalObservation] = []
+    ) -> GoalExecutionResult | GoalCheckpointResult:
+        if checkpoint is not None and checkpoint.obligations_hash != goal.obligations_hash:
+            raise GoalExecutionError("goal_checkpoint_invalid")
+        observations = [] if checkpoint is None else list(checkpoint.observations)
         usage_records: list[dict[str, Any]] = []
         tools = ToolMetrics()
         completion_feedback: GoalCompletionDecision | None = None
@@ -101,12 +118,39 @@ class GoalExecutionRunner:
         decision_calls = 0
         provider_operations = initial_provider_operations
         total_observation_chars = 0
-        seen_actions: set[str] = set()
-        mutation_proof: dict[str, Any] | None = None
+        seen_actions = {item.action_hash for item in observations}
+        mutation_proof = None if checkpoint is None else checkpoint.mutation_proof
+        completion = None if checkpoint is None else checkpoint.completion
 
-        while True:
+        while completion is None:
             if is_cancelled():
                 raise GoalExecutionError("cancelled")
+            if should_interrupt("before_controller"):
+                return self._checkpoint_result(
+                    goal=goal,
+                    observations=observations,
+                    completion=None,
+                    mutation_proof=mutation_proof,
+                    usage_records=usage_records,
+                    tools=tools,
+                    decision_calls=decision_calls,
+                    safe_point="before_controller",
+                )
+            completed_ids = {
+                obligation_id
+                for observation in observations
+                if observation.status == "completed"
+                for obligation_id in observation.obligation_ids
+            }
+            if completed_ids == {item.obligation_id for item in goal.obligations}:
+                checked_completion = complete_goal(
+                    goal,
+                    tuple(observations),
+                    expected_obligations_hash=goal.obligations_hash,
+                )
+                if checked_completion.allowed:
+                    completion = checked_completion
+                    break
             if decision_calls >= budget.max_decision_calls:
                 raise GoalExecutionError("goal_budget_exhausted")
             if provider_operations >= budget.max_provider_operations:
@@ -179,23 +223,24 @@ class GoalExecutionRunner:
                 raise GoalExecutionError(error.code) from error
             action = decision.action
             if action.action == "finish":
-                completion = complete_goal(
+                checked_completion = complete_goal(
                     goal,
                     tuple(observations),
                     expected_obligations_hash=goal.obligations_hash,
                 )
-                if completion.allowed:
+                if checked_completion.allowed:
+                    completion = checked_completion
                     break
                 if completion_retries >= budget.max_completion_retries:
                     raise GoalExecutionError(
                         "goal_completion_blocked",
                         details={
-                            "missing_obligation_ids": completion.missing_obligation_ids,
-                            "reason_codes": completion.reason_codes,
+                            "missing_obligation_ids": checked_completion.missing_obligation_ids,
+                            "reason_codes": checked_completion.reason_codes,
                         },
                     )
                 completion_retries += 1
-                completion_feedback = completion
+                completion_feedback = checked_completion
                 continue
             if len(observations) >= budget.max_capability_actions:
                 raise GoalExecutionError("goal_budget_exhausted")
@@ -247,6 +292,33 @@ class GoalExecutionRunner:
                     raise GoalExecutionError("goal_capability_blocked")
                 mutation_proof = capability.mutation_proof
 
+            if is_cancelled():
+                raise GoalExecutionError("cancelled")
+            if should_interrupt("after_capability"):
+                return self._checkpoint_result(
+                    goal=goal,
+                    observations=observations,
+                    completion=None,
+                    mutation_proof=mutation_proof,
+                    usage_records=usage_records,
+                    tools=tools,
+                    decision_calls=decision_calls,
+                    safe_point="after_capability",
+                )
+
+        if is_cancelled():
+            raise GoalExecutionError("cancelled")
+        if should_interrupt("before_finalizer"):
+            return self._checkpoint_result(
+                goal=goal,
+                observations=observations,
+                completion=completion,
+                mutation_proof=mutation_proof,
+                usage_records=usage_records,
+                tools=tools,
+                decision_calls=decision_calls,
+                safe_point="before_finalizer",
+            )
         if provider_operations >= budget.max_provider_operations:
             raise GoalExecutionError("goal_budget_exhausted")
         provider_operations += 1
@@ -285,11 +357,13 @@ class GoalExecutionRunner:
         try:
             finalized = coordinate_chat_candidate_validation(request, finalized)
         except PublicLanguageValidationError:
-            if mutation_proof is None:
-                raise
             finalized = _replace_goal_answer(
                 finalized,
-                PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
+                (
+                    PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL
+                    if mutation_proof is not None
+                    else PUBLIC_GOAL_SAFE_TERMINAL
+                ),
             )
             finalized = coordinate_chat_candidate_validation(request, finalized)
         finalizer_artifact = finalized.candidate.model_dump(mode="json")
@@ -318,6 +392,32 @@ class GoalExecutionRunner:
             observations=tuple(observations),
             completion=completion,
             mutation_proof=mutation_proof,
+            usage=_merge_usage(usage_records),
+            tools=tools,
+            decision_calls=decision_calls,
+        )
+
+    @staticmethod
+    def _checkpoint_result(
+        *,
+        goal: FrozenGoal,
+        observations: list[GoalObservation],
+        completion: GoalCompletionDecision | None,
+        mutation_proof: dict[str, Any] | None,
+        usage_records: list[dict[str, Any]],
+        tools: ToolMetrics,
+        decision_calls: int,
+        safe_point: GoalSafePoint,
+    ) -> GoalCheckpointResult:
+        checkpoint = GoalExecutionCheckpoint(
+            obligations_hash=goal.obligations_hash,
+            observations=observations,
+            completion=completion,
+            mutation_proof=mutation_proof,
+        )
+        return GoalCheckpointResult(
+            checkpoint=checkpoint,
+            safe_point=safe_point,
             usage=_merge_usage(usage_records),
             tools=tools,
             decision_calls=decision_calls,
@@ -397,7 +497,9 @@ def _merge_tools(target: ToolMetrics, source: ToolMetrics) -> None:
 
 __all__ = [
     "GoalCapabilityResult",
+    "GoalCheckpointResult",
     "GoalExecutionError",
     "GoalExecutionResult",
     "GoalExecutionRunner",
+    "GoalSafePoint",
 ]

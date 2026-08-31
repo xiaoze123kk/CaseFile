@@ -49,6 +49,16 @@ from casefile.data_postgres.models.exposure import (
     ExposurePlanObligationRef,
     ExposurePlanRevision,
 )
+from casefile.data_postgres.models.goal_session import (
+    AgentGoalDelivery,
+    AgentGoalObligation,
+    AgentGoalObligationDependency,
+    AgentGoalObservation,
+    AgentGoalRevision,
+    AgentGoalSession,
+    AgentGoalTaskRun,
+    AgentGoalTransition,
+)
 from casefile.data_postgres.models.idea import IdeaCandidate
 from casefile.data_postgres.models.identity import Project, User, UserProviderSetting
 from casefile.data_postgres.models.reasoning import (
@@ -82,6 +92,14 @@ from casefile.data_postgres.models.workflow import (
 __all__ = [
     "AgentModelCall",
     "AgentStepRun",
+    "AgentGoalDelivery",
+    "AgentGoalObligation",
+    "AgentGoalObligationDependency",
+    "AgentGoalObservation",
+    "AgentGoalRevision",
+    "AgentGoalSession",
+    "AgentGoalTaskRun",
+    "AgentGoalTransition",
     "AgentMessage",
     "AgentPatchOperation",
     "AgentPatchSet",

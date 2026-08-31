@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 def _architecture_check_module() -> ModuleType:
     repo_root = Path(__file__).resolve().parents[3]
@@ -77,3 +79,64 @@ def leaked_agent_run():
         "result_jsonb",
         "task_view",
     }
+
+
+def test_m38_goal_session_architecture_markers_are_frozen() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    module = _architecture_check_module()
+
+    assert module._goal_session_spec_violations(repo_root) == []
+
+
+@pytest.mark.parametrize(
+    "missing_marker",
+    [
+        "GoalSession > TaskRun",
+        "succeeded + checkpointed",
+        "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT=off | shadow | active",
+        "no_auto_apply=true",
+    ],
+)
+def test_m38_goal_session_architecture_check_fails_closed(
+    tmp_path: Path,
+    missing_marker: str,
+) -> None:
+    module = _architecture_check_module()
+    spec = tmp_path / module.GOAL_SESSION_SPEC_PATH
+    spec.parent.mkdir(parents=True)
+    spec.write_text(
+        "\n".join(
+            sorted(module.GOAL_SESSION_REQUIRED_MARKERS - {missing_marker})
+        ),
+        encoding="utf-8",
+    )
+    for relative in module.GOAL_SESSION_REFERENCE_PATHS:
+        reference_path = tmp_path / relative
+        reference_path.parent.mkdir(parents=True, exist_ok=True)
+        reference_path.write_text(
+            module.GOAL_SESSION_SPEC_PATH,
+            encoding="utf-8",
+        )
+
+    violations = module._goal_session_spec_violations(tmp_path)
+
+    assert len(violations) == 1
+    assert missing_marker in violations[0].message
+
+
+def test_m38_goal_session_architecture_requires_responsibility_references(
+    tmp_path: Path,
+) -> None:
+    module = _architecture_check_module()
+    spec = tmp_path / module.GOAL_SESSION_SPEC_PATH
+    spec.parent.mkdir(parents=True)
+    spec.write_text(
+        "\n".join(sorted(module.GOAL_SESSION_REQUIRED_MARKERS)),
+        encoding="utf-8",
+    )
+
+    violations = module._goal_session_spec_violations(tmp_path)
+
+    assert {violation.path for violation in violations} == set(
+        module.GOAL_SESSION_REFERENCE_PATHS
+    )

@@ -305,7 +305,7 @@ export type BriefIntakeCandidate = {
   field_sources: BriefIntakeFieldSources;
 };
 export type PublicMessageRole = "user" | "assistant";
-export type PublicMessageStatus = "pending" | "completed" | "failed";
+export type PublicMessageStatus = "pending" | "completed" | "failed" | "cancelled";
 export type PublicResponseKind =
   "message" | "answer" | "analysis" | "clarification" | "findings" | "patch_proposal" | "failure";
 export type PublicReferenceKind = "story_item" | "event" | "finding";
@@ -319,9 +319,33 @@ export type PublicChangeRelationship2 = "requested" | "consistency_support";
 export type PublicRunStatus = "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
 export type PublicAgentActivity = "understanding" | "reading" | "checking" | "preparing_changes" | "finalizing" | null;
 export type PublicFailureCategory = "temporarily_unavailable" | "request_failed" | "output_rejected";
+export type PublicGoalStatus =
+  | "interpreting"
+  | "running"
+  | "waiting_clarification"
+  | "waiting_patch_review"
+  | "stale"
+  | "completed"
+  | "cancelled"
+  | "superseded"
+  | "failed";
+export type PublicGoalWaitingFor = "none" | "clarification" | "patch_review" | "stale";
+export type PublicGoalDeliveryMode = "steer" | "follow_up" | "replace";
+export type PublicGoalDeliveryStatus = "queued" | "claimed" | "consumed" | "cancelled";
 export type PublicEventActivity = "understanding" | "reading" | "checking" | "preparing_changes" | "finalizing";
 export type PublicContextState = "normal" | "near_limit" | "compacted";
 export type PublicVerificationStatus = "started" | "passed" | "blocked";
+export type PublicGoalEventStatus =
+  | "interpreting"
+  | "running"
+  | "waiting_clarification"
+  | "waiting_patch_review"
+  | "stale"
+  | "completed"
+  | "cancelled"
+  | "superseded"
+  | "failed";
+export type PublicGoalEventWaitingFor = "none" | "clarification" | "patch_review" | "stale";
 export type CompileInputManifest = {
   [k: string]: unknown;
 };
@@ -649,6 +673,9 @@ export interface ChatPublicContracts {
         event: "run.cancelled";
         message: string;
       };
+  goal_session: PublicGoalSession;
+  goal_delivery: PublicGoalDelivery;
+  goal_event: PublicGoalEvent;
   patch_set: PublicPatchSet;
   patch_review: PublicPatchReviewResult;
   patch_response: PublicPatchResponse;
@@ -687,6 +714,8 @@ export interface PublicFinding {
 }
 export interface PublicPatchSet {
   patch_id: number;
+  goal_id?: number | null;
+  goal_revision?: number | null;
   title: string;
   summary: string;
   status: PublicPatchStatus;
@@ -747,6 +776,8 @@ export interface PublicPatchActions {
 }
 export interface PublicAgentRun {
   run_id: number;
+  goal_id?: number | null;
+  goal_revision?: number | null;
   status: PublicRunStatus;
   activity: PublicAgentActivity;
   cancellable: boolean;
@@ -760,11 +791,46 @@ export interface PublicAgentFailure {
 export interface PublicAgentMessageReceipt {
   user_message: PublicAgentMessage;
   assistant_message: PublicAgentMessage;
+  goal?: PublicGoalSession | null;
+  delivery?: PublicGoalDelivery | null;
+}
+export interface PublicGoalSession {
+  goal_id: number;
+  status: PublicGoalStatus;
+  revision: number;
+  waiting_for: PublicGoalWaitingFor;
+  active_run_id: number | null;
+  active_patch_id: number | null;
+  can_steer: boolean;
+  can_follow_up: boolean;
+  can_replace: boolean;
+  cancellable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface PublicGoalDelivery {
+  delivery_id: number;
+  goal_id: number;
+  successor_goal_id?: number | null;
+  mode: PublicGoalDeliveryMode;
+  status: PublicGoalDeliveryStatus;
+  message_id: number;
+  response_message_id: number;
+  expected_goal_revision: number;
+  created_at: string;
+  updated_at: string;
 }
 export interface PublicRoutingFeedbackReceipt {
   message_id: number;
   acknowledged: true;
   interpretation: "conversation" | "analysis" | "logic_review" | "change_request" | "clarification";
+}
+export interface PublicGoalEvent {
+  sequence: number;
+  event: "goal.transition";
+  status: PublicGoalEventStatus;
+  waiting_for: PublicGoalEventWaitingFor;
+  goal: PublicGoalSession;
 }
 export interface PublicPatchReviewResult {
   patch_id: number;
@@ -788,6 +854,8 @@ export interface PublicPatchResponse {
   patch: PublicPatchSet;
   review: PublicPatchReviewResult;
   revision: number;
+  goal: PublicGoalSession | null;
+  continuation_run: PublicAgentRun | null;
 }
 export interface TaskRun {
   task_run_id: number;

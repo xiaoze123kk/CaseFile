@@ -1,4 +1,4 @@
-"""Static contracts for the 66-table personal-product database metadata."""
+"""Static contracts for the 74-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -10,6 +10,14 @@ from casefile.data_postgres.base import Base
 from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
+    "agent_goal_deliveries",
+    "agent_goal_obligation_dependencies",
+    "agent_goal_obligations",
+    "agent_goal_observations",
+    "agent_goal_revisions",
+    "agent_goal_sessions",
+    "agent_goal_task_runs",
+    "agent_goal_transitions",
     "agent_model_calls",
     "agent_messages",
     "agent_patch_operations",
@@ -79,6 +87,7 @@ EXPECTED_TABLES = {
 }
 
 DEDICATED_CURRENT_TABLES = {
+    "agent_goal_sessions",
     "agent_patch_operations",
     "agent_patch_sets",
     "agent_threads",
@@ -182,6 +191,15 @@ JSONB_ALLOWLIST = {
 }
 
 EXPECTED_UNIQUES = {
+    "uq_agent_goal_deliveries_source_message",
+    "uq_agent_goal_obligation_dependencies_edge",
+    "uq_agent_goal_obligations_revision_key",
+    "uq_agent_goal_revisions_session_revision",
+    "uq_agent_goal_sessions_thread_lineage_id",
+    "uq_agent_goal_task_runs_session_slice",
+    "uq_agent_goal_task_runs_task_run",
+    "uq_agent_goal_transitions_session_sequence",
+    "uq_agent_messages_thread_lineage_id",
     "uq_agent_messages_project_id_id",
     "uq_agent_messages_thread_sequence_no",
     "uq_agent_patch_operations_patch_set_operation_id",
@@ -229,6 +247,18 @@ EXPECTED_UNIQUES = {
 }
 
 EXPECTED_FOREIGN_KEYS = {
+    "fk_agent_goal_deliveries_thread_session_goal_sessions",
+    "fk_agent_goal_obligation_dependencies_child_obligations",
+    "fk_agent_goal_obligation_dependencies_parent_goal_obligations",
+    "fk_agent_goal_obligations_revision_goal_revisions",
+    "fk_agent_goal_observations_obligation_goal_obligations",
+    "fk_agent_goal_revisions_project_session_goal_sessions",
+    "fk_agent_goal_sessions_current_revision_goal_revisions",
+    "fk_agent_goal_sessions_project_casefile_draft_drafts",
+    "fk_agent_goal_sessions_project_thread_agent_threads",
+    "fk_agent_goal_task_runs_project_session_goal_sessions",
+    "fk_agent_goal_task_runs_project_task_run_task_runs",
+    "fk_agent_goal_transitions_project_session_goal_sessions",
     "fk_agent_messages_project_thread_agent_threads",
     "fk_agent_patch_operations_project_patch_set_agent_patch_sets",
     "fk_agent_patch_operations_target_object",
@@ -294,10 +324,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_66_personal_tables() -> None:
+def test_metadata_contains_exactly_the_74_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 66
+    assert len(models.__all__) == 74
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns
@@ -368,6 +398,12 @@ def test_core_unique_and_foreign_key_constraints_are_present() -> None:
         if isinstance(constraint, sa.CheckConstraint)
     }
     assert any("agent_adopt_brief_candidate" in expression for expression in operation_checks)
+    obligation_checks = {
+        str(constraint.sqltext)
+        for constraint in Base.metadata.tables["agent_goal_obligations"].constraints
+        if isinstance(constraint, sa.CheckConstraint)
+    }
+    assert "capability <> 'propose_mutation' OR target_state = 'baseline'" in obligation_checks
 
 
 def test_tracked_responsibility_docs_list_the_same_tables() -> None:

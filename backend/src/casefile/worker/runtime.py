@@ -21,6 +21,7 @@ from casefile.worker.dispatch import TaskDispatcher
 from casefile.worker.execution import (
     ChatRuntimeConfig,
     ExecutionState,
+    GoalSafePointObserver,
     TaskExecutionContext,
     WorkerEventPorts,
 )
@@ -104,6 +105,7 @@ class Worker:
         *,
         config: WorkerConfig,
         provider_factory: ProviderFactory | None = None,
+        goal_safe_point_observer: GoalSafePointObserver | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.config = config
@@ -152,7 +154,11 @@ class Worker:
                 BriefIntakeHandler(self._completion),
                 ReverseParseHandler(self._completion),
                 BriefGenerationHandler(self._completion),
-                ChatHandler(self._chat, self._complete_chat),
+                ChatHandler(
+                    self._chat,
+                    self._complete_chat,
+                    goal_safe_point_observer=goal_safe_point_observer,
+                ),
                 CompilerHandler(self._compiler),
             )
         )
@@ -162,8 +168,14 @@ class Worker:
             if not self.run_once():
                 time.sleep(self.config.poll_seconds)
 
-    def run_once(self) -> bool:
-        claimed = self._claim_next()
+    def run_once(self, *, task_run_id: int | None = None) -> bool:
+        """Run one claim, optionally restricted to an already known TaskRun."""
+
+        claimed = (
+            self._claim_next()
+            if task_run_id is None
+            else self._queue._claim_specific(task_run_id)
+        )
         if claimed is None:
             return False
         if claimed == "cancelled":

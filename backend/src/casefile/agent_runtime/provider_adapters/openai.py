@@ -64,11 +64,14 @@ from casefile.agent_runtime.general_mutation_prompt import (
     render_general_mutation_prompt,
 )
 from casefile.agent_runtime.goal.contracts import (
+    GoalAmendmentOutput,
     GoalDecisionOutput,
     GoalUnderstandingOutput,
 )
 from casefile.agent_runtime.goal.provider import (
     ChatEvidenceCollection,
+    GoalAmendmentRequest,
+    GoalAmendmentResult,
     GoalDecisionRequest,
     GoalDecisionResult,
     GoalFinalizerRequest,
@@ -123,6 +126,7 @@ from casefile.agent_runtime.prompt import (
     render_chat_finalizer_prompt,
     render_chat_rewrite_prompt,
     render_chat_router_prompt,
+    render_goal_amendment_prompt,
     render_goal_controller_prompt,
     render_goal_finalizer_prompt,
     render_goal_interpreter_prompt,
@@ -496,6 +500,9 @@ class OpenAIAgentsProvider:
             "casefile-chat-v15",
             "casefile-chat-v16",
             "casefile-chat-v17",
+            "casefile-chat-v18",
+            "casefile-chat-v19",
+            "casefile-chat-v20",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -608,6 +615,9 @@ class OpenAIAgentsProvider:
                     "casefile-chat-v15",
                     "casefile-chat-v16",
                     "casefile-chat-v17",
+                    "casefile-chat-v18",
+                    "casefile-chat-v19",
+                    "casefile-chat-v20",
                 }:
                     raise
                 request.emit(
@@ -652,6 +662,24 @@ class OpenAIAgentsProvider:
         )
         return GoalUnderstandingResult(
             candidate=GoalUnderstandingOutput.model_validate(candidate), usage=usage
+        )
+
+    def amend_goal(self, request: GoalAmendmentRequest) -> GoalAmendmentResult:
+        instructions, input_text = render_goal_amendment_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request.chat,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=GoalAmendmentOutput,
+                stage="goal_amending",
+                component_id="goal_amendment",
+                schema_id="casefile-chat-goal-amendment-v1",
+                temperature=_chat_live_temperature(),
+            )
+        )
+        return GoalAmendmentResult(
+            candidate=GoalAmendmentOutput.model_validate(candidate), usage=usage
         )
 
     def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult:

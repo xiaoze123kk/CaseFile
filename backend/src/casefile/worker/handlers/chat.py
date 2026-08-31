@@ -18,23 +18,28 @@ from casefile.agent_runtime.chat_routing import routing_policy
 from casefile.agent_runtime.goal.contracts import (
     FrozenGoal,
     GoalDecisionOutput,
+    GoalExecutionCheckpoint,
     GoalUnderstandingOutput,
     InvokeCapabilityAction,
 )
 from casefile.agent_runtime.goal.execution import (
     GoalCapabilityResult,
+    GoalCheckpointResult,
     GoalExecutionError,
     GoalExecutionRunner,
 )
 from casefile.agent_runtime.goal.filter import goal_candidate_filter
 from casefile.agent_runtime.goal.policy import (
     GoalRuntimeConfig,
+    apply_goal_amendment,
     freeze_goal,
     goal_capability_message,
+    normalize_goal_amendment,
     qualify_goal,
     stable_hash,
 )
 from casefile.agent_runtime.goal.provider import (
+    GoalAmendmentRequest,
     GoalDecisionRequest,
     GoalDecisionResult,
     GoalFinalizerRequest,
@@ -49,7 +54,11 @@ from casefile.agent_runtime.models import (
     RouteDecision,
     ToolMetrics,
 )
-from casefile.worker.execution import ProviderRequirement, TaskExecutionContext
+from casefile.worker.execution import (
+    GoalSafePointObserver,
+    ProviderRequirement,
+    TaskExecutionContext,
+)
 from casefile.worker.executors.chat import ChatTaskExecutor, resolve_chat_route
 from casefile.worker.failures import TaskCancellationRequested
 
@@ -122,9 +131,15 @@ class ChatHandler:
     task_types = frozenset({"casefile_chat"})
     provider_requirement: ProviderRequirement = "required"
 
-    def __init__(self, chat: ChatTaskExecutor, complete_chat: Callable[..., None]) -> None:
+    def __init__(
+        self,
+        chat: ChatTaskExecutor,
+        complete_chat: Callable[..., None],
+        goal_safe_point_observer: GoalSafePointObserver | None = None,
+    ) -> None:
         self._chat = chat
         self._complete_chat = complete_chat
+        self._goal_safe_point_observer = goal_safe_point_observer
 
     def execute(self, context: TaskExecutionContext) -> None:
         provider, api_key = context.require_provider()
@@ -239,159 +254,237 @@ class ChatHandler:
         if not isinstance(raw_runtime, dict):
             return False
         runtime = GoalRuntimeConfig.model_validate(raw_runtime)
-        entrypoint = str(request.routing_hint.get("entrypoint") or "free_text")
-        candidate = goal_candidate_filter(request.message, routing_entrypoint=entrypoint)
-        if not candidate.candidate:
-            return False
-        context.emit(
-            task.id,
-            "agent.step.started",
-            "goal_understanding",
-            {
-                "component_id": "goal_interpreter",
-                "component_version": task.prompt_version,
-                "schema_id": "casefile-chat-goal-understanding-v1",
-                "input_hash": task.input_hash,
-            },
-        )
-        try:
-            if self._chat._goal_cancelled(task.id):
-                raise TaskCancellationRequested
-            reusable = self._chat._load_reusable_goal_step(
-                task.id, "goal_interpreter", task.input_hash, {}
+        checkpoint: GoalExecutionCheckpoint | None = None
+        raw_checkpoint = task.input_jsonb.get("goal_checkpoint")
+        raw_frozen_goal = task.input_jsonb.get("frozen_goal")
+        raw_pending_delivery = task.input_jsonb.get("pending_goal_delivery")
+        if isinstance(raw_pending_delivery, dict):
+            if runtime.mode != "active" or not isinstance(raw_frozen_goal, dict):
+                raise GoalExecutionError("goal_amendment_invalid")
+            previous_goal = FrozenGoal.model_validate(raw_frozen_goal)
+            amendment = provider.amend_goal(
+                GoalAmendmentRequest(chat=request, current_goal=previous_goal)
             )
-            if reusable is not None:
-                reused_output = GoalUnderstandingOutput.model_validate(reusable["output"])
-                if stable_hash(reused_output.model_dump(mode="json")) != reusable["output_hash"]:
-                    reusable = None
-            if reusable is not None:
-                interpreted = GoalUnderstandingResult(candidate=reused_output, usage={})
-                context.emit(
-                    task.id,
-                    "agent.step.reused",
-                    "goal_understanding",
-                    {
-                        "component_id": "goal_interpreter",
-                        "schema_id": "casefile-chat-goal-understanding-v1",
-                        "output_hash": reusable["output_hash"],
-                        "resumed_from_step_run_id": reusable["step_run_id"],
-                        "_artifact": reused_output.model_dump(mode="json"),
-                    },
-                )
-            else:
-                interpreted = provider.understand_goal(GoalUnderstandingRequest(chat=request))
-            frozen = freeze_goal(interpreted.candidate, request.message)
-            qualification = qualify_goal(
-                interpreted.candidate,
-                frozen,
+            normalized_amendment = normalize_goal_amendment(
+                previous_goal,
+                amendment.candidate,
+                request.message,
+            )
+            frozen = apply_goal_amendment(
+                previous_goal,
+                normalized_amendment,
+                request.message,
                 budget=runtime.budget,
             )
-        except TaskCancellationRequested:
-            raise
-        except Exception as error:
+            self._chat._initialize_waiting_goal_amendment(
+                task.id,
+                delivery_id=int(raw_pending_delivery["delivery_id"]),
+                amended_goal=frozen,
+                amendment_kind=normalized_amendment.amendment_kind,
+            )
+            checkpoint = GoalExecutionCheckpoint(obligations_hash=frozen.obligations_hash)
             context.emit(
                 task.id,
-                "agent.step.failed",
-                "goal_understanding",
+                "goal.amended",
+                "goal",
                 {
-                    "component_id": "goal_interpreter",
-                    "schema_id": "casefile-chat-goal-understanding-v1",
-                    "error_code": "goal_interpreter_failed",
-                    "failure_layer": "qualification",
-                    "issues": [{"code": type(error).__name__}],
-                    "recoverable": True,
+                    "amendment_kind": normalized_amendment.amendment_kind,
+                    "obligation_count": len(frozen.obligations),
                 },
             )
+        elif isinstance(raw_checkpoint, dict):
+            if runtime.mode != "active" or not isinstance(raw_frozen_goal, dict):
+                raise GoalExecutionError("goal_checkpoint_invalid")
+            checkpoint = GoalExecutionCheckpoint.model_validate(raw_checkpoint)
+            frozen = FrozenGoal.model_validate(raw_frozen_goal)
             context.emit(
                 task.id,
-                "goal.qualification_failed",
-                "routing",
-                {"reason_code": "goal_interpreter_failed", "error_class": type(error).__name__},
+                "goal.resumed",
+                "goal",
+                {
+                    "checkpoint_version": checkpoint.version,
+                    "observation_count": len(checkpoint.observations),
+                },
             )
-            return False
-        if reusable is None:
-            artifact = interpreted.candidate.model_dump(mode="json")
+        else:
+            entrypoint = str(request.routing_hint.get("entrypoint") or "free_text")
+            candidate = goal_candidate_filter(request.message, routing_entrypoint=entrypoint)
+            if not candidate.candidate:
+                return False
             context.emit(
                 task.id,
-                "agent.step.completed",
+                "agent.step.started",
                 "goal_understanding",
                 {
                     "component_id": "goal_interpreter",
                     "component_version": task.prompt_version,
                     "schema_id": "casefile-chat-goal-understanding-v1",
                     "input_hash": task.input_hash,
-                    "output_hash": stable_hash(artifact),
-                    "usage": interpreted.usage,
-                    "_artifact": artifact,
                 },
             )
-        if not qualification.qualified:
+            try:
+                if self._chat._goal_cancelled(task.id):
+                    raise TaskCancellationRequested
+                reusable = self._chat._load_reusable_goal_step(
+                    task.id, "goal_interpreter", task.input_hash, {}
+                )
+                if reusable is not None:
+                    reused_output = GoalUnderstandingOutput.model_validate(reusable["output"])
+                    if (
+                        stable_hash(reused_output.model_dump(mode="json"))
+                        != reusable["output_hash"]
+                    ):
+                        reusable = None
+                if reusable is not None:
+                    interpreted = GoalUnderstandingResult(candidate=reused_output, usage={})
+                    context.emit(
+                        task.id,
+                        "agent.step.reused",
+                        "goal_understanding",
+                        {
+                            "component_id": "goal_interpreter",
+                            "schema_id": "casefile-chat-goal-understanding-v1",
+                            "output_hash": reusable["output_hash"],
+                            "resumed_from_step_run_id": reusable["step_run_id"],
+                            "_artifact": reused_output.model_dump(mode="json"),
+                        },
+                    )
+                else:
+                    interpreted = provider.understand_goal(GoalUnderstandingRequest(chat=request))
+                frozen = freeze_goal(interpreted.candidate, request.message)
+                qualification = qualify_goal(
+                    interpreted.candidate,
+                    frozen,
+                    budget=runtime.budget,
+                )
+            except TaskCancellationRequested:
+                raise
+            except Exception as error:
+                context.emit(
+                    task.id,
+                    "agent.step.failed",
+                    "goal_understanding",
+                    {
+                        "component_id": "goal_interpreter",
+                        "schema_id": "casefile-chat-goal-understanding-v1",
+                        "error_code": "goal_interpreter_failed",
+                        "failure_layer": "qualification",
+                        "issues": [{"code": type(error).__name__}],
+                        "recoverable": True,
+                    },
+                )
+                context.emit(
+                    task.id,
+                    "goal.qualification_failed",
+                    "routing",
+                    {
+                        "reason_code": "goal_interpreter_failed",
+                        "error_class": type(error).__name__,
+                    },
+                )
+                return False
+            if reusable is None:
+                artifact = interpreted.candidate.model_dump(mode="json")
+                context.emit(
+                    task.id,
+                    "agent.step.completed",
+                    "goal_understanding",
+                    {
+                        "component_id": "goal_interpreter",
+                        "component_version": task.prompt_version,
+                        "schema_id": "casefile-chat-goal-understanding-v1",
+                        "input_hash": task.input_hash,
+                        "output_hash": stable_hash(artifact),
+                        "usage": interpreted.usage,
+                        "_artifact": artifact,
+                    },
+                )
+            if not qualification.qualified:
+                context.emit(
+                    task.id,
+                    "goal.qualification_failed",
+                    "routing",
+                    {
+                        "reason_codes": list(qualification.reason_codes),
+                        "obligation_count": len(frozen.obligations),
+                    },
+                )
+                if (
+                    runtime.mode == "active"
+                    and isinstance(task.input_jsonb.get("goal_session"), dict)
+                    and (
+                        "goal_ambiguous" in qualification.reason_codes
+                        or "goal_missing_info" in qualification.reason_codes
+                    )
+                ):
+                    self._chat._initialize_goal_task(task.id, frozen)
+                    self._chat._pause_goal_for_clarification(
+                        task.id,
+                        context.attempt_id,
+                        missing_info=list(interpreted.candidate.missing_info),
+                        usage=interpreted.usage,
+                    )
+                    context.state.candidate = {"waiting_clarification": True}
+                    context.state.usage = interpreted.usage
+                    return True
+                return False
+            if (
+                any(item.kind == "mutation_proposal" for item in frozen.obligations)
+                and context.chat_config.general_mutation_mode != "suggest"
+            ):
+                context.emit(
+                    task.id,
+                    "goal.qualification_failed",
+                    "routing",
+                    {
+                        "reason_codes": ["goal_mutation_effect_unavailable"],
+                        "obligation_count": len(frozen.obligations),
+                    },
+                )
+                return False
+            mutation_preflight_reason = self._mutation_preflight_reason(
+                request,
+                frozen,
+                budget=task.budget_jsonb,
+            )
+            if mutation_preflight_reason is not None:
+                context.emit(
+                    task.id,
+                    "goal.qualification_failed",
+                    "routing",
+                    {
+                        "reason_codes": [mutation_preflight_reason],
+                        "obligation_count": len(frozen.obligations),
+                    },
+                )
+                return False
+            if runtime.mode == "shadow":
+                context.emit(
+                    task.id,
+                    "goal.shadow_evaluated",
+                    "routing",
+                    {
+                        "qualified": True,
+                        "obligation_count": len(frozen.obligations),
+                        "has_mutation": any(
+                            item.kind == "mutation_proposal" for item in frozen.obligations
+                        ),
+                    },
+                )
+                return False
+            if isinstance(task.input_jsonb.get("goal_session"), dict):
+                self._chat._initialize_goal_task(task.id, frozen)
             context.emit(
                 task.id,
-                "goal.qualification_failed",
-                "routing",
+                "goal.started",
+                "goal",
                 {
-                    "reason_codes": list(qualification.reason_codes),
+                    "runtime_version": runtime.runtime_version,
+                    "policy_version": runtime.policy_version,
+                    "capability_registry_version": runtime.capability_registry_version,
                     "obligation_count": len(frozen.obligations),
                 },
             )
-            return False
-        if (
-            any(item.kind == "mutation_proposal" for item in frozen.obligations)
-            and context.chat_config.general_mutation_mode != "suggest"
-        ):
-            context.emit(
-                task.id,
-                "goal.qualification_failed",
-                "routing",
-                {
-                    "reason_codes": ["goal_mutation_effect_unavailable"],
-                    "obligation_count": len(frozen.obligations),
-                },
-            )
-            return False
-        mutation_preflight_reason = self._mutation_preflight_reason(
-            request,
-            frozen,
-            budget=task.budget_jsonb,
-        )
-        if mutation_preflight_reason is not None:
-            context.emit(
-                task.id,
-                "goal.qualification_failed",
-                "routing",
-                {
-                    "reason_codes": [mutation_preflight_reason],
-                    "obligation_count": len(frozen.obligations),
-                },
-            )
-            return False
-        if runtime.mode == "shadow":
-            context.emit(
-                task.id,
-                "goal.shadow_evaluated",
-                "routing",
-                {
-                    "qualified": True,
-                    "obligation_count": len(frozen.obligations),
-                    "has_mutation": any(
-                        item.kind == "mutation_proposal" for item in frozen.obligations
-                    ),
-                },
-            )
-            return False
-
-        context.emit(
-            task.id,
-            "goal.started",
-            "goal",
-            {
-                "runtime_version": runtime.runtime_version,
-                "policy_version": runtime.policy_version,
-                "capability_registry_version": runtime.capability_registry_version,
-                "obligation_count": len(frozen.obligations),
-            },
-        )
         candidate_document: dict[str, Any] | None = None
         candidate_state_hash: str | None = None
         mutation_envelope: dict[str, Any] | None = None
@@ -581,9 +674,7 @@ class ChatHandler:
                     route_hash=capability_request.route.route_hash,
                     ledger_hash=ledger_hash,
                     candidate_hash=(
-                        None
-                        if action.target_state == "baseline"
-                        else candidate_state_hash
+                        None if action.target_state == "baseline" else candidate_state_hash
                     ),
                     usage=evidence.usage,
                     tools=evidence.tools,
@@ -632,6 +723,14 @@ class ChatHandler:
                 raise TaskCancellationRequested
             return False
 
+        def should_interrupt(_safe_point: str) -> bool:
+            if self._goal_safe_point_observer is not None:
+                self._goal_safe_point_observer(task.id, context.attempt_id, _safe_point)
+            control_mode = self._chat._goal_pending_control_mode(task.id)
+            return control_mode is not None and (
+                mutation_envelope is None or control_mode == "steer"
+            )
+
         try:
             execution = GoalExecutionRunner(
                 _RecoveringGoalProvider(provider, self._chat, task.id)
@@ -641,7 +740,9 @@ class ChatHandler:
                 budget=runtime.budget,
                 execute_capability=execute_capability,
                 is_cancelled=cancelled,
-                initial_provider_operations=1,
+                should_interrupt=should_interrupt,
+                checkpoint=checkpoint,
+                initial_provider_operations=0 if checkpoint is not None else 1,
             )
         except GoalExecutionError as error:
             context.emit(
@@ -651,6 +752,112 @@ class ChatHandler:
                 {"reason_code": error.code},
             )
             raise
+        if isinstance(execution, GoalCheckpointResult):
+            if mutation_envelope is not None:
+                if (
+                    execution.safe_point != "after_capability"
+                    or not execution.checkpoint.observations
+                    or execution.checkpoint.observations[-1].capability != "propose_mutation"
+                ):
+                    raise GoalExecutionError("goal_checkpoint_invalid")
+                pending_result = CaseFileChatResult(
+                    candidate=CaseFileChatCandidateV2(
+                        answer="修改建议已准备完成，等待你审阅后再应用。"
+                    ),
+                    usage=execution.usage,
+                    tools=execution.tools,
+                )
+                self._complete_chat(
+                    task.id,
+                    context.attempt_id,
+                    pending_result,
+                    route=self._goal_completion_route(frozen, budget=task.budget_jsonb),
+                    repair_envelope=repair_envelope,
+                    repair_usage=None,
+                    general_mutation_envelope=mutation_envelope,
+                    frozen_goal=frozen,
+                    goal_checkpoint=execution.checkpoint,
+                )
+                context.state.candidate = pending_result.candidate.model_dump(mode="json")
+                context.state.usage = execution.usage
+                return True
+            control = self._chat._claim_goal_control(task.id, context.attempt_id)
+            if control is None:
+                raise GoalExecutionError("goal_delivery_missing")
+            control_request = replace(
+                request,
+                message=str(control["message"]),
+                input_hash=stable_hash(
+                    [request.input_hash, control["delivery_id"], control["message"]]
+                ),
+            )
+            if control["mode"] == "replace":
+                replacement = provider.understand_goal(
+                    GoalUnderstandingRequest(chat=control_request)
+                )
+                replacement_goal = freeze_goal(
+                    replacement.candidate,
+                    control_request.message,
+                )
+                replacement_qualification = qualify_goal(
+                    replacement.candidate,
+                    replacement_goal,
+                    budget=runtime.budget,
+                )
+                if not replacement_qualification.qualified:
+                    raise GoalExecutionError("goal_replacement_invalid")
+                continuation_run_id = self._chat._replace_goal_task(
+                    task.id,
+                    context.attempt_id,
+                    frozen_goal=frozen,
+                    checkpoint=execution.checkpoint,
+                    delivery_id=int(control["delivery_id"]),
+                    replacement_goal=replacement_goal,
+                    safe_point=execution.safe_point,
+                    usage=execution.usage,
+                    tools=execution.tools.as_dict(),
+                )
+                context.state.candidate = {
+                    "checkpointed": True,
+                    "replaced": True,
+                    "continuation_run_id": continuation_run_id,
+                }
+                context.state.usage = execution.usage
+                return True
+            if control["mode"] != "steer":
+                raise GoalExecutionError("goal_delivery_invalid")
+            amendment = provider.amend_goal(
+                GoalAmendmentRequest(chat=control_request, current_goal=frozen)
+            )
+            normalized_amendment = normalize_goal_amendment(
+                frozen,
+                amendment.candidate,
+                control_request.message,
+            )
+            amended_goal = apply_goal_amendment(
+                frozen,
+                normalized_amendment,
+                control_request.message,
+                budget=runtime.budget,
+            )
+            continuation_run_id = self._chat._checkpoint_goal_task(
+                task.id,
+                context.attempt_id,
+                frozen_goal=frozen,
+                checkpoint=execution.checkpoint,
+                safe_point=execution.safe_point,
+                usage=execution.usage,
+                tools=execution.tools.as_dict(),
+                delivery_id=int(control["delivery_id"]),
+                amended_goal=amended_goal,
+                amendment_kind=normalized_amendment.amendment_kind,
+            )
+            context.state.candidate = {
+                "checkpointed": True,
+                "continuation_run_id": continuation_run_id,
+            }
+            context.state.usage = execution.usage
+            return True
         context.emit(
             task.id,
             "goal.completed",
@@ -669,6 +876,13 @@ class ChatHandler:
             repair_envelope=repair_envelope,
             repair_usage=None,
             general_mutation_envelope=mutation_envelope,
+            frozen_goal=frozen,
+            goal_checkpoint=GoalExecutionCheckpoint(
+                obligations_hash=frozen.obligations_hash,
+                observations=list(execution.observations),
+                completion=execution.completion,
+                mutation_proof=execution.mutation_proof,
+            ),
         )
         context.state.candidate = execution.result.candidate.model_dump(mode="json")
         context.state.usage = execution.usage
@@ -790,9 +1004,7 @@ def _goal_ledger_refs(ledger: dict[str, Any], key: str) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
     return tuple(
-        dict.fromkeys(
-            value.strip() for value in raw if isinstance(value, str) and value.strip()
-        )
+        dict.fromkeys(value.strip() for value in raw if isinstance(value, str) and value.strip())
     )[:50]
 
 

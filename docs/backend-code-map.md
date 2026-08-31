@@ -1,18 +1,29 @@
 # 后端代码职责地图
 
+## M3.8 Persistent GoalSession 规划边界
+
+`docs/m3.8-goal-session-runtime.md` 是 M3.8 冻结 ADR。实现保持三层职责：`agent_runtime/goal/` 定义无数据库的 Goal 语义契约、可校验 Checkpoint 与单 TaskRun bounded execution；`application/goal_session_state.py`、`goal_session_repository.py` 和 `application/workflow/goal_session.py` 拥有跨 TaskRun 状态矩阵、预算、obligation/observation 持久化及 continuation 原子事务；`worker/handlers/` 只轮询安全点并委派当前 TaskRun 收敛与下一执行切片排队。
+
+M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runtime`，不在 API route 中直接读写 Goal 表，也不创建第二条 Patch/Apply 路径。新增、删除或重命名实际源码后，必须在对应阶段把精确路径补入本文和静态架构检查。
+
 ## M3.7 Bounded Goal Harness
 
 - `backend/src/casefile/agent_runtime/goal/contracts.py`：Goal Interpreter、冻结义务、单步决策、Observation 与 Completion 的严格内部契约；不属于 Public Chat Schema。
-- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则。
-- `backend/src/casefile/agent_runtime/goal/execution.py`：单个 `TaskRun` 内的 bounded next-action loop；不持有数据库 Session，不跨消息恢复。
+- `backend/src/casefile/agent_runtime/goal/policy.py`：稳定哈希、DAG、资格、Capability Registry、预算与 Completion Gate 的纯确定性规则；v5 补齐明确请求的义务、规范化 review-gated grounding、显式 replace/abandonment、未解析指代、无修改 clarification 及 constraint/refine 结构，并拒绝重复执行已完成义务。
+- `backend/src/casefile/agent_runtime/goal/execution.py`：单个 `TaskRun` 内的 bounded next-action loop；在 Controller 前、完整 capability 后和 Finalizer 前产生可哈希 Checkpoint，并可从 obligations-hash 匹配的 Checkpoint 恢复；不持有数据库 Session。
 - `backend/src/casefile/agent_runtime/goal/filter.py`：位于显式 preset/issue-action 之后的保守 free-text 候选过滤器。
 - `backend/src/casefile/agent_runtime/goal/provider.py`：Interpreter、Controller、Evidence 与 Finalizer 的 provider-neutral 端口。
-- `backend/src/casefile/worker/handlers/chat.py`：rollout/资格分流、能力适配、取消观察和一次最终持久化。
+- `backend/src/casefile/worker/handlers/chat.py`：rollout/资格分流、能力适配、取消观察、Goal safe-point 轮询、Checkpoint continuation 委派和最终持久化；Mutation 后 steer 先形成带 PatchSet identity 的待审 slice，再由 post-apply continuation 在新 capability 前消费；Provider/Binder/Simulation/Verification 内不轮询。
 - `backend/src/casefile/benchmark/chat_goal_suite.py`、`chat_goal_qualification.py`：M3.7 24×3 正式资格套件、生产路径评分、逐题追踪与聚合门禁；v2 题目必须与冻结 CaseFile fixture 可解，并用最终状态 Oracle 评分 mutation。
+- `backend/src/casefile/benchmark/chat_goal_interactive_suite.py`：M3.8-07 Interactive Goal v2 的严格私有 Holdout loader、8-family typed oracle/reference、RFC 8785 指纹、路径/泄漏/独立双 attestation 校验；正式 coverage matrix 强制 add/remove obligation、三类 safe point/capability、混合 FIFO、提前 follow-up 拒绝、三类 PatchOperation、至少三个 fixture、Patch/stale/cancel 生命周期。仓库只跟踪 fail-closed descriptor 与 8 题公开 Fake dev suite。
+- `backend/src/casefile/benchmark/chat_goal_interactive_executor.py`：以真实公共 HTTP、后台 Worker、PostgreSQL、continuation 与 Patch Review 路径执行交互 trial；通过默认关闭的 Worker 组合端口在三类 safe point 建立确定性 barrier，并使用已知 TaskRun 的真实 lease claim 隔离同一数据库中的 trial，不新增公共 API 或运行时配置。
+- `backend/src/casefile/benchmark/chat_goal_interactive_qualification.py`：M3.8-07 clean source/独立 `_test` 数据库/精确 Pro 与 Prompt preflight、24×3 逐 trial 编排、证据指纹及 Intent Adherence Under Intervention 聚合门禁。
 
 Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，也不得直接调用 Apply。Goal Finalizer 只负责作者可见正文，模型生成的引用、finding 与 suggestion 不构成权威结果；结构化结果由 Observation、Completion proof 与 Mutation proof 决定。任何 Goal 失败均在 `_complete_chat()` 前关闭，因此不产生 `AgentPatchSet`。恢复只复用精确 input/upstream/output hash 匹配的 bounded artifact；Mutation 只复用 Planner artifact并重新绑定、模拟。
 
 本文涵盖 `backend/` 下所有受 Git 跟踪的源码文件职责。新增、删除、重命名后端源文件时必须同步更新本文。
+
+TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `WorkflowService.finalize_agent_goal_task_failure()`，在同一事务关闭当前 Goal、slice 和待处理 control；残留 running capability step 同步终止。Interactive executor 将持久化生产失败与真正的 harness/transport 故障分离，保留原始 Binder reason 与审计，但不放宽 Oracle 或资格门槛。
 
 ## 数据库代码
 
@@ -41,6 +52,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8–v15 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
 | `backend/src/casefile/data_postgres/models/compiler.py` | N4.1 `compiler_profiles`、不可变 `compiler_profile_versions`、关系型 `compile_runs` 与不可变 `compile_artifacts` ORM；CompileRun 只保存 Build 身份和冻结绑定，不复制执行状态或 Manifest。 |
 | `backend/src/casefile/data_postgres/models/context_states.py` | 追加式不可变 `agent_thread_context_states` ORM：按 thread 冻结 policy/state_kind/消息区间/state_jsonb/输入哈希，供 Rolling Thread Memory 压缩回放与 `context_state` 冻结引用。 |
+| `backend/src/casefile/data_postgres/models/goal_session.py` | M3.8 GoalSession、Revision、Obligation DAG、FIFO Delivery、Observation、TaskRun slice 绑定与 Transition 的关系型 ORM；状态、归属、预算和不可变性由正式列、复合外键、约束与触发器承载。 |
 | `backend/src/casefile/data_postgres/models/verification.py` | `verification_runs`、`verification_findings`、规范化 finding refs、作者 reviews 与 patch-operation lineage ORM；VerificationRun 是领域 observation，不承载 TaskRun 调度字段。 |
 | `backend/src/casefile/data_postgres/models/reverse_parse.py` | 路径 C 反向解析的 `imported_documents` 与 `parse_items` ORM：上传文档与提取文本、解析状态、逐项确认结果、grading/field_sources 与来源片段引用。 |
 | `backend/src/casefile/data_postgres/models/__init__.py` | 汇总导入全部 ORM，供 Alembic metadata 发现。 |
@@ -55,6 +67,9 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile_contracts/` | 从根目录 Schema 生成、供后端运行时使用的 Pydantic 契约模型；禁止手改。 |
 | `backend/src/casefile/application/commands.py` | 与 HTTP 解耦的 Project、Entity 和 Event 类型化写入命令。 |
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
+| `backend/src/casefile/application/goal_session_state.py` | M3.8 GoalSession 的纯确定性状态转换矩阵、revision 并发门禁和会话级预算规则；不依赖数据库、API、Worker 或 Provider。 |
+| `backend/src/casefile/application/goal_session_repository.py` | M3.8 GoalSession 聚合的 SQLAlchemy 锁与持久化边界：创建 interpreting 会话、原子追加 Revision/Obligation DAG/Transition、绑定 TaskRun slice，并以 FIFO 锁完成 delivery claim、过期回收和当前 TaskAttempt fencing。 |
+| `backend/src/casefile/application/workflow/goal_session.py` | M3.8 GoalSession 应用用例：按 Project/Draft/Thread 归属解析显式投递、创建/查询/取消 Goal 与公共投影；拥有初始 Revision、HITL/Patch Review、steer/replace/follow-up、safe-point observation、delivery claim lease，以及“旧 TaskRun/Attempt 成功收敛、Checkpoint 哈希、单条 control 消费、新 Revision/Goal、唯一 queued TaskRun”的原子事务。 |
 | `backend/src/casefile/application/snapshot.py` | 从全部规范化当前态投影 CaseFile JSON，稳定排序、契约校验并计算 RFC 8785 SHA-256。 |
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 CaseFile v2 JSON（v1 仅历史读取兼容）与规范化当前态之间执行原子写入、增量对象创建、完整投影、契约引用映射和规范哈希。 |
@@ -64,7 +79,7 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/src/casefile/application/logical_mutation_service.py` | 所有产品写入口可复用的通用 Mutation Preview/Apply 事务门面；只转换 DTO、锁定 Current Draft 并调用领域 Simulation 与唯一物化边界。 |
 | `backend/src/casefile/application/logical_mutation_rollout.py` | 旧 Current Draft 的只读 shadow scanner 与显式 system mechanical normalization；只修复双向投影并保留 before/after hash，不自动改写语义状态。 |
 | `backend/src/casefile/application/workflow_service.py` | `WorkflowService(session)` 稳定门面，只初始化事务依赖并组合内部工作流用例；保留既有公开方法和兼容 helper 导出，不再承载具体规则。 |
-| `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Mutation review/simulate/apply/undo，`mutation_history.py` 拥有严格栈顶 Redo，`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
+| `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Mutation review/simulate/apply/undo，`goal_session.py` 拥有 Goal 投递、公共生命周期和 TaskRun slice continuation 事务，`mutation_history.py` 拥有严格栈顶 Redo，`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
 | `backend/src/casefile/application/chat_public_contracts.py` | CaseFile Chat 公共 DTO 的 allowlist 投影边界；不得输出 TaskRun、TaskEvent、原始结果或 Patch 内部字段。 |
 | `backend/src/casefile/application/chat_public_events.py` | 将内部 TaskEvent 严格映射为 Chat Public Event；未知事件必须丢弃，内部 sequence 只作为恢复游标保留。 |
 | `backend/src/casefile/application/workflow_common.py` | Workflow 用例共享的稳定默认配置、TaskRun 创建、冻结输入和小型事务 helper；不拥有 HTTP DTO 或 Worker 编排。 |
@@ -187,6 +202,8 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 | `backend/tests/unit/test_workbench_read_model.py` | 验证工作台确定性错误的稳定中文输出和真实 `source_fragment` 标识/JSON Pointer 追溯。 |
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
+| `backend/tests/unit/test_chat_goal_execution.py`、`backend/tests/integration/test_goal_session_execution.py` | 验证 M3.8 Checkpoint 三类安全点、obligations hash 恢复门禁、非终态确定性模板、capability Observation 持久化、单 Finalizer，以及 TaskRun/Attempt/Delivery/Revision/下一 slice 原子事务、claim 幂等、过期 Attempt 接管、旧 Attempt fencing、故障回滚和同 Thread 单活跃约束。 |
+| `backend/tests/unit/test_chat_goal_interactive_benchmark.py`、`backend/tests/integration/test_chat_goal_interactive_executor.py` | 验证 M3.8-07 v2 suite/descriptor/attestation/指纹、typed oracle、Goal candidate/successor feasibility 和资格分母/scenario/family/safety 门禁；在真实 HTTP/Worker/PostgreSQL 上执行 8 个 family、三类 safe point、多消息 FIFO、提前 follow-up 409、clarification、Patch Apply、stale Apply 拒绝与 cancel。测试使用 Fake Provider，不触网。 |
 | `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 冻结输入哈希/DAG、模型 Candidate 接地与 provenance 门禁、服务器规范化和忽略 directive 措辞的语义签名，并保留 ScenePlanIR 确定性派生、NetworkX 查询和篡改失败关闭。 |
 | `backend/tests/unit/test_scene_plan_benchmark.py` | 验证 ScenePlan 24-task 审计矩阵到 v2 Input/ModelView/冻结 runtime reference 的确定性升级、8 个替代表达 G4 等价回归、v2 Safety mutation reason code、Shadow runtime 报告分母/fingerprint、Flash G3 候选/reference 传递与空响应单次重试、Task-cluster bootstrap、G3/G4 promotion checks、live Provider 注入路径与正式 24×3 Pro+Flash 参数失败关闭；测试本身不触网。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |

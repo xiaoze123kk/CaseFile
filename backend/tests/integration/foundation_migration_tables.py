@@ -1,6 +1,14 @@
 """Exact business-table inventory shared by foundation migration checks."""
 
 BUSINESS_TABLES = {
+    "agent_goal_deliveries",
+    "agent_goal_obligation_dependencies",
+    "agent_goal_obligations",
+    "agent_goal_observations",
+    "agent_goal_revisions",
+    "agent_goal_sessions",
+    "agent_goal_task_runs",
+    "agent_goal_transitions",
     "agent_model_calls",
     "agent_messages",
     "agent_patch_operations",

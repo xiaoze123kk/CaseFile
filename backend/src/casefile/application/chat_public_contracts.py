@@ -13,6 +13,8 @@ from casefile_contracts import (
     PublicAgentMessage,
     PublicAgentMessageReceipt,
     PublicAgentRun,
+    PublicGoalDelivery,
+    PublicGoalSession,
     PublicPatchResponse,
     PublicPatchReviewResult,
     PublicPatchSet,
@@ -99,9 +101,29 @@ def public_agent_message_view(value: dict[str, Any]) -> PublicAgentMessage:
 def public_agent_message_receipt_view(
     value: dict[str, Any],
 ) -> PublicAgentMessageReceipt:
+    goal_value = value.get("goal")
+    delivery_value = value.get("delivery")
     return PublicAgentMessageReceipt(
         user_message=public_agent_message_view(_required_dict(value, "user_message")),
         assistant_message=public_agent_message_view(_required_dict(value, "assistant_message")),
+        goal=(
+            goal_value
+            if isinstance(goal_value, PublicGoalSession)
+            else (
+                None
+                if not isinstance(goal_value, dict)
+                else PublicGoalSession.model_validate(goal_value)
+            )
+        ),
+        delivery=(
+            delivery_value
+            if isinstance(delivery_value, PublicGoalDelivery)
+            else (
+                None
+                if not isinstance(delivery_value, dict)
+                else PublicGoalDelivery.model_validate(delivery_value)
+            )
+        ),
     )
 
 
@@ -120,6 +142,8 @@ def public_agent_run_view(value: dict[str, Any]) -> PublicAgentRun:
     return PublicAgentRun.model_validate(
         {
             "run_id": int(value["task_run_id"]),
+            "goal_id": _optional_positive_int(value.get("goal_id")),
+            "goal_revision": _optional_nonnegative_int(value.get("goal_revision")),
             "status": status,
             "activity": (
                 _ACTIVITY_BY_STAGE.get(str(value.get("stage") or ""))
@@ -141,10 +165,16 @@ def public_patch_review_view(value: dict[str, Any]) -> PublicPatchReviewResult:
 
 
 def public_patch_response_view(value: dict[str, Any]) -> PublicPatchResponse:
+    goal = value.get("goal")
+    continuation = value.get("continuation_run")
     return PublicPatchResponse(
         patch=public_patch_set_view(value),
         review=public_patch_review_view(value),
         revision=int(value.get("draft_revision") or value.get("base_draft_revision") or 0),
+        goal=None if goal is None else PublicGoalSession.model_validate(goal),
+        continuation_run=(
+            None if continuation is None else public_agent_run_view(continuation)
+        ),
     )
 
 
@@ -235,7 +265,7 @@ def _response_kind(
 ) -> str:
     if role == "user":
         return "message"
-    if status == "failed":
+    if status in {"failed", "cancelled"}:
         return "failure"
     if patch is not None:
         return "patch_proposal"
@@ -260,7 +290,15 @@ def _failure_category(value: dict[str, Any]) -> str:
 
 def _message_status(value: Any) -> str:
     status = str(value or "failed")
-    return status if status in {"pending", "completed", "failed"} else "failed"
+    return status if status in {"pending", "completed", "failed", "cancelled"} else "failed"
+
+
+def _optional_positive_int(value: Any) -> int | None:
+    return int(value) if isinstance(value, int) and value >= 1 else None
+
+
+def _optional_nonnegative_int(value: Any) -> int | None:
+    return int(value) if isinstance(value, int) and value >= 0 else None
 
 
 def _required_dict(value: dict[str, Any], key: str) -> dict[str, Any]:

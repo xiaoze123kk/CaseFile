@@ -11,6 +11,9 @@
     "routing_feedback",
     "run",
     "event",
+    "goal_session",
+    "goal_delivery",
+    "goal_event",
     "patch_set",
     "patch_review",
     "patch_response"
@@ -21,6 +24,9 @@
     "routing_feedback": {"$ref": "#/$defs/PublicRoutingFeedbackReceipt"},
     "run": {"$ref": "#/$defs/PublicAgentRun"},
     "event": {"$ref": "#/$defs/PublicAgentEvent"},
+    "goal_session": {"$ref": "#/$defs/PublicGoalSession"},
+    "goal_delivery": {"$ref": "#/$defs/PublicGoalDelivery"},
+    "goal_event": {"$ref": "#/$defs/PublicGoalEvent"},
     "patch_set": {"$ref": "#/$defs/PublicPatchSet"},
     "patch_review": {"$ref": "#/$defs/PublicPatchReviewResult"},
     "patch_response": {"$ref": "#/$defs/PublicPatchResponse"}
@@ -40,12 +46,129 @@
         "retryable": {"type": "boolean"}
       }
     },
+    "PublicGoalSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goal_id",
+        "status",
+        "revision",
+        "waiting_for",
+        "active_run_id",
+        "active_patch_id",
+        "can_steer",
+        "can_follow_up",
+        "can_replace",
+        "cancellable",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "goal_id": {"type": "integer", "minimum": 1},
+        "status": {
+          "title": "PublicGoalStatus",
+          "type": "string",
+          "enum": [
+            "interpreting",
+            "running",
+            "waiting_clarification",
+            "waiting_patch_review",
+            "stale",
+            "completed",
+            "cancelled",
+            "superseded",
+            "failed"
+          ]
+        },
+        "revision": {"type": "integer", "minimum": 0},
+        "waiting_for": {
+          "title": "PublicGoalWaitingFor",
+          "type": "string",
+          "enum": ["none", "clarification", "patch_review", "stale"]
+        },
+        "active_run_id": {"type": ["integer", "null"], "minimum": 1},
+        "active_patch_id": {"type": ["integer", "null"], "minimum": 1},
+        "can_steer": {"type": "boolean"},
+        "can_follow_up": {"type": "boolean"},
+        "can_replace": {"type": "boolean"},
+        "cancellable": {"type": "boolean"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "PublicGoalDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delivery_id",
+        "goal_id",
+        "mode",
+        "status",
+        "message_id",
+        "response_message_id",
+        "expected_goal_revision",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "delivery_id": {"type": "integer", "minimum": 1},
+        "goal_id": {"type": "integer", "minimum": 1},
+        "successor_goal_id": {"type": ["integer", "null"], "minimum": 1},
+        "mode": {
+          "title": "PublicGoalDeliveryMode",
+          "type": "string",
+          "enum": ["steer", "follow_up", "replace"]
+        },
+        "status": {
+          "title": "PublicGoalDeliveryStatus",
+          "type": "string",
+          "enum": ["queued", "claimed", "consumed", "cancelled"]
+        },
+        "message_id": {"type": "integer", "minimum": 1},
+        "response_message_id": {"type": "integer", "minimum": 1},
+        "expected_goal_revision": {"type": "integer", "minimum": 1},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "PublicGoalEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "event", "status", "waiting_for", "goal"],
+      "properties": {
+        "sequence": {"type": "integer", "minimum": 1},
+        "event": {"const": "goal.transition"},
+        "status": {
+          "title": "PublicGoalEventStatus",
+          "type": "string",
+          "enum": [
+            "interpreting",
+            "running",
+            "waiting_clarification",
+            "waiting_patch_review",
+            "stale",
+            "completed",
+            "cancelled",
+            "superseded",
+            "failed"
+          ]
+        },
+        "waiting_for": {
+          "title": "PublicGoalEventWaitingFor",
+          "type": "string",
+          "enum": ["none", "clarification", "patch_review", "stale"]
+        },
+        "goal": {"$ref": "#/$defs/PublicGoalSession"}
+      }
+    },
     "PublicAgentRun": {
       "type": "object",
       "additionalProperties": false,
       "required": ["run_id", "status", "activity", "cancellable", "failure"],
       "properties": {
         "run_id": {"type": "integer", "minimum": 1},
+        "goal_id": {"type": ["integer", "null"], "minimum": 1},
+        "goal_revision": {"type": ["integer", "null"], "minimum": 0},
         "status": {
           "title": "PublicRunStatus",
           "type": "string",
@@ -226,6 +349,8 @@
       ],
       "properties": {
         "patch_id": {"type": "integer", "minimum": 1},
+        "goal_id": {"type": ["integer", "null"], "minimum": 1},
+        "goal_revision": {"type": ["integer", "null"], "minimum": 0},
         "title": {"type": "string", "minLength": 1, "maxLength": 200},
         "summary": {"type": "string", "minLength": 1, "maxLength": 1200},
         "status": {
@@ -288,11 +413,23 @@
     "PublicPatchResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["patch", "review", "revision"],
+      "required": ["patch", "review", "revision", "goal", "continuation_run"],
       "properties": {
         "patch": {"$ref": "#/$defs/PublicPatchSet"},
         "review": {"$ref": "#/$defs/PublicPatchReviewResult"},
-        "revision": {"type": "integer", "minimum": 0}
+        "revision": {"type": "integer", "minimum": 0},
+        "goal": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicGoalSession"},
+            {"type": "null"}
+          ]
+        },
+        "continuation_run": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicAgentRun"},
+            {"type": "null"}
+          ]
+        }
       }
     },
     "PublicAgentMessage": {
@@ -324,7 +461,7 @@
         "status": {
           "title": "PublicMessageStatus",
           "type": "string",
-          "enum": ["pending", "completed", "failed"]
+          "enum": ["pending", "completed", "failed", "cancelled"]
         },
         "response_kind": {
           "title": "PublicResponseKind",
@@ -370,7 +507,19 @@
       "required": ["user_message", "assistant_message"],
       "properties": {
         "user_message": {"$ref": "#/$defs/PublicAgentMessage"},
-        "assistant_message": {"$ref": "#/$defs/PublicAgentMessage"}
+        "assistant_message": {"$ref": "#/$defs/PublicAgentMessage"},
+        "goal": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicGoalSession"},
+            {"type": "null"}
+          ]
+        },
+        "delivery": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicGoalDelivery"},
+            {"type": "null"}
+          ]
+        }
       }
     },
     "PublicRoutingInterpretation": {

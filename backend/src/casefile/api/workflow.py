@@ -12,6 +12,8 @@ from casefile_contracts import (
     PublicAgentMessage,
     PublicAgentMessageReceipt,
     PublicAgentRun,
+    PublicGoalEvent,
+    PublicGoalSession,
     PublicPatchResponse,
     PublicPatchReviewResult,
     PublicRoutingFeedbackReceipt,
@@ -51,6 +53,7 @@ from casefile.application.chat_public_contracts import (
 )
 from casefile.application.chat_public_patches import resolve_public_warning_ids
 from casefile.application.errors import ApplicationError
+from casefile.application.goal_session_state import TERMINAL_GOAL_STATUSES
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError
 
@@ -243,7 +246,103 @@ def workflow_router() -> APIRouter:
                 routing_hint=(
                     None if payload.routing_hint is None else payload.routing_hint.model_dump()
                 ),
+                delivery_mode=payload.delivery_mode,
+                expected_goal_id=payload.expected_goal_id,
+                expected_goal_revision=payload.expected_goal_revision,
             )
+        )
+
+    @router.get(
+        "/projects/{project_id}/agent/goals/{goal_id}",
+        response_model=PublicGoalSession,
+    )
+    def get_agent_goal(
+        project_id: int,
+        goal_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> PublicGoalSession:
+        return WorkflowService(session).get_agent_goal(actor, project_id, goal_id)
+
+    @router.post(
+        "/projects/{project_id}/agent/goals/{goal_id}/cancel",
+        status_code=202,
+        response_model=PublicGoalSession,
+    )
+    def cancel_agent_goal(
+        project_id: int,
+        goal_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> PublicGoalSession:
+        return WorkflowService(session).cancel_agent_goal(actor, project_id, goal_id)
+
+    @router.get(
+        "/projects/{project_id}/agent/goals/{goal_id}/events",
+        response_model=list[PublicGoalEvent],
+    )
+    def get_agent_goal_events(
+        project_id: int,
+        goal_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+        after_sequence: int = 0,
+    ) -> list[PublicGoalEvent]:
+        return WorkflowService(session).list_agent_goal_events(
+            actor,
+            project_id,
+            goal_id,
+            after_sequence=after_sequence,
+        )
+
+    @router.get("/projects/{project_id}/agent/goals/{goal_id}/stream")
+    def stream_agent_goal(
+        project_id: int,
+        goal_id: int,
+        request: Request,
+        actor: ActorDependency,
+        session: SessionDependency,
+        last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    ) -> StreamingResponse:
+        WorkflowService(session).get_agent_goal(actor, project_id, goal_id)
+        after_sequence = _last_event_sequence(last_event_id)
+        factory = request.app.state.session_factory
+
+        def events() -> Iterator[str]:
+            cursor = after_sequence
+            idle_polls = 0
+            while True:
+                with factory() as stream_session:
+                    service = WorkflowService(stream_session)
+                    rows = service.list_agent_goal_events(
+                        actor,
+                        project_id,
+                        goal_id,
+                        after_sequence=cursor,
+                    )
+                    goal = service.get_agent_goal(actor, project_id, goal_id)
+                if rows:
+                    idle_polls = 0
+                    for event in rows:
+                        payload = event.model_dump(mode="json")
+                        cursor = int(payload["sequence"])
+                        yield _public_sse(payload)
+                else:
+                    idle_polls += 1
+                    if idle_polls % 20 == 0:
+                        yield ": keep-alive\n\n"
+                if goal.status.value in TERMINAL_GOAL_STATUSES and not rows:
+                    break
+                time.sleep(0.5)
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @router.post(

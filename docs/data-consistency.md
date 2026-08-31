@@ -23,6 +23,17 @@
 - Exposure Plan 先校验 `expected_draft_id`，再单独比较 Plan revision；成功重排只追加计划修订/条目/引用和审计，不创建 Draft Operation，不推进 Draft revision，也不修改 Event.time 或 Canon。
 - Snapshot 只能固定当前 Draft revision，由项目所有者创建；插入时同时锁定 CaseFile/Draft，并要求 CaseFile、Draft、Snapshot 三层 Schema 版本一致。Snapshot、Operation、Canon 与 Audit 只追加，普通 UPDATE/DELETE 必须被数据库拒绝。
 
+## M3.8 GoalSession 一致性冻结规则
+
+本节的完整状态机、投递顺序和预算定义见 `docs/m3.8-goal-session-runtime.md`。
+
+- 同一 Thread 同时最多一个非终态 GoalSession，并继续最多一个 queued/running/cancelling TaskRun。GoalSession 的 waiting/stale 状态不得伪装为长期 running TaskRun 或占用 Worker lease。
+- GoalRevision、obligation、依赖、observation 和 transition 只追加；GoalSession 当前状态是受状态转换矩阵约束的投影。身份、状态、版本、队列顺序和关系不得仅保存在 JSONB。
+- steer/replace 消息先按 Thread 消息顺序持久化，再由安全点 FIFO 单条领取。M3.8-06 在 Provider 解释 control 前把 FIFO 队首 lease 给当前 TaskAttempt；未过期 claim 阻止后项越序，过期 claim 只能由接管 TaskRun 的新 Attempt fencing 回收。当前 TaskRun/Attempt 成功终态、slice Checkpoint 哈希、单条 control 消费、GoalRevision/后继 Goal 与下一 queued TaskRun 保持同一事务。
+- Goal continuation 同时比较 expected Goal ID/revision 与 Current Draft ID/revision。任一不匹配进入冲突或 stale；不得自动 rebase，也不得复用旧 mutation candidate。
+- PatchSet 仍是审批/Apply 生命周期唯一权威。GoalSession 只保存关联和等待状态，不复制 Patch 操作、审阅决策或 Apply 事实。
+- M3.8 会话级预算固定为 8 revisions、12 TaskRun slices、6 次已消费 steer/replace；单 TaskRun 继续使用 M3.7 预算，二者都不能被自动 continuation 绕过。
+
 ## 候选采用与工作稿隔离
 
 - `brief_to_draft` 成功只产生不可变候选，不自动修改 Current Draft。候选采用以 `expected_current_draft_id` 为指针门禁，并重新校验 TaskRun 冻结的来源 Draft ID/revision、BriefVersion 和候选内容。

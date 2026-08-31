@@ -4674,6 +4674,302 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/agent/goals/{goal_id}": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Goal",
+        "operationId": "get_agent_goal_api_v1_projects__project_id__agent_goals__goal_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Goal Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGoalSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/goals/{goal_id}/cancel": {
+      "post": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Cancel Agent Goal",
+        "operationId": "cancel_agent_goal_api_v1_projects__project_id__agent_goals__goal_id__cancel_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Goal Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGoalSession"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/goals/{goal_id}/events": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Goal Events",
+        "operationId": "get_agent_goal_events_api_v1_projects__project_id__agent_goals__goal_id__events_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Goal Id"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "After Sequence"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicGoalEvent"
+                  },
+                  "title": "Response Get Agent Goal Events Api V1 Projects  Project Id  Agent Goals  Goal Id  Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/goals/{goal_id}/stream": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Stream Agent Goal",
+        "operationId": "stream_agent_goal_api_v1_projects__project_id__agent_goals__goal_id__stream_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Goal Id"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages/{message_id}/routing-feedback": {
       "post": {
         "tags": [
@@ -6898,6 +7194,47 @@
                 "type": "null"
               }
             ]
+          },
+          "delivery_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "new_goal",
+                  "steer",
+                  "follow_up",
+                  "replace"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Mode"
+          },
+          "expected_goal_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Goal Id"
+          },
+          "expected_goal_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Goal Revision"
           }
         },
         "additionalProperties": false,
@@ -8351,6 +8688,15 @@
         ],
         "title": "LogicalNormalizationRequest"
       },
+      "Mode": {
+        "type": "string",
+        "enum": [
+          "steer",
+          "follow_up",
+          "replace"
+        ],
+        "title": "Mode"
+      },
       "MutationCreateOperationRequest": {
         "properties": {
           "operation_type": {
@@ -8916,7 +9262,7 @@
             "title": "PublicMessageRole"
           },
           "status": {
-            "$ref": "#/components/schemas/Status4",
+            "$ref": "#/components/schemas/Status7",
             "title": "PublicMessageStatus"
           },
           "response_kind": {
@@ -9018,6 +9364,26 @@
           },
           "assistant_message": {
             "$ref": "#/components/schemas/PublicAgentMessage"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicGoalSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicGoalDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -9035,8 +9401,32 @@
             "minimum": 1.0,
             "title": "Run Id"
           },
+          "goal_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Id"
+          },
+          "goal_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Revision"
+          },
           "status": {
-            "$ref": "#/components/schemas/Status2",
+            "$ref": "#/components/schemas/Status5",
             "title": "PublicRunStatus"
           },
           "activity": {
@@ -9123,6 +9513,203 @@
           "statement"
         ],
         "title": "PublicFinding"
+      },
+      "PublicGoalDelivery": {
+        "properties": {
+          "delivery_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Delivery Id"
+          },
+          "goal_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Goal Id"
+          },
+          "successor_goal_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Successor Goal Id"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode",
+            "title": "PublicGoalDeliveryMode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status3",
+            "title": "PublicGoalDeliveryStatus"
+          },
+          "message_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Message Id"
+          },
+          "response_message_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Response Message Id"
+          },
+          "expected_goal_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Goal Revision"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "delivery_id",
+          "goal_id",
+          "mode",
+          "status",
+          "message_id",
+          "response_message_id",
+          "expected_goal_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PublicGoalDelivery"
+      },
+      "PublicGoalEvent": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "goal.transition",
+            "title": "Event"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status4",
+            "title": "PublicGoalEventStatus"
+          },
+          "waiting_for": {
+            "$ref": "#/components/schemas/WaitingFor",
+            "title": "PublicGoalEventWaitingFor"
+          },
+          "goal": {
+            "$ref": "#/components/schemas/PublicGoalSession"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "status",
+          "waiting_for",
+          "goal"
+        ],
+        "title": "PublicGoalEvent"
+      },
+      "PublicGoalSession": {
+        "properties": {
+          "goal_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Goal Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status2",
+            "title": "PublicGoalStatus"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision"
+          },
+          "waiting_for": {
+            "$ref": "#/components/schemas/WaitingFor",
+            "title": "PublicGoalWaitingFor"
+          },
+          "active_run_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Run Id"
+          },
+          "active_patch_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Patch Id"
+          },
+          "can_steer": {
+            "type": "boolean",
+            "title": "Can Steer"
+          },
+          "can_follow_up": {
+            "type": "boolean",
+            "title": "Can Follow Up"
+          },
+          "can_replace": {
+            "type": "boolean",
+            "title": "Can Replace"
+          },
+          "cancellable": {
+            "type": "boolean",
+            "title": "Cancellable"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal_id",
+          "status",
+          "revision",
+          "waiting_for",
+          "active_run_id",
+          "active_patch_id",
+          "can_steer",
+          "can_follow_up",
+          "can_replace",
+          "cancellable",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PublicGoalSession"
       },
       "PublicPatchActions": {
         "properties": {
@@ -9321,6 +9908,26 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Revision"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicGoalSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "continuation_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicAgentRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -9328,7 +9935,9 @@
         "required": [
           "patch",
           "review",
-          "revision"
+          "revision",
+          "goal",
+          "continuation_run"
         ],
         "title": "PublicPatchResponse"
       },
@@ -9396,6 +10005,30 @@
             "minimum": 1.0,
             "title": "Patch Id"
           },
+          "goal_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Id"
+          },
+          "goal_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Revision"
+          },
           "title": {
             "type": "string",
             "maxLength": 200,
@@ -9409,7 +10042,7 @@
             "title": "Summary"
           },
           "status": {
-            "$ref": "#/components/schemas/Status3",
+            "$ref": "#/components/schemas/Status6",
             "title": "PublicPatchStatus"
           },
           "review_rule": {
@@ -9718,6 +10351,46 @@
       "Status2": {
         "type": "string",
         "enum": [
+          "interpreting",
+          "running",
+          "waiting_clarification",
+          "waiting_patch_review",
+          "stale",
+          "completed",
+          "cancelled",
+          "superseded",
+          "failed"
+        ],
+        "title": "Status2"
+      },
+      "Status3": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "claimed",
+          "consumed",
+          "cancelled"
+        ],
+        "title": "Status3"
+      },
+      "Status4": {
+        "type": "string",
+        "enum": [
+          "interpreting",
+          "running",
+          "waiting_clarification",
+          "waiting_patch_review",
+          "stale",
+          "completed",
+          "cancelled",
+          "superseded",
+          "failed"
+        ],
+        "title": "Status4"
+      },
+      "Status5": {
+        "type": "string",
+        "enum": [
           "queued",
           "running",
           "cancelling",
@@ -9725,9 +10398,9 @@
           "failed",
           "cancelled"
         ],
-        "title": "Status2"
+        "title": "Status5"
       },
-      "Status3": {
+      "Status6": {
         "type": "string",
         "enum": [
           "pending",
@@ -9736,16 +10409,17 @@
           "stale",
           "rejected"
         ],
-        "title": "Status3"
+        "title": "Status6"
       },
-      "Status4": {
+      "Status7": {
         "type": "string",
         "enum": [
           "pending",
           "completed",
-          "failed"
+          "failed",
+          "cancelled"
         ],
-        "title": "Status4"
+        "title": "Status7"
       },
       "TimelineTimePreviewRequest": {
         "properties": {
@@ -9885,6 +10559,16 @@
           "blocked"
         ],
         "title": "VerificationStatus"
+      },
+      "WaitingFor": {
+        "type": "string",
+        "enum": [
+          "none",
+          "clarification",
+          "patch_review",
+          "stale"
+        ],
+        "title": "WaitingFor"
       }
     }
   }

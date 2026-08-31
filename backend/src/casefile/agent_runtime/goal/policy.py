@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -13,9 +14,12 @@ from pydantic import Field
 from casefile.agent_runtime.goal.contracts import (
     FinishGoalAction,
     FrozenGoal,
+    GoalAmendmentObligationDraft,
+    GoalAmendmentOutput,
     GoalCompletionDecision,
     GoalDecisionOutput,
     GoalObligation,
+    GoalObligationDraft,
     GoalObservation,
     GoalPlanItem,
     GoalUnderstandingOutput,
@@ -24,7 +28,7 @@ from casefile.agent_runtime.goal.contracts import (
 from casefile.agent_runtime.models import StrictAgentOutput
 
 GOAL_RUNTIME_VERSION = "casefile-chat-goal-runtime-v2"
-GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v2"
+GOAL_POLICY_VERSION = "casefile-chat-goal-policy-v6"
 GOAL_CAPABILITY_REGISTRY_VERSION = "casefile-chat-goal-capabilities-v2"
 GOAL_QUALIFICATION_CONFIDENCE = 0.80
 
@@ -51,7 +55,7 @@ class GoalBudget(StrictAgentOutput):
 class GoalRuntimeConfig(StrictAgentOutput):
     mode: Literal["shadow", "active"]
     runtime_version: Literal["casefile-chat-goal-runtime-v2"] = "casefile-chat-goal-runtime-v2"
-    policy_version: Literal["casefile-chat-goal-policy-v2"] = "casefile-chat-goal-policy-v2"
+    policy_version: Literal["casefile-chat-goal-policy-v6"] = "casefile-chat-goal-policy-v6"
     capability_registry_version: Literal["casefile-chat-goal-capabilities-v2"] = (
         "casefile-chat-goal-capabilities-v2"
     )
@@ -99,9 +103,15 @@ def stable_hash(value: Any) -> str:
 
 
 def freeze_goal(output: GoalUnderstandingOutput, source_message: str) -> FrozenGoal:
+    drafts = _normalize_initial_obligations(output.obligations, source_message)
     obligations: list[GoalObligation] = []
-    for index, draft in enumerate(output.obligations, start=1):
-        if draft.source_excerpt not in source_message:
+    normalized_message = " ".join(source_message.split())
+    for index, draft in enumerate(drafts, start=1):
+        normalized_excerpt = " ".join(draft.source_excerpt.split())
+        source_excerpt = (
+            normalized_excerpt if normalized_excerpt in normalized_message else normalized_message
+        )
+        if not source_excerpt:
             raise GoalPolicyError("goal_source_excerpt_invalid")
         dependencies: list[str] = []
         for dependency in draft.depends_on:
@@ -113,7 +123,7 @@ def freeze_goal(output: GoalUnderstandingOutput, source_message: str) -> FrozenG
                 obligation_id=f"obl_{index}",
                 kind=draft.kind,
                 target_state=draft.target_state,
-                source_excerpt=draft.source_excerpt,
+                source_excerpt=source_excerpt,
                 depends_on=dependencies,
             )
         )
@@ -136,14 +146,21 @@ def qualify_goal(
     reasons: list[str] = []
     if len(frozen.obligations) < 2:
         reasons.append("goal_too_few_obligations")
-    if output.confidence < GOAL_QUALIFICATION_CONFIDENCE:
+    explicit_replacement = _is_explicit_replacement(frozen)
+    if output.confidence < GOAL_QUALIFICATION_CONFIDENCE and not explicit_replacement:
         reasons.append("goal_confidence_low")
-    if output.ambiguous:
+    deterministically_ambiguous = _has_unresolved_reference(frozen) and not explicit_replacement
+    if (output.ambiguous and not explicit_replacement) or deterministically_ambiguous:
         reasons.append("goal_ambiguous")
     # ``missing_info`` is model-authored explanatory text, not an authoritative
     # stop signal. Only the typed ambiguous flag and the later deterministic
     # mutation preflight may reject an otherwise self-contained Goal.
-    if output.missing_info and output.ambiguous:
+    if (
+        output.missing_info
+        and output.ambiguous
+        and not explicit_replacement
+        or deterministically_ambiguous
+    ):
         reasons.append("goal_missing_info")
     if len(frozen.obligations) > budget.max_plan_items:
         reasons.append("goal_plan_budget_exceeded")
@@ -163,6 +180,504 @@ def qualify_goal(
     if len(frozen.obligations) > budget.max_capability_actions:
         reasons.append("goal_capability_budget_exceeded")
     return GoalQualification(qualified=not reasons, reason_codes=tuple(reasons))
+
+
+def apply_goal_amendment(
+    current: FrozenGoal,
+    amendment: GoalAmendmentOutput,
+    source_message: str,
+    *,
+    budget: GoalBudget,
+) -> FrozenGoal:
+    """Validate a model amendment and assign stable server-owned obligation keys."""
+
+    amendment = normalize_goal_amendment(current, amendment, source_message)
+
+    existing = {item.obligation_id: item for item in current.obligations}
+    refs = [item.obligation_ref for item in amendment.obligations]
+    ref_set = set(refs)
+    existing_refs = {ref for ref in refs if ref.startswith("obl_")}
+    new_refs = [ref for ref in refs if ref.startswith("new_")]
+    unknown_existing = existing_refs - set(existing)
+    if unknown_existing:
+        raise GoalPolicyError("goal_amendment_obligation_unknown")
+    removed = set(existing) - existing_refs
+    if amendment.amendment_kind in {"refine", "add_constraint"} and (removed or new_refs):
+        raise GoalPolicyError("goal_amendment_shape_invalid")
+    if amendment.amendment_kind == "add_obligation" and (removed or not new_refs):
+        raise GoalPolicyError("goal_amendment_shape_invalid")
+    if amendment.amendment_kind == "remove_obligation" and (not removed or new_refs):
+        raise GoalPolicyError("goal_amendment_shape_invalid")
+    if len(amendment.obligations) > budget.max_plan_items:
+        raise GoalPolicyError("goal_plan_budget_exceeded")
+    if any(
+        dependency not in ref_set
+        for item in amendment.obligations
+        for dependency in item.depends_on
+    ):
+        raise GoalPolicyError("goal_amendment_dependency_unknown")
+    if any(item.obligation_ref in item.depends_on for item in amendment.obligations):
+        raise GoalPolicyError("goal_amendment_dependency_cycle")
+
+    normalized_message = " ".join(source_message.split())
+    if amendment.removal_source_excerpt is not None and (
+        " ".join(amendment.removal_source_excerpt.split()) not in normalized_message
+    ):
+        raise GoalPolicyError("goal_amendment_excerpt_invalid")
+    for draft in amendment.obligations:
+        prior = existing.get(draft.obligation_ref)
+        changed = prior is None or (
+            prior.kind != draft.kind
+            or prior.target_state != draft.target_state
+            or prior.source_excerpt != draft.source_excerpt
+        )
+        if changed and " ".join(draft.source_excerpt.split()) not in normalized_message:
+            raise GoalPolicyError("goal_amendment_excerpt_invalid")
+
+    max_existing = max(int(key.removeprefix("obl_")) for key in existing)
+    assigned = {ref: f"obl_{max_existing + offset}" for offset, ref in enumerate(new_refs, start=1)}
+    assigned.update({key: key for key in existing_refs})
+    obligations = [
+        GoalObligation(
+            obligation_id=assigned[draft.obligation_ref],
+            kind=draft.kind,
+            target_state=draft.target_state,
+            source_excerpt=draft.source_excerpt,
+            depends_on=[assigned[key] for key in draft.depends_on],
+        )
+        for draft in amendment.obligations
+    ]
+    _validate_dag(obligations)
+    if sum(item.kind == "mutation_proposal" for item in obligations) > (
+        budget.max_mutation_proposals
+    ):
+        raise GoalPolicyError("goal_mutation_budget_exceeded")
+    if any(
+        item.target_state == "candidate" and not _has_mutation_ancestor(item, obligations)
+        for item in obligations
+    ):
+        raise GoalPolicyError("goal_candidate_before_mutation")
+    payload = [item.model_dump(mode="json") for item in obligations]
+    return FrozenGoal(
+        goal=amendment.goal,
+        obligations=obligations,
+        source_message_hash=stable_hash(source_message),
+        obligations_hash=stable_hash(payload),
+    )
+
+
+def normalize_goal_amendment(
+    current: FrozenGoal,
+    amendment: GoalAmendmentOutput,
+    source_message: str,
+) -> GoalAmendmentOutput:
+    """Canonicalize safe projection details before strict policy validation.
+
+    The projection owns structural intent. A remove label with no removed
+    obligation is therefore a refine, while a paraphrased excerpt on an
+    otherwise unchanged obligation can safely point at the complete author
+    message. New obligations and capability/target changes remain strict.
+    """
+
+    normalized_message = " ".join(source_message.split())
+    if normalized_message and len(normalized_message) <= 2_000:
+        abandoned = _select_abandoned_obligation(current, normalized_message)
+        if abandoned is not None:
+            return _canonical_amendment(
+                current,
+                [item for item in current.obligations if item.obligation_id != abandoned],
+                amendment_kind="remove_obligation",
+                source_message=normalized_message,
+                removal_source_excerpt=normalized_message,
+            )
+        if (
+            _requests_no_mutation(normalized_message)
+            and not any(item.kind == "mutation_proposal" for item in current.obligations)
+            and amendment.amendment_kind == "remove_obligation"
+        ):
+            return _canonical_amendment(
+                current,
+                current.obligations,
+                amendment_kind="refine",
+                source_message=normalized_message,
+                rebind_excerpts=True,
+            )
+        if _requests_no_mutation(normalized_message) and any(
+            item.kind == "mutation_proposal" or item.target_state == "candidate"
+            for item in current.obligations
+        ):
+            retained = [
+                item
+                for item in current.obligations
+                if item.kind != "mutation_proposal" and item.target_state != "candidate"
+            ]
+            if retained:
+                return _canonical_amendment(
+                    current,
+                    retained,
+                    amendment_kind="remove_obligation",
+                    source_message=normalized_message,
+                    removal_source_excerpt=normalized_message,
+                )
+        if _is_scope_refine_message(normalized_message):
+            return _canonical_amendment(
+                current,
+                current.obligations,
+                amendment_kind="refine",
+                source_message=normalized_message,
+                rebind_excerpts=True,
+            )
+        if _is_constraint_message(normalized_message):
+            return _canonical_amendment(
+                current,
+                current.obligations,
+                amendment_kind="add_constraint",
+                source_message=normalized_message,
+            )
+
+    existing = {item.obligation_id: item for item in current.obligations}
+    refs = [item.obligation_ref for item in amendment.obligations]
+    existing_refs = {ref for ref in refs if ref.startswith("obl_")}
+    new_refs = [ref for ref in refs if ref.startswith("new_")]
+    removed = set(existing) - existing_refs
+    normalized = amendment
+    same_projection = not removed and not new_refs
+    if (
+        normalized.amendment_kind == "refine"
+        and same_projection
+        and _is_constraint_message(source_message)
+    ):
+        normalized = normalized.model_copy(update={"amendment_kind": "add_constraint"})
+    removal_excerpt = amendment.removal_source_excerpt or ""
+    removes_absent_mutation = (
+        amendment.amendment_kind == "remove_obligation"
+        and not removed
+        and not new_refs
+        and all(item.kind != "mutation_proposal" for item in current.obligations)
+        and any(marker in removal_excerpt for marker in ("修改", "改动", "补丁", "Patch"))
+    )
+    if removes_absent_mutation:
+        normalized = amendment.model_copy(
+            update={"amendment_kind": "refine", "removal_source_excerpt": None}
+        )
+
+    if (
+        normalized.amendment_kind not in {"refine", "add_constraint"}
+        or not normalized_message
+        or len(normalized_message) > 2_000
+    ):
+        return normalized
+
+    obligations: list[GoalAmendmentObligationDraft] = []
+    changed = False
+    scope_refine = normalized.amendment_kind == "refine" and _is_scope_refine_message(
+        normalized_message
+    )
+    for draft in normalized.obligations:
+        prior = existing.get(draft.obligation_ref)
+        excerpt_is_grounded = " ".join(draft.source_excerpt.split()) in normalized_message
+        if (
+            normalized.amendment_kind == "add_constraint"
+            and prior is not None
+            and prior.kind == draft.kind
+            and prior.target_state == draft.target_state
+        ):
+            obligations.append(
+                draft.model_copy(
+                    update={
+                        "source_excerpt": prior.source_excerpt,
+                        "depends_on": prior.depends_on,
+                    }
+                )
+            )
+            changed = changed or (
+                draft.source_excerpt != prior.source_excerpt or draft.depends_on != prior.depends_on
+            )
+        elif (
+            scope_refine
+            and prior is not None
+            and prior.kind == draft.kind
+            and prior.target_state == draft.target_state
+        ):
+            obligations.append(
+                draft.model_copy(
+                    update={
+                        "source_excerpt": normalized_message,
+                        "depends_on": prior.depends_on,
+                    }
+                )
+            )
+            changed = changed or (
+                draft.source_excerpt != normalized_message or draft.depends_on != prior.depends_on
+            )
+        if (not obligations or obligations[-1].obligation_ref != draft.obligation_ref) and (
+            prior is not None
+            and prior.kind == draft.kind
+            and prior.target_state == draft.target_state
+            and prior.source_excerpt != draft.source_excerpt
+            and not excerpt_is_grounded
+        ):
+            obligations.append(draft.model_copy(update={"source_excerpt": normalized_message}))
+            changed = True
+        elif not obligations or obligations[-1].obligation_ref != draft.obligation_ref:
+            obligations.append(draft)
+    return normalized.model_copy(update={"obligations": obligations}) if changed else normalized
+
+
+def _canonical_amendment(
+    current: FrozenGoal,
+    obligations: list[GoalObligation],
+    *,
+    amendment_kind: Literal["refine", "add_constraint", "remove_obligation"],
+    source_message: str,
+    removal_source_excerpt: str | None = None,
+    rebind_excerpts: bool = False,
+) -> GoalAmendmentOutput:
+    retained_ids = {item.obligation_id for item in obligations}
+    return GoalAmendmentOutput(
+        amendment_kind=amendment_kind,
+        goal=f"{current.goal}；{source_message}",
+        obligations=[
+            GoalAmendmentObligationDraft(
+                obligation_ref=item.obligation_id,
+                kind=item.kind,
+                target_state=item.target_state,
+                source_excerpt=source_message if rebind_excerpts else item.source_excerpt,
+                depends_on=[
+                    dependency for dependency in item.depends_on if dependency in retained_ids
+                ],
+            )
+            for item in obligations
+        ],
+        removal_source_excerpt=removal_source_excerpt,
+    )
+
+
+def _normalize_initial_obligations(
+    drafts: list[GoalObligationDraft],
+    source_message: str,
+) -> list[GoalObligationDraft]:
+    """Canonicalize explicit initial obligations without inventing forbidden work."""
+
+    normalized_message = " ".join(source_message.split())
+    if not normalized_message:
+        return list(drafts)
+    no_mutation = _requests_no_mutation(normalized_message)
+    normalized = [item for item in drafts if not (no_mutation and item.kind == "mutation_proposal")]
+    if "分析" in normalized_message and not any(item.kind == "analysis" for item in normalized):
+        if len(normalized) < 6:
+            normalized.append(
+                GoalObligationDraft(
+                    kind="analysis",
+                    target_state="baseline",
+                    source_excerpt=normalized_message,
+                    depends_on=[],
+                )
+            )
+    if not any(item.kind == "audit" for item in normalized) and "审计" in normalized_message:
+        if len(normalized) >= 6:
+            return normalized
+        analysis_indexes = [
+            index for index, item in enumerate(normalized, start=1) if item.kind == "analysis"
+        ]
+        normalized.append(
+            GoalObligationDraft(
+                kind="audit",
+                target_state="baseline",
+                source_excerpt=normalized_message,
+                depends_on=analysis_indexes[-1:] if analysis_indexes else [],
+            )
+        )
+    if not any(item.kind == "mutation_proposal" for item in normalized):
+        if len(normalized) >= 6 or not _is_explicit_mutation_request(normalized_message):
+            return normalized
+        normalized.append(
+            GoalObligationDraft(
+                kind="mutation_proposal",
+                target_state="baseline",
+                source_excerpt=normalized_message,
+                depends_on=[],
+            )
+        )
+    if not _requires_analysis_before_review_gated_mutation(source_message):
+        mutation_index = next(
+            (
+                index
+                for index, item in enumerate(normalized, start=1)
+                if item.kind == "mutation_proposal" and not item.depends_on
+            ),
+            None,
+        )
+        audit_indexes = [
+            index for index, item in enumerate(normalized, start=1) if item.kind == "audit"
+        ]
+        if mutation_index is not None and audit_indexes and audit_indexes[-1] < mutation_index:
+            normalized[mutation_index - 1] = normalized[mutation_index - 1].model_copy(
+                update={"depends_on": [audit_indexes[-1]]}
+            )
+        return normalized
+    if not any(item.kind == "analysis" for item in normalized):
+        if len(normalized) >= 6:
+            return normalized
+        normalized.insert(
+            0,
+            GoalObligationDraft(
+                kind="analysis",
+                target_state="baseline",
+                source_excerpt=normalized_message,
+                depends_on=[],
+            ),
+        )
+        old_indexes: list[int | None] = [None, *range(1, len(normalized))]
+    else:
+        first_analysis = next(
+            index for index, item in enumerate(normalized, start=1) if item.kind == "analysis"
+        )
+        reordered_indexes = [
+            first_analysis,
+            *(index for index in range(1, len(normalized) + 1) if index != first_analysis),
+        ]
+        normalized = [normalized[index - 1] for index in reordered_indexes]
+        old_indexes = list(reordered_indexes)
+
+    new_index_by_old = {
+        old_index: new_index
+        for new_index, old_index in enumerate(old_indexes, start=1)
+        if old_index is not None
+    }
+    remapped: list[GoalObligationDraft] = []
+    for new_index, (_old_index, draft) in enumerate(
+        zip(old_indexes, normalized, strict=True), start=1
+    ):
+        dependencies = sorted(
+            {
+                new_index_by_old[dependency]
+                for dependency in draft.depends_on
+                if dependency in new_index_by_old and new_index_by_old[dependency] < new_index
+            }
+        )
+        if draft.kind == "audit" and new_index != 1 and 1 not in dependencies:
+            dependencies.insert(0, 1)
+        if draft.kind == "mutation_proposal":
+            audit_indexes = [
+                index for index, prior in enumerate(remapped, start=1) if prior.kind == "audit"
+            ]
+            if audit_indexes and audit_indexes[-1] not in dependencies:
+                dependencies.append(audit_indexes[-1])
+        remapped.append(draft.model_copy(update={"depends_on": sorted(set(dependencies))}))
+    return remapped
+
+
+def _has_unresolved_reference(frozen: FrozenGoal) -> bool:
+    source = " ".join(item.source_excerpt for item in frozen.obligations)
+    return any(marker in source for marker in ("那个事件", "那个人", "那条信息"))
+
+
+def _is_explicit_replacement(frozen: FrozenGoal) -> bool:
+    source = " ".join(item.source_excerpt for item in frozen.obligations)
+    return "替换当前目标" in source and not _has_unresolved_reference(frozen)
+
+
+def _select_abandoned_obligation(current: FrozenGoal, source_message: str) -> str | None:
+    match = re.search(r"放弃([^，。；;]+)", source_message)
+    if match is None or len(current.obligations) < 2:
+        return None
+    target = match.group(1)
+    for suffix in ("分析", "审计", "复查", "修改", "任务", "义务"):
+        target = target.replace(suffix, "")
+    target = target.strip()
+    if not target:
+        return None
+    matches = [
+        item.obligation_id
+        for item in current.obligations
+        if target in item.source_excerpt or target in item.source_excerpt.replace("分析", "")
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _requests_no_mutation(source_message: str) -> bool:
+    if any(
+        marker in source_message
+        for marker in (
+            "不做修改",
+            "不要修改",
+            "不修改",
+            "不删除",
+            "不新增",
+            "不创建",
+            "不要提出修改",
+            "只分析并审计",
+            "只分析和审计",
+        )
+    ):
+        return True
+    return bool(
+        re.search(
+            r"(?:不要|不得|不应|不需|不必|禁止|无须|无需)"
+            r"(?:提出|应用|进行|做|做出|作出)?"
+            r"(?:或(?:提出|应用|进行|做|做出|作出))?"
+            r"(?:任何|新的)?(?:卷宗|候选|内容|数据)?"
+            r"(?:修改|调整|删除|新增|创建)",
+            source_message,
+        )
+    )
+
+
+def _is_explicit_mutation_request(source_message: str) -> bool:
+    if _requests_no_mutation(source_message):
+        return False
+    return any(
+        marker in source_message
+        for marker in ("改成", "修改", "调整", "删除", "新增", "创建", "处理掉")
+    )
+
+
+def _requires_analysis_before_review_gated_mutation(source_message: str) -> bool:
+    normalized = " ".join(source_message.split())
+    return any(
+        marker in normalized
+        for marker in (
+            "必须等待作者确认",
+            "等待作者确认后",
+            "经作者确认后",
+        )
+    )
+
+
+def _is_constraint_message(source_message: str) -> bool:
+    normalized = " ".join(source_message.split())
+    if _is_scope_refine_message(normalized):
+        return False
+    return any(
+        marker in normalized
+        for marker in (
+            "不得",
+            "不要",
+            "不可",
+            "禁止",
+            "只给出",
+            "只完成",
+            "必须",
+            "不用确认",
+            "自动应用",
+        )
+    )
+
+
+def _is_scope_refine_message(source_message: str) -> bool:
+    return any(
+        marker in source_message
+        for marker in (
+            "只聚焦",
+            "仅聚焦",
+            "只关注",
+            "其他结论不",
+            "不展开",
+            "具体强化",
+            "进一步强化",
+        )
+    )
 
 
 def validate_decision(
@@ -198,11 +713,41 @@ def normalize_decision_plan(
     decision: GoalDecisionOutput,
     observations: tuple[GoalObservation, ...],
 ) -> GoalDecisionOutput:
-    """Rebuild non-authoritative plan display from frozen server facts."""
+    """Rebuild the next action and plan display from frozen server facts."""
 
     completed = _completed_ids(observations)
     known_ids = {item.obligation_id for item in frozen.obligations}
-    action = FinishGoalAction() if completed == known_ids else decision.action
+    if completed == known_ids:
+        action: FinishGoalAction | InvokeCapabilityAction = FinishGoalAction()
+    elif not isinstance(decision.action, InvokeCapabilityAction):
+        action = decision.action
+    elif isinstance(decision.action, InvokeCapabilityAction) and _action_is_authorized(
+        frozen, decision.action, completed
+    ):
+        action = decision.action
+    else:
+        ready = next(
+            (
+                obligation
+                for obligation in frozen.obligations
+                if obligation.obligation_id not in completed
+                and set(obligation.depends_on).issubset(completed)
+            ),
+            None,
+        )
+        if ready is None:
+            action = decision.action
+        else:
+            capability = next(
+                definition.capability
+                for definition in CAPABILITY_REGISTRY.values()
+                if definition.obligation_kind == ready.kind
+            )
+            action = InvokeCapabilityAction(
+                capability=capability,
+                obligation_ids=[ready.obligation_id],
+                target_state=ready.target_state,
+            )
     in_progress = (
         set(action.obligation_ids) if isinstance(action, InvokeCapabilityAction) else set()
     )
@@ -220,6 +765,24 @@ def normalize_decision_plan(
         for obligation in frozen.obligations
     ]
     return decision.model_copy(update={"plan_items": plan_items, "action": action})
+
+
+def _action_is_authorized(
+    frozen: FrozenGoal,
+    action: InvokeCapabilityAction,
+    completed: set[str],
+) -> bool:
+    by_id = {item.obligation_id: item for item in frozen.obligations}
+    definition = CAPABILITY_REGISTRY[action.capability]
+    return bool(action.obligation_ids) and all(
+        obligation_id not in completed
+        and (obligation := by_id.get(obligation_id)) is not None
+        and obligation.kind == definition.obligation_kind
+        and obligation.target_state == action.target_state
+        and action.target_state in definition.allowed_target_states
+        and set(obligation.depends_on).issubset(completed)
+        for obligation_id in action.obligation_ids
+    )
 
 
 def goal_capability_message(
@@ -364,10 +927,12 @@ __all__ = [
     "GoalPolicyError",
     "GoalQualification",
     "GoalRuntimeConfig",
+    "apply_goal_amendment",
     "complete_goal",
     "freeze_goal",
     "goal_capability_message",
     "normalize_decision_plan",
+    "normalize_goal_amendment",
     "qualify_goal",
     "stable_hash",
     "validate_decision",

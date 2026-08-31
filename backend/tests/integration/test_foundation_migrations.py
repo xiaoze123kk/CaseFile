@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 66-table personal foundation."""
+"""Disposable PostgreSQL verification for the 74-table personal foundation."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from casefile.application.goal_session_repository import GoalSessionRepository
 from foundation_migration_exposure import (
     assert_legacy_exposure_revision_v1,
     seed_legacy_exposure_revision,
@@ -25,6 +26,7 @@ from foundation_migration_exposure import (
 from foundation_migration_tables import BUSINESS_TABLES
 from foundation_migration_types import Lineage, MigrationCompatibilityIds
 from sqlalchemy.engine import Connection, Engine, make_url
+from sqlalchemy.orm import Session
 
 pytestmark = pytest.mark.postgres
 
@@ -69,6 +71,17 @@ def migrated_engine() -> Iterator[Engine]:
                 engine,
                 compatibility_ids.project_id,
             )
+            command.upgrade(config, "20260826175944")
+            assert not {
+                "agent_goal_sessions",
+                "agent_goal_revisions",
+                "agent_goal_obligations",
+                "agent_goal_obligation_dependencies",
+                "agent_goal_deliveries",
+                "agent_goal_observations",
+                "agent_goal_task_runs",
+                "agent_goal_transitions",
+            } & set(sa.inspect(engine).get_table_names())
             command.upgrade(config, "head")
             assert_legacy_exposure_revision_v1(engine, legacy_exposure_revision_id)
             first_forward = _assert_forward_migration_documents(
@@ -793,7 +806,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_66_identity_tables_without_team_columns(
+def test_database_has_74_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -807,7 +820,7 @@ def test_database_has_66_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 66
+    assert len(identity_rows) == 74
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
@@ -823,6 +836,219 @@ def test_database_has_66_identity_tables_without_team_columns(
     flat_names = {name for row in columns for name in row}
     assert ("casefile_objects", "payload_jsonb") not in column_pairs
     assert not any("workspace" in name or "membership" in name for name in flat_names)
+
+
+def _insert_goal_thread_and_message(
+    connection: Connection, lineage: Lineage, label: str
+) -> tuple[int, int]:
+    thread_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO agent_threads (
+                    project_id, casefile_id, draft_id, created_by_user_id,
+                    title, title_source, status
+                ) VALUES (
+                    :project_id, :casefile_id, :draft_id, :owner_id,
+                    :title, 'auto', 'active'
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": lineage.project_id,
+                "casefile_id": lineage.casefile_id,
+                "draft_id": lineage.draft_id,
+                "owner_id": lineage.owner_id,
+                "title": f"Goal thread {label}",
+            },
+        ).scalar_one()
+    )
+    message_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO agent_messages (
+                    project_id, thread_id, sequence_no, role, status,
+                    content_text, created_by_user_id
+                ) VALUES (
+                    :project_id, :thread_id, 1, 'user', 'completed',
+                    :content, :owner_id
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": lineage.project_id,
+                "thread_id": thread_id,
+                "content": f"Goal {label}",
+                "owner_id": lineage.owner_id,
+            },
+        ).scalar_one()
+    )
+    return thread_id, message_id
+
+
+def _insert_goal_session(
+    connection: Connection,
+    lineage: Lineage,
+    thread_id: int,
+    message_id: int,
+    *,
+    status: str = "interpreting",
+) -> int:
+    return int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO agent_goal_sessions (
+                    project_id, casefile_id, draft_id, thread_id,
+                    source_message_id, created_by_user_id, status,
+                    runtime_version, policy_version, capability_registry_version,
+                    baseline_draft_revision, baseline_hash
+                ) VALUES (
+                    :project_id, :casefile_id, :draft_id, :thread_id,
+                    :message_id, :owner_id, :status,
+                    'goal-runtime-v1', 'goal-policy-v1', 'goal-capabilities-v1',
+                    1, :baseline_hash
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": lineage.project_id,
+                "casefile_id": lineage.casefile_id,
+                "draft_id": lineage.draft_id,
+                "thread_id": thread_id,
+                "message_id": message_id,
+                "owner_id": lineage.owner_id,
+                "status": status,
+                "baseline_hash": "a" * 64,
+            },
+        ).scalar_one()
+    )
+
+
+def test_goal_session_ownership_active_uniqueness_and_terminal_immutability(
+    connection: Connection,
+) -> None:
+    first = _seed_lineage(connection, "goal-session-first")
+    second = _seed_lineage(connection, "goal-session-second")
+    first_thread_id, first_message_id = _insert_goal_thread_and_message(connection, first, "first")
+    second_thread_id, _ = _insert_goal_thread_and_message(connection, second, "second")
+
+    goal_id = _insert_goal_session(connection, first, first_thread_id, first_message_id)
+    assert goal_id > 0
+
+    with _expect_database_error(connection):
+        _insert_goal_session(connection, first, first_thread_id, first_message_id)
+
+    with _expect_database_error(connection):
+        _insert_goal_session(connection, first, second_thread_id, first_message_id)
+
+    connection.execute(
+        sa.text(
+            "UPDATE agent_goal_sessions SET status = 'cancelled', "
+            "terminal_reason_code = 'user_cancelled' WHERE id = :goal_id"
+        ),
+        {"goal_id": goal_id},
+    )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                "UPDATE agent_goal_sessions SET terminal_reason_code = 'rewritten' "
+                "WHERE id = :goal_id"
+            ),
+            {"goal_id": goal_id},
+        )
+
+
+def test_cancelled_assistant_message_requires_empty_content(
+    connection: Connection,
+) -> None:
+    lineage = _seed_lineage(connection, "cancelled-message")
+    thread_id, _ = _insert_goal_thread_and_message(connection, lineage, "cancelled")
+    message_id = connection.execute(
+        sa.text(
+            """
+            INSERT INTO agent_messages (
+                project_id, thread_id, sequence_no, role, status, content_text
+            ) VALUES (
+                :project_id, :thread_id, 2, 'assistant', 'cancelled', NULL
+            ) RETURNING id
+            """
+        ),
+        {"project_id": lineage.project_id, "thread_id": thread_id},
+    ).scalar_one()
+    assert int(message_id) > 0
+
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO agent_messages (
+                    project_id, thread_id, sequence_no, role, status, content_text
+                ) VALUES (
+                    :project_id, :thread_id, 3, 'assistant', 'cancelled', 'stale text'
+                )
+                """
+            ),
+            {"project_id": lineage.project_id, "thread_id": thread_id},
+        )
+
+
+def test_goal_session_repository_appends_revision_and_transition(
+    connection: Connection,
+) -> None:
+    lineage = _seed_lineage(connection, "goal-repository")
+    thread_id, message_id = _insert_goal_thread_and_message(connection, lineage, "repository")
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    try:
+        repository = GoalSessionRepository(session)
+        goal = repository.create_interpreting(
+            project_id=lineage.project_id,
+            casefile_id=lineage.casefile_id,
+            draft_id=lineage.draft_id,
+            thread_id=thread_id,
+            source_message_id=message_id,
+            actor_user_id=lineage.owner_id,
+            runtime_version="goal-runtime-v1",
+            policy_version="goal-policy-v1",
+            capability_registry_version="goal-capabilities-v1",
+            baseline_draft_revision=1,
+            baseline_hash="a" * 64,
+            initial_state_hash="b" * 64,
+        )
+        revision = repository.append_revision(
+            goal,
+            source_message_id=message_id,
+            amendment_kind="initial",
+            goal_text="分析当前草稿并提出修改建议",
+            source_excerpt="分析当前草稿",
+            obligations_hash="c" * 64,
+            state_hash="d" * 64,
+            baseline_draft_revision=1,
+            baseline_hash="a" * 64,
+        )
+        repository.transition(
+            goal,
+            target_status="running",
+            reason_code="goal_interpreted",
+            state_hash="e" * 64,
+            goal_revision_id=revision.id,
+            source_message_id=message_id,
+        )
+        session.flush()
+
+        assert goal.status == "running"
+        assert goal.current_revision_id == revision.id
+        assert goal.revision_count == 1
+        assert (
+            session.scalar(
+                sa.select(sa.func.count()).select_from(sa.table("agent_goal_transitions"))
+            )
+            == 2
+        )
+    finally:
+        session.rollback()
+        session.close()
 
 
 def test_registry_revision_confidence_status_and_stable_id_checks(

@@ -76,6 +76,7 @@ from casefile.agent_runtime.general_mutation import (
     general_mutation_request_budget_reason,
     general_mutation_request_dependency_reason,
 )
+from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
     ChatTaskUnderstanding,
@@ -1379,6 +1380,9 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v15",
             "casefile-chat-v16",
             "casefile-chat-v17",
+            "casefile-chat-v18",
+            "casefile-chat-v19",
+            "casefile-chat-v20",
         }:
             raise RuntimeError(
                 "Context policy "
@@ -1697,6 +1701,8 @@ class ChatCompletionRuntime(_ChatComponent):
         repair_envelope: dict[str, Any] | None = None,
         repair_usage: dict[str, Any] | None = None,
         general_mutation_envelope: dict[str, Any] | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        goal_checkpoint: GoalExecutionCheckpoint | None = None,
     ) -> None:
         suggestions: list[dict[str, Any]] = []
         for suggestion in result.candidate.suggestions:
@@ -1750,6 +1756,8 @@ class ChatCompletionRuntime(_ChatComponent):
                 tools=result.tools.as_dict(),
                 repair_envelope=repair_envelope,
                 general_mutation_envelope=general_mutation_envelope,
+                frozen_goal=frozen_goal,
+                goal_checkpoint=goal_checkpoint,
             )
 
 
@@ -1778,6 +1786,115 @@ class ChatTaskExecutor:
 
     def _goal_cancelled(self, task_run_id: int) -> bool:
         return self._requests._goal_cancelled(task_run_id)
+
+    def _initialize_goal_task(self, task_run_id: int, frozen_goal: FrozenGoal) -> None:
+        with self._context.session_factory() as session:
+            WorkflowService(session).initialize_agent_goal_task(task_run_id, frozen_goal)
+
+    def _goal_control_pending(self, task_run_id: int) -> bool:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).has_pending_agent_goal_control(task_run_id)
+
+    def _goal_pending_control_mode(self, task_run_id: int) -> str | None:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).pending_agent_goal_control_mode(task_run_id)
+
+    def _claim_goal_control(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+    ) -> dict[str, Any] | None:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).claim_agent_goal_control(
+                task_run_id,
+                attempt_id,
+            )
+
+    def _pause_goal_for_clarification(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        missing_info: list[str],
+        usage: dict[str, Any],
+    ) -> None:
+        with self._context.session_factory() as session:
+            WorkflowService(session).pause_agent_goal_task_for_clarification(
+                task_run_id,
+                attempt_id,
+                missing_info=missing_info,
+                usage=usage,
+            )
+
+    def _initialize_waiting_goal_amendment(
+        self,
+        task_run_id: int,
+        *,
+        delivery_id: int,
+        amended_goal: FrozenGoal,
+        amendment_kind: str,
+    ) -> None:
+        with self._context.session_factory() as session:
+            WorkflowService(session).initialize_waiting_goal_amendment_task(
+                task_run_id,
+                delivery_id=delivery_id,
+                amended_goal=amended_goal,
+                amendment_kind=amendment_kind,
+            )
+
+    def _checkpoint_goal_task(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        frozen_goal: FrozenGoal,
+        checkpoint: GoalExecutionCheckpoint,
+        safe_point: str,
+        usage: dict[str, Any],
+        tools: dict[str, Any],
+        delivery_id: int | None = None,
+        amended_goal: FrozenGoal | None = None,
+        amendment_kind: str | None = None,
+    ) -> int:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).checkpoint_agent_goal_task(
+                task_run_id,
+                attempt_id,
+                frozen_goal=frozen_goal,
+                checkpoint=checkpoint,
+                safe_point=safe_point,
+                usage=usage,
+                tools=tools,
+                delivery_id=delivery_id,
+                amended_goal=amended_goal,
+                amendment_kind=amendment_kind,
+            )
+
+    def _replace_goal_task(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        frozen_goal: FrozenGoal,
+        checkpoint: GoalExecutionCheckpoint,
+        delivery_id: int,
+        replacement_goal: FrozenGoal,
+        safe_point: str,
+        usage: dict[str, Any],
+        tools: dict[str, Any],
+    ) -> int:
+        with self._context.session_factory() as session:
+            return WorkflowService(session).replace_agent_goal_task(
+                task_run_id,
+                attempt_id,
+                frozen_goal=frozen_goal,
+                checkpoint=checkpoint,
+                delivery_id=delivery_id,
+                replacement_goal=replacement_goal,
+                safe_point=safe_point,
+                usage=usage,
+                tools=tools,
+            )
 
     def _load_reusable_goal_step(
         self,
@@ -1867,6 +1984,8 @@ class ChatTaskExecutor:
         repair_envelope: dict[str, Any] | None = None,
         repair_usage: dict[str, Any] | None = None,
         general_mutation_envelope: dict[str, Any] | None = None,
+        frozen_goal: FrozenGoal | None = None,
+        goal_checkpoint: GoalExecutionCheckpoint | None = None,
     ) -> None:
         self._completion._complete_chat(
             task_run_id,
@@ -1876,6 +1995,8 @@ class ChatTaskExecutor:
             repair_envelope=repair_envelope,
             repair_usage=repair_usage,
             general_mutation_envelope=general_mutation_envelope,
+            frozen_goal=frozen_goal,
+            goal_checkpoint=goal_checkpoint,
         )
 
 

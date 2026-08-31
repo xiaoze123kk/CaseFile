@@ -24,6 +24,8 @@ from casefile.agent_runtime.general_mutation import (
 )
 from casefile.agent_runtime.goal.provider import (
     ChatEvidenceCollection,
+    GoalAmendmentRequest,
+    GoalAmendmentResult,
     GoalDecisionRequest,
     GoalDecisionResult,
     GoalFinalizerRequest,
@@ -95,6 +97,8 @@ class AgentProvider(GenerationProvider, Protocol):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
 
     def understand_goal(self, request: GoalUnderstandingRequest) -> GoalUnderstandingResult: ...
+
+    def amend_goal(self, request: GoalAmendmentRequest) -> GoalAmendmentResult: ...
 
     def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult: ...
 
