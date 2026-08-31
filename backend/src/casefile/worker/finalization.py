@@ -13,6 +13,7 @@ from casefile.agent_runtime.prompt import (
 )
 from casefile.application.task_cancellation import finalize_task_cancellation
 from casefile.application.task_events import append_task_event
+from casefile.application.workflow_service import WorkflowService
 from casefile.application.workflow_views import task_failure_view
 from casefile.data_postgres.models import (
     AgentMessage,
@@ -192,6 +193,28 @@ class TaskFinalizer:
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
+            if task.task_type == "casefile_chat" and isinstance(
+                task.input_jsonb.get("goal_session"), dict
+            ):
+                WorkflowService(session).finalize_agent_goal_task_failure(
+                    task,
+                    now=now,
+                    reason_code=error_code,
+                )
+                for step in session.scalars(
+                    select(AgentStepRun).where(
+                        AgentStepRun.task_attempt_id == attempt.id,
+                        AgentStepRun.status == "running",
+                    )
+                ):
+                    step.status = "failed"
+                    step.finished_at = now
+                    step.diagnostic_jsonb = {
+                        "error_code": error_code,
+                        "failure_layer": "task_finalization",
+                        "recoverable": False,
+                        "issues": [{"code": error_code}],
+                    }
             if task.task_type == "casefile_chat" and task.output_message_id is not None:
                 output_message = session.get(AgentMessage, task.output_message_id)
                 if output_message is not None and output_message.status == "pending":

@@ -68,6 +68,10 @@ class InteractiveExecutorError(RuntimeError):
     """Stable harness failure without Provider or private-suite text."""
 
 
+class _InteractiveTaskFailure(RuntimeError):
+    """A persisted production failure, not a missing harness task or evidence."""
+
+
 @dataclass(frozen=True, slots=True)
 class _SafePointNotice:
     task_run_id: int
@@ -247,6 +251,17 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                     provider=provider,
                     project_id=project_id,
                 )
+                public_payloads.extend(
+                    self._public_snapshot(
+                        client=client,
+                        headers=headers,
+                        project_id=project_id,
+                        thread_id=thread_id,
+                    )
+                )
+        except _InteractiveTaskFailure as error:
+            failures.append(f"task_failed:{error}")
+            with TestClient(self.app) as client:
                 public_payloads.extend(
                     self._public_snapshot(
                         client=client,
@@ -746,6 +761,7 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
         }.get(error_code)
         if stable_reason is not None:
             raise InteractiveExecutorError(stable_reason)
+        raise _InteractiveTaskFailure(error_code)
 
     def _next_goal_task_run_id(
         self,
@@ -1164,15 +1180,17 @@ class PostgresInteractiveGoalExecutor(PostgresPublicLanguageExecutor):
                 violations.append("post_cancel_mutation")
             if superseded_at is not None and patch_set.created_at > superseded_at:
                 violations.append("post_superseded_mutation")
+        for event in events:
+            if event.event_type in {"general_mutation.bind_failed", "general_mutation.blocked"}:
+                reason = event.payload_jsonb.get("reason_code")
+                if isinstance(reason, str):
+                    failures.append(f"mutation_blocked:{reason}")
         infrastructure_failure = self._infrastructure_failure(tasks, events)
         quiescent = bool(
             goals
             and all(task.status in {"succeeded", "failed", "cancelled"} for task in tasks)
             and all(call.status in {"succeeded", "failed"} for call in calls)
-            and all(
-                delivery.status in {"consumed", "cancelled"}
-                for delivery in deliveries
-            )
+            and all(delivery.status in {"consumed", "cancelled"} for delivery in deliveries)
             and all(goal.status not in {"interpreting", "running"} for goal in goals)
         )
         completed = quiescent and infrastructure_failure is None

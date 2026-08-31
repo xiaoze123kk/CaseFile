@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
+from casefile.agent_runtime.general_mutation import (
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+)
 from casefile.agent_runtime.goal.contracts import (
     GoalAmendmentOutput,
     GoalDecisionOutput,
@@ -14,6 +19,7 @@ from casefile.agent_runtime.goal.contracts import (
 )
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
+from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.chat_goal_interactive_executor import (
     PostgresInteractiveGoalExecutor,
 )
@@ -26,7 +32,14 @@ from casefile.benchmark.chat_goal_interactive_suite import (
     load_dev_suite,
 )
 from casefile.contracts import validate_casefile
-from sqlalchemy import Engine
+from casefile.data_postgres.models import (
+    AgentGoalDelivery,
+    AgentGoalSession,
+    AgentMessage,
+    AgentStepRun,
+    TaskRun,
+)
+from sqlalchemy import Engine, select
 
 pytestmark = pytest.mark.postgres
 
@@ -289,6 +302,147 @@ def test_read_only_goal_reaches_before_finalizer_without_mutation(
     assert evidence["capability_starts_before_consumption"] == 0
     assert evidence["amendment_valid"] is True
     assert evidence["violations"] == ()
+
+
+@pytest.mark.parametrize("at_safe_point", [False, True])
+@pytest.mark.parametrize("queue_control", [False, True])
+def test_rejected_mutation_closes_goal_and_preserves_failure_evidence(
+    workflow_database: tuple[Engine, int, str],
+    at_safe_point: bool,
+    queue_control: bool,
+) -> None:
+    engine, _actor_id, master_key = workflow_database
+    source = next(
+        item for item in load_dev_suite().scenarios if item.family == "patch_review_resume"
+    )
+
+    class ForbiddenFieldProvider(_InteractiveFamilyFakeProvider):
+        def plan_general_mutation(
+            self,
+            request: GeneralMutationPlannerRequest,
+        ) -> GeneralMutationPlannerResult:
+            if queue_control:
+                with executor.session_factory() as session:
+                    task = session.get(TaskRun, request.task_run_id)
+                    assert task is not None
+                    goal = session.get(
+                        AgentGoalSession, task.input_jsonb["goal_session"]["goal_id"]
+                    )
+                    assert goal is not None
+                    actor_id, project_id, thread_id = (
+                        goal.created_by_user_id,
+                        goal.project_id,
+                        goal.thread_id,
+                    )
+                    draft_id, revision, goal_id, goal_revision = (
+                        goal.draft_id,
+                        goal.baseline_draft_revision,
+                        goal.id,
+                        goal.revision_count,
+                    )
+                with executor.session_factory() as session:
+                    WorkflowService(session).send_agent_message(
+                        actor_id,
+                        project_id,
+                        thread_id,
+                        expected_draft_id=draft_id,
+                        expected_draft_revision=revision,
+                        content="保留原目标并等待作者确认。",
+                        delivery_mode="steer",
+                        expected_goal_id=goal_id,
+                        expected_goal_revision=goal_revision,
+                    )
+            result = super().plan_general_mutation(request)
+            data = result.candidate.model_dump(mode="json")
+            data["operations"] = [
+                {
+                    "operation_type": "update_field",
+                    "operation_key": "invalid_update",
+                    "target": {
+                        "ref_kind": "existing",
+                        "object_id": request.casefile["events"][0]["id"],
+                    },
+                    "field_path": "/revision",
+                    "new_value": 999,
+                    "reason": "测试模型返回禁止字段时仍须完整收敛。",
+                }
+            ]
+            return replace(result, candidate=type(result.candidate).model_validate(data))
+
+    scenario = source
+    if at_safe_point:
+        scenario = source.model_copy(
+            update={
+                "input": source.input.model_copy(
+                    update={
+                        "actions": [
+                            InteractiveAction.model_validate(
+                                {
+                                    "at": {"kind": "safe_point", "safe_point": "before_finalizer"},
+                                    "action": "messages",
+                                    "messages": [
+                                        {"delivery_mode": "steer", "message": "保留原目标。"}
+                                    ],
+                                }
+                            )
+                        ],
+                    }
+                )
+            }
+        )
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_CHAT_GOAL_ROLLOUT": "active",
+            "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT": "active",
+        },
+    ):
+        executor = PostgresInteractiveGoalExecutor(
+            repo_root=scenario_path_root(),
+            database_url=engine.url.render_as_string(hide_password=False),
+            api_key="fake-interactive-secret",
+            expected_model_id="deepseek-v4-pro",
+            expected_prompt_version="casefile-chat-v20",
+            provider_factory=lambda document, _secret: ForbiddenFieldProvider(
+                document, source.family
+            ),
+        )
+        try:
+            evidence = executor.execute_interactive_trial(scenario, trial_no=1)
+            with executor.session_factory() as session:
+                task_ids = [item["id"] for item in evidence["audit"]["task_runs"]]
+                steps = list(
+                    session.scalars(
+                        select(AgentStepRun).where(AgentStepRun.task_run_id.in_(task_ids))
+                    )
+                )
+                assert all(item.status != "running" and item.finished_at for item in steps)
+                if queue_control:
+                    goal_id = evidence["audit"]["goal_sessions"][0]["id"]
+                    delivery = session.scalar(
+                        select(AgentGoalDelivery).where(
+                            AgentGoalDelivery.goal_session_id == goal_id
+                        )
+                    )
+                    assert delivery is not None and delivery.status == "cancelled"
+                    assert delivery.reason_code == "goal_failed"
+                    response = session.get(AgentMessage, delivery.response_message_id)
+                    assert response is not None and response.status == "cancelled"
+        finally:
+            executor.close()
+    assert evidence["completed"] is True
+    assert evidence["infrastructure_failure"] is None
+    assert "task_failed:goal_capability_blocked" in evidence["failures"]
+    assert "mutation_blocked:general_mutation_field_forbidden" in evidence["failures"]
+    assert evidence["final_state_valid"] is False
+    assert evidence["audit"]["goal_sessions"][0]["status"] == "failed"
+    assert evidence["audit"]["task_run_slices"][0]["status"] == "failed"
+    assert evidence["audit"]["patch_sets"] == []
+    assert (
+        evidence["audit"]["draft"]["initial_revision"]
+        == evidence["audit"]["draft"]["final_revision"]
+    )
 
 
 def test_mutation_safe_point_defers_steer_until_patch_identity_exists(

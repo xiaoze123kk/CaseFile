@@ -23,6 +23,8 @@ Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，�
 
 本文涵盖 `backend/` 下所有受 Git 跟踪的源码文件职责。新增、删除、重命名后端源文件时必须同步更新本文。
 
+TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `WorkflowService.finalize_agent_goal_task_failure()`，在同一事务关闭当前 Goal、slice 和待处理 control；残留 running capability step 同步终止。Interactive executor 将持久化生产失败与真正的 harness/transport 故障分离，保留原始 Binder reason 与审计，但不放宽 Oracle 或资格门槛。
+
 ## 数据库代码
 
 | 路径 | 职责 |

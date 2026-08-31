@@ -1398,6 +1398,68 @@ class GoalSessionWorkflowMixin:
                 )
             )
 
+    def finalize_agent_goal_task_failure(
+        self,
+        task: TaskRun,
+        *,
+        now: datetime,
+        reason_code: str,
+    ) -> None:
+        """Close a failed slice inside the caller's fenced TaskRun transaction."""
+
+        goal_id = _task_goal_id(task)
+        if goal_id is None or task.status != "failed":
+            return
+        repository = GoalSessionRepository(self.session)
+        goal = repository.get_for_update(project_id=task.project_id, goal_session_id=goal_id)
+        if goal.status not in {"interpreting", "running"}:
+            return
+        binding = self.session.scalar(
+            select(AgentGoalTaskRun)
+            .where(
+                AgentGoalTaskRun.goal_session_id == goal.id,
+                AgentGoalTaskRun.task_run_id == task.id,
+            )
+            .with_for_update()
+        )
+        if binding is not None:
+            if binding.status != "active" or binding.goal_revision_id != goal.current_revision_id:
+                return
+            binding.status = "failed"
+            binding.finished_at = now
+        for delivery in self.session.scalars(
+            select(AgentGoalDelivery)
+            .where(
+                AgentGoalDelivery.goal_session_id == goal.id,
+                AgentGoalDelivery.status.in_(("queued", "claimed")),
+            )
+            .with_for_update()
+        ):
+            delivery.status = "cancelled"
+            delivery.cancelled_at = now
+            delivery.reason_code = "goal_failed"
+            response = self.session.get(AgentMessage, delivery.response_message_id)
+            if response is not None and response.status == "pending":
+                response.status = "cancelled"
+                response.content_text = None
+        repository.transition(
+            goal,
+            target_status="failed",
+            reason_code=reason_code,
+            state_hash=stable_hash(
+                {
+                    "goal_id": goal.id,
+                    "task_run_id": task.id,
+                    "goal_revision_id": goal.current_revision_id,
+                    "status": "failed",
+                    "reason_code": reason_code,
+                }
+            ),
+            goal_revision_id=goal.current_revision_id,
+            source_message_id=goal.source_message_id,
+            task_run_id=task.id,
+        )
+
     def _finalize_agent_goal_task_success(
         self,
         task: TaskRun,
