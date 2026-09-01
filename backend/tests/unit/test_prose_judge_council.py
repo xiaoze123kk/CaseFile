@@ -12,10 +12,13 @@ from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
     FULL_COUNCIL_POLICY,
     PROSE_COUNCIL_MODEL_ID,
+    PROSE_EVIDENCE_CATALOG_POLICY_HASH,
+    PROSE_EVIDENCE_CATALOG_VERSION,
     PROSE_JUDGE_REQUEST_PROTOCOL,
     PROSE_JUDGE_SCHEMA_HASH,
     FakeProseJudgeProvider,
     ProseCouncilProtocolError,
+    build_server_evidence_catalog,
     execute_semantic_council,
 )
 from casefile.benchmark.prose_judge_eval import (
@@ -145,6 +148,9 @@ def test_three_role_multi_check_disagreement_uses_one_arbiter_call(
     assert arbiter_payload["server_bindings"]["render_hash"] == canonical_json_sha256(
         case["sample"]["render"]
     )
+    assert arbiter_payload["server_evidence_catalog"] == (
+        execution.calls[0].request_payload["server_evidence_catalog"]
+    )
     assert arbiter_payload["disputed_check_ids"] == [
         "check_scene_1_001",
         "check_scene_1_002",
@@ -182,7 +188,52 @@ def test_prompt_injection_remains_untrusted_render_data(case: dict[str, Any]) ->
         "render_hash": canonical_json_sha256(sample["render"]),
         "output_schema_id": "compiler.prose-judge-report.v1",
         "output_schema_hash": PROSE_JUDGE_SCHEMA_HASH,
+        "evidence_catalog_version": PROSE_EVIDENCE_CATALOG_VERSION,
+        "evidence_catalog_policy_hash": PROSE_EVIDENCE_CATALOG_POLICY_HASH,
     }
+
+
+def test_evidence_catalog_is_deterministic_exact_and_covers_gold_suite(
+    case: dict[str, Any],
+) -> None:
+    seen = 0
+    for task in case["suite"]["tasks"]:
+        for sample in task["samples"].values():
+            render = sample["render"]
+            catalog = build_server_evidence_catalog(render)
+            assert catalog == build_server_evidence_catalog(deepcopy(render))
+            blocks = {block["block_id"]: block["text"] for block in render["blocks"]}
+            allowed = {canonical_json_sha256(item) for item in catalog}
+            for item in catalog:
+                assert item["text"] == blocks[item["block_id"]][
+                    item["start_char"] : item["end_char"]
+                ]
+                assert 0 < len(item["text"]) <= 4000
+            for assessment in sample["gold"]["assessments"]:
+                for evidence in assessment["evidence"]:
+                    seen += 1
+                    assert canonical_json_sha256(evidence) in allowed
+    assert seen > 0
+
+
+def test_render_valid_evidence_outside_server_catalog_fails_closed(
+    case: dict[str, Any],
+) -> None:
+    report = _report(case, "fidelity")
+    evidence = report["assessments"][0]["evidence"][0]
+    evidence["end_char"] -= 1
+    evidence["text"] = evidence["text"][:-1]
+    execution = execute_semantic_council(
+        FakeProseJudgeProvider(judge_reports=(report,)),
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert execution.status == "protocol_failed"
+    assert execution.error_code == "compiler_prose_judge_evidence_catalog_mismatch"
 
 
 @pytest.mark.parametrize(
@@ -271,7 +322,10 @@ def test_render_binding_is_explicit_and_changes_request_fingerprint(
     )
     assert original.status == changed.status == "completed"
     assert original.calls[0].request_fingerprint != changed.calls[0].request_fingerprint
-    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v2"
+    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v3"
+    assert original.calls[0].request_payload["server_evidence_catalog"] != (
+        changed.calls[0].request_payload["server_evidence_catalog"]
+    )
     assert original.calls[0].request_payload["server_bindings"]["render_hash"] != (
         changed.calls[0].request_payload["server_bindings"]["render_hash"]
     )

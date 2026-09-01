@@ -48,10 +48,10 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
-    "prose_fidelity_judge": "prose-fidelity-judge-v2",
-    "prose_adversarial_judge": "prose-adversarial-judge-v2",
-    "prose_coherence_judge": "prose-coherence-judge-v2",
-    "prose_arbiter": "prose-arbiter-v2",
+    "prose_fidelity_judge": "prose-fidelity-judge-v3",
+    "prose_adversarial_judge": "prose-adversarial-judge-v3",
+    "prose_coherence_judge": "prose-coherence-judge-v3",
+    "prose_arbiter": "prose-arbiter-v3",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -577,6 +577,18 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_arbiter", "prose-arbiter-v2"): {
         "system": "dc858601f1faf7d49887376bba7ff9f718db20cd87268c7c6e6d380c6379635f"
     },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v3"): {
+        "system": "8d7d7dfacb735ff4ca9642c0fa96ce8354be5731d378c129fc4cf469f37b265a"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v3"): {
+        "system": "87e83d2302fbff061fd8562e1a4bd2447886a5d6f6054312b96f998d8b10e937"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v3"): {
+        "system": "58fae6449a560ac2c8ca283930ccf32147e110ce79e2ab8104c9ac4f3ba84ae9"
+    },
+    ("prose_arbiter", "prose-arbiter-v3"): {
+        "system": "883d09391089b80c29098895350e20f6c12f55e9639069531224e5fe67bb5f6a"
+    },
 }
 
 
@@ -680,17 +692,24 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
         "prose_arbiter",
     ),
 )
-def test_prose_judge_v2_adds_server_hash_bindings_without_rewriting_v1(
+def test_prose_judge_v3_adds_evidence_catalog_without_rewriting_history(
     agent_id: str,
 ) -> None:
-    legacy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v2", "v1"))
+    legacy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v3", "v1"))
+    hash_binding = load_prompt(
+        agent_id, prompt_version_for_task(agent_id).replace("v3", "v2")
+    )
     current = load_prompt(agent_id)
 
-    assert current.previous_version == legacy.version
+    assert hash_binding.previous_version == legacy.version
+    assert current.previous_version == hash_binding.version
     assert "server_bindings" not in legacy.system_prompt
+    assert "server_evidence_catalog" not in hash_binding.system_prompt
     assert "server_bindings.checklist_hash" in current.system_prompt
     assert "server_bindings.render_hash" in current.system_prompt
     assert "不得自行计算哈希" in current.system_prompt
+    assert "server_evidence_catalog" in current.system_prompt
+    assert "不得自行计算 start_char/end_char" in current.system_prompt
 
 
 def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:

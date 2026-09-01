@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_arbiter",
+  "version": "prose-arbiter-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "883d09391089b80c29098895350e20f6c12f55e9639069531224e5fe67bb5f6a",
+  "previous_version": "prose-arbiter-v2",
+  "change_summary": "加入服务端 Evidence 目录原样复制协议，禁止模型自行计算或改写 Unicode 引文区间。"
+}

@@ -22,6 +22,8 @@ from casefile.agent_runtime.prose_judge import (
     PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
     PROSE_COUNCIL_MODEL_ID,
     PROSE_COUNCIL_POLICIES,
+    PROSE_EVIDENCE_CATALOG_POLICY_HASH,
+    PROSE_EVIDENCE_CATALOG_VERSION,
     PROSE_JUDGE_REQUEST_PROTOCOL,
     PROSE_JUDGE_SCHEMA_HASH,
     DeepSeekProseJudgeProvider,
@@ -679,6 +681,10 @@ def freeze_selected_policy(
         "schema_id_binding": report["lineage"]["schema_id"],
         "schema_hash": report["lineage"]["schema_hash"],
         "request_protocol": report["lineage"]["request_protocol"],
+        "evidence_catalog_version": report["lineage"]["evidence_catalog_version"],
+        "evidence_catalog_policy_hash": report["lineage"][
+            "evidence_catalog_policy_hash"
+        ],
         "suite_hash": report["lineage"]["suite_hash"],
         "attestation_hash": report["lineage"]["attestation_hash"],
         "development_report_hash": compact["report_hash"],
@@ -781,6 +787,8 @@ def _lineage(loaded: dict[str, Any], mode: str) -> dict[str, Any]:
         "schema_id": "compiler.prose-judge-report.v1",
         "schema_hash": PROSE_JUDGE_SCHEMA_HASH,
         "request_protocol": PROSE_JUDGE_REQUEST_PROTOCOL,
+        "evidence_catalog_version": PROSE_EVIDENCE_CATALOG_VERSION,
+        "evidence_catalog_policy_hash": PROSE_EVIDENCE_CATALOG_POLICY_HASH,
         "max_output_tokens": PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
         "runner_hash": canonical_hash(
             {

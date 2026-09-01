@@ -28,9 +28,21 @@ PROSE_COUNCIL_NETWORK_RETRIES: Final = 0
 PROSE_COUNCIL_TEMPERATURE: Final = 0
 PROSE_COUNCIL_MAX_OUTPUT_TOKENS: Final = 8192
 PROSE_COUNCIL_THINKING_ENABLED: Final = False
-PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v2"
+PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v3"
 PROSE_JUDGE_SCHEMA_HASH: Final = canonical_json_sha256(
     ProseJudgeReport.model_json_schema()
+)
+PROSE_EVIDENCE_CATALOG_VERSION: Final = "prose-evidence-catalog-v1"
+PROSE_EVIDENCE_CATALOG_MAX_SPAN_CHARS: Final = 4000
+PROSE_EVIDENCE_CATALOG_POLICY: Final = {
+    "version": PROSE_EVIDENCE_CATALOG_VERSION,
+    "segmentation": "unicode-sentence-or-newline-v1",
+    "sentence_terminators": ["。", "！", "？", "!", "?", "\n"],
+    "trim_boundary_whitespace": True,
+    "max_span_chars": PROSE_EVIDENCE_CATALOG_MAX_SPAN_CHARS,
+}
+PROSE_EVIDENCE_CATALOG_POLICY_HASH: Final = canonical_json_sha256(
+    PROSE_EVIDENCE_CATALOG_POLICY
 )
 
 JudgeRole = Literal["fidelity", "adversarial", "coherence"]
@@ -342,6 +354,7 @@ def execute_semantic_council(
     render_json = validate_scene_render(
         render, checklist=checklist_json, profile=profile_json
     ).model_dump(mode="json")
+    evidence_catalog = build_server_evidence_catalog(render_json)
     calls: list[ProseJudgeProviderResult] = []
     reports: list[dict[str, Any]] = []
     try:
@@ -353,11 +366,16 @@ def execute_semantic_council(
                 profile=profile_json,
                 model_id=model_id,
                 api_key=api_key,
+                evidence_catalog=evidence_catalog,
             )
             result = _execute_call(provider.judge_scene, request, recover_call)
             calls.append(result)
             report = _validated_report(
-                result, checklist=checklist_json, render=render_json, profile=profile_json
+                result,
+                checklist=checklist_json,
+                render=render_json,
+                profile=profile_json,
+                evidence_catalog=evidence_catalog,
             )
             if report["role"] != role:
                 raise ProseCouncilProtocolError("prose_judge_role_mismatch")
@@ -391,6 +409,7 @@ def execute_semantic_council(
             profile=profile_json,
             model_id=model_id,
             api_key=api_key,
+            evidence_catalog=evidence_catalog,
         )
         arbiter_request_hash = arbiter_request.request_fingerprint
         try:
@@ -404,6 +423,7 @@ def execute_semantic_council(
                 render=render_json,
                 profile=profile_json,
                 disputed_check_ids=disputed,
+                evidence_catalog=evidence_catalog,
             )
             if arbiter_report["role"] != "arbiter":
                 raise ProseCouncilProtocolError("prose_arbiter_role_mismatch")
@@ -500,6 +520,45 @@ def _validate_policy(policy: ProseCouncilPolicy) -> None:
         raise ProseCouncilProtocolError("prose_council_policy_not_frozen")
 
 
+def build_server_evidence_catalog(
+    render: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Build deterministic, exact-copy Evidence candidates from render blocks."""
+
+    catalog: list[dict[str, Any]] = []
+    terminators = {"。", "！", "？", "!", "?", "\n"}
+    max_chars = PROSE_EVIDENCE_CATALOG_MAX_SPAN_CHARS
+    for block in render["blocks"]:
+        text = str(block["text"])
+        segment_start = 0
+        segment_ends = [
+            index + 1 for index, char in enumerate(text) if char in terminators
+        ]
+        if not segment_ends or segment_ends[-1] != len(text):
+            segment_ends.append(len(text))
+        for segment_end in segment_ends:
+            start = segment_start
+            end = segment_end
+            while start < end and text[start].isspace():
+                start += 1
+            while end > start and text[end - 1].isspace():
+                end -= 1
+            chunk_start = start
+            while chunk_start < end:
+                chunk_end = min(chunk_start + max_chars, end)
+                catalog.append(
+                    {
+                        "block_id": block["block_id"],
+                        "start_char": chunk_start,
+                        "end_char": chunk_end,
+                        "text": text[chunk_start:chunk_end],
+                    }
+                )
+                chunk_start = chunk_end
+            segment_start = segment_end
+    return catalog
+
+
 def _judge_request(
     *,
     role: JudgeRole,
@@ -508,10 +567,12 @@ def _judge_request(
     profile: dict[str, Any],
     model_id: str,
     api_key: str,
+    evidence_catalog: list[dict[str, Any]],
 ) -> ProseJudgeRequest:
     prompt = load_prompt(_AGENT_BY_ROLE[role])
     payload = {
         "server_bindings": _server_bindings(checklist=checklist, render=render),
+        "server_evidence_catalog": evidence_catalog,
         "untrusted_data": {
             "checklist": checklist,
             "render": render,
@@ -550,11 +611,13 @@ def _arbiter_request(
     profile: dict[str, Any],
     model_id: str,
     api_key: str,
+    evidence_catalog: list[dict[str, Any]],
 ) -> ProseArbiterRequest:
     prompt = load_prompt(_AGENT_BY_ROLE["arbiter"])
     disputed_set = set(disputed)
     payload = {
         "server_bindings": _server_bindings(checklist=checklist, render=render),
+        "server_evidence_catalog": evidence_catalog,
         "untrusted_data": {
             "checklist": {
                 **checklist,
@@ -602,6 +665,8 @@ def _server_bindings(
         "render_hash": canonical_json_sha256(render),
         "output_schema_id": "compiler.prose-judge-report.v1",
         "output_schema_hash": PROSE_JUDGE_SCHEMA_HASH,
+        "evidence_catalog_version": PROSE_EVIDENCE_CATALOG_VERSION,
+        "evidence_catalog_policy_hash": PROSE_EVIDENCE_CATALOG_POLICY_HASH,
     }
 
 
@@ -649,17 +714,30 @@ def _validated_report(
     checklist: dict[str, Any],
     render: dict[str, Any],
     profile: dict[str, Any],
+    evidence_catalog: list[dict[str, Any]],
     disputed_check_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     if result.candidate is None:
         raise ProseCouncilProtocolError("prose_judge_empty_or_invalid_json")
-    return validate_prose_judge_report(
+    validated = validate_prose_judge_report(
         result.candidate,
         checklist=checklist,
         render=render,
         profile=profile,
         disputed_check_ids=disputed_check_ids,
     ).model_dump(mode="json")
+    allowed_evidence = {
+        canonical_json_sha256(item) for item in evidence_catalog
+    }
+    if any(
+        canonical_json_sha256(evidence) not in allowed_evidence
+        for assessment in validated["assessments"]
+        for evidence in assessment["evidence"]
+    ):
+        raise ProseCouncilProtocolError(
+            "compiler_prose_judge_evidence_catalog_mismatch"
+        )
+    return validated
 
 
 def _failed_execution(
@@ -690,6 +768,9 @@ __all__ = [
     "PROSE_COUNCIL_MAX_OUTPUT_TOKENS",
     "PROSE_COUNCIL_MODEL_ID",
     "PROSE_COUNCIL_POLICIES",
+    "PROSE_EVIDENCE_CATALOG_POLICY",
+    "PROSE_EVIDENCE_CATALOG_POLICY_HASH",
+    "PROSE_EVIDENCE_CATALOG_VERSION",
     "PROSE_JUDGE_REQUEST_PROTOCOL",
     "PROSE_JUDGE_SCHEMA_HASH",
     "ProseArbiterRequest",
@@ -700,5 +781,6 @@ __all__ = [
     "ProseJudgeProvider",
     "ProseJudgeProviderResult",
     "ProseJudgeRequest",
+    "build_server_evidence_catalog",
     "execute_semantic_council",
 ]

@@ -50,6 +50,8 @@ Prompt 版本有三种互斥形态：
 
 四个 `v2` 版本保留 v1 语义职责，只增加顶层 `server_bindings` 复制协议：`scene_id`、`checklist_hash`、`render_hash` 由 Runtime 预计算并纳入 request fingerprint，模型不得自行计算或误用 ScenePlan/Profile 等上游 hash。v1 保留用于 `0923fe3` 开发消融的精确重放。
 
+四个 `v3` 版本在 v2 的身份绑定之上增加 `server_evidence_catalog`：Runtime 按冻结策略从正文生成 Unicode 区间与逐字原文，模型只能完整复制目录对象，不能自行计算或改写 Evidence。Runtime 仍会复验正文绑定和目录成员资格；v1、v2 保留用于历史调用精确重放。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。
