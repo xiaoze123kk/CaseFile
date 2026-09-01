@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Fake", "Live", "Smoke")]
+    [ValidateSet("Fake", "Live", "Smoke", "CouncilSmoke")]
     [string]$Mode = "Fake",
     [string]$AttemptId = ""
 )
@@ -36,9 +36,9 @@ if ($Mode -ne "Fake") {
 if ([string]::IsNullOrWhiteSpace($AttemptId)) {
     $AttemptId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 }
-$phaseDirectory = if ($Mode -eq "Smoke") { "n4.5-02r" } else { "n4.5-02" }
+$phaseDirectory = if ($Mode -in @("Smoke", "CouncilSmoke")) { "n4.5-02r" } else { "n4.5-02" }
 $outputDir = Join-Path $backendRoot "var/benchmark/prose-judge/$phaseDirectory/$AttemptId"
-$modeValue = $Mode.ToLowerInvariant()
+$modeValue = if ($Mode -eq "CouncilSmoke") { "council-smoke" } else { $Mode.ToLowerInvariant() }
 
 Push-Location $backendRoot
 try {

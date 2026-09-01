@@ -178,6 +178,16 @@ class ProseCouncilExecution:
     error_code: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ProseProtocolCallExecution:
+    """One validated Provider call for bounded protocol qualification probes."""
+
+    status: Literal["completed", "protocol_failed", "inconclusive"]
+    report: dict[str, Any] | None
+    call: ProseJudgeProviderResult | None
+    error_code: str | None = None
+
+
 class DeepSeekProseJudgeProvider:
     """One-turn JSON-object DeepSeek adapter with no transparent retry."""
 
@@ -331,6 +341,134 @@ class FakeProseJudgeProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
         )
+
+
+def execute_prose_judge_protocol_call(
+    provider: ProseJudgeProvider,
+    *,
+    role: JudgeRole,
+    checklist: dict[str, Any],
+    render: dict[str, Any],
+    profile: dict[str, Any],
+    model_id: str,
+    api_key: str,
+) -> ProseProtocolCallExecution:
+    """Execute and validate exactly one production Judge request."""
+
+    if model_id != PROSE_COUNCIL_MODEL_ID:
+        raise ProseCouncilProtocolError("prose_council_model_id_not_frozen")
+    call: ProseJudgeProviderResult | None = None
+    try:
+        checklist_json, render_json, profile_json, evidence_catalog = (
+            _validated_protocol_inputs(checklist, render, profile)
+        )
+        request = _judge_request(
+            role=role,
+            checklist=checklist_json,
+            render=render_json,
+            profile=profile_json,
+            model_id=model_id,
+            api_key=api_key,
+            evidence_catalog=evidence_catalog,
+        )
+        call = _execute_call(provider.judge_scene, request, None)
+        report = _validated_report(
+            call,
+            checklist=checklist_json,
+            render=render_json,
+            profile=profile_json,
+            evidence_catalog=evidence_catalog,
+        )
+        if report["role"] != role:
+            raise ProseCouncilProtocolError("prose_judge_role_mismatch")
+    except ProseCouncilInfrastructureError as error:
+        return ProseProtocolCallExecution("inconclusive", None, call, str(error))
+    except (CompilerContractError, ProseCouncilProtocolError) as error:
+        return ProseProtocolCallExecution("protocol_failed", None, call, str(error))
+    return ProseProtocolCallExecution("completed", report, call)
+
+
+def execute_prose_arbiter_protocol_call(
+    provider: ProseJudgeProvider,
+    *,
+    disputed_check_ids: list[str],
+    judge_reports: list[dict[str, Any]],
+    checklist: dict[str, Any],
+    render: dict[str, Any],
+    profile: dict[str, Any],
+    model_id: str,
+    api_key: str,
+) -> ProseProtocolCallExecution:
+    """Execute and validate exactly one production batch Arbiter request."""
+
+    if model_id != PROSE_COUNCIL_MODEL_ID:
+        raise ProseCouncilProtocolError("prose_council_model_id_not_frozen")
+    call: ProseJudgeProviderResult | None = None
+    try:
+        checklist_json, render_json, profile_json, evidence_catalog = (
+            _validated_protocol_inputs(checklist, render, profile)
+        )
+        check_ids = [item["check_id"] for item in checklist_json["checks"]]
+        disputed = [item for item in check_ids if item in set(disputed_check_ids)]
+        if not disputed or disputed != disputed_check_ids:
+            raise ProseCouncilProtocolError("prose_arbiter_disputed_checks_invalid")
+        reports = [
+            validate_prose_judge_report(
+                report,
+                checklist=checklist_json,
+                render=render_json,
+                profile=profile_json,
+            ).model_dump(mode="json")
+            for report in judge_reports
+        ]
+        roles = [report["role"] for report in reports]
+        if (
+            len(reports) < 2
+            or len(set(roles)) != len(roles)
+            or any(role not in _AGENT_BY_ROLE or role == "arbiter" for role in roles)
+        ):
+            raise ProseCouncilProtocolError("prose_arbiter_judge_reports_invalid")
+        if any(
+            len(
+                {
+                    next(
+                        item["verdict"]
+                        for item in report["assessments"]
+                        if item["check_id"] == check_id
+                    )
+                    for report in reports
+                }
+            )
+            < 2
+            for check_id in disputed
+        ):
+            raise ProseCouncilProtocolError("prose_arbiter_dispute_not_proven")
+        request = _arbiter_request(
+            disputed=disputed,
+            reports=reports,
+            checklist=checklist_json,
+            render=render_json,
+            profile=profile_json,
+            model_id=model_id,
+            api_key=api_key,
+            evidence_catalog=evidence_catalog,
+        )
+        call = _execute_call(provider.arbitrate_scene, request, None)
+        report = _validated_report(
+            call,
+            checklist=checklist_json,
+            render=render_json,
+            profile=profile_json,
+            evidence_catalog=evidence_catalog,
+            disputed_check_ids=disputed,
+        )
+        if report["role"] != "arbiter":
+            raise ProseCouncilProtocolError("prose_arbiter_role_mismatch")
+    except ProseCouncilInfrastructureError as error:
+        return ProseProtocolCallExecution("inconclusive", None, call, str(error))
+    except (CompilerContractError, ProseCouncilProtocolError) as error:
+        return ProseProtocolCallExecution("protocol_failed", None, call, str(error))
+    return ProseProtocolCallExecution("completed", report, call)
 
 
 def execute_semantic_council(
@@ -513,6 +651,26 @@ def _model_json(checklist: dict[str, Any]) -> dict[str, Any]:
     from casefile_contracts import ProseJudgeChecklist
 
     return ProseJudgeChecklist.model_validate(checklist).model_dump(mode="json")
+
+
+def _validated_protocol_inputs(
+    checklist: dict[str, Any],
+    render: dict[str, Any],
+    profile: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    checklist_json = _model_json(checklist)
+    profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
+    render_json = validate_scene_render(
+        render,
+        checklist=checklist_json,
+        profile=profile_json,
+    ).model_dump(mode="json")
+    return (
+        checklist_json,
+        render_json,
+        profile_json,
+        build_server_evidence_catalog(render_json),
+    )
 
 
 def _validate_policy(policy: ProseCouncilPolicy) -> None:
@@ -781,6 +939,9 @@ __all__ = [
     "ProseJudgeProvider",
     "ProseJudgeProviderResult",
     "ProseJudgeRequest",
+    "ProseProtocolCallExecution",
     "build_server_evidence_catalog",
+    "execute_prose_arbiter_protocol_call",
+    "execute_prose_judge_protocol_call",
     "execute_semantic_council",
 ]

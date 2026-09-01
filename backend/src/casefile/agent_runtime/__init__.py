@@ -99,7 +99,10 @@ from casefile.agent_runtime.prose_judge import (
     ProseJudgeProvider,
     ProseJudgeProviderResult,
     ProseJudgeRequest,
+    ProseProtocolCallExecution,
     build_server_evidence_catalog,
+    execute_prose_arbiter_protocol_call,
+    execute_prose_judge_protocol_call,
     execute_semantic_council,
 )
 from casefile.agent_runtime.providers import (
@@ -151,7 +154,10 @@ __all__ = [
     "ProseJudgeProvider",
     "ProseJudgeProviderResult",
     "ProseJudgeRequest",
+    "ProseProtocolCallExecution",
     "build_server_evidence_catalog",
+    "execute_prose_arbiter_protocol_call",
+    "execute_prose_judge_protocol_call",
     "execute_semantic_council",
     "SCENE_COMPILER_PIPELINE_VERSION",
     "SCENE_COMPILER_PROMPT_BUNDLE_VERSION",

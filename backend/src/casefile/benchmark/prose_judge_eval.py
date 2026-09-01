@@ -19,6 +19,7 @@ import rfc8785
 
 from casefile.agent_runtime.prompt_repository import load_prompt, validate_prompt_repository
 from casefile.agent_runtime.prose_judge import (
+    FULL_COUNCIL_POLICY,
     PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
     PROSE_COUNCIL_MODEL_ID,
     PROSE_COUNCIL_POLICIES,
@@ -31,6 +32,9 @@ from casefile.agent_runtime.prose_judge import (
     ProseCouncilExecution,
     ProseCouncilPolicy,
     ProseJudgeProvider,
+    build_server_evidence_catalog,
+    execute_prose_arbiter_protocol_call,
+    execute_prose_judge_protocol_call,
     execute_semantic_council,
 )
 from casefile.domain.narrative_compiler import (
@@ -62,6 +66,16 @@ PROVIDER_SMOKE_CASES: Final = (
     ("b0_23_implicit_semantics_implicit_valid", "base"),
     ("b0_09_reveal_control_adversarial_invalid", "base"),
 )
+PROVIDER_COUNCIL_SMOKE_CASE: Final = (
+    "b0_01_beat_realization_explicit_valid",
+    "base",
+)
+PROVIDER_COUNCIL_AGENT_BY_ROLE: Final = {
+    "fidelity": "prose_fidelity_judge",
+    "adversarial": "prose_adversarial_judge",
+    "coherence": "prose_coherence_judge",
+    "arbiter": "prose_arbiter",
+}
 
 
 class ProseJudgeSuiteError(RuntimeError):
@@ -336,6 +350,270 @@ def run_provider_protocol_smoke(
         _write_json(output_dir / "raw-call-bundle.json", {"calls": raw_bundle})
         _write_json(output_dir / "report.json", report)
     return report
+
+
+def run_provider_council_protocol_smoke(
+    *,
+    provider: ProseJudgeProvider,
+    api_key: str,
+    output_dir: Path | None = None,
+    suite_path: Path = DEFAULT_SUITE,
+    attestation_path: Path = DEFAULT_ATTESTATION,
+) -> dict[str, Any]:
+    """Run all three Judge roles and one forced-dispute Arbiter protocol call."""
+
+    loaded = load_prose_judge_dev_suite(suite_path, attestation_path)
+    validate_prompt_repository()
+    task_id, sample_kind = PROVIDER_COUNCIL_SMOKE_CASE
+    task = next(
+        (item for item in loaded["suite"]["tasks"] if item["task_id"] == task_id),
+        None,
+    )
+    if task is None:
+        raise ProseJudgeSuiteError("prose_judge_provider_council_smoke_case_missing")
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=False)
+    sample = task["samples"][sample_kind]
+    checklist = loaded["checklist"]
+    profile = loaded["profile"]
+    render = sample["render"]
+    evidence_catalog = build_server_evidence_catalog(render)
+    expected_all_ids = [item["check_id"] for item in checklist["checks"]]
+    rows: list[dict[str, Any]] = []
+    raw_bundle: list[dict[str, Any]] = []
+    live_reports: list[dict[str, Any]] = []
+    infrastructure_failures = 0
+    protocol_failures = 0
+
+    for role in FULL_COUNCIL_POLICY.roles:
+        execution = execute_prose_judge_protocol_call(
+            provider,
+            role=role,
+            checklist=checklist,
+            render=render,
+            profile=profile,
+            model_id=PROSE_COUNCIL_MODEL_ID,
+            api_key=api_key,
+        )
+        call_value = (
+            _serialized_provider_call(execution.call) if execution.call else None
+        )
+        if call_value is not None:
+            raw_bundle.append(call_value)
+        if execution.report is not None:
+            live_reports.append(execution.report)
+        if execution.status == "inconclusive":
+            infrastructure_failures += 1
+        elif execution.status == "protocol_failed":
+            protocol_failures += 1
+        rows.append(
+            {
+                "role": role,
+                "status": execution.status,
+                "error_code": execution.error_code,
+                "report": execution.report,
+                "call": call_value,
+                "protocol_gates": _provider_call_protocol_gates(
+                    call_value,
+                    execution.report,
+                    expected_check_ids=expected_all_ids,
+                    evidence_catalog=evidence_catalog,
+                    expected_role=role,
+                ),
+            }
+        )
+        if execution.status != "completed":
+            break
+
+    forced_dispute: dict[str, Any] | None = None
+    if len(live_reports) == len(FULL_COUNCIL_POLICY.roles):
+        forced_reports = [
+            _gold_report(
+                sample["gold"], checklist, render, role=role
+            )
+            for role in FULL_COUNCIL_POLICY.roles
+        ]
+        dispute_assessment = next(
+            item
+            for item in forced_reports[0]["assessments"]
+            if item["verdict"] == "pass" and item["evidence"]
+        )
+        disputed_check_id = dispute_assessment["check_id"]
+        adversarial_assessment = next(
+            item
+            for item in forced_reports[1]["assessments"]
+            if item["check_id"] == disputed_check_id
+        )
+        adversarial_assessment.update(
+            verdict="fail",
+            evidence=[],
+            rationale="四角色协议冒烟构造的服务端争议项。",
+        )
+        for report in forced_reports:
+            validate_prose_judge_report(
+                report,
+                checklist=checklist,
+                render=render,
+                profile=profile,
+            )
+        forced_dispute = {
+            "source": "gold-backed-protocol-fixture-v1",
+            "check_id": disputed_check_id,
+            "judge_report_hashes": [
+                canonical_json_sha256(report) for report in forced_reports
+            ],
+            "qualification_eligible": False,
+        }
+        execution = execute_prose_arbiter_protocol_call(
+            provider,
+            disputed_check_ids=[disputed_check_id],
+            judge_reports=forced_reports,
+            checklist=checklist,
+            render=render,
+            profile=profile,
+            model_id=PROSE_COUNCIL_MODEL_ID,
+            api_key=api_key,
+        )
+        call_value = (
+            _serialized_provider_call(execution.call) if execution.call else None
+        )
+        if call_value is not None:
+            raw_bundle.append(call_value)
+        if execution.status == "inconclusive":
+            infrastructure_failures += 1
+        elif execution.status == "protocol_failed":
+            protocol_failures += 1
+        rows.append(
+            {
+                "role": "arbiter",
+                "status": execution.status,
+                "error_code": execution.error_code,
+                "report": execution.report,
+                "call": call_value,
+                "protocol_gates": _provider_call_protocol_gates(
+                    call_value,
+                    execution.report,
+                    expected_check_ids=[disputed_check_id],
+                    evidence_catalog=evidence_catalog,
+                    expected_role="arbiter",
+                ),
+            }
+        )
+
+    expected_roles = [*FULL_COUNCIL_POLICY.roles, "arbiter"]
+    gates = {
+        "fixed_case": task["task_id"] == task_id and sample_kind == "base",
+        "forced_dispute_auditable": forced_dispute is not None,
+        "role_order_exact": [row["role"] for row in rows] == expected_roles,
+        "exactly_four_calls": len(raw_bundle) == 4,
+        "prompt_bindings_exact": _all_role_gate(rows, "prompt_binding_exact", 4),
+        "server_bindings_exact": _all_role_gate(rows, "server_bindings_exact", 4),
+        "report_contract_valid": _all_role_gate(rows, "report_contract_valid", 4),
+        "check_coverage_complete": _all_role_gate(rows, "check_coverage_complete", 4),
+        "evidence_binding_valid": _all_role_gate(rows, "evidence_binding_valid", 4),
+        "evidence_catalog_exact": _all_role_gate(rows, "evidence_catalog_exact", 4),
+        "raw_audit_complete": _all_role_gate(rows, "raw_audit_complete", 4),
+        "infrastructure_failures_zero": infrastructure_failures == 0,
+        "protocol_failures_zero": protocol_failures == 0,
+    }
+    status = (
+        "inconclusive"
+        if infrastructure_failures
+        else "passed" if all(gates.values()) else "failed"
+    )
+    report = {
+        "schema_id": "casefile.prose-judge-council-provider-smoke.v1",
+        "attempt_id": output_dir.name if output_dir else "fake-council-provider-smoke",
+        "status": status,
+        "qualification_eligible": False,
+        "fixed_case": {"task_id": task_id, "sample_kind": sample_kind},
+        "forced_dispute": forced_dispute,
+        "lineage": _lineage(loaded, "provider_council_smoke"),
+        "gates": gates,
+        "protocol_failures": protocol_failures,
+        "infrastructure_failures": infrastructure_failures,
+        "rows": rows,
+        "raw_call_bundle_hash": canonical_hash(raw_bundle),
+        "call_count": len(raw_bundle),
+    }
+    report["report_hash"] = canonical_hash(report)
+    if output_dir is not None:
+        _write_json(output_dir / "raw-call-bundle.json", {"calls": raw_bundle})
+        _write_json(output_dir / "report.json", report)
+    return report
+
+
+def _serialized_provider_call(call: Any) -> dict[str, Any]:
+    value = asdict(call)
+    value["api_key_persisted"] = False
+    return value
+
+
+def _provider_call_protocol_gates(
+    call: dict[str, Any] | None,
+    report: dict[str, Any] | None,
+    *,
+    expected_check_ids: list[str],
+    evidence_catalog: list[dict[str, Any]],
+    expected_role: str,
+) -> dict[str, bool]:
+    if call is None:
+        return {
+            "server_bindings_exact": False,
+            "prompt_binding_exact": False,
+            "report_contract_valid": False,
+            "check_coverage_complete": False,
+            "evidence_binding_valid": False,
+            "evidence_catalog_exact": False,
+            "raw_audit_complete": False,
+        }
+    candidate = call["candidate"]
+    request_payload = call["request_payload"]
+    bindings = request_payload.get("server_bindings", {})
+    candidate_ids = (
+        [item.get("check_id") for item in candidate.get("assessments", [])]
+        if isinstance(candidate, dict)
+        else []
+    )
+    raw = call["raw_response"]
+    expected_prompt = load_prompt(PROVIDER_COUNCIL_AGENT_BY_ROLE[expected_role])
+    try:
+        raw_candidate = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        raw_candidate = None
+    return {
+        "server_bindings_exact": isinstance(candidate, dict)
+        and candidate.get("role") == expected_role
+        and all(
+            candidate.get(key) == bindings.get(key)
+            for key in ("scene_id", "checklist_hash", "render_hash")
+        ),
+        "prompt_binding_exact": call["role"] == expected_role
+        and call["model_id"] == PROSE_COUNCIL_MODEL_ID
+        and call["prompt_version"] == expected_prompt.version
+        and call["prompt_hash"] == expected_prompt.system_prompt_sha256,
+        "report_contract_valid": report is not None,
+        "check_coverage_complete": report is not None
+        and candidate_ids == expected_check_ids,
+        "evidence_binding_valid": report is not None,
+        "evidence_catalog_exact": request_payload.get("server_evidence_catalog")
+        == evidence_catalog
+        and bindings.get("evidence_catalog_version")
+        == PROSE_EVIDENCE_CATALOG_VERSION
+        and bindings.get("evidence_catalog_policy_hash")
+        == PROSE_EVIDENCE_CATALOG_POLICY_HASH,
+        "raw_audit_complete": isinstance(raw, str)
+        and bool(raw)
+        and raw_candidate == candidate
+        and call["output_hash"] == sha256(raw.encode("utf-8")).hexdigest()
+        and call["input_hash"] == canonical_json_sha256(request_payload)
+        and call["usage"].get("requests") == 1
+        and call["api_key_persisted"] is False,
+    }
+
+
+def _all_role_gate(rows: list[dict[str, Any]], gate: str, count: int) -> bool:
+    return len(rows) == count and all(row["protocol_gates"][gate] for row in rows)
 
 
 def _provider_protocol_result(
@@ -818,14 +1096,18 @@ def _write_json(path: Path, value: Any) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("fake", "live", "smoke"), required=True)
+    parser.add_argument(
+        "--mode",
+        choices=("fake", "live", "smoke", "council-smoke"),
+        required=True,
+    )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--attestation", type=Path, default=DEFAULT_ATTESTATION)
     parser.add_argument("--freeze-repo", action="store_true")
     args = parser.parse_args()
     api_key = os.getenv("CASEFILE_DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or ""
-    if args.mode in {"live", "smoke"}:
+    if args.mode in {"live", "smoke", "council-smoke"}:
         if not api_key:
             raise SystemExit("DeepSeek API key is required")
         if _git("status", "--porcelain"):
@@ -834,6 +1116,29 @@ def main() -> int:
 
         if args.mode == "smoke":
             report = run_provider_protocol_smoke(
+                provider=provider,
+                api_key=api_key,
+                output_dir=args.output_dir,
+                suite_path=args.suite,
+                attestation_path=args.attestation,
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": report["status"],
+                        "qualification_eligible": report["qualification_eligible"],
+                        "call_count": report["call_count"],
+                        "report_hash": report["report_hash"],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            if report["status"] == "inconclusive":
+                return 3
+            return 0 if report["status"] == "passed" else 2
+
+        if args.mode == "council-smoke":
+            report = run_provider_council_protocol_smoke(
                 provider=provider,
                 api_key=api_key,
                 output_dir=args.output_dir,
@@ -909,11 +1214,13 @@ __all__ = [
     "DEFAULT_ATTESTATION",
     "DEFAULT_SUITE",
     "PROVIDER_SMOKE_CASES",
+    "PROVIDER_COUNCIL_SMOKE_CASE",
     "ProseJudgeSuiteError",
     "canonical_hash",
     "freeze_selected_policy",
     "load_prose_judge_dev_suite",
     "oracle_provider_for_sample",
     "run_development_ablation",
+    "run_provider_council_protocol_smoke",
     "run_provider_protocol_smoke",
 ]

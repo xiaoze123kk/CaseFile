@@ -12,6 +12,7 @@ from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider, ProseCoun
 from casefile.benchmark.prose_judge_eval import (
     DEFAULT_ATTESTATION,
     DEFAULT_SUITE,
+    PROVIDER_COUNCIL_SMOKE_CASE,
     PROVIDER_SMOKE_CASES,
     ProseJudgeSuiteError,
     _gold_report,
@@ -19,6 +20,7 @@ from casefile.benchmark.prose_judge_eval import (
     freeze_selected_policy,
     load_prose_judge_dev_suite,
     run_development_ablation,
+    run_provider_council_protocol_smoke,
     run_provider_protocol_smoke,
 )
 
@@ -192,6 +194,103 @@ def test_provider_protocol_smoke_stops_on_first_infrastructure_failure() -> None
     assert provider.call_count == 1
     assert report["infrastructure_failures"] == 1
     assert len(report["rows"]) == 1
+
+
+def _council_smoke_reports(
+    loaded: dict[str, Any],
+) -> tuple[tuple[dict[str, Any], ...], dict[str, Any]]:
+    task_id, sample_kind = PROVIDER_COUNCIL_SMOKE_CASE
+    task = next(
+        item for item in loaded["suite"]["tasks"] if item["task_id"] == task_id
+    )
+    sample = task["samples"][sample_kind]
+    reports = tuple(
+        _gold_report(
+            sample["gold"],
+            loaded["checklist"],
+            sample["render"],
+            role=role,
+        )
+        for role in ("fidelity", "adversarial", "coherence")
+    )
+    arbiter = _gold_report(
+        sample["gold"],
+        loaded["checklist"],
+        sample["render"],
+        role="arbiter",
+    )
+    disputed = next(
+        item
+        for item in arbiter["assessments"]
+        if item["verdict"] == "pass" and item["evidence"]
+    )
+    arbiter["assessments"] = [disputed]
+    return reports, arbiter
+
+
+def test_provider_council_smoke_is_exact_four_role_calls_and_non_qualifying(
+    tmp_path: Path,
+) -> None:
+    loaded = load_prose_judge_dev_suite()
+    reports, arbiter = _council_smoke_reports(loaded)
+    provider = FakeProseJudgeProvider(
+        judge_reports=reports,
+        arbiter_reports=(arbiter,),
+    )
+
+    report = run_provider_council_protocol_smoke(
+        provider=provider,
+        api_key="fake",
+        output_dir=tmp_path / "council-smoke",
+    )
+
+    assert report["status"] == "passed"
+    assert report["qualification_eligible"] is False
+    assert report["call_count"] == provider.call_count == 4
+    assert [row["role"] for row in report["rows"]] == [
+        "fidelity",
+        "adversarial",
+        "coherence",
+        "arbiter",
+    ]
+    assert all(report["gates"].values())
+    assert report["forced_dispute"]["qualification_eligible"] is False
+
+
+def test_provider_council_smoke_stops_on_judge_protocol_failure() -> None:
+    loaded = load_prose_judge_dev_suite()
+    reports, _arbiter = _council_smoke_reports(loaded)
+    invalid = deepcopy(reports[1])
+    invalid["render_hash"] = "0" * 64
+    provider = FakeProseJudgeProvider(judge_reports=(reports[0], invalid))
+
+    report = run_provider_council_protocol_smoke(provider=provider, api_key="fake")
+
+    assert report["status"] == "failed"
+    assert report["call_count"] == provider.call_count == 2
+    assert report["protocol_failures"] == 1
+    assert [row["role"] for row in report["rows"]] == [
+        "fidelity",
+        "adversarial",
+    ]
+
+
+def test_provider_council_smoke_stops_on_arbiter_infrastructure_failure() -> None:
+    loaded = load_prose_judge_dev_suite()
+    reports, arbiter = _council_smoke_reports(loaded)
+    provider = FakeProseJudgeProvider(
+        judge_reports=reports,
+        arbiter_reports=(arbiter,),
+        failure_at_call=4,
+    )
+
+    report = run_provider_council_protocol_smoke(provider=provider, api_key="fake")
+
+    assert report["status"] == "inconclusive"
+    assert report["call_count"] == 3
+    assert provider.call_count == 4
+    assert report["infrastructure_failures"] == 1
+    assert report["rows"][-1]["role"] == "arbiter"
 
 
 def test_changed_attestation_hash_is_rejected(tmp_path: Path) -> None:
