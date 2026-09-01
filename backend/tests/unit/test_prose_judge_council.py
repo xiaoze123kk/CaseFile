@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ADVERSARIAL_POLICY,
@@ -18,6 +21,7 @@ from casefile.agent_runtime.prose_judge import (
     PROSE_JUDGE_CANDIDATE_SCHEMA_ID,
     PROSE_JUDGE_REQUEST_PROTOCOL,
     PROSE_JUDGE_SCHEMA_HASH,
+    DeepSeekProseJudgeProvider,
     FakeProseJudgeProvider,
     ProseCouncilProtocolError,
     build_server_evidence_catalog,
@@ -28,6 +32,7 @@ from casefile.benchmark.prose_judge_eval import (
     load_prose_judge_dev_suite,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
+from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
 
 
 @pytest.fixture(scope="module")
@@ -318,7 +323,7 @@ def test_render_binding_is_explicit_and_changes_request_fingerprint(
     )
     assert original.status == changed.status == "completed"
     assert original.calls[0].request_fingerprint != changed.calls[0].request_fingerprint
-    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v4"
+    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v5"
     assert (
         original.calls[0].request_payload["server_evidence_catalog"]
         != (changed.calls[0].request_payload["server_evidence_catalog"])
@@ -366,7 +371,7 @@ def test_invalid_or_unresolved_arbiter_becomes_uncertain(
     assert execution.consensus["scene_verdict"] == "uncertain"
 
 
-def test_provider_failure_is_not_retried(case: dict[str, Any]) -> None:
+def test_fake_provider_failure_is_audited_without_hidden_retry(case: dict[str, Any]) -> None:
     provider = FakeProseJudgeProvider(judge_reports=(_report(case, "fidelity"),), failure_at_call=1)
     execution = execute_semantic_council(
         provider,
@@ -380,6 +385,151 @@ def test_provider_failure_is_not_retried(case: dict[str, Any]) -> None:
     assert execution.status == "inconclusive"
     assert provider.call_count == 1
     assert execution.calls == ()
+    assert execution.failed_call is not None
+    assert execution.failed_call.error_code == "prose_judge_fake_infrastructure"
+    assert len(execution.failed_call.transport_attempts) == 1
+
+
+def _provider_response(candidate: dict[str, Any]) -> Any:
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(candidate)))],
+        usage=SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+            prompt_cache_hit_tokens=0,
+        ),
+    )
+
+
+def _connection_error(error_type: type[APIConnectionError]) -> APIConnectionError:
+    return error_type(request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"))
+
+
+@pytest.mark.parametrize("error_type", (APIConnectionError, APITimeoutError))
+def test_explicit_connection_or_timeout_retry_succeeds_with_same_fingerprint(
+    case: dict[str, Any], error_type: type[APIConnectionError]
+) -> None:
+    waits: list[float] = []
+    provider = DeepSeekProseJudgeProvider(retry_wait=waits.append)
+    attempts = 0
+    fingerprints: list[str] = []
+
+    def create(request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        fingerprints.append(request.request_fingerprint)
+        if attempts == 1:
+            raise _connection_error(error_type)
+        return _provider_response(_report(case, "fidelity"))
+
+    provider._create_completion = create  # type: ignore[method-assign]
+    execution = execute_semantic_council(
+        provider,
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert execution.status == "completed"
+    assert attempts == 2
+    assert waits == [1.0]
+    assert len(set(fingerprints)) == 1
+    call = execution.calls[0]
+    assert [item.status for item in call.transport_attempts] == ["failed", "completed"]
+    assert call.request_fingerprint == execution.calls[0].request_fingerprint
+
+
+def test_two_connection_failures_are_inconclusive_and_fully_audited(
+    case: dict[str, Any],
+) -> None:
+    waits: list[float] = []
+    provider = DeepSeekProseJudgeProvider(retry_wait=waits.append)
+    attempts = 0
+
+    def create(_request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        raise _connection_error(APIConnectionError)
+
+    provider._create_completion = create  # type: ignore[method-assign]
+    execution = execute_semantic_council(
+        provider,
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert execution.status == "inconclusive"
+    assert attempts == 2
+    assert waits == [1.0]
+    assert execution.failed_call is not None
+    assert len(execution.failed_call.transport_attempts) == 2
+    assert all(item.usage is None for item in execution.failed_call.transport_attempts)
+
+
+@pytest.mark.parametrize(
+    "error_type,status_code", ((AuthenticationError, 401), (RateLimitError, 429))
+)
+def test_authentication_and_rate_limit_errors_are_not_retried(
+    case: dict[str, Any], error_type: type[Exception], status_code: int
+) -> None:
+    waits: list[float] = []
+    provider = DeepSeekProseJudgeProvider(retry_wait=waits.append)
+    attempts = 0
+    request = httpx.Request("POST", "https://api.deepseek.com/chat/completions")
+    response = httpx.Response(status_code, request=request)
+
+    def create(_request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        raise error_type("provider rejected request", response=response, body=None)
+
+    provider._create_completion = create  # type: ignore[method-assign]
+    execution = execute_semantic_council(
+        provider,
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="secret-not-persisted",
+    )
+    assert execution.status == "inconclusive"
+    assert attempts == 1
+    assert waits == []
+    assert execution.failed_call is not None
+    assert "secret-not-persisted" not in repr(execution.failed_call)
+
+
+def test_protocol_failure_is_not_retried(case: dict[str, Any]) -> None:
+    provider = DeepSeekProseJudgeProvider(
+        retry_wait=lambda _seconds: pytest.fail("unexpected retry")
+    )
+    attempts = 0
+
+    def create(_request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        return _provider_response({"schema_id": "invalid", "assessments": []})
+
+    provider._create_completion = create  # type: ignore[method-assign]
+    execution = execute_semantic_council(
+        provider,
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert execution.status == "protocol_failed"
+    assert attempts == 1
+    assert len(execution.calls[0].transport_attempts) == 1
 
 
 def test_exact_recovery_is_reused_and_mismatched_recovery_is_rejected(

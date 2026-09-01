@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_adversarial_judge",
+  "version": "prose-adversarial-judge-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "dc1785d7e5f4d1ade53b925679f36014b843e4a89bfd881da74ed3d222e01d4d",
+  "previous_version": "prose-adversarial-judge-v4",
+  "change_summary": "明确事件缺失的时间判定、逐项独立边界与事件关系优先的因果顺序。"
+}

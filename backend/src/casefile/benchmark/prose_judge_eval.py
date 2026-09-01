@@ -22,7 +22,10 @@ from casefile.agent_runtime.prose_judge import (
     FULL_COUNCIL_POLICY,
     PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
     PROSE_COUNCIL_MODEL_ID,
+    PROSE_COUNCIL_NETWORK_RETRIES,
     PROSE_COUNCIL_POLICIES,
+    PROSE_COUNCIL_RETRY_DELAY_SECONDS,
+    PROSE_COUNCIL_RETRYABLE_ERRORS,
     PROSE_EVIDENCE_CATALOG_POLICY_HASH,
     PROSE_EVIDENCE_CATALOG_VERSION,
     PROSE_JUDGE_CANDIDATE_SCHEMA_HASH,
@@ -70,6 +73,23 @@ PROVIDER_COUNCIL_SMOKE_CASE: Final = (
     "b0_01_beat_realization_explicit_valid",
     "base",
 )
+PROVIDER_SEMANTIC_SMOKE_CASES: Final = (
+    ("b0_01_beat_realization_explicit_valid", "mutation"),
+    ("b0_02_beat_realization_implicit_valid", "mutation"),
+    ("b0_03_beat_realization_adversarial_invalid", "base"),
+    ("b0_03_beat_realization_adversarial_invalid", "paraphrase"),
+    ("b0_04_event_modality_explicit_valid", "mutation"),
+    ("b0_05_event_modality_implicit_valid", "mutation"),
+    ("b0_06_event_modality_adversarial_invalid", "base"),
+    ("b0_06_event_modality_adversarial_invalid", "paraphrase"),
+    ("b0_16_causality_ordering_explicit_valid", "mutation"),
+    ("b0_17_causality_ordering_implicit_valid", "mutation"),
+    ("b0_01_beat_realization_explicit_valid", "base"),
+    ("b0_02_beat_realization_implicit_valid", "base"),
+    ("b0_16_causality_ordering_explicit_valid", "base"),
+    ("b0_17_causality_ordering_implicit_valid", "base"),
+)
+RAW_CALL_BUNDLE_SCHEMA_ID: Final = "casefile.prose-judge-raw-bundle.v2"
 PROVIDER_COUNCIL_AGENT_BY_ROLE: Final = {
     "fidelity": "prose_fidelity_judge",
     "adversarial": "prose_adversarial_judge",
@@ -297,7 +317,8 @@ def run_provider_protocol_smoke(
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=False)
     rows: list[dict[str, Any]] = []
-    raw_bundle: list[dict[str, Any]] = []
+    raw_calls: list[dict[str, Any]] = []
+    failed_calls: list[dict[str, Any]] = []
     for task_id, sample_kind in PROVIDER_SMOKE_CASES:
         task = tasks[task_id]
         sample = task["samples"][sample_kind]
@@ -314,7 +335,9 @@ def run_provider_protocol_smoke(
         protocol = _provider_protocol_result(result, loaded["checklist"])
         row = {**result, "protocol_gates": protocol}
         rows.append(row)
-        raw_bundle.extend(result["calls"])
+        raw_calls.extend(result["calls"])
+        if result["failed_call"] is not None:
+            failed_calls.append(result["failed_call"])
         if output_dir is not None:
             _write_json(output_dir / "calls" / f"{task_id}__{sample_kind}.json", row)
         if execution.status != "completed":
@@ -323,7 +346,7 @@ def run_provider_protocol_smoke(
     protocol_failures = sum(row["status"] == "protocol_failed" for row in rows)
     gates = {
         "fixed_case_set": len(rows) == len(PROVIDER_SMOKE_CASES),
-        "exactly_three_calls": len(raw_bundle) == len(PROVIDER_SMOKE_CASES),
+        "exactly_three_calls": len(raw_calls) + len(failed_calls) == len(PROVIDER_SMOKE_CASES),
         "server_bindings_exact": sum(row["protocol_gates"]["server_bindings_exact"] for row in rows)
         == len(PROVIDER_SMOKE_CASES),
         "report_contract_valid": sum(row["protocol_gates"]["report_contract_valid"] for row in rows)
@@ -345,8 +368,10 @@ def run_provider_protocol_smoke(
         status = "inconclusive"
     else:
         status = "passed" if all(gates.values()) else "failed"
+    raw_bundle = _raw_bundle_value(raw_calls, failed_calls)
+    transport = _transport_metrics(raw_calls, failed_calls)
     report = {
-        "schema_id": "casefile.prose-judge-provider-smoke.v1",
+        "schema_id": "casefile.prose-judge-provider-smoke.v2",
         "attempt_id": output_dir.name if output_dir else "fake-provider-smoke",
         "status": status,
         "qualification_eligible": False,
@@ -361,11 +386,11 @@ def run_provider_protocol_smoke(
         "infrastructure_failures": infrastructure_failures,
         "rows": rows,
         "raw_call_bundle_hash": canonical_hash(raw_bundle),
-        "call_count": len(raw_bundle),
+        **transport,
     }
     report["report_hash"] = canonical_hash(report)
     if output_dir is not None:
-        _write_json(output_dir / "raw-call-bundle.json", {"calls": raw_bundle})
+        _write_json(output_dir / "raw-call-bundle.json", raw_bundle)
         _write_json(output_dir / "report.json", report)
     return report
 
@@ -398,7 +423,8 @@ def run_provider_council_protocol_smoke(
     evidence_catalog = build_server_evidence_catalog(render)
     expected_all_ids = [item["check_id"] for item in checklist["checks"]]
     rows: list[dict[str, Any]] = []
-    raw_bundle: list[dict[str, Any]] = []
+    raw_calls: list[dict[str, Any]] = []
+    failed_calls: list[dict[str, Any]] = []
     live_reports: list[dict[str, Any]] = []
     infrastructure_failures = 0
     protocol_failures = 0
@@ -414,8 +440,13 @@ def run_provider_council_protocol_smoke(
             api_key=api_key,
         )
         call_value = _serialized_provider_call(execution.call) if execution.call else None
+        failed_call_value = (
+            _serialized_failed_call(execution.failed_call) if execution.failed_call else None
+        )
         if call_value is not None:
-            raw_bundle.append(call_value)
+            raw_calls.append(call_value)
+        if failed_call_value is not None:
+            failed_calls.append(failed_call_value)
         if execution.report is not None:
             live_reports.append(execution.report)
         if execution.status == "inconclusive":
@@ -429,6 +460,7 @@ def run_provider_council_protocol_smoke(
                 "error_code": execution.error_code,
                 "report": execution.report,
                 "call": call_value,
+                "failed_call": failed_call_value,
                 "protocol_gates": _provider_call_protocol_gates(
                     call_value,
                     execution.report,
@@ -487,8 +519,13 @@ def run_provider_council_protocol_smoke(
             api_key=api_key,
         )
         call_value = _serialized_provider_call(execution.call) if execution.call else None
+        failed_call_value = (
+            _serialized_failed_call(execution.failed_call) if execution.failed_call else None
+        )
         if call_value is not None:
-            raw_bundle.append(call_value)
+            raw_calls.append(call_value)
+        if failed_call_value is not None:
+            failed_calls.append(failed_call_value)
         if execution.status == "inconclusive":
             infrastructure_failures += 1
         elif execution.status == "protocol_failed":
@@ -500,6 +537,7 @@ def run_provider_council_protocol_smoke(
                 "error_code": execution.error_code,
                 "report": execution.report,
                 "call": call_value,
+                "failed_call": failed_call_value,
                 "protocol_gates": _provider_call_protocol_gates(
                     call_value,
                     execution.report,
@@ -515,7 +553,7 @@ def run_provider_council_protocol_smoke(
         "fixed_case": task["task_id"] == task_id and sample_kind == "base",
         "forced_dispute_auditable": forced_dispute is not None,
         "role_order_exact": [row["role"] for row in rows] == expected_roles,
-        "exactly_four_calls": len(raw_bundle) == 4,
+        "exactly_four_calls": len(raw_calls) + len(failed_calls) == 4,
         "prompt_bindings_exact": _all_role_gate(rows, "prompt_binding_exact", 4),
         "server_bindings_exact": _all_role_gate(rows, "server_bindings_exact", 4),
         "report_contract_valid": _all_role_gate(rows, "report_contract_valid", 4),
@@ -529,8 +567,10 @@ def run_provider_council_protocol_smoke(
     status = (
         "inconclusive" if infrastructure_failures else "passed" if all(gates.values()) else "failed"
     )
+    raw_bundle = _raw_bundle_value(raw_calls, failed_calls)
+    transport = _transport_metrics(raw_calls, failed_calls)
     report = {
-        "schema_id": "casefile.prose-judge-council-provider-smoke.v1",
+        "schema_id": "casefile.prose-judge-council-provider-smoke.v2",
         "attempt_id": output_dir.name if output_dir else "fake-council-provider-smoke",
         "status": status,
         "qualification_eligible": False,
@@ -542,19 +582,181 @@ def run_provider_council_protocol_smoke(
         "infrastructure_failures": infrastructure_failures,
         "rows": rows,
         "raw_call_bundle_hash": canonical_hash(raw_bundle),
-        "call_count": len(raw_bundle),
+        **transport,
     }
     report["report_hash"] = canonical_hash(report)
     if output_dir is not None:
-        _write_json(output_dir / "raw-call-bundle.json", {"calls": raw_bundle})
+        _write_json(output_dir / "raw-call-bundle.json", raw_bundle)
+        _write_json(output_dir / "report.json", report)
+    return report
+
+
+def run_provider_semantic_smoke(
+    *,
+    provider: ProseJudgeProvider,
+    api_key: str,
+    output_dir: Path | None = None,
+    suite_path: Path = DEFAULT_SUITE,
+    attestation_path: Path = DEFAULT_ATTESTATION,
+) -> dict[str, Any]:
+    """Run the fixed 14-call Fidelity semantic regression and positive controls."""
+
+    loaded = load_prose_judge_dev_suite(suite_path, attestation_path)
+    validate_prompt_repository()
+    tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
+    if not set(tasks).issuperset(task_id for task_id, _kind in PROVIDER_SEMANTIC_SMOKE_CASES):
+        raise ProseJudgeSuiteError("prose_judge_provider_semantic_smoke_case_missing")
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=False)
+    rows: list[dict[str, Any]] = []
+    raw_calls: list[dict[str, Any]] = []
+    failed_calls: list[dict[str, Any]] = []
+    for task_id, sample_kind in PROVIDER_SEMANTIC_SMOKE_CASES:
+        task = tasks[task_id]
+        sample = task["samples"][sample_kind]
+        execution = execute_semantic_council(
+            provider,
+            checklist=loaded["checklist"],
+            render=sample["render"],
+            profile=loaded["profile"],
+            policy=PROSE_COUNCIL_POLICIES[0],
+            model_id=PROSE_COUNCIL_MODEL_ID,
+            api_key=api_key,
+        )
+        result = _execution_result(task, sample_kind, sample, execution)
+        row = {
+            **result,
+            "protocol_gates": _provider_protocol_result(result, loaded["checklist"]),
+        }
+        rows.append(row)
+        raw_calls.extend(result["calls"])
+        if result["failed_call"] is not None:
+            failed_calls.append(result["failed_call"])
+        if output_dir is not None:
+            _write_json(output_dir / "calls" / f"{task_id}__{sample_kind}.json", row)
+        if execution.status != "completed":
+            break
+    infrastructure_failures = sum(row["status"] == "inconclusive" for row in rows)
+    protocol_failures = sum(row["status"] == "protocol_failed" for row in rows)
+    expected = len(PROVIDER_SEMANTIC_SMOKE_CASES)
+    gates = {
+        "fixed_case_set": len(rows) == expected,
+        "exactly_fourteen_calls": len(raw_calls) + len(failed_calls) == expected,
+        "exact_check_vectors": sum(row["exact"] for row in rows) == expected,
+        "server_bindings_exact": sum(
+            row["protocol_gates"]["server_bindings_exact"] for row in rows
+        )
+        == expected,
+        "report_contract_valid": sum(
+            row["protocol_gates"]["report_contract_valid"] for row in rows
+        )
+        == expected,
+        "check_coverage_complete": sum(
+            row["protocol_gates"]["check_coverage_complete"] for row in rows
+        )
+        == expected,
+        "evidence_binding_valid": sum(
+            row["protocol_gates"]["evidence_binding_valid"] for row in rows
+        )
+        == expected,
+        "raw_audit_complete": sum(
+            row["protocol_gates"]["raw_audit_complete"] for row in rows
+        )
+        == expected,
+        "infrastructure_failures_zero": infrastructure_failures == 0,
+        "protocol_failures_zero": protocol_failures == 0,
+    }
+    status = (
+        "inconclusive" if infrastructure_failures else "passed" if all(gates.values()) else "failed"
+    )
+    raw_bundle = _raw_bundle_value(raw_calls, failed_calls)
+    report = {
+        "schema_id": "casefile.prose-judge-semantic-smoke.v1",
+        "attempt_id": output_dir.name if output_dir else "fake-semantic-smoke",
+        "status": status,
+        "qualification_eligible": False,
+        "policy_id": PROSE_COUNCIL_POLICIES[0].policy_id,
+        "fixed_cases": [
+            {"task_id": task_id, "sample_kind": sample_kind}
+            for task_id, sample_kind in PROVIDER_SEMANTIC_SMOKE_CASES
+        ],
+        "lineage": _lineage(loaded, "provider_semantic_smoke"),
+        "gates": gates,
+        "protocol_failures": protocol_failures,
+        "infrastructure_failures": infrastructure_failures,
+        "rows": rows,
+        "raw_call_bundle_hash": canonical_hash(raw_bundle),
+        **_transport_metrics(raw_calls, failed_calls),
+    }
+    report["report_hash"] = canonical_hash(report)
+    if output_dir is not None:
+        _write_json(output_dir / "raw-call-bundle.json", raw_bundle)
         _write_json(output_dir / "report.json", report)
     return report
 
 
 def _serialized_provider_call(call: Any) -> dict[str, Any]:
     value = asdict(call)
+    value["transport_attempts"] = list(value["transport_attempts"])
     value["api_key_persisted"] = False
     return value
+
+
+def _serialized_failed_call(call: Any) -> dict[str, Any]:
+    value = asdict(call)
+    value["transport_attempts"] = list(value["transport_attempts"])
+    value["api_key_persisted"] = False
+    return value
+
+
+def _raw_bundle_value(
+    calls: list[dict[str, Any]], failed_calls: list[dict[str, Any]]
+) -> dict[str, Any]:
+    return {
+        "schema_id": RAW_CALL_BUNDLE_SCHEMA_ID,
+        "calls": calls,
+        "failed_calls": failed_calls,
+    }
+
+
+def _transport_metrics(
+    calls: list[dict[str, Any]], failed_calls: list[dict[str, Any]]
+) -> dict[str, int]:
+    logical = [*calls, *failed_calls]
+    return {
+        "call_count": len(logical),
+        "successful_response_count": len(calls),
+        "transport_attempt_count": sum(len(item["transport_attempts"]) for item in logical),
+        "transport_retry_count": sum(
+            max(0, len(item["transport_attempts"]) - 1) for item in logical
+        ),
+        "terminal_transport_failure_count": len(failed_calls),
+    }
+
+
+def _successful_transport_audit_valid(call: dict[str, Any]) -> bool:
+    attempts = call.get("transport_attempts")
+    if not isinstance(attempts, (list, tuple)) or not attempts:
+        return False
+    if [item.get("attempt_index") for item in attempts] != list(range(1, len(attempts) + 1)):
+        return False
+    if attempts[-1].get("status") != "completed" or attempts[-1].get("usage") != call.get(
+        "usage"
+    ):
+        return False
+    for attempt in attempts[:-1]:
+        if (
+            attempt.get("status") != "failed"
+            or attempt.get("response_observed") is not False
+            or attempt.get("usage") is not None
+            or attempt.get("error_code")
+            not in {
+                "prose_judge_provider_failed:APIConnectionError",
+                "prose_judge_provider_failed:APITimeoutError",
+            }
+        ):
+            return False
+    return len(attempts) <= 2
 
 
 def _provider_call_protocol_gates(
@@ -613,6 +815,7 @@ def _provider_call_protocol_gates(
         and call["output_hash"] == sha256(raw.encode("utf-8")).hexdigest()
         and call["input_hash"] == canonical_json_sha256(request_payload)
         and call["usage"].get("requests") == 1
+        and _successful_transport_audit_valid(call)
         and call["api_key_persisted"] is False,
     }
 
@@ -656,6 +859,7 @@ def _provider_protocol_result(result: dict[str, Any], checklist: dict[str, Any])
         and call["output_hash"] == sha256(raw.encode("utf-8")).hexdigest()
         and call["input_hash"] == canonical_json_sha256(call["request_payload"])
         and call["usage"].get("requests") == 1
+        and _successful_transport_audit_valid(call)
         and call["api_key_persisted"] is False
     )
     completed = result["status"] == "completed"
@@ -687,7 +891,8 @@ def run_development_ablation(
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=False)
     policy_reports = []
-    raw_bundle: list[dict[str, Any]] = []
+    raw_calls: list[dict[str, Any]] = []
+    failed_calls: list[dict[str, Any]] = []
     inconclusive = False
     for policy in PROSE_COUNCIL_POLICIES:
         results = []
@@ -706,7 +911,9 @@ def run_development_ablation(
                 )
                 item = _execution_result(task, sample_kind, sample, execution)
                 results.append(item)
-                raw_bundle.extend(item["calls"])
+                raw_calls.extend(item["calls"])
+                if item["failed_call"] is not None:
+                    failed_calls.append(item["failed_call"])
                 if output_dir is not None:
                     _write_json(
                         output_dir
@@ -725,8 +932,10 @@ def run_development_ablation(
             break
     selected = _select_policy(policy_reports) if not inconclusive else None
     lineage = _lineage(loaded, mode)
+    raw_bundle = _raw_bundle_value(raw_calls, failed_calls)
+    transport = _transport_metrics(raw_calls, failed_calls)
     report = {
-        "schema_id": "casefile.prose-judge-dev-ablation.v1",
+        "schema_id": "casefile.prose-judge-dev-ablation.v2",
         "attempt_id": output_dir.name if output_dir else "fake-gate",
         "status": "inconclusive" if inconclusive else "completed",
         "mode": mode,
@@ -737,11 +946,11 @@ def run_development_ablation(
         "lineage": lineage,
         "policies": policy_reports,
         "raw_call_bundle_hash": canonical_hash(raw_bundle),
-        "call_count": len(raw_bundle),
+        **transport,
     }
     report["report_hash"] = canonical_hash(report)
     if output_dir is not None:
-        _write_json(output_dir / "raw-call-bundle.json", {"calls": raw_bundle})
+        _write_json(output_dir / "raw-call-bundle.json", raw_bundle)
         _write_json(output_dir / "report.json", report)
     return report
 
@@ -760,9 +969,12 @@ def _execution_result(
     gold_vector = [item["verdict"] for item in sample["gold"]["assessments"]]
     calls = []
     for call in execution.calls:
-        value = asdict(call)
-        value["api_key_persisted"] = False
-        calls.append(value)
+        calls.append(_serialized_provider_call(call))
+    failed_call = (
+        _serialized_failed_call(execution.failed_call)
+        if execution.failed_call is not None
+        else None
+    )
     return {
         "task_id": task["task_id"],
         "ability": task["ability"],
@@ -782,7 +994,8 @@ def _execution_result(
         "judge_reports": list(execution.judge_reports),
         "arbiter_report": execution.arbiter_report,
         "calls": calls,
-        "request_count": len(calls),
+        "failed_call": failed_call,
+        "request_count": len(calls) + (1 if failed_call is not None else 0),
     }
 
 
@@ -834,6 +1047,8 @@ def _policy_metrics(
     protocol_failures = sum(item["status"] == "protocol_failed" for item in results)
     infrastructure_failures = sum(item["status"] == "inconclusive" for item in results)
     calls = [call for item in results for call in item["calls"]]
+    failed_calls = [item["failed_call"] for item in results if item["failed_call"] is not None]
+    transport = _transport_metrics(calls, failed_calls)
     evidence_binding = (
         1.0
         if results
@@ -868,7 +1083,11 @@ def _policy_metrics(
             "median_requests_per_task": (
                 statistics.median(per_task_requests) if per_task_requests else None
             ),
-            "requests": len(calls),
+            "requests": transport["call_count"],
+            "successful_responses": transport["successful_response_count"],
+            "transport_attempts": transport["transport_attempt_count"],
+            "transport_retries": transport["transport_retry_count"],
+            "terminal_transport_failures": transport["terminal_transport_failure_count"],
             "usage": {
                 name: sum(call["usage"].get(name, 0) for call in calls)
                 for name in (
@@ -879,7 +1098,12 @@ def _policy_metrics(
                     "reasoning_tokens",
                 )
             },
-            "latency_ms": sum(call["latency_ms"] for call in calls),
+            "latency_ms": sum(call["latency_ms"] for call in calls)
+            + sum(
+                attempt["latency_ms"]
+                for failed in failed_calls
+                for attempt in failed["transport_attempts"]
+            ),
         },
         "gates": gates,
         "eligible": all(gates.values()),
@@ -917,7 +1141,9 @@ def freeze_selected_policy(
         raise ProseJudgeSuiteError("prose_judge_live_report_hash_invalid")
     selected_id = report.get("selected_policy_id")
     if (
-        report.get("mode") != "live"
+        report.get("schema_id") != "casefile.prose-judge-dev-ablation.v2"
+        or report.get("terminal_transport_failure_count") != 0
+        or report.get("mode") != "live"
         or report.get("status") != "completed"
         or not isinstance(selected_id, str)
     ):
@@ -932,13 +1158,17 @@ def freeze_selected_policy(
     if selected_report is None or selected_policy is None or not selected_report["eligible"]:
         raise ProseJudgeSuiteError("prose_judge_selected_policy_invalid")
     compact = {
-        "schema_id": "casefile.prose-judge-dev-result.v1",
+        "schema_id": "casefile.prose-judge-dev-result.v2",
         "qualified": False,
         "holdout_eligible": True,
         "selected_policy_id": selected_id,
         "source_report_hash": report["report_hash"],
         "raw_call_bundle_hash": report["raw_call_bundle_hash"],
         "call_count": report["call_count"],
+        "successful_response_count": report["successful_response_count"],
+        "transport_attempt_count": report["transport_attempt_count"],
+        "transport_retry_count": report["transport_retry_count"],
+        "terminal_transport_failure_count": report["terminal_transport_failure_count"],
         "lineage": report["lineage"],
         "policies": [
             {
@@ -954,13 +1184,15 @@ def freeze_selected_policy(
     }
     compact["report_hash"] = canonical_hash(compact)
     descriptor = {
-        "schema_id": "casefile.prose-council-policy.v1",
+        "schema_id": "casefile.prose-council-policy.v2",
         **selected_policy.descriptor(),
         "policy_hash": selected_policy.policy_hash,
         "model_id": report["lineage"]["model_id"],
         "max_output_tokens": report["lineage"]["max_output_tokens"],
         "max_turns": 1,
-        "network_retries": 0,
+        "network_retries": PROSE_COUNCIL_NETWORK_RETRIES,
+        "retry_delay_ms": round(PROSE_COUNCIL_RETRY_DELAY_SECONDS * 1000),
+        "retryable_errors": list(PROSE_COUNCIL_RETRYABLE_ERRORS),
         "temperature": 0,
         "thinking_enabled": False,
         "prompt_bindings": report["lineage"]["prompt_bindings"],
@@ -1075,9 +1307,15 @@ def _lineage(loaded: dict[str, Any], mode: str) -> dict[str, Any]:
         "candidate_schema_id": PROSE_JUDGE_CANDIDATE_SCHEMA_ID,
         "candidate_schema_hash": PROSE_JUDGE_CANDIDATE_SCHEMA_HASH,
         "request_protocol": PROSE_JUDGE_REQUEST_PROTOCOL,
+        "development_report_schema_id": "casefile.prose-judge-dev-ablation.v2",
+        "raw_call_bundle_schema_id": RAW_CALL_BUNDLE_SCHEMA_ID,
         "evidence_catalog_version": PROSE_EVIDENCE_CATALOG_VERSION,
         "evidence_catalog_policy_hash": PROSE_EVIDENCE_CATALOG_POLICY_HASH,
         "max_output_tokens": PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
+        "max_turns": 1,
+        "network_retries": PROSE_COUNCIL_NETWORK_RETRIES,
+        "retry_delay_ms": round(PROSE_COUNCIL_RETRY_DELAY_SECONDS * 1000),
+        "retryable_errors": list(PROSE_COUNCIL_RETRYABLE_ERRORS),
         "runner_hash": canonical_hash(
             {
                 "source": Path(__file__).read_text(encoding="utf-8"),
@@ -1108,7 +1346,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=("fake", "live", "smoke", "council-smoke"),
+        choices=("fake", "live", "smoke", "semantic-smoke", "council-smoke"),
         required=True,
     )
     parser.add_argument("--output-dir", type=Path)
@@ -1117,7 +1355,7 @@ def main() -> int:
     parser.add_argument("--freeze-repo", action="store_true")
     args = parser.parse_args()
     api_key = os.getenv("CASEFILE_DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or ""
-    if args.mode in {"live", "smoke", "council-smoke"}:
+    if args.mode in {"live", "smoke", "semantic-smoke", "council-smoke"}:
         if not api_key:
             raise SystemExit("DeepSeek API key is required")
         if _git("status", "--porcelain"):
@@ -1149,6 +1387,29 @@ def main() -> int:
 
         if args.mode == "council-smoke":
             report = run_provider_council_protocol_smoke(
+                provider=provider,
+                api_key=api_key,
+                output_dir=args.output_dir,
+                suite_path=args.suite,
+                attestation_path=args.attestation,
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": report["status"],
+                        "qualification_eligible": report["qualification_eligible"],
+                        "call_count": report["call_count"],
+                        "report_hash": report["report_hash"],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            if report["status"] == "inconclusive":
+                return 3
+            return 0 if report["status"] == "passed" else 2
+
+        if args.mode == "semantic-smoke":
+            report = run_provider_semantic_smoke(
                 provider=provider,
                 api_key=api_key,
                 output_dir=args.output_dir,
@@ -1216,6 +1477,7 @@ __all__ = [
     "DEFAULT_SUITE",
     "PROVIDER_SMOKE_CASES",
     "PROVIDER_COUNCIL_SMOKE_CASE",
+    "PROVIDER_SEMANTIC_SMOKE_CASES",
     "ProseJudgeSuiteError",
     "canonical_hash",
     "freeze_selected_policy",
@@ -1224,4 +1486,5 @@ __all__ = [
     "run_development_ablation",
     "run_provider_council_protocol_smoke",
     "run_provider_protocol_smoke",
+    "run_provider_semantic_smoke",
 ]

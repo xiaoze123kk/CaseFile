@@ -48,10 +48,10 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
-    "prose_fidelity_judge": "prose-fidelity-judge-v4",
-    "prose_adversarial_judge": "prose-adversarial-judge-v4",
-    "prose_coherence_judge": "prose-coherence-judge-v4",
-    "prose_arbiter": "prose-arbiter-v4",
+    "prose_fidelity_judge": "prose-fidelity-judge-v5",
+    "prose_adversarial_judge": "prose-adversarial-judge-v5",
+    "prose_coherence_judge": "prose-coherence-judge-v5",
+    "prose_arbiter": "prose-arbiter-v5",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -601,6 +601,18 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_arbiter", "prose-arbiter-v4"): {
         "system": "8dd865428c4af435feade3cbe6f7fc6156a2f95e7e2189459f4825cd02328cca"
     },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v5"): {
+        "system": "48a711bb1ca193fbf7adbbe4ae5e3dbd8b7bf87ab5e5ee2b9644a7eb6ee3dbbd"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v5"): {
+        "system": "dc1785d7e5f4d1ade53b925679f36014b843e4a89bfd881da74ed3d222e01d4d"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v5"): {
+        "system": "6dedcf310b0a090c27c570d565f57f2e243e1781fca68b07e1c5aa86abc89297"
+    },
+    ("prose_arbiter", "prose-arbiter-v5"): {
+        "system": "4b9e9ef21569a8ede75ce979f5043dc621372a5d1f8e9e18f9a74c180bc1290a"
+    },
 }
 
 
@@ -704,17 +716,20 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
         "prose_arbiter",
     ),
 )
-def test_prose_judge_v4_uses_server_owned_identity_and_evidence_ids(
+def test_prose_judge_v5_preserves_protocol_and_closes_semantic_gaps(
     agent_id: str,
 ) -> None:
-    legacy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v4", "v1"))
-    hash_binding = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v4", "v2"))
-    catalog_copy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v4", "v3"))
+    current_version = prompt_version_for_task(agent_id)
+    legacy = load_prompt(agent_id, current_version.replace("v5", "v1"))
+    hash_binding = load_prompt(agent_id, current_version.replace("v5", "v2"))
+    catalog_copy = load_prompt(agent_id, current_version.replace("v5", "v3"))
+    candidate_protocol = load_prompt(agent_id, current_version.replace("v5", "v4"))
     current = load_prompt(agent_id)
 
     assert hash_binding.previous_version == legacy.version
     assert catalog_copy.previous_version == hash_binding.version
-    assert current.previous_version == catalog_copy.version
+    assert candidate_protocol.previous_version == catalog_copy.version
+    assert current.previous_version == candidate_protocol.version
     assert "server_bindings" not in legacy.system_prompt
     assert "server_evidence_catalog" not in hash_binding.system_prompt
     assert "server_bindings.checklist_hash" in catalog_copy.system_prompt
@@ -724,6 +739,8 @@ def test_prose_judge_v4_uses_server_owned_identity_and_evidence_ids(
     assert "不要输出 role、scene_id 或任何 hash" in current.system_prompt
     assert "causality_ordering" in current.system_prompt
     assert "location_time" in current.system_prompt
+    assert "地点正确不能抵消时间失败" in current.system_prompt
+    assert "事件关系优先于句子" in current.system_prompt
 
 
 def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:

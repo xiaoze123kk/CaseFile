@@ -7,11 +7,11 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from hashlib import sha256
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any, Final, Literal, Protocol, cast
 
 from casefile_contracts import ProseConsensusReport, ProseJudgeReport
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from casefile.agent_runtime.prompt_repository import load_prompt
@@ -25,11 +25,13 @@ from casefile.domain.narrative_compiler import (
 
 PROSE_COUNCIL_MODEL_ID: Final = "deepseek-v4-pro"
 PROSE_COUNCIL_MAX_TURNS: Final = 1
-PROSE_COUNCIL_NETWORK_RETRIES: Final = 0
+PROSE_COUNCIL_NETWORK_RETRIES: Final = 1
+PROSE_COUNCIL_RETRY_DELAY_SECONDS: Final = 1.0
+PROSE_COUNCIL_RETRYABLE_ERRORS: Final = ("APIConnectionError", "APITimeoutError")
 PROSE_COUNCIL_TEMPERATURE: Final = 0
 PROSE_COUNCIL_MAX_OUTPUT_TOKENS: Final = 8192
 PROSE_COUNCIL_THINKING_ENABLED: Final = False
-PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v4"
+PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v5"
 PROSE_JUDGE_SCHEMA_HASH: Final = canonical_json_sha256(ProseJudgeReport.model_json_schema())
 PROSE_JUDGE_CANDIDATE_SCHEMA_ID: Final = "compiler.prose-judge-candidate.v1"
 PROSE_EVIDENCE_CATALOG_VERSION: Final = "prose-evidence-catalog-v2"
@@ -78,6 +80,15 @@ class ProseCouncilError(RuntimeError):
 
 class ProseCouncilInfrastructureError(ProseCouncilError):
     """A network or Provider failure makes the complete attempt inconclusive."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failed_call: ProseJudgeFailedCall | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.failed_call = failed_call
 
 
 class ProseCouncilProtocolError(ProseCouncilError):
@@ -178,7 +189,35 @@ class ProseJudgeProviderResult:
     model_id: str
     prompt_version: str
     request_payload: dict[str, Any]
+    transport_attempts: tuple[ProseJudgeTransportAttempt, ...]
     recovered: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ProseJudgeTransportAttempt:
+    """One physical Provider attempt without credentials or exception text."""
+
+    attempt_index: int
+    status: Literal["completed", "failed"]
+    latency_ms: int
+    error_code: str | None
+    response_observed: bool
+    usage: dict[str, int] | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProseJudgeFailedCall:
+    """Auditable logical call that exhausted transport handling before a response."""
+
+    request_fingerprint: str
+    prompt_hash: str
+    input_hash: str
+    role: str
+    model_id: str
+    prompt_version: str
+    request_payload: dict[str, Any]
+    error_code: str
+    transport_attempts: tuple[ProseJudgeTransportAttempt, ...]
 
 
 class ProseJudgeProvider(Protocol):
@@ -196,6 +235,7 @@ class ProseCouncilExecution:
     judge_reports: tuple[dict[str, Any], ...]
     arbiter_report: dict[str, Any] | None
     calls: tuple[ProseJudgeProviderResult, ...]
+    failed_call: ProseJudgeFailedCall | None = None
     error_code: str | None = None
 
 
@@ -206,14 +246,21 @@ class ProseProtocolCallExecution:
     status: Literal["completed", "protocol_failed", "inconclusive"]
     report: dict[str, Any] | None
     call: ProseJudgeProviderResult | None
+    failed_call: ProseJudgeFailedCall | None = None
     error_code: str | None = None
 
 
 class DeepSeekProseJudgeProvider:
-    """One-turn JSON-object DeepSeek adapter with no transparent retry."""
+    """One-turn JSON-object DeepSeek adapter with one explicit transport retry."""
 
-    def __init__(self, *, base_url: str = "https://api.deepseek.com") -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str = "https://api.deepseek.com",
+        retry_wait: Callable[[float], None] = sleep,
+    ) -> None:
         self.base_url = base_url
+        self._retry_wait = retry_wait
 
     def judge_scene(self, request: ProseJudgeRequest) -> ProseJudgeProviderResult:
         return self._invoke(request)
@@ -225,13 +272,90 @@ class DeepSeekProseJudgeProvider:
         if not request.api_key:
             raise ProseCouncilInfrastructureError("prose_judge_api_key_missing")
         started = perf_counter()
+        attempts: list[ProseJudgeTransportAttempt] = []
+        response: Any | None = None
+        for attempt_index in range(1, request.network_retries + 2):
+            attempt_started = perf_counter()
+            try:
+                response = self._create_completion(request)
+            except Exception as error:
+                error_code = f"prose_judge_provider_failed:{type(error).__name__}"
+                attempts.append(
+                    ProseJudgeTransportAttempt(
+                        attempt_index=attempt_index,
+                        status="failed",
+                        latency_ms=max(0, round((perf_counter() - attempt_started) * 1000)),
+                        error_code=error_code,
+                        response_observed=False,
+                        usage=None,
+                    )
+                )
+                retryable = isinstance(error, (APIConnectionError, APITimeoutError))
+                if retryable and attempt_index <= request.network_retries:
+                    self._retry_wait(PROSE_COUNCIL_RETRY_DELAY_SECONDS)
+                    continue
+                failed_call = _failed_call_from_request(request, error_code, tuple(attempts))
+                raise ProseCouncilInfrastructureError(
+                    error_code,
+                    failed_call=failed_call,
+                ) from error
+            break
+        if response is None:
+            raise ProseCouncilInfrastructureError("prose_judge_provider_response_missing")
+        response_usage = response.usage
+        usage = {
+            "requests": 1,
+            "input_tokens": int(getattr(response_usage, "prompt_tokens", 0) or 0),
+            "output_tokens": int(getattr(response_usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(response_usage, "total_tokens", 0) or 0),
+            "cached_tokens": int(getattr(response_usage, "prompt_cache_hit_tokens", 0) or 0),
+            "reasoning_tokens": 0,
+        }
+        attempts.append(
+            ProseJudgeTransportAttempt(
+                attempt_index=len(attempts) + 1,
+                status="completed",
+                latency_ms=max(0, round((perf_counter() - attempt_started) * 1000)),
+                error_code=None,
+                response_observed=True,
+                usage=usage,
+            )
+        )
+        latency_ms = max(0, round((perf_counter() - started) * 1000))
+        if len(response.choices) != 1 or not response.choices[0].message.content:
+            raw = ""
+            candidate = None
+        else:
+            raw = response.choices[0].message.content or ""
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = None
+            candidate = parsed if isinstance(parsed, dict) else None
+        return ProseJudgeProviderResult(
+            candidate=candidate,
+            raw_response=raw,
+            usage=usage,
+            latency_ms=latency_ms,
+            request_fingerprint=request.request_fingerprint,
+            prompt_hash=request.prompt_hash,
+            input_hash=request.input_hash,
+            output_hash=sha256(raw.encode("utf-8")).hexdigest(),
+            role=(request.role if isinstance(request, ProseJudgeRequest) else "arbiter"),
+            model_id=request.model_id,
+            prompt_version=request.prompt_version,
+            request_payload=request.input_payload,
+            transport_attempts=tuple(attempts),
+        )
+
+    def _create_completion(self, request: ProseJudgeRequest | ProseArbiterRequest) -> Any:
         client = OpenAI(
             api_key=request.api_key,
             base_url=self.base_url,
-            max_retries=request.network_retries,
+            max_retries=0,
         )
         try:
-            response = client.chat.completions.create(
+            return client.chat.completions.create(
                 model=request.model_id,
                 messages=[
                     {
@@ -260,46 +384,8 @@ class DeepSeekProseJudgeProvider:
                 max_tokens=request.max_output_tokens,
                 extra_body={"thinking": {"type": "disabled"}},
             )
-        except Exception as error:
-            raise ProseCouncilInfrastructureError(
-                f"prose_judge_provider_failed:{type(error).__name__}"
-            ) from error
         finally:
             client.close()
-        latency_ms = max(0, round((perf_counter() - started) * 1000))
-        if len(response.choices) != 1 or not response.choices[0].message.content:
-            raw = ""
-            candidate = None
-        else:
-            raw = response.choices[0].message.content or ""
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                parsed = None
-            candidate = parsed if isinstance(parsed, dict) else None
-        response_usage = response.usage
-        usage = {
-            "requests": 1,
-            "input_tokens": int(getattr(response_usage, "prompt_tokens", 0) or 0),
-            "output_tokens": int(getattr(response_usage, "completion_tokens", 0) or 0),
-            "total_tokens": int(getattr(response_usage, "total_tokens", 0) or 0),
-            "cached_tokens": int(getattr(response_usage, "prompt_cache_hit_tokens", 0) or 0),
-            "reasoning_tokens": 0,
-        }
-        return ProseJudgeProviderResult(
-            candidate=candidate,
-            raw_response=raw,
-            usage=usage,
-            latency_ms=latency_ms,
-            request_fingerprint=request.request_fingerprint,
-            prompt_hash=request.prompt_hash,
-            input_hash=request.input_hash,
-            output_hash=sha256(raw.encode("utf-8")).hexdigest(),
-            role=(request.role if isinstance(request, ProseJudgeRequest) else "arbiter"),
-            model_id=request.model_id,
-            prompt_version=request.prompt_version,
-            request_payload=request.input_payload,
-        )
 
 
 class FakeProseJudgeProvider:
@@ -357,6 +443,23 @@ class FakeProseJudgeProvider:
             model_id=request.model_id,
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
+            transport_attempts=(
+                ProseJudgeTransportAttempt(
+                    attempt_index=1,
+                    status="completed",
+                    latency_ms=0,
+                    error_code=None,
+                    response_observed=True,
+                    usage={
+                        "requests": 1,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "cached_tokens": 0,
+                        "reasoning_tokens": 0,
+                    },
+                ),
+            ),
         )
 
 
@@ -399,10 +502,21 @@ def execute_prose_judge_protocol_call(
         if report["role"] != role:
             raise ProseCouncilProtocolError("prose_judge_role_mismatch")
     except ProseCouncilInfrastructureError as error:
-        return ProseProtocolCallExecution("inconclusive", None, call, str(error))
+        return ProseProtocolCallExecution(
+            status="inconclusive",
+            report=None,
+            call=call,
+            failed_call=error.failed_call,
+            error_code=str(error),
+        )
     except (CompilerContractError, ProseCouncilProtocolError) as error:
-        return ProseProtocolCallExecution("protocol_failed", None, call, str(error))
-    return ProseProtocolCallExecution("completed", report, call)
+        return ProseProtocolCallExecution(
+            status="protocol_failed",
+            report=None,
+            call=call,
+            error_code=str(error),
+        )
+    return ProseProtocolCallExecution(status="completed", report=report, call=call)
 
 
 def execute_prose_arbiter_protocol_call(
@@ -482,10 +596,21 @@ def execute_prose_arbiter_protocol_call(
         if report["role"] != "arbiter":
             raise ProseCouncilProtocolError("prose_arbiter_role_mismatch")
     except ProseCouncilInfrastructureError as error:
-        return ProseProtocolCallExecution("inconclusive", None, call, str(error))
+        return ProseProtocolCallExecution(
+            status="inconclusive",
+            report=None,
+            call=call,
+            failed_call=error.failed_call,
+            error_code=str(error),
+        )
     except (CompilerContractError, ProseCouncilProtocolError) as error:
-        return ProseProtocolCallExecution("protocol_failed", None, call, str(error))
-    return ProseProtocolCallExecution("completed", report, call)
+        return ProseProtocolCallExecution(
+            status="protocol_failed",
+            report=None,
+            call=call,
+            error_code=str(error),
+        )
+    return ProseProtocolCallExecution(status="completed", report=report, call=call)
 
 
 def execute_semantic_council(
@@ -536,7 +661,7 @@ def execute_semantic_council(
                 raise ProseCouncilProtocolError("prose_judge_role_mismatch")
             reports.append(report)
     except ProseCouncilInfrastructureError as error:
-        return _failed_execution(policy, reports, calls, "inconclusive", str(error))
+        return _failed_execution(policy, reports, calls, "inconclusive", error)
     except (CompilerContractError, ProseCouncilProtocolError) as error:
         return _failed_execution(policy, reports, calls, "protocol_failed", str(error))
 
@@ -579,7 +704,7 @@ def execute_semantic_council(
             if arbiter_report["role"] != "arbiter":
                 raise ProseCouncilProtocolError("prose_arbiter_role_mismatch")
         except ProseCouncilInfrastructureError as error:
-            return _failed_execution(policy, reports, calls, "inconclusive", str(error))
+            return _failed_execution(policy, reports, calls, "inconclusive", error)
         except (CompilerContractError, ProseCouncilProtocolError):
             arbiter_report = None
             arbiter_error = True
@@ -855,6 +980,8 @@ def _request_fingerprint(
             "input_hash": input_hash,
             "max_turns": PROSE_COUNCIL_MAX_TURNS,
             "network_retries": PROSE_COUNCIL_NETWORK_RETRIES,
+            "retry_delay_ms": round(PROSE_COUNCIL_RETRY_DELAY_SECONDS * 1000),
+            "retryable_errors": list(PROSE_COUNCIL_RETRYABLE_ERRORS),
             "temperature": PROSE_COUNCIL_TEMPERATURE,
             "thinking_enabled": PROSE_COUNCIL_THINKING_ENABLED,
             "max_output_tokens": PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
@@ -870,7 +997,23 @@ def _execute_call(
     recover_call: Callable[[str], ProseJudgeProviderResult | None] | None,
 ) -> ProseJudgeProviderResult:
     recovered = recover_call(request.request_fingerprint) if recover_call else None
-    result = replace(recovered, recovered=True) if recovered is not None else invoke(request)
+    try:
+        result = replace(recovered, recovered=True) if recovered is not None else invoke(request)
+    except ProseCouncilInfrastructureError as error:
+        if error.failed_call is not None:
+            raise
+        attempt = ProseJudgeTransportAttempt(
+            attempt_index=1,
+            status="failed",
+            latency_ms=0,
+            error_code=str(error),
+            response_observed=False,
+            usage=None,
+        )
+        raise ProseCouncilInfrastructureError(
+            str(error),
+            failed_call=_failed_call_from_request(request, str(error), (attempt,)),
+        ) from error
     if (
         result.request_fingerprint != request.request_fingerprint
         or result.prompt_hash != request.prompt_hash
@@ -882,6 +1025,24 @@ def _execute_call(
     ):
         raise ProseCouncilProtocolError("prose_judge_recovery_fingerprint_mismatch")
     return result
+
+
+def _failed_call_from_request(
+    request: ProseJudgeRequest | ProseArbiterRequest,
+    error_code: str,
+    attempts: tuple[ProseJudgeTransportAttempt, ...],
+) -> ProseJudgeFailedCall:
+    return ProseJudgeFailedCall(
+        request_fingerprint=request.request_fingerprint,
+        prompt_hash=request.prompt_hash,
+        input_hash=request.input_hash,
+        role=(request.role if isinstance(request, ProseJudgeRequest) else "arbiter"),
+        model_id=request.model_id,
+        prompt_version=request.prompt_version,
+        request_payload=request.input_payload,
+        error_code=error_code,
+        transport_attempts=attempts,
+    )
 
 
 def _validated_report(
@@ -952,8 +1113,10 @@ def _failed_execution(
     reports: list[dict[str, Any]],
     calls: list[ProseJudgeProviderResult],
     status: Literal["protocol_failed", "inconclusive"],
-    error: str,
+    error: str | ProseCouncilInfrastructureError,
 ) -> ProseCouncilExecution:
+    error_code = str(error)
+    failed_call = error.failed_call if isinstance(error, ProseCouncilInfrastructureError) else None
     return ProseCouncilExecution(
         status=status,
         policy_id=policy.policy_id,
@@ -962,7 +1125,8 @@ def _failed_execution(
         judge_reports=tuple(reports),
         arbiter_report=None,
         calls=tuple(calls),
-        error_code=error,
+        failed_call=failed_call,
+        error_code=error_code,
     )
 
 
@@ -974,7 +1138,10 @@ __all__ = [
     "FakeProseJudgeProvider",
     "PROSE_COUNCIL_MAX_OUTPUT_TOKENS",
     "PROSE_COUNCIL_MODEL_ID",
+    "PROSE_COUNCIL_NETWORK_RETRIES",
     "PROSE_COUNCIL_POLICIES",
+    "PROSE_COUNCIL_RETRY_DELAY_SECONDS",
+    "PROSE_COUNCIL_RETRYABLE_ERRORS",
     "PROSE_EVIDENCE_CATALOG_POLICY",
     "PROSE_EVIDENCE_CATALOG_POLICY_HASH",
     "PROSE_EVIDENCE_CATALOG_VERSION",
@@ -990,7 +1157,9 @@ __all__ = [
     "ProseCouncilProtocolError",
     "ProseJudgeProvider",
     "ProseJudgeProviderResult",
+    "ProseJudgeFailedCall",
     "ProseJudgeRequest",
+    "ProseJudgeTransportAttempt",
     "ProseProtocolCallExecution",
     "build_server_evidence_catalog",
     "execute_prose_arbiter_protocol_call",

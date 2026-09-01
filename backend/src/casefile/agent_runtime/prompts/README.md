@@ -54,6 +54,8 @@ Prompt 版本有三种互斥形态：
 
 四个 `v4` 版本把 Provider 输出缩为私有 `compiler.prose-judge-candidate.v1`：模型只返回逐 check verdict、rationale 与服务端 Evidence ID，不再转写 role、scene、hash、Unicode 区间或引文。Runtime 解析 ID 后组装并复验公共 `compiler.prose-judge-report.v1`。v4 同时冻结逐 check 独立判定、地点/时间分别核验、因果两端必须实际成立，以及“授权但提前披露”和“根本未授权新增事实”分离规则；v1–v3 保留用于历史调用精确重放。
 
+四个 `v5` 版本保持 Candidate/Public Report 边界不变，并补齐三项开发集语义：必需 Event 被否定、未来化或假设化时不得放过相关 `location_time`，一个 check 的失败不得传播到正文已实际实现的独立 Beat/Reveal，因果顺序按明确事件关系而非句子排列或自我说明判断。v4 继续保留用于历史调用精确重放。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

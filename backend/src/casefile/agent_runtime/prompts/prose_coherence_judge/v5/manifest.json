@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_coherence_judge",
+  "version": "prose-coherence-judge-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "6dedcf310b0a090c27c570d565f57f2e243e1781fca68b07e1c5aa86abc89297",
+  "previous_version": "prose-coherence-judge-v4",
+  "change_summary": "明确事件缺失的时间判定、逐项独立边界与事件关系优先的因果顺序。"
+}

@@ -13,6 +13,7 @@ from casefile.benchmark.prose_judge_eval import (
     DEFAULT_ATTESTATION,
     DEFAULT_SUITE,
     PROVIDER_COUNCIL_SMOKE_CASE,
+    PROVIDER_SEMANTIC_SMOKE_CASES,
     PROVIDER_SMOKE_CASES,
     ProseJudgeSuiteError,
     _gold_candidate,
@@ -22,6 +23,7 @@ from casefile.benchmark.prose_judge_eval import (
     run_development_ablation,
     run_provider_council_protocol_smoke,
     run_provider_protocol_smoke,
+    run_provider_semantic_smoke,
 )
 
 
@@ -83,7 +85,12 @@ def test_fake_ablation_runs_all_policies_and_selects_lowest_request_policy(
     assert report["oracle_backed"] is True
     assert report["qualification_eligible"] is False
     assert report["selected_policy_id"] == "fidelity-only-v1"
+    assert report["schema_id"] == "casefile.prose-judge-dev-ablation.v2"
     assert report["call_count"] == 432
+    assert report["successful_response_count"] == 432
+    assert report["transport_attempt_count"] == 432
+    assert report["transport_retry_count"] == 0
+    assert report["terminal_transport_failure_count"] == 0
     assert [item["metrics"]["median_requests_per_task"] for item in report["policies"]] == [
         3,
         6,
@@ -95,7 +102,7 @@ def test_fake_ablation_runs_all_policies_and_selects_lowest_request_policy(
     )
 
 
-def test_live_attempt_stops_on_first_infrastructure_failure() -> None:
+def test_live_attempt_stops_on_first_infrastructure_failure(tmp_path: Path) -> None:
     calls = 0
 
     def factory(_sample: dict[str, Any], _policy: ProseCouncilPolicy) -> FakeProseJudgeProvider:
@@ -107,11 +114,24 @@ def test_live_attempt_stops_on_first_infrastructure_failure() -> None:
         provider_factory=factory,
         api_key="fake",
         mode="live",
+        output_dir=tmp_path / "failed-live",
     )
     assert report["status"] == "inconclusive"
     assert report["selected_policy_id"] is None
     assert calls == 1
     assert len(report["policies"]) == 1
+    assert report["call_count"] == 1
+    assert report["successful_response_count"] == 0
+    assert report["terminal_transport_failure_count"] == 1
+    raw = json.loads(
+        (tmp_path / "failed-live" / "raw-call-bundle.json").read_text(encoding="utf-8")
+    )
+    assert raw["schema_id"] == "casefile.prose-judge-raw-bundle.v2"
+    assert raw["calls"] == []
+    assert len(raw["failed_calls"]) == 1
+    assert raw["failed_calls"][0]["api_key_persisted"] is False
+    assert "fake" not in json.dumps(raw["failed_calls"][0]["request_payload"])
+    assert report["raw_call_bundle_hash"] == canonical_hash(raw)
 
 
 def test_provider_protocol_smoke_is_fixed_three_call_and_non_qualifying(
@@ -169,7 +189,8 @@ def test_provider_protocol_smoke_stops_on_first_infrastructure_failure() -> None
     report = run_provider_protocol_smoke(provider=provider, api_key="fake")
 
     assert report["status"] == "inconclusive"
-    assert report["call_count"] == 0
+    assert report["call_count"] == 1
+    assert report["successful_response_count"] == 0
     assert provider.call_count == 1
     assert report["infrastructure_failures"] == 1
     assert len(report["rows"]) == 1
@@ -254,10 +275,44 @@ def test_provider_council_smoke_stops_on_arbiter_infrastructure_failure() -> Non
     report = run_provider_council_protocol_smoke(provider=provider, api_key="fake")
 
     assert report["status"] == "inconclusive"
-    assert report["call_count"] == 3
+    assert report["call_count"] == 4
+    assert report["successful_response_count"] == 3
     assert provider.call_count == 4
     assert report["infrastructure_failures"] == 1
     assert report["rows"][-1]["role"] == "arbiter"
+
+
+def test_provider_semantic_smoke_is_fixed_fourteen_exact_calls(
+    tmp_path: Path,
+) -> None:
+    loaded = load_prose_judge_dev_suite()
+    tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
+    reports = tuple(
+        _gold_candidate(
+            tasks[task_id]["samples"][sample_kind]["gold"],
+            tasks[task_id]["samples"][sample_kind]["render"],
+        )
+        for task_id, sample_kind in PROVIDER_SEMANTIC_SMOKE_CASES
+    )
+    provider = FakeProseJudgeProvider(judge_reports=reports)
+    report = run_provider_semantic_smoke(
+        provider=provider,
+        api_key="fake",
+        output_dir=tmp_path / "semantic-smoke",
+    )
+    assert report["status"] == "passed"
+    assert report["qualification_eligible"] is False
+    assert report["call_count"] == provider.call_count == 14
+    assert report["transport_attempt_count"] == 14
+    assert all(report["gates"].values())
+    assert [(row["task_id"], row["sample_kind"]) for row in report["rows"]] == list(
+        PROVIDER_SEMANTIC_SMOKE_CASES
+    )
+    raw = json.loads(
+        (tmp_path / "semantic-smoke" / "raw-call-bundle.json").read_text(encoding="utf-8")
+    )
+    assert raw["schema_id"] == "casefile.prose-judge-raw-bundle.v2"
+    assert report["raw_call_bundle_hash"] == canonical_hash(raw)
 
 
 def test_changed_attestation_hash_is_rejected(tmp_path: Path) -> None:
@@ -294,6 +349,9 @@ def test_policy_freeze_writes_only_compact_non_qualifying_evidence(
     )
     assert descriptor["qualified"] is False
     assert compact["qualified"] is False
+    assert descriptor["schema_id"] == "casefile.prose-council-policy.v2"
+    assert compact["schema_id"] == "casefile.prose-judge-dev-result.v2"
+    assert descriptor["network_retries"] == 1
     assert descriptor["candidate_schema_id_binding"] == (
         "compiler.prose-judge-candidate.v1"
     )
