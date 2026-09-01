@@ -55,6 +55,11 @@ ABILITIES: Final = (
 )
 VARIANTS: Final = ("explicit_valid", "implicit_valid", "adversarial_invalid")
 SAMPLE_KINDS: Final = ("base", "paraphrase", "mutation")
+PROVIDER_SMOKE_CASES: Final = (
+    ("b0_01_beat_realization_explicit_valid", "base"),
+    ("b0_23_implicit_semantics_implicit_valid", "base"),
+    ("b0_09_reveal_control_adversarial_invalid", "base"),
+)
 
 
 class ProseJudgeSuiteError(RuntimeError):
@@ -232,6 +237,147 @@ def oracle_provider_for_sample(
         _gold_report(gold, checklist, render, role=role) for role in policy.roles
     )
     return FakeProseJudgeProvider(judge_reports=reports)
+
+
+def run_provider_protocol_smoke(
+    *,
+    provider: ProseJudgeProvider,
+    api_key: str,
+    output_dir: Path | None = None,
+    suite_path: Path = DEFAULT_SUITE,
+    attestation_path: Path = DEFAULT_ATTESTATION,
+) -> dict[str, Any]:
+    """Run the fixed three-call, non-qualifying DeepSeek protocol smoke gate."""
+
+    loaded = load_prose_judge_dev_suite(suite_path, attestation_path)
+    validate_prompt_repository()
+    tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
+    if set(tasks).issuperset(task_id for task_id, _sample in PROVIDER_SMOKE_CASES) is False:
+        raise ProseJudgeSuiteError("prose_judge_provider_smoke_case_missing")
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=False)
+    rows: list[dict[str, Any]] = []
+    raw_bundle: list[dict[str, Any]] = []
+    for task_id, sample_kind in PROVIDER_SMOKE_CASES:
+        task = tasks[task_id]
+        sample = task["samples"][sample_kind]
+        execution = execute_semantic_council(
+            provider,
+            checklist=loaded["checklist"],
+            render=sample["render"],
+            profile=loaded["profile"],
+            policy=PROSE_COUNCIL_POLICIES[0],
+            model_id=PROSE_COUNCIL_MODEL_ID,
+            api_key=api_key,
+        )
+        result = _execution_result(task, sample_kind, sample, execution)
+        protocol = _provider_protocol_result(result, loaded["checklist"])
+        row = {**result, "protocol_gates": protocol}
+        rows.append(row)
+        raw_bundle.extend(result["calls"])
+        if output_dir is not None:
+            _write_json(output_dir / "calls" / f"{task_id}__{sample_kind}.json", row)
+        if execution.status != "completed":
+            break
+    infrastructure_failures = sum(row["status"] == "inconclusive" for row in rows)
+    protocol_failures = sum(row["status"] == "protocol_failed" for row in rows)
+    gates = {
+        "fixed_case_set": len(rows) == len(PROVIDER_SMOKE_CASES),
+        "exactly_three_calls": len(raw_bundle) == len(PROVIDER_SMOKE_CASES),
+        "server_bindings_exact": sum(
+            row["protocol_gates"]["server_bindings_exact"] for row in rows
+        )
+        == len(PROVIDER_SMOKE_CASES),
+        "report_contract_valid": sum(
+            row["protocol_gates"]["report_contract_valid"] for row in rows
+        )
+        == len(PROVIDER_SMOKE_CASES),
+        "check_coverage_complete": sum(
+            row["protocol_gates"]["check_coverage_complete"] for row in rows
+        )
+        == len(PROVIDER_SMOKE_CASES),
+        "evidence_binding_valid": sum(
+            row["protocol_gates"]["evidence_binding_valid"] for row in rows
+        )
+        == len(PROVIDER_SMOKE_CASES),
+        "raw_audit_complete": sum(
+            row["protocol_gates"]["raw_audit_complete"] for row in rows
+        )
+        == len(PROVIDER_SMOKE_CASES),
+        "infrastructure_failures_zero": infrastructure_failures == 0,
+        "protocol_failures_zero": protocol_failures == 0,
+    }
+    if infrastructure_failures:
+        status = "inconclusive"
+    else:
+        status = "passed" if all(gates.values()) else "failed"
+    report = {
+        "schema_id": "casefile.prose-judge-provider-smoke.v1",
+        "attempt_id": output_dir.name if output_dir else "fake-provider-smoke",
+        "status": status,
+        "qualification_eligible": False,
+        "policy_id": PROSE_COUNCIL_POLICIES[0].policy_id,
+        "fixed_cases": [
+            {"task_id": task_id, "sample_kind": sample_kind}
+            for task_id, sample_kind in PROVIDER_SMOKE_CASES
+        ],
+        "lineage": _lineage(loaded, "provider_smoke"),
+        "gates": gates,
+        "protocol_failures": protocol_failures,
+        "infrastructure_failures": infrastructure_failures,
+        "rows": rows,
+        "raw_call_bundle_hash": canonical_hash(raw_bundle),
+        "call_count": len(raw_bundle),
+    }
+    report["report_hash"] = canonical_hash(report)
+    if output_dir is not None:
+        _write_json(output_dir / "raw-call-bundle.json", {"calls": raw_bundle})
+        _write_json(output_dir / "report.json", report)
+    return report
+
+
+def _provider_protocol_result(
+    result: dict[str, Any], checklist: dict[str, Any]
+) -> dict[str, bool]:
+    calls = result["calls"]
+    if len(calls) != 1:
+        return {
+            "server_bindings_exact": False,
+            "report_contract_valid": False,
+            "check_coverage_complete": False,
+            "evidence_binding_valid": False,
+            "raw_audit_complete": False,
+        }
+    call = calls[0]
+    candidate = call["candidate"]
+    bindings = call["request_payload"].get("server_bindings", {})
+    expected_ids = [item["check_id"] for item in checklist["checks"]]
+    candidate_ids = (
+        [item.get("check_id") for item in candidate.get("assessments", [])]
+        if isinstance(candidate, dict)
+        else []
+    )
+    bindings_exact = isinstance(candidate, dict) and all(
+        candidate.get(key) == bindings.get(key)
+        for key in ("scene_id", "checklist_hash", "render_hash")
+    )
+    raw = call["raw_response"]
+    raw_complete = (
+        isinstance(raw, str)
+        and bool(raw)
+        and call["output_hash"] == sha256(raw.encode("utf-8")).hexdigest()
+        and call["input_hash"] == canonical_json_sha256(call["request_payload"])
+        and call["usage"].get("requests") == 1
+        and call["api_key_persisted"] is False
+    )
+    completed = result["status"] == "completed"
+    return {
+        "server_bindings_exact": bindings_exact,
+        "report_contract_valid": completed,
+        "check_coverage_complete": completed and candidate_ids == expected_ids,
+        "evidence_binding_valid": completed,
+        "raw_audit_complete": raw_complete,
+    }
 
 
 def run_development_ablation(
@@ -664,19 +810,42 @@ def _write_json(path: Path, value: Any) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("fake", "live"), required=True)
+    parser.add_argument("--mode", choices=("fake", "live", "smoke"), required=True)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--attestation", type=Path, default=DEFAULT_ATTESTATION)
     parser.add_argument("--freeze-repo", action="store_true")
     args = parser.parse_args()
     api_key = os.getenv("CASEFILE_DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or ""
-    if args.mode == "live":
+    if args.mode in {"live", "smoke"}:
         if not api_key:
             raise SystemExit("DeepSeek API key is required")
         if _git("status", "--porcelain"):
-            raise SystemExit("Live N4.5-02 requires a clean worktree")
+            raise SystemExit("Live N4.5 prose Judge evaluation requires a clean worktree")
         provider = DeepSeekProseJudgeProvider()
+
+        if args.mode == "smoke":
+            report = run_provider_protocol_smoke(
+                provider=provider,
+                api_key=api_key,
+                output_dir=args.output_dir,
+                suite_path=args.suite,
+                attestation_path=args.attestation,
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": report["status"],
+                        "qualification_eligible": report["qualification_eligible"],
+                        "call_count": report["call_count"],
+                        "report_hash": report["report_hash"],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            if report["status"] == "inconclusive":
+                return 3
+            return 0 if report["status"] == "passed" else 2
 
         def factory(
             _sample: dict[str, Any], _policy: ProseCouncilPolicy
@@ -731,10 +900,12 @@ if __name__ == "__main__":
 __all__ = [
     "DEFAULT_ATTESTATION",
     "DEFAULT_SUITE",
+    "PROVIDER_SMOKE_CASES",
     "ProseJudgeSuiteError",
     "canonical_hash",
     "freeze_selected_policy",
     "load_prose_judge_dev_suite",
     "oracle_provider_for_sample",
     "run_development_ablation",
+    "run_provider_protocol_smoke",
 ]

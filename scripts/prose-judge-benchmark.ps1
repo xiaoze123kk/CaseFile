@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Fake", "Live")]
+    [ValidateSet("Fake", "Live", "Smoke")]
     [string]$Mode = "Fake",
     [string]$AttemptId = ""
 )
@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repoRoot "backend"
 
-if ($Mode -eq "Live") {
+if ($Mode -ne "Fake") {
     $configured = -not [string]::IsNullOrWhiteSpace($env:CASEFILE_DEEPSEEK_API_KEY) -or
         -not [string]::IsNullOrWhiteSpace($env:DEEPSEEK_API_KEY)
     if (-not $configured) {
@@ -36,7 +36,8 @@ if ($Mode -eq "Live") {
 if ([string]::IsNullOrWhiteSpace($AttemptId)) {
     $AttemptId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 }
-$outputDir = Join-Path $backendRoot "var/benchmark/prose-judge/n4.5-02/$AttemptId"
+$phaseDirectory = if ($Mode -eq "Smoke") { "n4.5-02r" } else { "n4.5-02" }
+$outputDir = Join-Path $backendRoot "var/benchmark/prose-judge/$phaseDirectory/$AttemptId"
 $modeValue = $Mode.ToLowerInvariant()
 
 Push-Location $backendRoot

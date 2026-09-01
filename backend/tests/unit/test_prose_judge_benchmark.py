@@ -12,12 +12,14 @@ from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider, ProseCoun
 from casefile.benchmark.prose_judge_eval import (
     DEFAULT_ATTESTATION,
     DEFAULT_SUITE,
+    PROVIDER_SMOKE_CASES,
     ProseJudgeSuiteError,
     _gold_report,
     canonical_hash,
     freeze_selected_policy,
     load_prose_judge_dev_suite,
     run_development_ablation,
+    run_provider_protocol_smoke,
 )
 
 
@@ -120,6 +122,76 @@ def test_live_attempt_stops_on_first_infrastructure_failure() -> None:
     assert report["selected_policy_id"] is None
     assert calls == 1
     assert len(report["policies"]) == 1
+
+
+def test_provider_protocol_smoke_is_fixed_three_call_and_non_qualifying(
+    tmp_path: Path,
+) -> None:
+    loaded = load_prose_judge_dev_suite()
+    tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
+    reports = []
+    for task_id, sample_kind in PROVIDER_SMOKE_CASES:
+        sample = tasks[task_id]["samples"][sample_kind]
+        reports.append(
+            _gold_report(
+                sample["gold"],
+                loaded["checklist"],
+                sample["render"],
+                role="fidelity",
+            )
+        )
+    provider = FakeProseJudgeProvider(judge_reports=tuple(reports))
+    output_dir = tmp_path / "smoke"
+    report = run_provider_protocol_smoke(
+        provider=provider,
+        api_key="fake",
+        output_dir=output_dir,
+    )
+
+    assert report["status"] == "passed"
+    assert report["qualification_eligible"] is False
+    assert report["call_count"] == provider.call_count == 3
+    assert all(report["gates"].values())
+    assert [row["task_id"] for row in report["rows"]] == [
+        task_id for task_id, _sample_kind in PROVIDER_SMOKE_CASES
+    ]
+    assert report["report_hash"] == canonical_hash(
+        {key: value for key, value in report.items() if key != "report_hash"}
+    )
+    assert (output_dir / "raw-call-bundle.json").is_file()
+    assert (output_dir / "report.json").is_file()
+
+
+def test_provider_protocol_smoke_stops_on_first_protocol_failure() -> None:
+    loaded = load_prose_judge_dev_suite()
+    tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
+    task_id, sample_kind = PROVIDER_SMOKE_CASES[0]
+    sample = tasks[task_id]["samples"][sample_kind]
+    invalid = _gold_report(
+        sample["gold"], loaded["checklist"], sample["render"], role="fidelity"
+    )
+    invalid["render_hash"] = loaded["checklist"]["source"]["scene_plan_hash"]
+    provider = FakeProseJudgeProvider(judge_reports=(invalid,))
+
+    report = run_provider_protocol_smoke(provider=provider, api_key="fake")
+
+    assert report["status"] == "failed"
+    assert report["call_count"] == provider.call_count == 1
+    assert report["protocol_failures"] == 1
+    assert report["gates"]["server_bindings_exact"] is False
+    assert len(report["rows"]) == 1
+
+
+def test_provider_protocol_smoke_stops_on_first_infrastructure_failure() -> None:
+    provider = FakeProseJudgeProvider(failure_at_call=1)
+
+    report = run_provider_protocol_smoke(provider=provider, api_key="fake")
+
+    assert report["status"] == "inconclusive"
+    assert report["call_count"] == 0
+    assert provider.call_count == 1
+    assert report["infrastructure_failures"] == 1
+    assert len(report["rows"]) == 1
 
 
 def test_changed_attestation_hash_is_rejected(tmp_path: Path) -> None:
