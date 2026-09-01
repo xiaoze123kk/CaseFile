@@ -48,10 +48,10 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
-    "prose_fidelity_judge": "prose-fidelity-judge-v1",
-    "prose_adversarial_judge": "prose-adversarial-judge-v1",
-    "prose_coherence_judge": "prose-coherence-judge-v1",
-    "prose_arbiter": "prose-arbiter-v1",
+    "prose_fidelity_judge": "prose-fidelity-judge-v2",
+    "prose_adversarial_judge": "prose-adversarial-judge-v2",
+    "prose_coherence_judge": "prose-coherence-judge-v2",
+    "prose_arbiter": "prose-arbiter-v2",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -565,6 +565,18 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_arbiter", "prose-arbiter-v1"): {
         "system": "b85e088bf3fd7b87ad640370bacc198f3a1372de7dd55aefa486d209c2e19458"
     },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v2"): {
+        "system": "512e954a0eec8be4743c0fb07931634b52dad5a43cc987ee2be1c136c61f2f5a"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v2"): {
+        "system": "fbcd7d80b8c547f7e6e05b67e2a17274eb87f24f9e983f18adb74d2117ac73f3"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v2"): {
+        "system": "ac58fb7dbce0b813a2d52093f19dcaba3e5ac3cfde54082644fa6b094f1f085a"
+    },
+    ("prose_arbiter", "prose-arbiter-v2"): {
+        "system": "dc858601f1faf7d49887376bba7ff9f718db20cd87268c7c6e6d380c6379635f"
+    },
 }
 
 
@@ -657,6 +669,28 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
             == definition.system_prompt
         )
         assert all(prompt.endswith("\n") for prompt in definition.component_prompts.values())
+
+
+@pytest.mark.parametrize(
+    "agent_id",
+    (
+        "prose_fidelity_judge",
+        "prose_adversarial_judge",
+        "prose_coherence_judge",
+        "prose_arbiter",
+    ),
+)
+def test_prose_judge_v2_adds_server_hash_bindings_without_rewriting_v1(
+    agent_id: str,
+) -> None:
+    legacy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v2", "v1"))
+    current = load_prompt(agent_id)
+
+    assert current.previous_version == legacy.version
+    assert "server_bindings" not in legacy.system_prompt
+    assert "server_bindings.checklist_hash" in current.system_prompt
+    assert "server_bindings.render_hash" in current.system_prompt
+    assert "不得自行计算哈希" in current.system_prompt
 
 
 def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:

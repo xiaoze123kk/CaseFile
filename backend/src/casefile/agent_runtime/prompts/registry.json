@@ -47,16 +47,16 @@
       "current_version": "scene-compiler-semantic-fill-v6"
     },
     "prose_fidelity_judge": {
-      "current_version": "prose-fidelity-judge-v1"
+      "current_version": "prose-fidelity-judge-v2"
     },
     "prose_adversarial_judge": {
-      "current_version": "prose-adversarial-judge-v1"
+      "current_version": "prose-adversarial-judge-v2"
     },
     "prose_coherence_judge": {
-      "current_version": "prose-coherence-judge-v1"
+      "current_version": "prose-coherence-judge-v2"
     },
     "prose_arbiter": {
-      "current_version": "prose-arbiter-v1"
+      "current_version": "prose-arbiter-v2"
     },
     "general_mutation_planner": {
       "current_version": "general-mutation-planner-v6"

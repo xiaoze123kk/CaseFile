@@ -48,6 +48,8 @@ Prompt 版本有三种互斥形态：
 
 `prose-fidelity-judge-v1`、`prose-adversarial-judge-v1`、`prose-coherence-judge-v1` 与 `prose-arbiter-v1` 是 N4.5-02 正文语义委员会的四个独立无工具 Prompt。前三者必须按服务端 Checklist 原顺序完整返回，Arbiter 只批量裁决争议项；Runtime 负责 Evidence 原文绑定、Consensus、预算和恢复，Prompt 不拥有控制流或资格决定。
 
+四个 `v2` 版本保留 v1 语义职责，只增加顶层 `server_bindings` 复制协议：`scene_id`、`checklist_hash`、`render_hash` 由 Runtime 预计算并纳入 request fingerprint，模型不得自行计算或误用 ScenePlan/Profile 等上游 hash。v1 保留用于 `0923fe3` 开发消融的精确重放。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

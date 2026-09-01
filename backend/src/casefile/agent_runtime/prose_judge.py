@@ -28,6 +28,7 @@ PROSE_COUNCIL_NETWORK_RETRIES: Final = 0
 PROSE_COUNCIL_TEMPERATURE: Final = 0
 PROSE_COUNCIL_MAX_OUTPUT_TOKENS: Final = 8192
 PROSE_COUNCIL_THINKING_ENABLED: Final = False
+PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v2"
 PROSE_JUDGE_SCHEMA_HASH: Final = canonical_json_sha256(
     ProseJudgeReport.model_json_schema()
 )
@@ -510,6 +511,7 @@ def _judge_request(
 ) -> ProseJudgeRequest:
     prompt = load_prompt(_AGENT_BY_ROLE[role])
     payload = {
+        "server_bindings": _server_bindings(checklist=checklist, render=render),
         "untrusted_data": {
             "checklist": checklist,
             "render": render,
@@ -552,6 +554,7 @@ def _arbiter_request(
     prompt = load_prompt(_AGENT_BY_ROLE["arbiter"])
     disputed_set = set(disputed)
     payload = {
+        "server_bindings": _server_bindings(checklist=checklist, render=render),
         "untrusted_data": {
             "checklist": {
                 **checklist,
@@ -588,12 +591,26 @@ def _arbiter_request(
     )
 
 
+def _server_bindings(
+    *, checklist: dict[str, Any], render: dict[str, Any]
+) -> dict[str, str]:
+    """Expose server-computed identity values for verbatim model echoing."""
+
+    return {
+        "scene_id": str(checklist["scene_id"]),
+        "checklist_hash": canonical_json_sha256(checklist),
+        "render_hash": canonical_json_sha256(render),
+        "output_schema_id": "compiler.prose-judge-report.v1",
+        "output_schema_hash": PROSE_JUDGE_SCHEMA_HASH,
+    }
+
+
 def _request_fingerprint(
     *, model_id: str, role: str, prompt_version: str, prompt_hash: str, input_hash: str
 ) -> str:
     return canonical_json_sha256(
         {
-            "protocol": "prose-judge-json-object-v1",
+            "protocol": PROSE_JUDGE_REQUEST_PROTOCOL,
             "role": role,
             "model_id": model_id,
             "prompt_version": prompt_version,
@@ -673,6 +690,7 @@ __all__ = [
     "PROSE_COUNCIL_MAX_OUTPUT_TOKENS",
     "PROSE_COUNCIL_MODEL_ID",
     "PROSE_COUNCIL_POLICIES",
+    "PROSE_JUDGE_REQUEST_PROTOCOL",
     "PROSE_JUDGE_SCHEMA_HASH",
     "ProseArbiterRequest",
     "ProseCouncilExecution",
