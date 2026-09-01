@@ -15,7 +15,7 @@ from casefile.benchmark.prose_judge_eval import (
     PROVIDER_COUNCIL_SMOKE_CASE,
     PROVIDER_SMOKE_CASES,
     ProseJudgeSuiteError,
-    _gold_report,
+    _gold_candidate,
     canonical_hash,
     freeze_selected_policy,
     load_prose_judge_dev_suite,
@@ -27,18 +27,10 @@ from casefile.benchmark.prose_judge_eval import (
 
 @pytest.fixture(scope="module")
 def fake_ablation_report() -> dict[str, Any]:
-    loaded = load_prose_judge_dev_suite()
-    checklist = loaded["checklist"]
-
-    def factory(
-        sample: dict[str, Any], policy: ProseCouncilPolicy
-    ) -> FakeProseJudgeProvider:
+    def factory(sample: dict[str, Any], policy: ProseCouncilPolicy) -> FakeProseJudgeProvider:
         return FakeProseJudgeProvider(
             judge_reports=tuple(
-                _gold_report(
-                    sample["gold"], checklist, sample["render"], role=role
-                )
-                for role in policy.roles
+                _gold_candidate(sample["gold"], sample["render"]) for _role in policy.roles
             )
         )
 
@@ -62,9 +54,7 @@ def test_public_suite_has_frozen_distribution_gold_and_review_attestation() -> N
 
 
 @pytest.mark.parametrize("target", ("suite", "task", "text", "label", "review"))
-def test_suite_text_labels_and_reviews_are_hash_bound(
-    tmp_path: Path, target: str
-) -> None:
+def test_suite_text_labels_and_reviews_are_hash_bound(tmp_path: Path, target: str) -> None:
     suite = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
     attestation = json.loads(DEFAULT_ATTESTATION.read_text(encoding="utf-8"))
     if target == "suite":
@@ -108,9 +98,7 @@ def test_fake_ablation_runs_all_policies_and_selects_lowest_request_policy(
 def test_live_attempt_stops_on_first_infrastructure_failure() -> None:
     calls = 0
 
-    def factory(
-        _sample: dict[str, Any], _policy: ProseCouncilPolicy
-    ) -> FakeProseJudgeProvider:
+    def factory(_sample: dict[str, Any], _policy: ProseCouncilPolicy) -> FakeProseJudgeProvider:
         nonlocal calls
         calls += 1
         return FakeProseJudgeProvider(failure_at_call=1)
@@ -134,14 +122,7 @@ def test_provider_protocol_smoke_is_fixed_three_call_and_non_qualifying(
     reports = []
     for task_id, sample_kind in PROVIDER_SMOKE_CASES:
         sample = tasks[task_id]["samples"][sample_kind]
-        reports.append(
-            _gold_report(
-                sample["gold"],
-                loaded["checklist"],
-                sample["render"],
-                role="fidelity",
-            )
-        )
+        reports.append(_gold_candidate(sample["gold"], sample["render"]))
     provider = FakeProseJudgeProvider(judge_reports=tuple(reports))
     output_dir = tmp_path / "smoke"
     report = run_provider_protocol_smoke(
@@ -169,9 +150,7 @@ def test_provider_protocol_smoke_stops_on_first_protocol_failure() -> None:
     tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
     task_id, sample_kind = PROVIDER_SMOKE_CASES[0]
     sample = tasks[task_id]["samples"][sample_kind]
-    invalid = _gold_report(
-        sample["gold"], loaded["checklist"], sample["render"], role="fidelity"
-    )
+    invalid = _gold_candidate(sample["gold"], sample["render"])
     invalid["render_hash"] = loaded["checklist"]["source"]["scene_plan_hash"]
     provider = FakeProseJudgeProvider(judge_reports=(invalid,))
 
@@ -200,29 +179,17 @@ def _council_smoke_reports(
     loaded: dict[str, Any],
 ) -> tuple[tuple[dict[str, Any], ...], dict[str, Any]]:
     task_id, sample_kind = PROVIDER_COUNCIL_SMOKE_CASE
-    task = next(
-        item for item in loaded["suite"]["tasks"] if item["task_id"] == task_id
-    )
+    task = next(item for item in loaded["suite"]["tasks"] if item["task_id"] == task_id)
     sample = task["samples"][sample_kind]
     reports = tuple(
-        _gold_report(
-            sample["gold"],
-            loaded["checklist"],
-            sample["render"],
-            role=role,
-        )
-        for role in ("fidelity", "adversarial", "coherence")
+        _gold_candidate(sample["gold"], sample["render"])
+        for _role in ("fidelity", "adversarial", "coherence")
     )
-    arbiter = _gold_report(
-        sample["gold"],
-        loaded["checklist"],
-        sample["render"],
-        role="arbiter",
-    )
+    arbiter = _gold_candidate(sample["gold"], sample["render"])
     disputed = next(
         item
         for item in arbiter["assessments"]
-        if item["verdict"] == "pass" and item["evidence"]
+        if item["verdict"] == "pass" and item["evidence_ids"]
     )
     arbiter["assessments"] = [disputed]
     return reports, arbiter
@@ -327,6 +294,10 @@ def test_policy_freeze_writes_only_compact_non_qualifying_evidence(
     )
     assert descriptor["qualified"] is False
     assert compact["qualified"] is False
+    assert descriptor["candidate_schema_id_binding"] == (
+        "compiler.prose-judge-candidate.v1"
+    )
+    assert len(descriptor["candidate_schema_hash"]) == 64
     assert descriptor["development_report_hash"] == compact["report_hash"]
     assert "raw_response" not in compact_path.read_text(encoding="utf-8")
     assert "qualified=false" in markdown_path.read_text(encoding="utf-8")

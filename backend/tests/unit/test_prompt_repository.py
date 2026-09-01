@@ -48,10 +48,10 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
-    "prose_fidelity_judge": "prose-fidelity-judge-v3",
-    "prose_adversarial_judge": "prose-adversarial-judge-v3",
-    "prose_coherence_judge": "prose-coherence-judge-v3",
-    "prose_arbiter": "prose-arbiter-v3",
+    "prose_fidelity_judge": "prose-fidelity-judge-v4",
+    "prose_adversarial_judge": "prose-adversarial-judge-v4",
+    "prose_coherence_judge": "prose-coherence-judge-v4",
+    "prose_arbiter": "prose-arbiter-v4",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -589,6 +589,18 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_arbiter", "prose-arbiter-v3"): {
         "system": "883d09391089b80c29098895350e20f6c12f55e9639069531224e5fe67bb5f6a"
     },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v4"): {
+        "system": "8e850c5609fdcd45e38df730c05d0f4465ff5af495e2860da6a26ee7ce7d6b72"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v4"): {
+        "system": "aa2e200a22b9e2d0333881d17fdc99055c7af12a8987e1389509e3dd5bc5b8b7"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v4"): {
+        "system": "ad78553c6d2cd1c64a5318127b55c36568c6138fc2d1324a6485a5733382bc83"
+    },
+    ("prose_arbiter", "prose-arbiter-v4"): {
+        "system": "8dd865428c4af435feade3cbe6f7fc6156a2f95e7e2189459f4825cd02328cca"
+    },
 }
 
 
@@ -692,24 +704,26 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
         "prose_arbiter",
     ),
 )
-def test_prose_judge_v3_adds_evidence_catalog_without_rewriting_history(
+def test_prose_judge_v4_uses_server_owned_identity_and_evidence_ids(
     agent_id: str,
 ) -> None:
-    legacy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v3", "v1"))
-    hash_binding = load_prompt(
-        agent_id, prompt_version_for_task(agent_id).replace("v3", "v2")
-    )
+    legacy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v4", "v1"))
+    hash_binding = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v4", "v2"))
+    catalog_copy = load_prompt(agent_id, prompt_version_for_task(agent_id).replace("v4", "v3"))
     current = load_prompt(agent_id)
 
     assert hash_binding.previous_version == legacy.version
-    assert current.previous_version == hash_binding.version
+    assert catalog_copy.previous_version == hash_binding.version
+    assert current.previous_version == catalog_copy.version
     assert "server_bindings" not in legacy.system_prompt
     assert "server_evidence_catalog" not in hash_binding.system_prompt
-    assert "server_bindings.checklist_hash" in current.system_prompt
-    assert "server_bindings.render_hash" in current.system_prompt
-    assert "不得自行计算哈希" in current.system_prompt
+    assert "server_bindings.checklist_hash" in catalog_copy.system_prompt
+    assert "不得自行计算哈希" in catalog_copy.system_prompt
     assert "server_evidence_catalog" in current.system_prompt
-    assert "不得自行计算 start_char/end_char" in current.system_prompt
+    assert "evidence_id" in current.system_prompt
+    assert "不要输出 role、scene_id 或任何 hash" in current.system_prompt
+    assert "causality_ordering" in current.system_prompt
+    assert "location_time" in current.system_prompt
 
 
 def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:
@@ -720,9 +734,10 @@ def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:
     for component_id, component in definition.package.components.items():
         has_public_language = "public-language-v1" in component.instruction_fragments
         assert has_public_language is component_id.endswith("_finalizer")
-    assert "public-language-v1" not in load_prompt(
-        "casefile_chat", "casefile-chat-v15"
-    ).package.fragments
+    assert (
+        "public-language-v1"
+        not in load_prompt("casefile_chat", "casefile-chat-v15").package.fragments
+    )
 
 
 def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> None:

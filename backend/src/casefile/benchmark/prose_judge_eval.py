@@ -25,6 +25,8 @@ from casefile.agent_runtime.prose_judge import (
     PROSE_COUNCIL_POLICIES,
     PROSE_EVIDENCE_CATALOG_POLICY_HASH,
     PROSE_EVIDENCE_CATALOG_VERSION,
+    PROSE_JUDGE_CANDIDATE_SCHEMA_HASH,
+    PROSE_JUDGE_CANDIDATE_SCHEMA_ID,
     PROSE_JUDGE_REQUEST_PROTOCOL,
     PROSE_JUDGE_SCHEMA_HASH,
     DeepSeekProseJudgeProvider,
@@ -46,9 +48,7 @@ from casefile.domain.narrative_compiler import (
 
 ROOT: Final = Path(__file__).resolve().parents[4]
 DEFAULT_SUITE: Final = ROOT / "fixtures/prose_judge_benchmark/v1/suite.json"
-DEFAULT_ATTESTATION: Final = (
-    ROOT / "fixtures/prose_judge_benchmark/v1/review-attestation.json"
-)
+DEFAULT_ATTESTATION: Final = ROOT / "fixtures/prose_judge_benchmark/v1/review-attestation.json"
 ABILITIES: Final = (
     "beat_realization",
     "event_modality",
@@ -180,15 +180,11 @@ def load_prose_judge_dev_suite(
                 raise ProseJudgeSuiteError("prose_judge_render_text_duplicate")
             normalized_texts.add(normalized)
             report = _gold_report(gold, checklist, render, role="fidelity")
-            validate_prose_judge_report(
-                report, checklist=checklist, render=render, profile=profile
-            )
+            validate_prose_judge_report(report, checklist=checklist, render=render, profile=profile)
             vector = tuple(item["verdict"] for item in gold["assessments"])
             gold_vectors[sample_kind] = vector
             expected_scene = (
-                "fail"
-                if "fail" in vector
-                else "uncertain" if "uncertain" in vector else "pass"
+                "fail" if "fail" in vector else "uncertain" if "uncertain" in vector else "pass"
             )
             if gold["scene_verdict"] != expected_scene:
                 raise ProseJudgeSuiteError("prose_judge_gold_scene_verdict_invalid")
@@ -204,10 +200,7 @@ def load_prose_judge_dev_suite(
         ]
         if not actual_changed or actual_changed != changed_ids:
             raise ProseJudgeSuiteError("prose_judge_mutation_gold_invalid")
-        if (
-            samples["base"]["gold"]["scene_verdict"]
-            == samples["mutation"]["gold"]["scene_verdict"]
-        ):
+        if samples["base"]["gold"]["scene_verdict"] == samples["mutation"]["gold"]["scene_verdict"]:
             raise ProseJudgeSuiteError("prose_judge_mutation_scene_unchanged")
     if any(value != 1 for value in distribution.values()) or len(normalized_texts) != 72:
         raise ProseJudgeSuiteError("prose_judge_suite_distribution_invalid")
@@ -235,9 +228,43 @@ def _gold_report(
         "scene_id": checklist["scene_id"],
         "checklist_hash": canonical_json_sha256(checklist),
         "render_hash": canonical_json_sha256(render),
-        "assessments": deepcopy(
-            assessments if assessments is not None else gold["assessments"]
-        ),
+        "assessments": deepcopy(assessments if assessments is not None else gold["assessments"]),
+    }
+
+
+def _gold_candidate(
+    gold: dict[str, Any],
+    render: dict[str, Any],
+    *,
+    assessments: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the private provider candidate used only by deterministic Fake gates."""
+
+    catalog = build_server_evidence_catalog(render)
+    evidence_ids = {
+        canonical_hash({key: value for key, value in item.items() if key != "evidence_id"}): item[
+            "evidence_id"
+        ]
+        for item in catalog
+    }
+    source_assessments = deepcopy(assessments if assessments is not None else gold["assessments"])
+    try:
+        candidate_assessments = [
+            {
+                "check_id": item["check_id"],
+                "verdict": item["verdict"],
+                "evidence_ids": [
+                    evidence_ids[canonical_hash(evidence)] for evidence in item["evidence"]
+                ],
+                "rationale": item["rationale"],
+            }
+            for item in source_assessments
+        ]
+    except KeyError as error:
+        raise ProseJudgeSuiteError("prose_judge_gold_evidence_catalog_mismatch") from error
+    return {
+        "schema_id": PROSE_JUDGE_CANDIDATE_SCHEMA_ID,
+        "assessments": candidate_assessments,
     }
 
 
@@ -246,12 +273,9 @@ def oracle_provider_for_sample(
 ) -> FakeProseJudgeProvider:
     """Return explicit Gold-backed reports; this never proves model capability."""
 
-    checklist = load_prose_judge_dev_suite()["checklist"]
     render = sample["render"]
     gold = sample["gold"]
-    reports = tuple(
-        _gold_report(gold, checklist, render, role=role) for role in policy.roles
-    )
+    reports = tuple(_gold_candidate(gold, render) for _role in policy.roles)
     return FakeProseJudgeProvider(judge_reports=reports)
 
 
@@ -300,13 +324,9 @@ def run_provider_protocol_smoke(
     gates = {
         "fixed_case_set": len(rows) == len(PROVIDER_SMOKE_CASES),
         "exactly_three_calls": len(raw_bundle) == len(PROVIDER_SMOKE_CASES),
-        "server_bindings_exact": sum(
-            row["protocol_gates"]["server_bindings_exact"] for row in rows
-        )
+        "server_bindings_exact": sum(row["protocol_gates"]["server_bindings_exact"] for row in rows)
         == len(PROVIDER_SMOKE_CASES),
-        "report_contract_valid": sum(
-            row["protocol_gates"]["report_contract_valid"] for row in rows
-        )
+        "report_contract_valid": sum(row["protocol_gates"]["report_contract_valid"] for row in rows)
         == len(PROVIDER_SMOKE_CASES),
         "check_coverage_complete": sum(
             row["protocol_gates"]["check_coverage_complete"] for row in rows
@@ -316,9 +336,7 @@ def run_provider_protocol_smoke(
             row["protocol_gates"]["evidence_binding_valid"] for row in rows
         )
         == len(PROVIDER_SMOKE_CASES),
-        "raw_audit_complete": sum(
-            row["protocol_gates"]["raw_audit_complete"] for row in rows
-        )
+        "raw_audit_complete": sum(row["protocol_gates"]["raw_audit_complete"] for row in rows)
         == len(PROVIDER_SMOKE_CASES),
         "infrastructure_failures_zero": infrastructure_failures == 0,
         "protocol_failures_zero": protocol_failures == 0,
@@ -395,9 +413,7 @@ def run_provider_council_protocol_smoke(
             model_id=PROSE_COUNCIL_MODEL_ID,
             api_key=api_key,
         )
-        call_value = (
-            _serialized_provider_call(execution.call) if execution.call else None
-        )
+        call_value = _serialized_provider_call(execution.call) if execution.call else None
         if call_value is not None:
             raw_bundle.append(call_value)
         if execution.report is not None:
@@ -428,9 +444,7 @@ def run_provider_council_protocol_smoke(
     forced_dispute: dict[str, Any] | None = None
     if len(live_reports) == len(FULL_COUNCIL_POLICY.roles):
         forced_reports = [
-            _gold_report(
-                sample["gold"], checklist, render, role=role
-            )
+            _gold_report(sample["gold"], checklist, render, role=role)
             for role in FULL_COUNCIL_POLICY.roles
         ]
         dispute_assessment = next(
@@ -459,9 +473,7 @@ def run_provider_council_protocol_smoke(
         forced_dispute = {
             "source": "gold-backed-protocol-fixture-v1",
             "check_id": disputed_check_id,
-            "judge_report_hashes": [
-                canonical_json_sha256(report) for report in forced_reports
-            ],
+            "judge_report_hashes": [canonical_json_sha256(report) for report in forced_reports],
             "qualification_eligible": False,
         }
         execution = execute_prose_arbiter_protocol_call(
@@ -474,9 +486,7 @@ def run_provider_council_protocol_smoke(
             model_id=PROSE_COUNCIL_MODEL_ID,
             api_key=api_key,
         )
-        call_value = (
-            _serialized_provider_call(execution.call) if execution.call else None
-        )
+        call_value = _serialized_provider_call(execution.call) if execution.call else None
         if call_value is not None:
             raw_bundle.append(call_value)
         if execution.status == "inconclusive":
@@ -517,9 +527,7 @@ def run_provider_council_protocol_smoke(
         "protocol_failures_zero": protocol_failures == 0,
     }
     status = (
-        "inconclusive"
-        if infrastructure_failures
-        else "passed" if all(gates.values()) else "failed"
+        "inconclusive" if infrastructure_failures else "passed" if all(gates.values()) else "failed"
     )
     report = {
         "schema_id": "casefile.prose-judge-council-provider-smoke.v1",
@@ -582,26 +590,23 @@ def _provider_call_protocol_gates(
     except (json.JSONDecodeError, TypeError):
         raw_candidate = None
     return {
-        "server_bindings_exact": isinstance(candidate, dict)
-        and candidate.get("role") == expected_role
-        and all(
-            candidate.get(key) == bindings.get(key)
-            for key in ("scene_id", "checklist_hash", "render_hash")
-        ),
+        "server_bindings_exact": report is not None
+        and report.get("role") == expected_role
+        and report.get("scene_id") == bindings.get("scene_id")
+        and report.get("checklist_hash") == bindings.get("checklist_hash")
+        and report.get("render_hash") == bindings.get("render_hash")
+        and isinstance(candidate, dict)
+        and candidate.get("schema_id") == PROSE_JUDGE_CANDIDATE_SCHEMA_ID,
         "prompt_binding_exact": call["role"] == expected_role
         and call["model_id"] == PROSE_COUNCIL_MODEL_ID
         and call["prompt_version"] == expected_prompt.version
         and call["prompt_hash"] == expected_prompt.system_prompt_sha256,
         "report_contract_valid": report is not None,
-        "check_coverage_complete": report is not None
-        and candidate_ids == expected_check_ids,
+        "check_coverage_complete": report is not None and candidate_ids == expected_check_ids,
         "evidence_binding_valid": report is not None,
-        "evidence_catalog_exact": request_payload.get("server_evidence_catalog")
-        == evidence_catalog
-        and bindings.get("evidence_catalog_version")
-        == PROSE_EVIDENCE_CATALOG_VERSION
-        and bindings.get("evidence_catalog_policy_hash")
-        == PROSE_EVIDENCE_CATALOG_POLICY_HASH,
+        "evidence_catalog_exact": request_payload.get("server_evidence_catalog") == evidence_catalog
+        and bindings.get("evidence_catalog_version") == PROSE_EVIDENCE_CATALOG_VERSION
+        and bindings.get("evidence_catalog_policy_hash") == PROSE_EVIDENCE_CATALOG_POLICY_HASH,
         "raw_audit_complete": isinstance(raw, str)
         and bool(raw)
         and raw_candidate == candidate
@@ -616,9 +621,7 @@ def _all_role_gate(rows: list[dict[str, Any]], gate: str, count: int) -> bool:
     return len(rows) == count and all(row["protocol_gates"][gate] for row in rows)
 
 
-def _provider_protocol_result(
-    result: dict[str, Any], checklist: dict[str, Any]
-) -> dict[str, bool]:
+def _provider_protocol_result(result: dict[str, Any], checklist: dict[str, Any]) -> dict[str, bool]:
     calls = result["calls"]
     if len(calls) != 1:
         return {
@@ -631,15 +634,20 @@ def _provider_protocol_result(
     call = calls[0]
     candidate = call["candidate"]
     bindings = call["request_payload"].get("server_bindings", {})
+    report = result["judge_reports"][0] if result["judge_reports"] else None
     expected_ids = [item["check_id"] for item in checklist["checks"]]
     candidate_ids = (
         [item.get("check_id") for item in candidate.get("assessments", [])]
         if isinstance(candidate, dict)
         else []
     )
-    bindings_exact = isinstance(candidate, dict) and all(
-        candidate.get(key) == bindings.get(key)
-        for key in ("scene_id", "checklist_hash", "render_hash")
+    bindings_exact = (
+        isinstance(candidate, dict)
+        and candidate.get("schema_id") == PROSE_JUDGE_CANDIDATE_SCHEMA_ID
+        and report is not None
+        and report.get("scene_id") == bindings.get("scene_id")
+        and report.get("checklist_hash") == bindings.get("checklist_hash")
+        and report.get("render_hash") == bindings.get("render_hash")
     )
     raw = call["raw_response"]
     raw_complete = (
@@ -958,11 +966,11 @@ def freeze_selected_policy(
         "prompt_bindings": report["lineage"]["prompt_bindings"],
         "schema_id_binding": report["lineage"]["schema_id"],
         "schema_hash": report["lineage"]["schema_hash"],
+        "candidate_schema_id_binding": report["lineage"]["candidate_schema_id"],
+        "candidate_schema_hash": report["lineage"]["candidate_schema_hash"],
         "request_protocol": report["lineage"]["request_protocol"],
         "evidence_catalog_version": report["lineage"]["evidence_catalog_version"],
-        "evidence_catalog_policy_hash": report["lineage"][
-            "evidence_catalog_policy_hash"
-        ],
+        "evidence_catalog_policy_hash": report["lineage"]["evidence_catalog_policy_hash"],
         "suite_hash": report["lineage"]["suite_hash"],
         "attestation_hash": report["lineage"]["attestation_hash"],
         "development_report_hash": compact["report_hash"],
@@ -987,9 +995,7 @@ def freeze_selected_policy(
     return descriptor, compact
 
 
-def _write_markdown_report(
-    path: Path, compact: dict[str, Any], descriptor: dict[str, Any]
-) -> None:
+def _write_markdown_report(path: Path, compact: dict[str, Any], descriptor: dict[str, Any]) -> None:
     rows = []
     for item in compact["policies"]:
         metrics = item["metrics"]
@@ -1064,6 +1070,10 @@ def _lineage(loaded: dict[str, Any], mode: str) -> dict[str, Any]:
         "prompt_bindings": prompts,
         "schema_id": "compiler.prose-judge-report.v1",
         "schema_hash": PROSE_JUDGE_SCHEMA_HASH,
+        "report_schema_id": "compiler.prose-judge-report.v1",
+        "report_schema_hash": PROSE_JUDGE_SCHEMA_HASH,
+        "candidate_schema_id": PROSE_JUDGE_CANDIDATE_SCHEMA_ID,
+        "candidate_schema_hash": PROSE_JUDGE_CANDIDATE_SCHEMA_HASH,
         "request_protocol": PROSE_JUDGE_REQUEST_PROTOCOL,
         "evidence_catalog_version": PROSE_EVIDENCE_CATALOG_VERSION,
         "evidence_catalog_policy_hash": PROSE_EVIDENCE_CATALOG_POLICY_HASH,
@@ -1160,24 +1170,15 @@ def main() -> int:
                 return 3
             return 0 if report["status"] == "passed" else 2
 
-        def factory(
-            _sample: dict[str, Any], _policy: ProseCouncilPolicy
-        ) -> ProseJudgeProvider:
+        def factory(_sample: dict[str, Any], _policy: ProseCouncilPolicy) -> ProseJudgeProvider:
             return provider
     else:
-        loaded = load_prose_judge_dev_suite(args.suite, args.attestation)
-        checklist = loaded["checklist"]
 
-        def factory(
-            _sample: dict[str, Any], _policy: ProseCouncilPolicy
-        ) -> ProseJudgeProvider:
+        def factory(_sample: dict[str, Any], _policy: ProseCouncilPolicy) -> ProseJudgeProvider:
             gold = _sample["gold"]
             render = _sample["render"]
             return FakeProseJudgeProvider(
-                judge_reports=tuple(
-                    _gold_report(gold, checklist, render, role=role)
-                    for role in _policy.roles
-                )
+                judge_reports=tuple(_gold_candidate(gold, render) for _role in _policy.roles)
             )
 
     report = run_development_ablation(
