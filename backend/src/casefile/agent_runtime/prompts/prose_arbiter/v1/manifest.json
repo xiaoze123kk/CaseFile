@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_arbiter",
+  "version": "prose-arbiter-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "b85e088bf3fd7b87ad640370bacc198f3a1372de7dd55aefa486d209c2e19458",
+  "previous_version": null,
+  "change_summary": "冻结争议项批量 Arbiter 的有限裁决协议。"
+}

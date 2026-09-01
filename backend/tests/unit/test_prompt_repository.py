@@ -48,6 +48,10 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
+    "prose_fidelity_judge": "prose-fidelity-judge-v1",
+    "prose_adversarial_judge": "prose-adversarial-judge-v1",
+    "prose_coherence_judge": "prose-coherence-judge-v1",
+    "prose_arbiter": "prose-arbiter-v1",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -549,6 +553,18 @@ EXPECTED_RELEASE_HASHES = {
     ("idea_generation", "idea-generation-v4"): {
         "system": "d0d69a92ad29a1ab6773121cf9b9f7f5ee9a7bc1b6c102d7d6b4835fa348b0b6"
     },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v1"): {
+        "system": "a280fe22e8dd879496af0852b12903a2540401bc6ff656d04906d661077933d0"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v1"): {
+        "system": "a1335bf6d0956a3a9b11a30af5a0d4fa0590ca290b52d6c85dd5e2db89bd2ba3"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v1"): {
+        "system": "e2dccc50cccea95814720084bcdbbaee65b745eee097611b5d66cc0456ac5e57"
+    },
+    ("prose_arbiter", "prose-arbiter-v1"): {
+        "system": "b85e088bf3fd7b87ad640370bacc198f3a1372de7dd55aefa486d209c2e19458"
+    },
 }
 
 
@@ -562,6 +578,10 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "story_planner_skeleton",
         "story_planner_semantic_fill",
         "scene_compiler_semantic_fill",
+        "prose_fidelity_judge",
+        "prose_adversarial_judge",
+        "prose_coherence_judge",
+        "prose_arbiter",
         "general_mutation_planner",
     }
 

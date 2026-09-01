@@ -46,6 +46,8 @@ Prompt 版本有三种互斥形态：
 
 `story_planner_skeleton-v1` 与 `story_planner_semantic_fill-v1` 是 Constraint-First 生产管线的两个独立、不可变 Prompt。前者只提议求解器字段，后者只填充模型所有字段；新建 Planner Task 以 `story-planner-constraint-first-v1` 记录 bundle 身份，各 AgentModelCall 继续分别记录真实 Prompt 版本与 hash。`story_planner-v3` 仅保留给历史 TaskRun 精确重放。
 
+`prose-fidelity-judge-v1`、`prose-adversarial-judge-v1`、`prose-coherence-judge-v1` 与 `prose-arbiter-v1` 是 N4.5-02 正文语义委员会的四个独立无工具 Prompt。前三者必须按服务端 Checklist 原顺序完整返回，Arbiter 只批量裁决争议项；Runtime 负责 Evidence 原文绑定、Consensus、预算和恢复，Prompt 不拥有控制流或资格决定。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。
