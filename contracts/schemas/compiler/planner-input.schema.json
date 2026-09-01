@@ -14,7 +14,12 @@
         {"type": "null"}
       ]
     },
-    "profile": {"$ref": "novel-profile.schema.json"},
+    "profile": {
+      "oneOf": [
+        {"$ref": "novel-profile.schema.json"},
+        {"$ref": "novel-profile-v2.schema.json"}
+      ]
+    },
     "planning_constraints": {
       "type": "object",
       "additionalProperties": false,

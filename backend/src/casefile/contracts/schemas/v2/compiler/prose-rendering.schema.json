@@ -1,0 +1,548 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/prose-rendering.schema.json",
+  "title": "ProseJudgeChecklist",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "scene_id", "scene_ordinal", "source", "scene_context", "checks"],
+  "properties": {
+    "schema_id": {"const": "compiler.prose-judge-checklist.v1"},
+    "scene_id": {"$ref": "#/$defs/SceneId"},
+    "scene_ordinal": {"type": "integer", "minimum": 1},
+    "source": {"$ref": "#/$defs/ChecklistSource"},
+    "scene_context": {"$ref": "#/$defs/SceneContext"},
+    "checks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/ProseJudgeCheck"},
+      "minItems": 1,
+      "maxItems": 512
+    }
+  },
+  "$defs": {
+    "Sha256Hex": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "SceneId": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+    "BeatId": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"},
+    "CheckId": {"type": "string", "pattern": "^check_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$"},
+    "BlockId": {"type": "string", "pattern": "^block_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$"},
+    "ExposureKey": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+    "ObjectRefArray": {
+      "type": "array",
+      "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+      "uniqueItems": true
+    },
+    "StringSet": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 512},
+      "uniqueItems": true
+    },
+    "ChecklistSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_plan_hash", "narrative_ir_hash", "profile_hash",
+        "previous_scene_render_hash", "checklist_policy_version", "checklist_policy_hash"
+      ],
+      "properties": {
+        "scene_plan_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "profile_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "previous_scene_render_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "checklist_policy_version": {"const": "prose-checklist-policy-v1"},
+        "checklist_policy_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "ObjectCatalogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_ref", "source_ref", "label", "value"],
+      "properties": {
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "source_ref": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "value": {}
+      }
+    },
+    "SceneContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objective", "dramatic_goal", "conflict", "outcome", "pov_ref",
+        "participant_refs", "location_ref", "story_time_refs", "state_before",
+        "expected_state_after", "prerequisite_scene_ids", "prerequisite_beat_ids",
+        "beats", "event_refs", "exposure_actions", "resolution_actions",
+        "setup_keys", "payoff_keys", "obligation_keys", "object_catalog",
+        "previous_scene_render"
+      ],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "dramatic_goal": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "conflict": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "outcome": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "pov_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "participant_refs": {"$ref": "#/$defs/ObjectRefArray"},
+        "location_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "story_time_refs": {"$ref": "#/$defs/ObjectRefArray"},
+        "state_before": {"$ref": "scene-plan-v2.schema.json#/$defs/ExecutionState"},
+        "expected_state_after": {"$ref": "scene-plan-v2.schema.json#/$defs/ExecutionState"},
+        "prerequisite_scene_ids": {
+          "type": "array", "items": {"$ref": "#/$defs/SceneId"}, "uniqueItems": true
+        },
+        "prerequisite_beat_ids": {
+          "type": "array", "items": {"$ref": "#/$defs/BeatId"}, "uniqueItems": true
+        },
+        "beats": {
+          "type": "array",
+          "items": {"$ref": "scene-plan-v2.schema.json#/$defs/BeatExecutionV2"},
+          "minItems": 1
+        },
+        "event_refs": {"$ref": "#/$defs/ObjectRefArray"},
+        "exposure_actions": {
+          "type": "array",
+          "items": {"$ref": "scene-plan.schema.json#/$defs/ExposurePlacement"},
+          "uniqueItems": true
+        },
+        "resolution_actions": {
+          "type": "array",
+          "items": {"$ref": "scene-plan.schema.json#/$defs/ResolutionPlacement"},
+          "uniqueItems": true
+        },
+        "setup_keys": {"$ref": "#/$defs/StringSet"},
+        "payoff_keys": {"$ref": "#/$defs/StringSet"},
+        "obligation_keys": {"$ref": "#/$defs/StringSet"},
+        "object_catalog": {
+          "type": "array", "items": {"$ref": "#/$defs/ObjectCatalogEntry"}, "uniqueItems": true
+        },
+        "previous_scene_render": {
+          "oneOf": [{"$ref": "#/$defs/SceneRender"}, {"type": "null"}]
+        }
+      }
+    },
+    "ProseJudgeCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_id", "ordinal", "kind", "polarity", "expectation", "beat_ids",
+        "basis_refs", "event_refs", "exposure_entry_keys", "state_refs", "evidence_policy"
+      ],
+      "properties": {
+        "check_id": {"$ref": "#/$defs/CheckId"},
+        "ordinal": {"type": "integer", "minimum": 1, "maximum": 512},
+        "kind": {
+          "enum": [
+            "beat_realization", "event_modality", "reveal_control", "pov_knowledge",
+            "location_time", "causality_ordering", "major_hallucination", "scene_outcome"
+          ]
+        },
+        "polarity": {"enum": ["required", "forbidden"]},
+        "expectation": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "beat_ids": {
+          "type": "array", "items": {"$ref": "#/$defs/BeatId"}, "uniqueItems": true
+        },
+        "basis_refs": {"$ref": "#/$defs/ObjectRefArray"},
+        "event_refs": {"$ref": "#/$defs/ObjectRefArray"},
+        "exposure_entry_keys": {
+          "type": "array", "items": {"$ref": "#/$defs/ExposureKey"}, "uniqueItems": true
+        },
+        "state_refs": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^/(state_before|expected_state_after)(?:/.*)?$"},
+          "uniqueItems": true
+        },
+        "evidence_policy": {"enum": ["required_on_pass", "required_on_fail"]}
+      }
+    },
+    "SceneRenderCandidateBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 4000}}
+    },
+    "SceneRenderCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "blocks"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-render-candidate.v1"},
+        "blocks": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneRenderCandidateBlock"},
+          "minItems": 1,
+          "maxItems": 64
+        }
+      }
+    },
+    "SceneRenderSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checklist_hash", "profile_hash", "scene_plan_hash",
+        "previous_scene_render_hash", "component_input_hash"
+      ],
+      "properties": {
+        "checklist_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "profile_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "scene_plan_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "previous_scene_render_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "component_input_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "SceneRenderBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id", "ordinal", "text"],
+      "properties": {
+        "block_id": {"$ref": "#/$defs/BlockId"},
+        "ordinal": {"type": "integer", "minimum": 1, "maximum": 64},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000}
+      }
+    },
+    "SceneRender": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "scene_id", "scene_ordinal", "source", "stage", "round",
+        "previous_render_hash", "blocks", "character_count", "selection_reason"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-render.v1"},
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "scene_ordinal": {"type": "integer", "minimum": 1},
+        "source": {"$ref": "#/$defs/SceneRenderSource"},
+        "stage": {"enum": ["writer", "rewrite_1", "rewrite_2", "polished", "accepted"]},
+        "round": {"type": "integer", "minimum": 0, "maximum": 2},
+        "previous_render_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "blocks": {
+          "type": "array", "items": {"$ref": "#/$defs/SceneRenderBlock"},
+          "minItems": 1, "maxItems": 64
+        },
+        "character_count": {"type": "integer", "minimum": 1, "maximum": 768000},
+        "selection_reason": {
+          "oneOf": [
+            {
+              "enum": [
+                "semantic_accepted", "polished_accepted", "polish_semantic_rollback",
+                "quality_rollback", "quality_unstable"
+              ]
+            },
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id", "start_char", "end_char", "text"],
+      "properties": {
+        "block_id": {"$ref": "#/$defs/BlockId"},
+        "start_char": {"type": "integer", "minimum": 0},
+        "end_char": {"type": "integer", "minimum": 1},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000}
+      }
+    },
+    "JudgeAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "verdict", "evidence", "rationale"],
+      "properties": {
+        "check_id": {"$ref": "#/$defs/CheckId"},
+        "verdict": {"enum": ["pass", "fail", "uncertain"]},
+        "evidence": {
+          "type": "array", "items": {"$ref": "#/$defs/Evidence"}, "maxItems": 20
+        },
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    },
+    "ProseJudgeReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "role", "scene_id", "checklist_hash", "render_hash", "assessments"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-judge-report.v1"},
+        "role": {"enum": ["fidelity", "adversarial", "coherence", "arbiter"]},
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "checklist_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "render_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "assessments": {
+          "type": "array", "items": {"$ref": "#/$defs/JudgeAssessment"}, "minItems": 1
+        }
+      }
+    },
+    "RoleVerdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "report_hash", "verdict"],
+      "properties": {
+        "role": {"enum": ["fidelity", "adversarial", "coherence"]},
+        "report_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "verdict": {"enum": ["pass", "fail", "uncertain"]}
+      }
+    },
+    "ConsensusCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_id", "role_verdicts", "unanimous", "entered_arbiter",
+        "final_verdict", "resolution_source"
+      ],
+      "properties": {
+        "check_id": {"$ref": "#/$defs/CheckId"},
+        "role_verdicts": {
+          "type": "array", "items": {"$ref": "#/$defs/RoleVerdict"},
+          "minItems": 1, "maxItems": 3
+        },
+        "unanimous": {"type": "boolean"},
+        "entered_arbiter": {"type": "boolean"},
+        "final_verdict": {"enum": ["pass", "fail", "uncertain"]},
+        "resolution_source": {"enum": ["unanimous", "arbiter"]}
+      }
+    },
+    "ProseConsensusReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "scene_id", "round", "checklist_hash", "render_hash",
+        "council_policy_hash", "judge_report_hashes", "checks", "arbiter_request_hash",
+        "arbiter_report_hash", "scene_verdict", "failed_check_ids", "unresolved_check_ids"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-consensus-report.v1"},
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "round": {"type": "integer", "minimum": 0, "maximum": 2},
+        "checklist_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "render_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "council_policy_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "judge_report_hashes": {
+          "type": "array", "items": {"$ref": "#/$defs/Sha256Hex"},
+          "minItems": 1, "maxItems": 3, "uniqueItems": true
+        },
+        "checks": {
+          "type": "array", "items": {"$ref": "#/$defs/ConsensusCheck"}, "minItems": 1
+        },
+        "arbiter_request_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "arbiter_report_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "scene_verdict": {"enum": ["pass", "fail", "uncertain"]},
+        "failed_check_ids": {
+          "type": "array", "items": {"$ref": "#/$defs/CheckId"}, "uniqueItems": true
+        },
+        "unresolved_check_ids": {
+          "type": "array", "items": {"$ref": "#/$defs/CheckId"}, "uniqueItems": true
+        }
+      }
+    },
+    "QualityDimension": {
+      "enum": [
+        "pov_voice_consistency", "scene_specificity", "dialogue_narration_naturalness",
+        "dramatic_progression_pacing", "readability_editability"
+      ]
+    },
+    "QualityFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "severity", "evidence", "description"],
+      "properties": {
+        "dimension": {"$ref": "#/$defs/QualityDimension"},
+        "severity": {"enum": ["low", "medium", "high"]},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/Evidence"}, "minItems": 1, "maxItems": 20},
+        "description": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    },
+    "DimensionPreference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "preference"],
+      "properties": {
+        "dimension": {"$ref": "#/$defs/QualityDimension"},
+        "preference": {"enum": ["a", "b", "tie"]}
+      }
+    },
+    "ProseQualityReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "report_kind", "scene_id", "source_render_hashes", "position_mapping",
+        "findings", "overall_preference", "dimension_preferences"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-quality-report.v1"},
+        "report_kind": {"enum": ["findings", "pairwise"]},
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "source_render_hashes": {
+          "type": "array", "items": {"$ref": "#/$defs/Sha256Hex"},
+          "minItems": 1, "maxItems": 2, "uniqueItems": true
+        },
+        "position_mapping": {
+          "oneOf": [
+            {
+              "type": "object", "additionalProperties": false,
+              "required": ["a", "b"],
+              "properties": {"a": {"const": "original"}, "b": {"const": "polished"}}
+            },
+            {
+              "type": "object", "additionalProperties": false,
+              "required": ["a", "b"],
+              "properties": {"a": {"const": "polished"}, "b": {"const": "original"}}
+            },
+            {"type": "null"}
+          ]
+        },
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/QualityFinding"}},
+        "overall_preference": {
+          "oneOf": [{"enum": ["a", "b", "tie"]}, {"type": "null"}]
+        },
+        "dimension_preferences": {
+          "type": "array", "items": {"$ref": "#/$defs/DimensionPreference"}, "maxItems": 5
+        }
+      }
+    },
+    "AcceptedSceneRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "scene_ordinal", "render_hash"],
+      "properties": {
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "scene_ordinal": {"type": "integer", "minimum": 1},
+        "render_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "NovelCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "scene_plan_hash", "profile_hash", "accepted_scenes",
+        "merged_text", "scene_count", "character_count"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.novel-candidate.v1"},
+        "scene_plan_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "profile_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "accepted_scenes": {
+          "type": "array", "items": {"$ref": "#/$defs/AcceptedSceneRef"}, "minItems": 1
+        },
+        "merged_text": {"type": "string", "minLength": 1},
+        "scene_count": {"type": "integer", "minimum": 1},
+        "character_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "UsageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "total_tokens"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "total_tokens": {"type": "integer", "minimum": 0}
+      }
+    },
+    "SceneManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id", "scene_ordinal", "final_state", "checklist_hash", "render_hashes",
+        "judge_report_hashes", "consensus_report_hashes", "arbiter_report_hashes",
+        "quality_report_hashes", "accepted_render_hash", "rewrite_count", "call_count",
+        "usage", "latency_ms", "recovered_call_hashes", "failure_reason"
+      ],
+      "properties": {
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "scene_ordinal": {"type": "integer", "minimum": 1},
+        "final_state": {
+          "enum": [
+            "blocked_precondition", "inconclusive_infrastructure", "semantic_rejected",
+            "finalized_original", "finalized_polished"
+          ]
+        },
+        "checklist_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "render_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "judge_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "consensus_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "arbiter_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "quality_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "accepted_render_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        },
+        "rewrite_count": {"type": "integer", "minimum": 0, "maximum": 2},
+        "call_count": {"type": "integer", "minimum": 0, "maximum": 23},
+        "usage": {"$ref": "#/$defs/UsageSummary"},
+        "latency_ms": {"type": "integer", "minimum": 0},
+        "recovered_call_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "failure_reason": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 2000}, {"type": "null"}]}
+      }
+    },
+    "CompileManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "source", "components", "scenes", "shadow_status",
+        "incomplete_reason", "novel_candidate_hash"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.compile-manifest.v1"},
+        "source": {
+          "type": "object", "additionalProperties": false,
+          "required": ["scene_plan_hash", "narrative_ir_hash", "profile_hash"],
+          "properties": {
+            "scene_plan_hash": {"oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]},
+            "narrative_ir_hash": {"oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]},
+            "profile_hash": {"oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]}
+          }
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "checklist_policy_hash", "council_policy_hash", "writer_component_hash",
+            "fidelity_judge_component_hash", "adversarial_judge_component_hash",
+            "coherence_judge_component_hash", "arbiter_component_hash",
+            "rewrite_component_hash", "quality_critic_component_hash",
+            "polisher_component_hash"
+          ],
+          "properties": {
+            "checklist_policy_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "council_policy_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "writer_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "fidelity_judge_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "adversarial_judge_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "coherence_judge_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "arbiter_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "rewrite_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "quality_critic_component_hash": {"$ref": "#/$defs/Sha256Hex"},
+            "polisher_component_hash": {"$ref": "#/$defs/Sha256Hex"}
+          }
+        },
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/SceneManifest"}, "minItems": 1},
+        "shadow_status": {
+          "enum": ["blocked_precondition", "inconclusive_infrastructure", "semantic_rejected", "succeeded"]
+        },
+        "incomplete_reason": {"oneOf": [{"type": "string", "minLength": 1, "maxLength": 2000}, {"type": "null"}]},
+        "novel_candidate_hash": {
+          "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "schema_id": "compiler.prose-consensus-report.v1",
+  "scene_id": "scene_1",
+  "round": 0,
+  "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+  "render_hash": "80d24826b114f5f9e234bb050a8eae4703e25bcea6efd04ee216175d7b76bc18",
+  "council_policy_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "judge_report_hashes": [
+    "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e"
+  ],
+  "checks": [
+    {
+      "check_id": "check_scene_1_001",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_002",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_003",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_004",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_005",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_006",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_007",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_008",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_009",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    },
+    {
+      "check_id": "check_scene_1_010",
+      "role_verdicts": [
+        {
+          "role": "fidelity",
+          "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+          "verdict": "pass"
+        }
+      ],
+      "unanimous": true,
+      "entered_arbiter": false,
+      "final_verdict": "pass",
+      "resolution_source": "unanimous"
+    }
+  ],
+  "arbiter_request_hash": null,
+  "arbiter_report_hash": null,
+  "scene_verdict": "pass",
+  "failed_check_ids": [],
+  "unresolved_check_ids": []
+}

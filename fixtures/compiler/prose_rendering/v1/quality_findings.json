@@ -1,0 +1,26 @@
+{
+  "schema_id": "compiler.prose-quality-report.v1",
+  "report_kind": "findings",
+  "scene_id": "scene_1",
+  "source_render_hashes": [
+    "80d24826b114f5f9e234bb050a8eae4703e25bcea6efd04ee216175d7b76bc18"
+  ],
+  "position_mapping": null,
+  "findings": [
+    {
+      "dimension": "readability_editability",
+      "severity": "low",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "description": "开场句信息密度略高，但仍可直接编辑。"
+    }
+  ],
+  "overall_preference": null,
+  "dimension_preferences": []
+}

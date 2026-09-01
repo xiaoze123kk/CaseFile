@@ -2915,10 +2915,97 @@ class ScenePlanMetricsV2(BaseModel):
     payoff_count: Annotated[int, Field(ge=0)]
 
 
+class Structure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    strategy: Literal['three_act']
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+
+
 class AllowedPresentationMode(Enum):
     linear = 'linear'
     flashback = 'flashback'
     flashforward = 'flashforward'
+
+
+class AllowedPresentationModes(RootModel[list[AllowedPresentationMode]]):
+    root: Annotated[list[AllowedPresentationMode], Field(min_length=1)]
+
+
+class ExposurePolicy(Enum):
+    bound_plan = 'bound_plan'
+    planner_default = 'planner_default'
+
+
+class ClosedIntegerRange(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    min: Annotated[int, Field(ge=300, le=12000)]
+    max: Annotated[int, Field(ge=300, le=12000)]
+
+
+class ClosedRatioRange(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    min: Annotated[float, Field(ge=0.0, le=1.0)]
+    max: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class NarrativePerson(Enum):
+    first_person = 'first_person'
+    third_person_limited = 'third_person_limited'
+    third_person_omniscient = 'third_person_omniscient'
+
+
+class NarrativeTense(Enum):
+    past = 'past'
+    present = 'present'
+
+
+class DescriptionDensity(Enum):
+    low = 'low'
+    balanced = 'balanced'
+    high = 'high'
+
+
+class Pacing(Enum):
+    slow = 'slow'
+    balanced = 'balanced'
+    fast = 'fast'
+
+
+class ForbiddenStylePattern(RootModel[str]):
+    root: Annotated[str, Field(max_length=200, min_length=1)]
+
+
+class ProseProfile(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    language: Annotated[
+        str,
+        Field(
+            max_length=35, min_length=2, pattern='^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$'
+        ),
+    ]
+    narrative_person: NarrativePerson
+    narrative_tense: NarrativeTense
+    target_scene_chars: ClosedIntegerRange
+    dialogue_ratio: ClosedRatioRange
+    description_density: DescriptionDensity
+    pacing: Pacing
+    style_brief: Annotated[str, Field(max_length=2000, min_length=1)]
+    forbidden_style_patterns: Annotated[
+        list[ForbiddenStylePattern], Field(max_length=20)
+    ]
 
 
 class PlanningConstraints(BaseModel):
@@ -3365,6 +3452,506 @@ class SemanticFillProposal(BaseModel):
     scenes: Annotated[list[SemanticSceneFill], Field(max_length=500, min_length=1)]
 
 
+class CheckId(RootModel[str]):
+    root: Annotated[
+        str, Field(pattern='^check_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+
+
+class BlockId(RootModel[str]):
+    root: Annotated[
+        str, Field(pattern='^block_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+
+
+class ExposureKey(RootModel[str]):
+    root: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+
+
+class ObjectRefArray(RootModel[list[ObjectRef]]):
+    root: list[ObjectRef]
+
+
+class StringSetItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=512, min_length=1)]
+
+
+class StringSet(RootModel[list[StringSetItem]]):
+    root: list[StringSetItem]
+
+
+class ChecklistSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    profile_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    previous_scene_render_hash: Sha256Hex | None
+    checklist_policy_version: Literal['prose-checklist-policy-v1']
+    checklist_policy_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class ObjectCatalogEntry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    source_ref: CompilerSourceRef
+    label: Annotated[str, Field(max_length=2000, min_length=1)]
+    value: Any
+
+
+class Kind4(Enum):
+    beat_realization = 'beat_realization'
+    event_modality = 'event_modality'
+    reveal_control = 'reveal_control'
+    pov_knowledge = 'pov_knowledge'
+    location_time = 'location_time'
+    causality_ordering = 'causality_ordering'
+    major_hallucination = 'major_hallucination'
+    scene_outcome = 'scene_outcome'
+
+
+class Polarity(Enum):
+    required = 'required'
+    forbidden = 'forbidden'
+
+
+class StateRef(RootModel[str]):
+    root: Annotated[
+        str, Field(pattern='^/(state_before|expected_state_after)(?:/.*)?$')
+    ]
+
+
+class EvidencePolicy(Enum):
+    required_on_pass = 'required_on_pass'
+    required_on_fail = 'required_on_fail'
+
+
+class ProseJudgeCheck(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    check_id: Annotated[
+        str, Field(pattern='^check_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+    ordinal: Annotated[int, Field(ge=1, le=512)]
+    kind: Kind4
+    polarity: Polarity
+    expectation: Annotated[str, Field(max_length=4000, min_length=1)]
+    beat_ids: list[BeatId]
+    basis_refs: list[ObjectRef]
+    event_refs: list[ObjectRef]
+    exposure_entry_keys: list[ExposureKey]
+    state_refs: list[StateRef]
+    evidence_policy: EvidencePolicy
+
+
+class SceneRenderCandidateBlock(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    text: Annotated[str, Field(max_length=4000, min_length=1)]
+
+
+class SceneRenderCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-render-candidate.v1']
+    blocks: Annotated[
+        list[SceneRenderCandidateBlock], Field(max_length=64, min_length=1)
+    ]
+
+
+class SceneRenderSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    checklist_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    profile_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    scene_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    previous_scene_render_hash: Sha256Hex | None
+    component_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class SceneRenderBlock(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    block_id: Annotated[
+        str, Field(pattern='^block_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+    ordinal: Annotated[int, Field(ge=1, le=64)]
+    text: Annotated[str, Field(max_length=4000, min_length=1)]
+
+
+class Stage(Enum):
+    writer = 'writer'
+    rewrite_1 = 'rewrite_1'
+    rewrite_2 = 'rewrite_2'
+    polished = 'polished'
+    accepted = 'accepted'
+
+
+class SelectionReason(Enum):
+    semantic_accepted = 'semantic_accepted'
+    polished_accepted = 'polished_accepted'
+    polish_semantic_rollback = 'polish_semantic_rollback'
+    quality_rollback = 'quality_rollback'
+    quality_unstable = 'quality_unstable'
+
+
+class SceneRender(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-render.v1']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    scene_ordinal: Annotated[int, Field(ge=1)]
+    source: SceneRenderSource
+    stage: Stage
+    round: Annotated[int, Field(ge=0, le=2)]
+    previous_render_hash: Sha256Hex | None
+    blocks: Annotated[list[SceneRenderBlock], Field(max_length=64, min_length=1)]
+    character_count: Annotated[int, Field(ge=1, le=768000)]
+    selection_reason: SelectionReason | None
+
+
+class Evidence(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    block_id: Annotated[
+        str, Field(pattern='^block_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+    start_char: Annotated[int, Field(ge=0)]
+    end_char: Annotated[int, Field(ge=1)]
+    text: Annotated[str, Field(max_length=4000, min_length=1)]
+
+
+class Verdict(Enum):
+    pass_ = 'pass'
+    fail = 'fail'
+    uncertain = 'uncertain'
+
+
+class JudgeAssessment(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    check_id: Annotated[
+        str, Field(pattern='^check_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+    verdict: Verdict
+    evidence: Annotated[list[Evidence], Field(max_length=20)]
+    rationale: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class Role1(Enum):
+    fidelity = 'fidelity'
+    adversarial = 'adversarial'
+    coherence = 'coherence'
+    arbiter = 'arbiter'
+
+
+class ProseJudgeReport(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-judge-report.v1']
+    role: Role1
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    checklist_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    assessments: Annotated[list[JudgeAssessment], Field(min_length=1)]
+
+
+class Role2(Enum):
+    fidelity = 'fidelity'
+    adversarial = 'adversarial'
+    coherence = 'coherence'
+
+
+class RoleVerdict(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    role: Role2
+    report_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    verdict: Verdict
+
+
+class FinalVerdict(Enum):
+    pass_ = 'pass'
+    fail = 'fail'
+    uncertain = 'uncertain'
+
+
+class ResolutionSource(Enum):
+    unanimous = 'unanimous'
+    arbiter = 'arbiter'
+
+
+class ConsensusCheck(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    check_id: Annotated[
+        str, Field(pattern='^check_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
+    ]
+    role_verdicts: Annotated[list[RoleVerdict], Field(max_length=3, min_length=1)]
+    unanimous: bool
+    entered_arbiter: bool
+    final_verdict: FinalVerdict
+    resolution_source: ResolutionSource
+
+
+class SceneVerdict(Enum):
+    pass_ = 'pass'
+    fail = 'fail'
+    uncertain = 'uncertain'
+
+
+class ProseConsensusReport(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-consensus-report.v1']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    round: Annotated[int, Field(ge=0, le=2)]
+    checklist_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    council_policy_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    judge_report_hashes: Annotated[list[Sha256Hex], Field(max_length=3, min_length=1)]
+    checks: Annotated[list[ConsensusCheck], Field(min_length=1)]
+    arbiter_request_hash: Sha256Hex | None
+    arbiter_report_hash: Sha256Hex | None
+    scene_verdict: SceneVerdict
+    failed_check_ids: list[CheckId]
+    unresolved_check_ids: list[CheckId]
+
+
+class QualityDimension(Enum):
+    pov_voice_consistency = 'pov_voice_consistency'
+    scene_specificity = 'scene_specificity'
+    dialogue_narration_naturalness = 'dialogue_narration_naturalness'
+    dramatic_progression_pacing = 'dramatic_progression_pacing'
+    readability_editability = 'readability_editability'
+
+
+class Severity2(Enum):
+    low = 'low'
+    medium = 'medium'
+    high = 'high'
+
+
+class QualityFinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    dimension: QualityDimension
+    severity: Severity2
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    description: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class Preference(Enum):
+    a = 'a'
+    b = 'b'
+    tie = 'tie'
+
+
+class DimensionPreference(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    dimension: QualityDimension
+    preference: Preference
+
+
+class ReportKind(Enum):
+    findings = 'findings'
+    pairwise = 'pairwise'
+
+
+class PositionMapping(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    a: Literal['original']
+    b: Literal['polished']
+
+
+class PositionMapping1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    a: Literal['polished']
+    b: Literal['original']
+
+
+class OverallPreference(Enum):
+    a = 'a'
+    b = 'b'
+    tie = 'tie'
+
+
+class ProseQualityReport(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-quality-report.v1']
+    report_kind: ReportKind
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    source_render_hashes: Annotated[list[Sha256Hex], Field(max_length=2, min_length=1)]
+    position_mapping: PositionMapping | PositionMapping1 | None
+    findings: list[QualityFinding]
+    overall_preference: OverallPreference | None
+    dimension_preferences: Annotated[list[DimensionPreference], Field(max_length=5)]
+
+
+class AcceptedSceneRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    scene_ordinal: Annotated[int, Field(ge=1)]
+    render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class NovelCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.novel-candidate.v1']
+    scene_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    profile_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    accepted_scenes: Annotated[list[AcceptedSceneRef], Field(min_length=1)]
+    merged_text: Annotated[str, Field(min_length=1)]
+    scene_count: Annotated[int, Field(ge=1)]
+    character_count: Annotated[int, Field(ge=1)]
+
+
+class UsageSummary(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    input_tokens: Annotated[int, Field(ge=0)]
+    output_tokens: Annotated[int, Field(ge=0)]
+    total_tokens: Annotated[int, Field(ge=0)]
+
+
+class FinalState(Enum):
+    blocked_precondition = 'blocked_precondition'
+    inconclusive_infrastructure = 'inconclusive_infrastructure'
+    semantic_rejected = 'semantic_rejected'
+    finalized_original = 'finalized_original'
+    finalized_polished = 'finalized_polished'
+
+
+class FailureReason(RootModel[str]):
+    root: Annotated[str, Field(max_length=2000, min_length=1)]
+
+
+class SceneManifest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    scene_ordinal: Annotated[int, Field(ge=1)]
+    final_state: FinalState
+    checklist_hash: Sha256Hex | None
+    render_hashes: list[Sha256Hex]
+    judge_report_hashes: list[Sha256Hex]
+    consensus_report_hashes: list[Sha256Hex]
+    arbiter_report_hashes: list[Sha256Hex]
+    quality_report_hashes: list[Sha256Hex]
+    accepted_render_hash: Sha256Hex | None
+    rewrite_count: Annotated[int, Field(ge=0, le=2)]
+    call_count: Annotated[int, Field(ge=0, le=23)]
+    usage: UsageSummary
+    latency_ms: Annotated[int, Field(ge=0)]
+    recovered_call_hashes: list[Sha256Hex]
+    failure_reason: FailureReason | None
+
+
+class Source2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_plan_hash: Sha256Hex | None
+    narrative_ir_hash: Sha256Hex | None
+    profile_hash: Sha256Hex | None
+
+
+class Components(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    checklist_policy_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    council_policy_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    writer_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    fidelity_judge_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    adversarial_judge_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    coherence_judge_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    arbiter_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    rewrite_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    quality_critic_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    polisher_component_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class ShadowStatus(Enum):
+    blocked_precondition = 'blocked_precondition'
+    inconclusive_infrastructure = 'inconclusive_infrastructure'
+    semantic_rejected = 'semantic_rejected'
+    succeeded = 'succeeded'
+
+
+class IncompleteReason(RootModel[str]):
+    root: Annotated[str, Field(max_length=2000, min_length=1)]
+
+
+class CompileManifest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.compile-manifest.v1']
+    source: Source2
+    components: Components
+    scenes: Annotated[list[SceneManifest], Field(min_length=1)]
+    shadow_status: ShadowStatus
+    incomplete_reason: IncompleteReason | None
+    novel_candidate_hash: Sha256Hex | None
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -3475,6 +4062,34 @@ class SceneCompilerModelView(BaseModel):
     batches: Annotated[list[SceneCompilerBatchView], Field(min_length=1)]
 
 
+class SceneContext(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    objective: Annotated[str, Field(max_length=2000, min_length=1)]
+    dramatic_goal: Annotated[str, Field(max_length=2000, min_length=1)]
+    conflict: Annotated[str, Field(max_length=2000, min_length=1)]
+    outcome: Annotated[str, Field(max_length=2000, min_length=1)]
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    story_time_refs: list[ObjectRef]
+    state_before: ExecutionState
+    expected_state_after: ExecutionState
+    prerequisite_scene_ids: list[SceneId]
+    prerequisite_beat_ids: list[BeatId]
+    beats: Annotated[list[BeatExecutionV2], Field(min_length=1)]
+    event_refs: list[ObjectRef]
+    exposure_actions: list[ExposurePlacement1]
+    resolution_actions: list[ResolutionPlacement1]
+    setup_keys: list[StringSetItem]
+    payoff_keys: list[StringSetItem]
+    obligation_keys: list[StringSetItem]
+    object_catalog: list[ObjectCatalogEntry]
+    previous_scene_render: SceneRender | None
+
+
 class SceneCompilerInputBundle(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -3495,8 +4110,8 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_14
-    patch_candidate: Schema_5
+    validation_issue: Schema_16
+    patch_candidate: Schema_6
     chat_public: Schema_2
     task_run: TaskRun
     task_event: TaskEvent
@@ -3510,18 +4125,27 @@ class EditingContracts(BaseModel):
     narrative_ir: Schema_4
     scene_compiler_input: SceneCompilerInputBundle
     scene_plan_candidate: ScenePlanCandidate
-    scene_compiler_input_v2: Schema_11 | None = None
+    scene_compiler_input_v2: Schema_13 | None = None
     scene_compiler_model_view: SceneCompilerModelView | None = None
     scene_semantic_fill: SceneSemanticFillProposal | None = None
-    scene_plan: Schema_12
-    scene_plan_v2: Schema_13 | None = None
+    scene_plan: Schema_14
+    scene_plan_v2: Schema_15 | None = None
     novel_profile: novel_profile_1.Schema
-    planner_input: Schema_6 | Schema_7 | Schema_8
-    planner_model_view: Schema_9 | Schema_10
+    novel_profile_v2: Schema_5
+    planner_input: Schema_7 | Schema_8 | Schema_9
+    planner_model_view: Schema_10 | Schema_11
     story_plan_structural_patch: StoryPlanStructuralPatch
     constraint_first_planner: Schema_3
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
+    prose_judge_checklist: Schema_12
+    scene_render_candidate: SceneRenderCandidate
+    scene_render: SceneRender
+    prose_judge_report: ProseJudgeReport
+    prose_consensus_report: ProseConsensusReport
+    prose_quality_report: ProseQualityReport
+    novel_candidate: NovelCandidate
+    compile_manifest: CompileManifest
 
 
 class CoreSellingPoint(RootModel[str]):
@@ -3705,6 +4329,20 @@ class Schema_4(BaseModel):
     indexes: NarrativeIndexes
 
 
+class Schema_5(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.novel-profile.v2']
+    structure: Structure
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode], Field(min_length=1)
+    ]
+    exposure_policy: ExposurePolicy
+    prose: ProseProfile
+
+
 class IssueRef(RootModel[str]):
     root: Annotated[str, Field(pattern='^issue_[a-z0-9][a-z0-9_]{0,54}$')]
 
@@ -3716,7 +4354,7 @@ class ApprovalStatus(StrEnum):
     superseded = 'superseded'
 
 
-class Schema_5(BaseModel):
+class Schema_6(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3758,7 +4396,7 @@ class PlanningConstraints_1(BaseModel):
     ]
 
 
-class Schema_6(BaseModel):
+class Schema_7(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3766,21 +4404,8 @@ class Schema_6(BaseModel):
     schema_id: Literal['compiler.story-planner-input.v1']
     narrative_ir: Schema_4
     exposure_plan: ExposureBinding | None
-    profile: novel_profile_1.Schema
+    profile: novel_profile_1.Schema | Schema_5
     planning_constraints: PlanningConstraints_1
-
-
-class Schema_7(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    schema_id: Literal['compiler.story-planner-input.v2']
-    narrative_ir: Schema_4
-    exposure_plan: ExposureBinding | None
-    profile: novel_profile_1.Schema
-    planning_constraints: PlanningConstraints
-    planner_view: PlannerView
 
 
 class Schema_8(BaseModel):
@@ -3788,10 +4413,23 @@ class Schema_8(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    schema_id: Literal['compiler.story-planner-input.v2']
+    narrative_ir: Schema_4
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema | Schema_5
+    planning_constraints: PlanningConstraints
+    planner_view: PlannerView
+
+
+class Schema_9(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
     schema_id: Literal['compiler.story-planner-input.v3']
     narrative_ir: Schema_4
     exposure_plan: ExposureBinding | None
-    profile: novel_profile_1.Schema
+    profile: novel_profile_1.Schema | Schema_5
     planning_constraints: PlanningConstraints
     planner_view: PlannerViewModel
 
@@ -3887,7 +4525,7 @@ class ObjectCatalog_1(BaseModel):
     structure_locks: list[ModelObject]
 
 
-class Schema_9(BaseModel):
+class Schema_10(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3922,7 +4560,7 @@ class HardConstraints_2(BaseModel):
     semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
 
 
-class Schema_10(BaseModel):
+class Schema_11(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3935,7 +4573,20 @@ class Schema_10(BaseModel):
     planning_context: PlanningContextModel1
 
 
-class Schema_11(BaseModel):
+class Schema_12(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-judge-checklist.v1']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    scene_ordinal: Annotated[int, Field(ge=1)]
+    source: ChecklistSource
+    scene_context: SceneContext
+    checks: Annotated[list[ProseJudgeCheck], Field(max_length=512, min_length=1)]
+
+
+class Schema_13(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3952,7 +4603,7 @@ class Schema_11(BaseModel):
     state_seed: SceneStateSeed
 
 
-class Schema_12(BaseModel):
+class Schema_14(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3969,7 +4620,7 @@ class Schema_12(BaseModel):
     metrics: ScenePlanMetrics
 
 
-class Schema_13(BaseModel):
+class Schema_15(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -4008,7 +4659,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_14(BaseModel):
+class Schema_16(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

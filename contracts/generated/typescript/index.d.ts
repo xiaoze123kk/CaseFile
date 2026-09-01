@@ -349,6 +349,15 @@ export type PublicGoalEventWaitingFor = "none" | "clarification" | "patch_review
 export type CompileInputManifest = {
   [k: string]: unknown;
 };
+/**
+ * @minItems 1
+ */
+export type AllowedPresentationModes = [
+  "linear" | "flashback" | "flashforward",
+  ...("linear" | "flashback" | "flashforward")[]
+];
+export type ObjectRefArray = ObjectRef[];
+export type StringSet = string[];
 
 /**
  * Code-generation aggregate for the CaseFile editing loop.
@@ -379,12 +388,21 @@ export interface EditingContracts {
   scene_plan: ScenePlanIR;
   scene_plan_v2?: ScenePlanIRV2;
   novel_profile: NovelProfile;
+  novel_profile_v2: NovelProfileV2;
   planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
   planner_model_view: PlannerModelViewV3 | PlannerModelViewV4;
   story_plan_structural_patch: StoryPlanStructuralPatch;
   constraint_first_planner: ConstraintFirstPlannerContracts;
   novel_plan_candidate: NovelPlanCandidate;
   novel_plan: NovelPlanIR;
+  prose_judge_checklist: ProseJudgeChecklist;
+  scene_render_candidate: SceneRenderCandidate;
+  scene_render: SceneRender;
+  prose_judge_report: ProseJudgeReport;
+  prose_consensus_report: ProseConsensusReport;
+  prose_quality_report: ProseQualityReport;
+  novel_candidate: NovelCandidate;
+  compile_manifest: CompileManifest;
 }
 export interface CaseFile {
   schema_version: "2.0";
@@ -1811,22 +1829,49 @@ export interface ScenePlanMetricsV2 {
 }
 export interface NovelProfile {
   schema_id: "compiler.novel-profile.v1";
-  structure: {
-    strategy: "three_act";
-    target_chapters: number;
-    target_scenes: number;
-  };
-  /**
-   * @minItems 1
-   */
-  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+  structure: Structure;
+  allowed_presentation_modes: AllowedPresentationModes;
   exposure_policy: "bound_plan" | "planner_default";
+}
+export interface Structure {
+  strategy: "three_act";
+  target_chapters: number;
+  target_scenes: number;
+}
+export interface NovelProfileV2 {
+  schema_id: "compiler.novel-profile.v2";
+  structure: Structure;
+  allowed_presentation_modes: AllowedPresentationModes;
+  exposure_policy: "bound_plan" | "planner_default";
+  prose: ProseProfile;
+}
+export interface ProseProfile {
+  language: string;
+  narrative_person: "first_person" | "third_person_limited" | "third_person_omniscient";
+  narrative_tense: "past" | "present";
+  target_scene_chars: ClosedIntegerRange;
+  dialogue_ratio: ClosedRatioRange;
+  description_density: "low" | "balanced" | "high";
+  pacing: "slow" | "balanced" | "fast";
+  style_brief: string;
+  /**
+   * @maxItems 20
+   */
+  forbidden_style_patterns: string[];
+}
+export interface ClosedIntegerRange {
+  min: number;
+  max: number;
+}
+export interface ClosedRatioRange {
+  min: number;
+  max: number;
 }
 export interface PlannerInputBundle {
   schema_id: "compiler.story-planner-input.v1";
   narrative_ir: NarrativeIR;
   exposure_plan: ExposureBinding | null;
-  profile: NovelProfile;
+  profile: NovelProfile | NovelProfileV2;
   planning_constraints: PlanningConstraints;
 }
 export interface PlanningConstraints {
@@ -1841,7 +1886,7 @@ export interface PlannerInputBundleV2 {
   schema_id: "compiler.story-planner-input.v2";
   narrative_ir: NarrativeIR;
   exposure_plan: ExposureBinding | null;
-  profile: NovelProfile;
+  profile: NovelProfile | NovelProfileV2;
   planning_constraints: PlanningConstraints;
   planner_view: PlannerView;
 }
@@ -1908,7 +1953,7 @@ export interface PlannerInputBundleV3 {
   schema_id: "compiler.story-planner-input.v3";
   narrative_ir: NarrativeIR;
   exposure_plan: ExposureBinding | null;
-  profile: NovelProfile;
+  profile: NovelProfile | NovelProfileV2;
   planning_constraints: PlanningConstraints;
   planner_view: PlannerView1;
 }
@@ -2223,6 +2268,307 @@ export interface CandidateScene {
   exposure: ExposurePlacement[];
   resolutions: ResolutionPlacement[];
   prerequisite_scene_ids: string[];
+}
+export interface ProseJudgeChecklist {
+  schema_id: "compiler.prose-judge-checklist.v1";
+  scene_id: string;
+  scene_ordinal: number;
+  source: ChecklistSource;
+  scene_context: SceneContext;
+  /**
+   * @minItems 1
+   * @maxItems 512
+   */
+  checks: [ProseJudgeCheck, ...ProseJudgeCheck[]];
+}
+export interface ChecklistSource {
+  scene_plan_hash: string;
+  narrative_ir_hash: string;
+  profile_hash: string;
+  previous_scene_render_hash: string | null;
+  checklist_policy_version: "prose-checklist-policy-v1";
+  checklist_policy_hash: string;
+}
+export interface SceneContext {
+  objective: string;
+  dramatic_goal: string;
+  conflict: string;
+  outcome: string;
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRefArray;
+  location_ref: ObjectRef | null;
+  story_time_refs: ObjectRefArray;
+  state_before: ExecutionState;
+  expected_state_after: ExecutionState;
+  prerequisite_scene_ids: string[];
+  prerequisite_beat_ids: string[];
+  /**
+   * @minItems 1
+   */
+  beats: [BeatExecutionV2, ...BeatExecutionV2[]];
+  event_refs: ObjectRefArray;
+  exposure_actions: ExposurePlacement1[];
+  resolution_actions: ResolutionPlacement1[];
+  setup_keys: StringSet;
+  payoff_keys: StringSet;
+  obligation_keys: StringSet;
+  object_catalog: ObjectCatalogEntry[];
+  previous_scene_render: SceneRender | null;
+}
+export interface ObjectCatalogEntry {
+  object_ref: ObjectRef;
+  source_ref: CompilerSourceRef;
+  label: string;
+  value: unknown;
+}
+export interface SceneRender {
+  schema_id: "compiler.scene-render.v1";
+  scene_id: string;
+  scene_ordinal: number;
+  source: SceneRenderSource;
+  stage: "writer" | "rewrite_1" | "rewrite_2" | "polished" | "accepted";
+  round: number;
+  previous_render_hash: string | null;
+  /**
+   * @minItems 1
+   * @maxItems 64
+   */
+  blocks: [SceneRenderBlock, ...SceneRenderBlock[]];
+  character_count: number;
+  selection_reason:
+    | ("semantic_accepted" | "polished_accepted" | "polish_semantic_rollback" | "quality_rollback" | "quality_unstable")
+    | null;
+}
+export interface SceneRenderSource {
+  checklist_hash: string;
+  profile_hash: string;
+  scene_plan_hash: string;
+  previous_scene_render_hash: string | null;
+  component_input_hash: string;
+}
+export interface SceneRenderBlock {
+  block_id: string;
+  ordinal: number;
+  text: string;
+}
+export interface ProseJudgeCheck {
+  check_id: string;
+  ordinal: number;
+  kind:
+    | "beat_realization"
+    | "event_modality"
+    | "reveal_control"
+    | "pov_knowledge"
+    | "location_time"
+    | "causality_ordering"
+    | "major_hallucination"
+    | "scene_outcome";
+  polarity: "required" | "forbidden";
+  expectation: string;
+  beat_ids: string[];
+  basis_refs: ObjectRefArray;
+  event_refs: ObjectRefArray;
+  exposure_entry_keys: string[];
+  state_refs: string[];
+  evidence_policy: "required_on_pass" | "required_on_fail";
+}
+export interface SceneRenderCandidate {
+  schema_id: "compiler.scene-render-candidate.v1";
+  /**
+   * @minItems 1
+   * @maxItems 64
+   */
+  blocks: [SceneRenderCandidateBlock, ...SceneRenderCandidateBlock[]];
+}
+export interface SceneRenderCandidateBlock {
+  text: string;
+}
+export interface ProseJudgeReport {
+  schema_id: "compiler.prose-judge-report.v1";
+  role: "fidelity" | "adversarial" | "coherence" | "arbiter";
+  scene_id: string;
+  checklist_hash: string;
+  render_hash: string;
+  /**
+   * @minItems 1
+   */
+  assessments: [JudgeAssessment, ...JudgeAssessment[]];
+}
+export interface JudgeAssessment {
+  check_id: string;
+  verdict: "pass" | "fail" | "uncertain";
+  /**
+   * @maxItems 20
+   */
+  evidence: Evidence[];
+  rationale: string;
+}
+export interface Evidence {
+  block_id: string;
+  start_char: number;
+  end_char: number;
+  text: string;
+}
+export interface ProseConsensusReport {
+  schema_id: "compiler.prose-consensus-report.v1";
+  scene_id: string;
+  round: number;
+  checklist_hash: string;
+  render_hash: string;
+  council_policy_hash: string;
+  /**
+   * @minItems 1
+   * @maxItems 3
+   */
+  judge_report_hashes: [string, ...string[]];
+  /**
+   * @minItems 1
+   */
+  checks: [ConsensusCheck, ...ConsensusCheck[]];
+  arbiter_request_hash: string | null;
+  arbiter_report_hash: string | null;
+  scene_verdict: "pass" | "fail" | "uncertain";
+  failed_check_ids: string[];
+  unresolved_check_ids: string[];
+}
+export interface ConsensusCheck {
+  check_id: string;
+  /**
+   * @minItems 1
+   * @maxItems 3
+   */
+  role_verdicts: [RoleVerdict, ...RoleVerdict[]];
+  unanimous: boolean;
+  entered_arbiter: boolean;
+  final_verdict: "pass" | "fail" | "uncertain";
+  resolution_source: "unanimous" | "arbiter";
+}
+export interface RoleVerdict {
+  role: "fidelity" | "adversarial" | "coherence";
+  report_hash: string;
+  verdict: "pass" | "fail" | "uncertain";
+}
+export interface ProseQualityReport {
+  schema_id: "compiler.prose-quality-report.v1";
+  report_kind: "findings" | "pairwise";
+  scene_id: string;
+  /**
+   * @minItems 1
+   * @maxItems 2
+   */
+  source_render_hashes: [string] | [string, string];
+  position_mapping:
+    | {
+        a: "original";
+        b: "polished";
+      }
+    | {
+        a: "polished";
+        b: "original";
+      }
+    | null;
+  findings: QualityFinding[];
+  overall_preference: ("a" | "b" | "tie") | null;
+  /**
+   * @maxItems 5
+   */
+  dimension_preferences: DimensionPreference[];
+}
+export interface QualityFinding {
+  dimension:
+    | "pov_voice_consistency"
+    | "scene_specificity"
+    | "dialogue_narration_naturalness"
+    | "dramatic_progression_pacing"
+    | "readability_editability";
+  severity: "low" | "medium" | "high";
+  /**
+   * @minItems 1
+   * @maxItems 20
+   */
+  evidence: [Evidence, ...Evidence[]];
+  description: string;
+}
+export interface DimensionPreference {
+  dimension:
+    | "pov_voice_consistency"
+    | "scene_specificity"
+    | "dialogue_narration_naturalness"
+    | "dramatic_progression_pacing"
+    | "readability_editability";
+  preference: "a" | "b" | "tie";
+}
+export interface NovelCandidate {
+  schema_id: "compiler.novel-candidate.v1";
+  scene_plan_hash: string;
+  profile_hash: string;
+  /**
+   * @minItems 1
+   */
+  accepted_scenes: [AcceptedSceneRef, ...AcceptedSceneRef[]];
+  merged_text: string;
+  scene_count: number;
+  character_count: number;
+}
+export interface AcceptedSceneRef {
+  scene_id: string;
+  scene_ordinal: number;
+  render_hash: string;
+}
+export interface CompileManifest {
+  schema_id: "compiler.compile-manifest.v1";
+  source: {
+    scene_plan_hash: string | null;
+    narrative_ir_hash: string | null;
+    profile_hash: string | null;
+  };
+  components: {
+    checklist_policy_hash: string;
+    council_policy_hash: string;
+    writer_component_hash: string;
+    fidelity_judge_component_hash: string;
+    adversarial_judge_component_hash: string;
+    coherence_judge_component_hash: string;
+    arbiter_component_hash: string;
+    rewrite_component_hash: string;
+    quality_critic_component_hash: string;
+    polisher_component_hash: string;
+  };
+  /**
+   * @minItems 1
+   */
+  scenes: [SceneManifest, ...SceneManifest[]];
+  shadow_status: "blocked_precondition" | "inconclusive_infrastructure" | "semantic_rejected" | "succeeded";
+  incomplete_reason: string | null;
+  novel_candidate_hash: string | null;
+}
+export interface SceneManifest {
+  scene_id: string;
+  scene_ordinal: number;
+  final_state:
+    | "blocked_precondition"
+    | "inconclusive_infrastructure"
+    | "semantic_rejected"
+    | "finalized_original"
+    | "finalized_polished";
+  checklist_hash: string | null;
+  render_hashes: string[];
+  judge_report_hashes: string[];
+  consensus_report_hashes: string[];
+  arbiter_report_hashes: string[];
+  quality_report_hashes: string[];
+  accepted_render_hash: string | null;
+  rewrite_count: number;
+  call_count: number;
+  usage: UsageSummary;
+  latency_ms: number;
+  recovered_call_hashes: string[];
+  failure_reason: string | null;
+}
+export interface UsageSummary {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
 }
 
 /** Strict public event union discriminated by `event`. */

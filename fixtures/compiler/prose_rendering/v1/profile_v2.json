@@ -1,0 +1,32 @@
+{
+  "schema_id": "compiler.novel-profile.v2",
+  "structure": {
+    "strategy": "three_act",
+    "target_chapters": 1,
+    "target_scenes": 3
+  },
+  "allowed_presentation_modes": [
+    "linear",
+    "flashback"
+  ],
+  "exposure_policy": "bound_plan",
+  "prose": {
+    "language": "zh-CN",
+    "narrative_person": "third_person_limited",
+    "narrative_tense": "past",
+    "target_scene_chars": {
+      "min": 300,
+      "max": 1200
+    },
+    "dialogue_ratio": {
+      "min": 0.1,
+      "max": 0.5
+    },
+    "description_density": "balanced",
+    "pacing": "balanced",
+    "style_brief": "克制、清晰，重要信息通过动作和对话呈现。",
+    "forbidden_style_patterns": [
+      "总结式解释凶手动机"
+    ]
+  }
+}

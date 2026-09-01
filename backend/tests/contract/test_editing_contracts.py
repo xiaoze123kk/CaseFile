@@ -21,10 +21,17 @@ from casefile_contracts import (  # noqa: E402
     Brief,
     CaseFile,
     CompileInputManifest,
+    CompileManifest,
     CompilerArtifactRef,
     CompilerDiagnostic,
     CompilerSourceRef,
+    NovelCandidate,
+    NovelProfileV2,
     PatchCandidate,
+    ProseConsensusReport,
+    ProseJudgeChecklist,
+    ProseJudgeReport,
+    ProseQualityReport,
     PublicAgentEvent,
     PublicAgentMessage,
     PublicGoalDelivery,
@@ -32,6 +39,8 @@ from casefile_contracts import (  # noqa: E402
     PublicGoalSession,
     PublicPatchReviewResult,
     PublicRoutingFeedbackReceipt,
+    SceneRender,
+    SceneRenderCandidate,
     TaskRun,
     ValidationIssue,
 )
@@ -237,7 +246,7 @@ def walk_object_refs(value: Any) -> list[dict[str, str]]:
 def test_all_schema_files_are_valid_draft_2020_12(
     schemas: dict[str, dict[str, Any]],
 ) -> None:
-    assert len(schemas) == 23
+    assert len(schemas) == 25
     for schema in schemas.values():
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         Draft202012Validator.check_schema(schema)
@@ -660,3 +669,69 @@ def test_import_and_three_way_conflict_fixtures_preserve_provenance_and_stable_r
     }
     assert current_change["path"] == "/time/start"
     assert scenario["expected_result"] == "three_way_diff_required"
+
+
+def test_prose_rendering_contracts_roundtrip_in_schema_and_python(
+    schemas: dict[str, dict[str, Any]], registry: Registry
+) -> None:
+    fixture_root = FIXTURE_ROOT / "compiler/prose_rendering/v1"
+    prose_schema_id = "https://casefile.local/schemas/v2/compiler/prose-rendering.schema.json"
+    profile_schema_id = "https://casefile.local/schemas/v2/compiler/novel-profile-v2.schema.json"
+    cases = [
+        ("profile_v2.json", NovelProfileV2, profile_schema_id),
+        ("checklist_scene_1.json", ProseJudgeChecklist, prose_schema_id),
+        ("checklist_scene_2.json", ProseJudgeChecklist, prose_schema_id),
+        (
+            "scene_render_candidate.json",
+            SceneRenderCandidate,
+            f"{prose_schema_id}#/$defs/SceneRenderCandidate",
+        ),
+        ("scene_render_writer.json", SceneRender, f"{prose_schema_id}#/$defs/SceneRender"),
+        ("scene_render_rewrite_1.json", SceneRender, f"{prose_schema_id}#/$defs/SceneRender"),
+        ("scene_render_rewrite_2.json", SceneRender, f"{prose_schema_id}#/$defs/SceneRender"),
+        ("scene_render_polished.json", SceneRender, f"{prose_schema_id}#/$defs/SceneRender"),
+        ("scene_render_accepted.json", SceneRender, f"{prose_schema_id}#/$defs/SceneRender"),
+        (
+            "judge_required_pass.json",
+            ProseJudgeReport,
+            f"{prose_schema_id}#/$defs/ProseJudgeReport",
+        ),
+        (
+            "judge_forbidden_fail.json",
+            ProseJudgeReport,
+            f"{prose_schema_id}#/$defs/ProseJudgeReport",
+        ),
+        (
+            "consensus_pass.json",
+            ProseConsensusReport,
+            f"{prose_schema_id}#/$defs/ProseConsensusReport",
+        ),
+        (
+            "quality_findings.json",
+            ProseQualityReport,
+            f"{prose_schema_id}#/$defs/ProseQualityReport",
+        ),
+        ("novel_candidate.json", NovelCandidate, f"{prose_schema_id}#/$defs/NovelCandidate"),
+        ("compile_manifest.json", CompileManifest, f"{prose_schema_id}#/$defs/CompileManifest"),
+    ]
+    for name, model, schema_ref in cases:
+        value = load_json(fixture_root / name)
+        validator = Draft202012Validator(
+            {"$ref": schema_ref}, registry=registry, format_checker=FormatChecker()
+        )
+        validator.validate(value)
+        assert model.model_validate(value).model_dump(mode="json") == value
+
+    invalid_cases = load_json(fixture_root / "invalid_cases.json")["cases"]
+    for invalid in invalid_cases:
+        if invalid["expected_layer"] != "schema":
+            continue
+        value = apply_manifest(load_json(fixture_root / invalid["base_fixture"]), invalid)
+        schema_ref = (
+            profile_schema_id
+            if invalid["base_fixture"] == "profile_v2.json"
+            else prose_schema_id
+        )
+        assert not Draft202012Validator(
+            {"$ref": schema_ref}, registry=registry, format_checker=FormatChecker()
+        ).is_valid(value), invalid["name"]

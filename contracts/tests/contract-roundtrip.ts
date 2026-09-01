@@ -9,15 +9,24 @@ import type {
   BriefIntakeCandidate,
   BriefIntakeQuestionSet,
   CaseFile,
+  CompileManifest,
   CompileInputManifest,
   CompilerArtifactRef,
   CompilerDiagnostic,
   CompilerSourceRef,
   NarrativeIR,
+  NovelCandidate,
+  NovelProfileV2,
   PatchCandidate,
+  ProseConsensusReport,
+  ProseJudgeChecklist,
+  ProseJudgeReport,
+  ProseQualityReport,
   SceneCompilerInputBundle,
   ScenePlanCandidate,
   ScenePlanIR,
+  SceneRender,
+  SceneRenderCandidate,
   PublicAgentEvent,
   PublicAgentMessage,
   PublicPatchReviewResult,
@@ -524,6 +533,92 @@ for (const name of invalidManifests) {
   }
 }
 
+const proseSchemaId =
+  "https://casefile.local/schemas/v2/compiler/prose-rendering.schema.json";
+const profileV2Validator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/novel-profile-v2.schema.json",
+);
+const proseChecklistValidator = ajv.getSchema(proseSchemaId);
+const sceneRenderCandidateValidator = ajv.getSchema(
+  `${proseSchemaId}#/$defs/SceneRenderCandidate`,
+);
+const sceneRenderValidator = ajv.getSchema(`${proseSchemaId}#/$defs/SceneRender`);
+const proseJudgeReportValidator = ajv.getSchema(
+  `${proseSchemaId}#/$defs/ProseJudgeReport`,
+);
+const proseConsensusReportValidator = ajv.getSchema(
+  `${proseSchemaId}#/$defs/ProseConsensusReport`,
+);
+const proseQualityReportValidator = ajv.getSchema(
+  `${proseSchemaId}#/$defs/ProseQualityReport`,
+);
+const novelCandidateValidator = ajv.getSchema(`${proseSchemaId}#/$defs/NovelCandidate`);
+const compileManifestV1Validator = ajv.getSchema(`${proseSchemaId}#/$defs/CompileManifest`);
+if (
+  !profileV2Validator ||
+  !proseChecklistValidator ||
+  !sceneRenderCandidateValidator ||
+  !sceneRenderValidator ||
+  !proseJudgeReportValidator ||
+  !proseConsensusReportValidator ||
+  !proseQualityReportValidator ||
+  !novelCandidateValidator ||
+  !compileManifestV1Validator
+) {
+  throw new Error("N4.5 prose contract schemas were not registered");
+}
+
+const proseFixtureRoot = resolve(fixtureRoot, "compiler", "prose_rendering", "v1");
+const profileV2 = loadJson(resolve(proseFixtureRoot, "profile_v2.json"));
+assertValid(
+  profileV2Validator,
+  typedRoundTrip(profileV2 as unknown as NovelProfileV2),
+  "NovelProfileV2",
+);
+for (const name of ["checklist_scene_1.json", "checklist_scene_2.json"]) {
+  const value = loadJson(resolve(proseFixtureRoot, name));
+  assertValid(
+    proseChecklistValidator,
+    typedRoundTrip(value as unknown as ProseJudgeChecklist),
+    name,
+  );
+}
+const proseCases: [string, ValidateFunction, unknown][] = [
+  ["scene_render_candidate.json", sceneRenderCandidateValidator, {} as SceneRenderCandidate],
+  ["scene_render_writer.json", sceneRenderValidator, {} as SceneRender],
+  ["scene_render_rewrite_1.json", sceneRenderValidator, {} as SceneRender],
+  ["scene_render_rewrite_2.json", sceneRenderValidator, {} as SceneRender],
+  ["scene_render_polished.json", sceneRenderValidator, {} as SceneRender],
+  ["scene_render_accepted.json", sceneRenderValidator, {} as SceneRender],
+  ["judge_required_pass.json", proseJudgeReportValidator, {} as ProseJudgeReport],
+  ["judge_forbidden_fail.json", proseJudgeReportValidator, {} as ProseJudgeReport],
+  ["consensus_pass.json", proseConsensusReportValidator, {} as ProseConsensusReport],
+  ["quality_findings.json", proseQualityReportValidator, {} as ProseQualityReport],
+  ["novel_candidate.json", novelCandidateValidator, {} as NovelCandidate],
+  ["compile_manifest.json", compileManifestV1Validator, {} as CompileManifest],
+];
+for (const [name, validator] of proseCases) {
+  assertValid(validator, loadJson(resolve(proseFixtureRoot, name)), name);
+}
+
+const proseInvalidCases = loadJson(resolve(proseFixtureRoot, "invalid_cases.json"))
+  .cases as JsonObject[];
+for (const invalidCase of proseInvalidCases.filter(
+  (value) => value.expected_layer === "schema",
+)) {
+  const baseName = invalidCase.base_fixture as string;
+  const invalidValue = applyManifest(
+    loadJson(resolve(proseFixtureRoot, baseName)),
+    invalidCase,
+  );
+  const validator = baseName === "profile_v2.json"
+    ? profileV2Validator
+    : proseChecklistValidator;
+  if (validator(invalidValue)) {
+    throw new Error(`${String(invalidCase.name)} unexpectedly passed N4.5 schema`);
+  }
+}
+
 console.log(
-  `TypeScript contracts passed: ${casefilePaths.length} CaseFiles, Compiler foundation, ValidationIssue, PatchCandidate, BriefIntake candidate/questions, and ${invalidManifests.length} invalid fixtures.`,
+  `TypeScript contracts passed: ${casefilePaths.length} CaseFiles, Compiler foundation, N4.5 prose contracts, ValidationIssue, PatchCandidate, BriefIntake candidate/questions, and ${invalidManifests.length} invalid fixtures.`,
 );

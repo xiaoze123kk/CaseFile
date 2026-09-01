@@ -9,8 +9,8 @@
 | `contracts/schemas/` | 面向跨语言消费者的 CaseFile、编辑、验证、任务、Chat Public DTO、推理、Benchmark、Compiler 与 API Schema 集合；`chat/chat-public.schema.json` 是 M3.6 作者侧协议事实源。 |
 | `contracts/schemas/compiler/compiler.schema.json` | N4.0 Narrative Compiler 基础契约：稳定 SourceRef/ArtifactRef、Diagnostic、Profile binding、Snapshot/Canon/Exposure 冻结绑定与 CompileInputManifest；不定义具体 IR 或 Artifact payload。 |
 | `contracts/schemas/compiler/narrative-ir.schema.json` | N4.2 NarrativeIR：Snapshot 无损对象 envelope、根与对象来源证明、带嵌套上下文的完整引用导航边。 |
-| `contracts/schemas/compiler/novel-profile.schema.json` | N4.3 小说结构、章节/场景目标、叙述方式和 Exposure 策略契约。 |
-| `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入。 |
+| `contracts/schemas/compiler/novel-profile.schema.json`、`novel-profile-v2.schema.json` | v1 保留 N4.3 小说结构与 Exposure 策略；v2 追加 BCP-47 语言、叙述人称/时态、Scene 字符与对白比例范围、描写密度、节奏和风格边界。 |
+| `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入；v1–v3 均兼容 NovelProfile v1/v2。 |
 | `contracts/schemas/compiler/planner-input-v2.schema.json` | 兼容新增的 Story Planner v2 输入：保留完整冻结输入，并加入可独立复验的 PlannerView；硬约束只投影现有权威规则，因果、知识与作者备注保持规划上下文。 |
 | `contracts/schemas/compiler/planner-model-view-v3.schema.json` | 显式 Provider-facing 精简视图：从完整 PlannerInput v2 确定性投影结构、Exposure precedence、Temporal rank、Resolution obligations、对象目录和规划上下文；不替代完整审计输入。 |
 | `contracts/schemas/compiler/planner-input-v3.schema.json`、`planner-model-view-v4.schema.json` | 将 Exposure v2 的 participant/basis/hypothesis typed obligations 按 hard/soft 分离；hard 进入 ConstraintIR v2 与权威校验，soft 仅进入模型规划上下文。 |
@@ -19,6 +19,7 @@
 | `contracts/schemas/compiler/scene-plan.schema.json` | N4.4 SceneCompilerInputBundle、模型所有的 ScenePlanCandidate 与服务器规范 ScenePlanIR：候选只能为既有 Scene 填来源支持的 Beat，IR 保存稳定 ID、读者状态、显式图边、provenance、索引、诊断与计数。 |
 | `contracts/schemas/compiler/scene-compiler.schema.json` | N4.4 v2 完整冻结输入、章内最多八场的 Provider-facing ModelView、跨 batch typed inbound state 与受控 SemanticFill 契约；ModelView schema v1 兼容 projection v1/v2/v3，v2 保证可见引用目录闭包，v3 以 `beat_basis_allowlist` 显式呈现顶层 Beat provenance 精确白名单；Inbound State v1 显式给出当前知识、known-fact 操作白名单和开放/已用 setup key；模型不得控制最终 ID、规划顺序、Exposure 或 Resolution 权威字段。 |
 | `contracts/schemas/compiler/scene-plan-v2.schema.json` | N4.4 影子 ScenePlanIR v2：在 v1 执行结构上增加场景语义、Beat 义务与因果、知识/地点状态增量、setup/payoff、状态哈希和重放索引。 |
+| `contracts/schemas/compiler/prose-rendering.schema.json` | N4.5 Checklist、SceneRender candidate/服务器 Render、Judge/Consensus/Quality 报告、NovelCandidate 与 CompileManifest 的严格公共协议；Evidence 使用单 block、Unicode 半开区间和逐字原文。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
@@ -52,6 +53,7 @@
 | `fixtures/compiler/foundation/` | N4.0 Compiler 基础合法/非法样例：Preview/Canonical 冻结输入、Exposure/Profile hash、SourceRef、ArtifactRef、Diagnostic 与结构/语义失败场景。 |
 | `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
 | `fixtures/compiler/scene_plan/v1/` | N4.4 SceneCompilerInputBundle 与 ScenePlanIR 最小跨语言往返样例，覆盖 NovelPlanScene 原生 Schema、稳定执行节点、显式图边、来源证明与空揭露状态。 |
+| `fixtures/compiler/prose_rendering/v1/` | N4.5 Profile v2、首场/后续场 Checklist、各 Render stage、Judge 正反 Evidence、Consensus、Quality、NovelCandidate、CompileManifest 及 Schema/领域非法变体。 |
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
 | `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
 | `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |

@@ -17,6 +17,7 @@ from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
 )
+from casefile.domain.narrative_compiler.prose_checklist import validate_novel_profile_v2
 
 PLANNER_INPUT_SCHEMA_ID = "compiler.story-planner-input.v1"
 PLANNER_INPUT_V2_SCHEMA_ID = "compiler.story-planner-input.v2"
@@ -151,11 +152,16 @@ def _validated_inputs(
     profile: dict[str, Any],
     compile_mode: str,
 ) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any], dict[str, Any]]:
-    try:
-        parsed_profile = NovelProfile.model_validate(profile)
-    except ValidationError as error:
-        raise CompilerContractError("compiler_novel_profile_invalid") from error
-    profile_json = parsed_profile.model_dump(mode="json")
+    schema_id = profile.get("schema_id")
+    if schema_id == "compiler.novel-profile.v2":
+        profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
+    elif schema_id == "compiler.novel-profile.v1":
+        try:
+            profile_json = NovelProfile.model_validate(profile).model_dump(mode="json")
+        except ValidationError as error:
+            raise CompilerContractError("compiler_novel_profile_invalid") from error
+    else:
+        raise CompilerContractError("compiler_novel_profile_schema_invalid")
     if compile_mode == "canonical" and exposure is None:
         raise CompilerContractError("compiler_story_planner_exposure_required")
     if exposure is None and profile_json["exposure_policy"] != "planner_default":
