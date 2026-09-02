@@ -77,7 +77,7 @@ class ProseRewriteSuiteError(RuntimeError):
 
 
 class ProseRewriteQualificationBlocked(ProseRewriteSuiteError):
-    """The private qualification package is not independently ready."""
+    """The private qualification package has not completed its frozen review policy."""
 
 
 def canonical_hash(value: Any) -> str:
@@ -164,7 +164,7 @@ def load_prose_rewrite_qualification_suite(
     suite_path: Path = DEFAULT_PRIVATE_QUALIFICATION_SUITE,
     descriptor_path: Path = DEFAULT_QUALIFICATION_DESCRIPTOR,
 ) -> dict[str, Any]:
-    """Fail closed until a private 24-task package has independent review."""
+    """Load a private 24-task package only after its frozen review policy passes."""
 
     descriptor = _load_json(descriptor_path)
     if descriptor.get("schema_id") != "casefile.prose-rewrite-qualification-descriptor.v1":
@@ -184,12 +184,13 @@ def load_prose_rewrite_qualification_suite(
     ):
         raise ProseRewriteSuiteError("prose_rewrite_qualification_descriptor_invalid")
     if (
-        descriptor.get("review_status") != "independently_reviewed"
+        descriptor.get("review_policy") != "codex-owner-accepted-review-v1"
+        or descriptor.get("review_status") != "codex_reviewed"
         or descriptor.get("qualification_eligible") is not True
         or descriptor.get("review_attestation_hash") is None
     ):
         raise ProseRewriteQualificationBlocked(
-            "prose_rewrite_qualification_independent_review_pending"
+            "prose_rewrite_qualification_review_pending"
         )
     resolved = suite_path.resolve()
     if not resolved.is_relative_to(PRIVATE_ROOT) or not resolved.is_file():
@@ -216,11 +217,16 @@ def load_prose_rewrite_qualification_suite(
         canonical_hash(author) != descriptor.get("author_attestation_hash")
         or author.get("role") != "author"
         or author.get("authored_task_count") != 24
-        or author.get("independent_review_completed") is not True
+        or author.get("review_policy") != descriptor["review_policy"]
+        or author.get("review_completed") is not True
+        or author.get("owner_accepted_codex_review") is not True
         or author.get("unresolved_findings") != []
         or reviewer.get("role") != "reviewer"
         or canonical_hash(reviewer) != descriptor["review_attestation_hash"]
-        or reviewer.get("reviewer_independence") is not True
+        or reviewer.get("reviewer") != "Codex"
+        or reviewer.get("reviewer_independence") is not False
+        or reviewer.get("review_policy") != descriptor["review_policy"]
+        or reviewer.get("owner_acceptance") is not True
         or reviewer.get("reviewed_task_count") != 24
         or reviewer.get("unresolved_findings") != []
     ):
@@ -613,6 +619,12 @@ def _load_qualification_task(
         or asset.get("task_id") != descriptor.get("task_id")
     ):
         raise ProseRewriteSuiteError("prose_rewrite_qualification_task_identity_invalid")
+    if asset.get("author_review") != {
+        "defect_family": descriptor.get("defect_family"),
+        "variant": descriptor.get("variant"),
+        "status": "codex_reviewed_owner_accepted",
+    }:
+        raise ProseRewriteSuiteError("prose_rewrite_qualification_task_review_invalid")
     narrative = source.get("narrative_ir")
     profile = asset.get("profile")
     previous = asset.get("previous_scene_render")

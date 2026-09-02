@@ -236,16 +236,28 @@ def test_semantic_protocol_and_infrastructure_failures_keep_denominator(
     assert report["qualified"] is False
 
 
-def test_private_qualification_is_blocked_before_package_read_or_provider_call(
+def test_unreviewed_qualification_is_blocked_before_package_read_or_provider_call(
     tmp_path: Path,
 ) -> None:
+    descriptor = json.loads(
+        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
+    )
+    descriptor["review_status"] = "pending_codex_review"
+    descriptor["qualification_eligible"] = False
+    descriptor["descriptor_hash"] = canonical_hash(
+        {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
+    )
+    descriptor_path = tmp_path / "descriptor.json"
+    descriptor_path.write_text(
+        json.dumps(descriptor, ensure_ascii=False), encoding="utf-8"
+    )
     missing_private_suite = tmp_path / "missing-suite.json"
     with pytest.raises(
         ProseRewriteQualificationBlocked,
-        match="independent_review_pending",
+        match="qualification_review_pending",
     ):
         load_prose_rewrite_qualification_suite(
-            missing_private_suite, DEFAULT_QUALIFICATION_DESCRIPTOR
+            missing_private_suite, descriptor_path
         )
 
 
@@ -254,15 +266,16 @@ def test_qualification_descriptor_is_self_hashed_and_fail_closed(tmp_path: Path)
         DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
     )
     assert descriptor["task_count"] == 24
-    assert descriptor["review_status"] == "pending_independent_review"
-    assert descriptor["qualification_eligible"] is False
+    assert descriptor["review_policy"] == "codex-owner-accepted-review-v1"
+    assert descriptor["review_status"] == "codex_reviewed"
+    assert descriptor["qualification_eligible"] is True
     assert descriptor["public_development_suite_hash"] == json.loads(
         DEFAULT_SUITE.read_text(encoding="utf-8")
     )["suite_hash"]
     assert descriptor["descriptor_hash"] == canonical_hash(
         {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
     )
-    descriptor["qualification_eligible"] = True
+    descriptor["qualification_eligible"] = False
     path = tmp_path / "descriptor.json"
     path.write_text(json.dumps(descriptor, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ProseRewriteSuiteError, match="descriptor_hash_invalid"):
