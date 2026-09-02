@@ -116,6 +116,7 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/worker/handlers/",
     "backend/src/casefile/worker/input_contracts.py",
     "backend/src/casefile/benchmark/prose_writer_eval.py",
+    "backend/src/casefile/benchmark/prose_rewrite_eval.py",
     "backend/src/casefile/worker/observability.py",
     "backend/src/casefile/worker/provider_resolution.py",
 }

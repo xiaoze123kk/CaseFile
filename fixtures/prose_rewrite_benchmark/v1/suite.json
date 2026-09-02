@@ -1,0 +1,569 @@
+{
+  "schema_id": "casefile.prose-rewrite-dev-suite.v1",
+  "suite_id": "n4.5-b2-rewrite-public-development-v1",
+  "suite_role": "development",
+  "defect_families": [
+    "missing_required_beat",
+    "modality_weakening",
+    "premature_reveal",
+    "pov_knowledge_violation",
+    "location_time_drift",
+    "causality_ordering_inversion",
+    "major_hallucination",
+    "multi_error_combination"
+  ],
+  "variants": [
+    "basic",
+    "preservation_dense",
+    "second_round"
+  ],
+  "task_count": 24,
+  "council_policy_id": "fidelity-only-v1",
+  "council_policy_hash": "b1d492fc9be3ef834e09d2c50b39cc5be19647900ad182db58e25d17c4b18c63",
+  "rewriter_prompt_version": "prose-rewriter-v1",
+  "rewriter_component_hash": "cc467218393f1c12ffeb4eeaabe4daa41f7d361032d28f8514ef978401622f5e",
+  "gate_thresholds": {
+    "final_rescue_min": 21,
+    "preservation_task_min": 23,
+    "new_critical_issue_max": 0,
+    "extra_rewrite_call_max": 0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0
+  },
+  "qualification": {
+    "qualified": false,
+    "qualification_eligible": false,
+    "development_baseline": true
+  },
+  "tasks": [
+    {
+      "task_id": "b2_01_missing_required_beat_basic",
+      "defect_family": "missing_required_beat",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_decomposition__decoy.json",
+        "hash": "574072760cf4fa4598b15b8658c1e122a8a9c245dd9974bf12f01454817b3e2d"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_decomposition__decoy.json",
+        "hash": "6c4f2a762570f8593ba42387d0bd040ca730f33fd23b6840ab813cb790746728"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_01_missing_required_beat_basic.json",
+        "hash": "f16e9a50b933df08b0de0c99b78f5e37cf60103c50ec1557a384225e4e1f3356"
+      },
+      "checklist_hash": "dfdd93d744b5a1539e3191f31a5071aaa1d8ab79d90147733abbb5b50a5632aa",
+      "input_fingerprint": "1731b4a557853df27f1dd5ce1f176155f6eff9b9034bcb8cdd0eb8309cf3c2d8",
+      "content_hash": "00567f86e2615539ba8677458295e20e3209ac140581b94f5335d4369ff027df"
+    },
+    {
+      "task_id": "b2_02_missing_required_beat_preservation_dense",
+      "defect_family": "missing_required_beat",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_decomposition__dense.json",
+        "hash": "a2a02c5885fd60bde073c47fc2ab2c145d398955f76bea05135e9b58eb9fdffa"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_decomposition__dense.json",
+        "hash": "b126ce1567c2646228c9c2ac594b30476a12d775e8f9627a02d9dbbecde6d65c"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_02_missing_required_beat_preservation_dense.json",
+        "hash": "c54b20eeba01f7baaca8ffe365b3cdfe98e4dd3c83e029a17361e8a4fadacf04"
+      },
+      "checklist_hash": "bdeb247591a6a7b08ee64014abc376b9fc71d18f24a6f213c5363b3315bc3aae",
+      "input_fingerprint": "e65b20ad39082f37eb8866f111c580360b09ef18387d0ea6daf518b1d0ac8190",
+      "content_hash": "3388f18326ae72b902a9b0a5b2dae1f190418ff7f0f9b961633ee47483a90f53"
+    },
+    {
+      "task_id": "b2_03_missing_required_beat_second_round",
+      "defect_family": "missing_required_beat",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_grounding__decoy.json",
+        "hash": "702f98d5db21f8df2466ec8804989c49c652681f65921286456aa5d59a15f799"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_grounding__decoy.json",
+        "hash": "1fbd9cfcede24671e2227d59400d721057feef22707ea26bcf83b6864f57aa71"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_03_missing_required_beat_second_round.json",
+        "hash": "b221654ff04661f56224f831c6711d3bf78b4a418f8aa44b0a6255bb9bd5a6de"
+      },
+      "checklist_hash": "d80d98f8fd0f5eb519b8bdd939f213eb28901c36e301ec77ff2332070aca288b",
+      "input_fingerprint": "1d60dc2ed1a3a36f5b12a195f840f1ba90d93e8bc5bc5960edfbffabbe58ad2d",
+      "content_hash": "aadf58c808a5f1b508c702e85037cc13c1fc8b1441deafd30900c3bebb2056a1"
+    },
+    {
+      "task_id": "b2_04_modality_weakening_basic",
+      "defect_family": "modality_weakening",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_grounding__dense.json",
+        "hash": "dc0d38f2ee1a133752c09dd3883af2d95a4c71c353eb1ec69b22652bfc100155"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_grounding__dense.json",
+        "hash": "f06746aaf79add4321d0696b29c2978adb95c5008417f301d00f5d4bc73553d7"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_04_modality_weakening_basic.json",
+        "hash": "ccda7a5cd2d125f4b892fd471242161be52c66e34fdd83b088c71ae1ffa8bb5b"
+      },
+      "checklist_hash": "48ae5f2e4c5f354f7e7391baa0f5e7a99afea61161274f12c242b743a425bc66",
+      "input_fingerprint": "e9e95008f36cb6f403af9994175c32334c975dd6508c75912b96eb4e0c34b465",
+      "content_hash": "4d8ab246803283966dbcce4f9a074e77f2084598835d2e9df377be4b1ab9c2ea"
+    },
+    {
+      "task_id": "b2_05_modality_weakening_preservation_dense",
+      "defect_family": "modality_weakening",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/event_grounding__decoy.json",
+        "hash": "7254162fa71519c24ad18931c2c694b91b8c2fb8d012e29db8874536448e602b"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/event_grounding__decoy.json",
+        "hash": "b268b60c512808f04ba6aa665144a76c2cac4e5a436e2de696ff4e19577d44f1"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_05_modality_weakening_preservation_dense.json",
+        "hash": "cd0ef772fa24ae227434ad73ed98173398443f94d20840f3d0d4f73a0f7e349d"
+      },
+      "checklist_hash": "50adac14874253b8fd4fee09087f3eb2aa638d64e8765e6a133cf0fba71a2756",
+      "input_fingerprint": "d77ab2b35ece1c816442268e16eb1b476a688da43c269970084ee23b6aa1cc62",
+      "content_hash": "fb95d8d99fd71e8aab57767325f724226ee0d3b9107b58073c373b8d49c94c7f"
+    },
+    {
+      "task_id": "b2_06_modality_weakening_second_round",
+      "defect_family": "modality_weakening",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/event_grounding__dense.json",
+        "hash": "627b7bc1bc72a8361634a30c35acef16d0657e31050f6ed726d83cc3868a43b1"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/event_grounding__dense.json",
+        "hash": "51b5b17c95583b5d1beb219a10c0464160d2a0bb943a0349c6981cec581b4033"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_06_modality_weakening_second_round.json",
+        "hash": "6552391861a4ebdc873c76288a0eafe5b2b17c2dbfdd34cf56123e6a0e10228b"
+      },
+      "checklist_hash": "96ab28882f7834fcdb611c543d581302490a7673a0deaddcdd4a1d139ce8b5e5",
+      "input_fingerprint": "535de08881c1274fb107252a944cb981f75546fc07347819e8d8f93983672cce",
+      "content_hash": "ed5fe576ca8a78e723489c840d35f1abd56f5eae820f58422c1b1697809e9cf3"
+    },
+    {
+      "task_id": "b2_07_premature_reveal_basic",
+      "defect_family": "premature_reveal",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_decomposition__basic.json",
+        "hash": "d17d2566d8aadfcd0fa7ea6b6a6b7650956c58069a3dc6072f0f8c612ab1d4ea"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_decomposition__basic.json",
+        "hash": "fbebc5de043749ac0d707bf58a7ea266ea300b0c7ac44e8c8c58d4786ea437ec"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_07_premature_reveal_basic.json",
+        "hash": "4b22a1b4c5f711fe306454f56e3506267e212df07f29170b5ec43676cc488dfa"
+      },
+      "checklist_hash": "9c4a697464f549ead99bea5b28d6eebcbf6d1a3226262a07e504ab4c8e1092ac",
+      "input_fingerprint": "84fe30d8c42289e9bf740c495b9b239a0d3e9437438cb563bc32ccb7d5ecc6af",
+      "content_hash": "9cb93b830bafba79a390f7ec5ae11323b9baba8bb420af7553ad889ba437e42f"
+    },
+    {
+      "task_id": "b2_08_premature_reveal_preservation_dense",
+      "defect_family": "premature_reveal",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_grounding__basic.json",
+        "hash": "06ef417d4ca2a953aa430d460e2433a913d9d07b11e43cceb9370e03018aaec8"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_grounding__basic.json",
+        "hash": "b2d24e0859f4a1cedcdd10b7fbb4b3258e09f2f360d62aa0fab7f225b8d945d1"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_08_premature_reveal_preservation_dense.json",
+        "hash": "0b9367e0eee1adf8adf2c0c063d462e74b62e684e2c04b8df97907b929435862"
+      },
+      "checklist_hash": "a92534932670c5a2310ddf2e408d3f96729a29055e8101faec827dabba00c257",
+      "input_fingerprint": "b33257b85420c9773a36870f54e31b6694101b0a2d254d42c9fe76d09ee8b7c0",
+      "content_hash": "690d46d2625c5dbb464d97885ecb2c14d171baf722584caaedbb0bcf6884019f"
+    },
+    {
+      "task_id": "b2_09_premature_reveal_second_round",
+      "defect_family": "premature_reveal",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/event_grounding__basic.json",
+        "hash": "649bf9620c0c7111f259d7860eef5604535f745cdab7b429c7d58068af983d5d"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/event_grounding__basic.json",
+        "hash": "724217f107a11e0638ea83c796e41baad0bd2df40de714f0584ec8ec1686e17e"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_09_premature_reveal_second_round.json",
+        "hash": "067b21110408d3d2a7e27ba4f4a7220daf1c60fd1361e668bd94fbabcd3dfa93"
+      },
+      "checklist_hash": "0fb573c59e1e347040cb456d038fb49857ad09a7ebe1a410f0a232e8e4f70966",
+      "input_fingerprint": "5a8a596528235563df8df8c3ad39669552b5a24d0a618c4e798a00bce15c9cdb",
+      "content_hash": "0ab8ee0e13e6983698c6e3b52e68b12d751104d07e1affde0e7863f5a7c6a30f"
+    },
+    {
+      "task_id": "b2_10_pov_knowledge_violation_basic",
+      "defect_family": "pov_knowledge_violation",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/reveal_control__basic.json",
+        "hash": "c8ee6b7846c5920bc7f13b9bd5d7429187428ffaef8212ad3ceb27cf3560a79a"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/reveal_control__basic.json",
+        "hash": "1f9b2e5dbd133348e77db7385d70f1aacf1d129a266fc7ed21387630bbaed593"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_10_pov_knowledge_violation_basic.json",
+        "hash": "a1f53d5388765523f39f0907142adccb1b05ec77259c02fe3ac94800bcc131f0"
+      },
+      "checklist_hash": "770e2a080fc4497229d62e081f3e3b782ef73fd4203d68070f6223a237e374ae",
+      "input_fingerprint": "82cb77155bd18f0796d6d56a08b2409faf79ac3bf21c992efe388fecedc8c678",
+      "content_hash": "094e841a4701bd4347d429b22e9ab1c664cc1019d4a28dae16cab705a6b9c862"
+    },
+    {
+      "task_id": "b2_11_pov_knowledge_violation_preservation_dense",
+      "defect_family": "pov_knowledge_violation",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/reveal_control__decoy.json",
+        "hash": "e2430984e3329f7594d91973929e7c2692b1168a26dac7f28bba5765ecb6d64a"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/reveal_control__decoy.json",
+        "hash": "f3f0f89e66d72443e18a94dd01f2b81c44fc2ade2fb044b8ba47954d84e4da02"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_11_pov_knowledge_violation_preservation_dense.json",
+        "hash": "79935b6ccf10db786bc761797933fde8b428963e1d12f6596db2594f5b6f9007"
+      },
+      "checklist_hash": "179dff199cf2fae070a949cb172aaadbc662d8882d4d10f639a90773100452fe",
+      "input_fingerprint": "814ebded06ed20e3bc4dd395b292c105bf7d325c72fc40f6e8f42229fac77703",
+      "content_hash": "c3c2019b8c282ba2a6ad07c47860487bcbe7d18cd659db7bea8d094ca44d4717"
+    },
+    {
+      "task_id": "b2_12_pov_knowledge_violation_second_round",
+      "defect_family": "pov_knowledge_violation",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/reveal_control__dense.json",
+        "hash": "9e74fd06f82cf4f00f0c6fb7e13846e7791ee5c5cb47fdf8c86c2830c2f49497"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/reveal_control__dense.json",
+        "hash": "15b3b6b905bf0692e27ff223a864211ab38a73df0314d732ce3dbe8a07ccd7b9"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_12_pov_knowledge_violation_second_round.json",
+        "hash": "7178e1298a794721ff7484fb099fe6512e986930e3ae31135183dfcc208c5f4f"
+      },
+      "checklist_hash": "ae8eb937cac03f5ded54a8cf2cfc7fc8d5ab06448e0fdbc1a6677ff3ccfdb659",
+      "input_fingerprint": "bdfcc69eb3151f1aa04322bc1e57f1ab026c874ba21f14c1372967021ec36920",
+      "content_hash": "202b576354787df6c64fa54f9d47df40a79d2e181ba05a031ad9f893f2fcb670"
+    },
+    {
+      "task_id": "b2_13_location_time_drift_basic",
+      "defect_family": "location_time_drift",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/temporal_grounding__basic.json",
+        "hash": "4e9d8cada37a950ee933926de2dffc20ee7fca99665e30e7f575d76421dd114e"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/temporal_grounding__basic.json",
+        "hash": "4e1225d40bcca82fd632a32a7be3dcf99be33d7ec07a517936575fb58cac4080"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_13_location_time_drift_basic.json",
+        "hash": "4c197be5307d55a81426fa12947843883a59684e2afe5bff8489e61093cc64d2"
+      },
+      "checklist_hash": "16d19f64c8df3823b365e9fcba83103f724b190d6086192513e060fbe56d1b96",
+      "input_fingerprint": "b666ced043bfa926bcec9fec6621a7b9d076f7ba5d6b70042accffdcf715bcc0",
+      "content_hash": "b33d0b58fec8c13e5bdb251d8d159875685b8eed20bcae6944a53d3b2b3dd201"
+    },
+    {
+      "task_id": "b2_14_location_time_drift_preservation_dense",
+      "defect_family": "location_time_drift",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/temporal_grounding__decoy.json",
+        "hash": "ff17db7d2d2e3944c0cf450c8df306f61e84c5a615a4f17df079953c019523f9"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/temporal_grounding__decoy.json",
+        "hash": "cac46a6bcd6a764760266436c380999c2cef968d47d6566e33b8e14a7e6cfabd"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_14_location_time_drift_preservation_dense.json",
+        "hash": "3fa3202f6785cd6e68a7a1cea1c088d5b202d8df5915f63184a301ea651ca8a5"
+      },
+      "checklist_hash": "ae65d21aa75ccd043e9bd1b554fd8827ab8778cb09e1cd0ddc772e01e7cf7ff8",
+      "input_fingerprint": "c85fd0e34156252aaa5f3b0e01ed01c51720c2dcc97169d1a321e745c193b095",
+      "content_hash": "9b4a38ed6b9e01150ea89ce5d37668471bf26c0857e9a14b293442b3497537b9"
+    },
+    {
+      "task_id": "b2_15_location_time_drift_second_round",
+      "defect_family": "location_time_drift",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/temporal_grounding__dense.json",
+        "hash": "db9db4c67e88229805a5f4828a21065a25c7c5ba00cf4d4f7103d2b6eccc819e"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/temporal_grounding__dense.json",
+        "hash": "9493328a20c13047e58492dd195181a3bde0f659371d853dc43711e6829f845a"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_15_location_time_drift_second_round.json",
+        "hash": "e6b2b070cafffdb3cf1ac9990fb551001fbabca732d148659de7b8dfe98f4034"
+      },
+      "checklist_hash": "3ce63407d610adb07f8e592d9ba5dcbe03206a5659804a6d51d44f9887183744",
+      "input_fingerprint": "0078400b261e064e41d11cb989b65acd78f77f69e8a2d3705b13d8411816dfc3",
+      "content_hash": "26c3c90ceeb39ad9de90f7596a8e45fc52dd8493cc4adede5e2cffbb5e9823a6"
+    },
+    {
+      "task_id": "b2_16_causality_ordering_inversion_basic",
+      "defect_family": "causality_ordering_inversion",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/dependency_transfer__basic.json",
+        "hash": "cd6514c5757c85abd41e1ee15d10283450dad988806a08b8dd8cb9d2958cc21c"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/dependency_transfer__basic.json",
+        "hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_16_causality_ordering_inversion_basic.json",
+        "hash": "39031e21771cf7e4805b11ad9ffc0aa07aa3c2dbecf40faea662fb91627d60ce"
+      },
+      "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+      "input_fingerprint": "76f31c55528b1f4863a3a3fdc95fe7bc9d88f0c65d2b703df65aed8ee9d8149c",
+      "content_hash": "300abdcfeab2adacc6f8b10847831097b79c5860189eae762b5ffee25dd85a61"
+    },
+    {
+      "task_id": "b2_17_causality_ordering_inversion_preservation_dense",
+      "defect_family": "causality_ordering_inversion",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/dependency_transfer__decoy.json",
+        "hash": "6789c45f24afdaf20cf84bed7064260d1ac3a3f946d5621e4043665f21542362"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/dependency_transfer__decoy.json",
+        "hash": "0136af0092768058655a49610b72cd6b194b415e3ff8345c1883ea58c752f3d2"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_17_causality_ordering_inversion_preservation_dense.json",
+        "hash": "be1f0a99b170bdf35eeab8dd436e8650faccba1ae18d43968f95d68a3948b3d9"
+      },
+      "checklist_hash": "61c32688c4667f046147637ef7e37e3393693137a8dc2b9dcd58d09e3115f9f3",
+      "input_fingerprint": "135d6334444a0213a3c6ee575c8549954c352deac4a02d1e6ffb99c90fd76443",
+      "content_hash": "90be9a47e8a62163ffb9483e81b03795d210eb6f942451581bb781ae1bbb6461"
+    },
+    {
+      "task_id": "b2_18_causality_ordering_inversion_second_round",
+      "defect_family": "causality_ordering_inversion",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/dependency_transfer__dense.json",
+        "hash": "11d540f747bbfc7ec373a0abfe7128b1a6d5eef21972ebc4e7a148244bf3f888"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/dependency_transfer__dense.json",
+        "hash": "a97528c8494a11a90c8a24f00042020b9c2703e5fbceae5d30c4b6ddfc2d1539"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_18_causality_ordering_inversion_second_round.json",
+        "hash": "fefbab6439b8d38ea7b031b9c9cb8578991eb19bfe34595591f4e1550ace65b9"
+      },
+      "checklist_hash": "ff9f096dc9e729b47dd7cd59910d79ce6ca216f6a691a1fc49ecdc719844460b",
+      "input_fingerprint": "99ccfa2458a2c8636f17b6696379c5036e3f18722ca08db213206fd1217fda03",
+      "content_hash": "eec4fab04913218b57408ce2c2a1704b722098690cac0422e4b7fc4ceae7bcb3"
+    },
+    {
+      "task_id": "b2_19_major_hallucination_basic",
+      "defect_family": "major_hallucination",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/resolution_execution__basic.json",
+        "hash": "2bf23d3a71852dc4c73b38231ea05545177c5fd7d35c011a5a3488374befec35"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/resolution_execution__basic.json",
+        "hash": "5022370e241a2e40590c22caf92d4b53827605f6e573c0f590c077591f6cf3c1"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_19_major_hallucination_basic.json",
+        "hash": "581193832418ca14c06e0c0c5d5753c598d92018b67c06912c84b0584a0d1dcd"
+      },
+      "checklist_hash": "262d777e3653e69bf19769a063eb3f97a12c4a314d2be3ac7accbac8c8717aa0",
+      "input_fingerprint": "067dbb35a2fb47f09f2282965a583b356f58a5361464b260662429fb4549e492",
+      "content_hash": "448738351b89d07f32be0b997f46c628d7727e70148435c10d87c3ecc40a2980"
+    },
+    {
+      "task_id": "b2_20_major_hallucination_preservation_dense",
+      "defect_family": "major_hallucination",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/resolution_execution__decoy.json",
+        "hash": "aa9ff4e0fb91b143486b720f3ba9b66fd691a3970a5ab8b870cdd748ad269dd4"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/resolution_execution__decoy.json",
+        "hash": "ba441f728269c01c228427d032d044d7874efe02ded57b37d290d204cb9701eb"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_20_major_hallucination_preservation_dense.json",
+        "hash": "ccadc74f57ac6618e3e686270de1ef73673e279b2b0d6286d8f42528a8f504f2"
+      },
+      "checklist_hash": "485ebec9434aa95d616520514a848feb78591ca398134ff7896d833dff5b81ca",
+      "input_fingerprint": "5969cd370bac98c0e9caa2308681cdb4163ecd459225d52f5843f4905e323a0a",
+      "content_hash": "100976171b4b9943d619b0ceb1dee19e077faf5c8c5be610b6a0b580e7f09d43"
+    },
+    {
+      "task_id": "b2_21_major_hallucination_second_round",
+      "defect_family": "major_hallucination",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/resolution_execution__dense.json",
+        "hash": "2052aa89ff186a56ccbf5adaf7098b6eb1dba9fe597678a4d63a2fa79ad6b540"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/resolution_execution__dense.json",
+        "hash": "ccd847cdfaa8d9cb747d0072e5abb10b48077f7c1908e8a8ffce64113a18eed5"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_21_major_hallucination_second_round.json",
+        "hash": "9af60937ae5f7c8c57361bd2f6320741fcbcc1cae56e4f5088b41fc7cd663278"
+      },
+      "checklist_hash": "9422e4229ae83f63365af97ff4c7c4a7e89c22ba052514dbc2d02c5d08b965f1",
+      "input_fingerprint": "dbcef357c0a65328bf14328ecd3177abaff7a7b43562060303777bc1b1a84013",
+      "content_hash": "cd0783da86514fcaa4af4c9f1db97508dbe6dea0ab888507524bb1a6f1f15581"
+    },
+    {
+      "task_id": "b2_22_multi_error_combination_basic",
+      "defect_family": "multi_error_combination",
+      "variant": "basic",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/provenance_coverage__basic.json",
+        "hash": "ab6e964aa5399fced4c6cab2720315e68139f6debbb33c7db9c66c8aa756de95"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/provenance_coverage__basic.json",
+        "hash": "73a38a0a73a4b8dd618629481114212393b8da78bd1af2a2b644c22bbd89e789"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_22_multi_error_combination_basic.json",
+        "hash": "20efed1a1c6396eed229959c12d9c9bb273f59b20fb21fe79967f6e8af9537ba"
+      },
+      "checklist_hash": "c4af70cec6a009a23306f70a75cbb1b0b8c5beda377c9bd9b6f8893bcfdb23b4",
+      "input_fingerprint": "75a07f3cc9e967c22c9cd287a6ce1bbd380da1843354d54fded94d44ce074efd",
+      "content_hash": "21404eecedb37914eabb3c1a285ce689e17edb6fbe3a71aa11c8f1711f632b32"
+    },
+    {
+      "task_id": "b2_23_multi_error_combination_preservation_dense",
+      "defect_family": "multi_error_combination",
+      "variant": "preservation_dense",
+      "expected_rescue_round": 1,
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/provenance_coverage__decoy.json",
+        "hash": "4cd91dc8b3206a80c7d95e8ffee36f6ef2460eff291e13851add6ea8486e4725"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/provenance_coverage__decoy.json",
+        "hash": "2861223f0b9d86e28e809f9b53abe1b93f5feb84b4887459095aa9e95c612522"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_23_multi_error_combination_preservation_dense.json",
+        "hash": "7ce73199dfbaa2ea45d08a96e6236078fa2542e452e6310fe2f4ae99f9996a3f"
+      },
+      "checklist_hash": "93afb8d018275a82b88aba325e4d8e12154b9dadd734be18d453e2ec976f14ec",
+      "input_fingerprint": "5189643cc68fb3a9b881cc8d7e1871c27e0e9ed9162ae95e79a04e6dc7bcb251",
+      "content_hash": "a25ed12954eb0569bfeafefb2a1130c837712c6e37a9391815d851acfc51b4e7"
+    },
+    {
+      "task_id": "b2_24_multi_error_combination_second_round",
+      "defect_family": "multi_error_combination",
+      "variant": "second_round",
+      "expected_rescue_round": 2,
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/provenance_coverage__dense.json",
+        "hash": "37e08ef91783a0da1c00f8fb34ef22ac49efd71ea4c271b0fc581776dc656ccd"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/provenance_coverage__dense.json",
+        "hash": "d0e09a0fd321a87d334336976e068d1b97f7fe60f4aa676d46352b3cfa9f504c"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_rewrite_benchmark/v1/tasks/b2_24_multi_error_combination_second_round.json",
+        "hash": "e40511dc3512108346995b84a61432151a46737bd31929700ddbd0c780118ed3"
+      },
+      "checklist_hash": "ede701c4484a10542dd7cc934680b9391771abac4bd66a8e7cc3c9dc86cf45de",
+      "input_fingerprint": "71e23aad339ad99eee9dc2af4c781d7954e08a3cecad61c107ac72616353a669",
+      "content_hash": "1432a5eb72a099e1e48880a6c44cc6043727edcf18b4402a53ef324e30864d8c"
+    }
+  ],
+  "suite_hash": "537ead5d7c4b91fa7e1159bcfaa9dc0c659c92e9f30d36b8ea4bff833c61e114"
+}
