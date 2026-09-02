@@ -500,6 +500,555 @@
   align-self: center;
 }
 
+.questionFlow {
+  padding-bottom: 32px;
+}
+
+.questionFlowHero {
+  display: grid;
+  min-height: 136px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.8fr);
+  align-items: end;
+  gap: 34px;
+  padding: 22px 2px 18px;
+}
+
+.questionFlowHero > div {
+  animation: questionInkIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.questionFlowHero > p {
+  animation: questionInkIn 420ms 70ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.questionFlowHero small {
+  color: var(--red);
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.questionFlowHero h1 {
+  max-width: 720px;
+  margin: 9px 0 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: clamp(34px, 2.5vw, 46px);
+  font-weight: 560;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+}
+
+.questionFlowHero > p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.questionWorkspace {
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 26px rgba(52, 39, 27, 0.055);
+  transform-origin: 50% 0;
+  animation: evidenceSheetSettle 460ms 110ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.questionContextBar {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  min-height: 88px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper-low);
+}
+
+.questionContextBar::after {
+  position: absolute;
+  inset: 0 auto 0 -18%;
+  width: 16%;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(197, 43, 13, 0.09),
+    transparent
+  );
+  transform: skewX(-14deg);
+  animation: evidenceLineScan 780ms 260ms ease-out both;
+}
+
+.questionContextBar span {
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.questionContextBar p {
+  max-width: 900px;
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.questionContextBar strong {
+  align-self: start;
+  padding-top: 7px;
+  color: var(--ink);
+  font: 700 12px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.12em;
+}
+
+.questionPrompt {
+  width: min(100%, 940px);
+  margin: 0 auto;
+  padding: 48px 0 34px;
+  animation: questionPromptIn 340ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.questionPrompt > header {
+  position: relative;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.questionPrompt > header > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.questionPrompt > header span,
+.questionPrompt > header em {
+  color: var(--red);
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+.questionPrompt > header em {
+  color: var(--ink-faint);
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.questionPrompt > header i {
+  position: absolute;
+  top: -20px;
+  right: 0;
+  color: rgba(197, 43, 13, 0.14);
+  font: 500 58px/1 Georgia, "Times New Roman", serif;
+}
+
+.questionPrompt h2 {
+  margin: 32px 0 8px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.questionPrompt > p {
+  margin: 0 0 26px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.questionOptions {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.questionOptions label {
+  position: relative;
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  cursor: pointer;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 rgba(197, 43, 13, 0);
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+  animation: questionChoiceIn 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.questionOptions label:nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.questionOptions label:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.questionOptions label:nth-child(4) {
+  animation-delay: 135ms;
+}
+
+.questionOptions label:hover,
+.questionOptions label[data-selected="true"] {
+  border-color: var(--red);
+  background: #fff9f6;
+  box-shadow:
+    inset 3px 0 0 rgba(197, 43, 13, 0.78),
+    0 5px 14px rgba(78, 48, 28, 0.055);
+  transform: translateX(4px);
+}
+
+.questionOptions input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--red);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.questionOptions label[data-selected="true"] input {
+  transform: scale(1.12);
+}
+
+.questionOptions span {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.questionCustomAnswer {
+  display: grid;
+  gap: 9px;
+  margin-top: 24px;
+}
+
+.questionCustomAnswer > span {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.questionCustomAnswer small {
+  margin-left: 6px;
+  color: var(--ink-faint);
+  font-family: sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.questionCustomAnswer textarea {
+  min-height: 122px;
+  resize: vertical;
+  padding: 14px 16px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.86);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  line-height: 1.7;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 220ms ease;
+}
+
+.questionCustomAnswer textarea:focus {
+  border-color: var(--red);
+  outline: 0;
+  background: #fffdfb;
+  box-shadow:
+    inset 3px 0 0 rgba(197, 43, 13, 0.65),
+    0 0 0 2px rgba(197, 43, 13, 0.08),
+    0 10px 24px rgba(78, 48, 28, 0.05);
+}
+
+.questionAnswerSource {
+  display: flex;
+  min-height: 25px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.questionPager {
+  display: grid;
+  min-height: 72px;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 18px;
+  padding: 10px 28px;
+  border-top: 1px solid var(--hairline);
+  background: rgba(250, 248, 244, 0.72);
+}
+
+.questionPager > button {
+  justify-self: start;
+}
+
+.questionPager > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.questionPager button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 15px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+  font-size: 11px;
+  font-weight: 700;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.questionPager button:not(:disabled):hover {
+  border-color: var(--red-line);
+  box-shadow: 0 4px 10px rgba(78, 48, 28, 0.07);
+  transform: translateY(-1px);
+}
+
+.questionDots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.questionDots button {
+  min-width: 8px;
+  min-height: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--ink-faint);
+  background: transparent;
+}
+
+.questionDots button[aria-current="step"] {
+  width: 24px;
+  border-color: var(--red);
+  border-radius: 8px;
+  background: var(--red);
+}
+
+.textAction {
+  color: var(--ink-muted);
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.questionAuxiliaryActions {
+  display: grid;
+  min-height: 66px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px dashed var(--rule);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.questionAuxiliaryActions > div {
+  display: grid;
+  gap: 3px;
+}
+
+.questionAuxiliaryActions strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+}
+
+.questionAuxiliaryActions span {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.questionAuxiliaryActions button {
+  min-height: 36px;
+  padding: 0 12px;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  border-radius: 4px;
+  background: #fffaf7;
+  font-size: 10px;
+  font-weight: 700;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.questionAuxiliaryActions button:not(:disabled):hover {
+  background: #fff4ee;
+  box-shadow: 0 4px 10px rgba(78, 48, 28, 0.07);
+  transform: translateY(-1px);
+}
+
+@media (min-width: 701px) {
+  .questionFlow {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    padding-bottom: 16px;
+  }
+
+  .questionFlowHero {
+    min-height: 100px;
+    padding: 12px 2px 10px;
+  }
+
+  .questionFlowHero h1 {
+    margin-top: 6px;
+    font-size: clamp(30px, 2.1vw, 38px);
+  }
+
+  .questionFlowHero > p {
+    line-height: 1.55;
+  }
+
+  .questionWorkspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    margin-top: 8px;
+  }
+
+  .questionContextBar {
+    min-height: 58px;
+    padding: 9px 20px;
+  }
+
+  .questionContextBar p {
+    margin-top: 3px;
+    font-size: 12px;
+  }
+
+  .questionContextBar strong {
+    padding-top: 3px;
+  }
+
+  .questionPrompt {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    padding: 16px 0 12px;
+  }
+
+  .questionPrompt > header {
+    padding-bottom: 12px;
+  }
+
+  .questionPrompt > header i {
+    top: -8px;
+    font-size: 44px;
+  }
+
+  .questionPrompt h2 {
+    margin: 14px 0 4px;
+    font-size: 24px;
+  }
+
+  .questionPrompt > p {
+    margin-bottom: 10px;
+    line-height: 1.55;
+  }
+
+  .questionOptions {
+    gap: 6px;
+  }
+
+  .questionOptions label {
+    min-height: 50px;
+    padding: 9px 14px;
+  }
+
+  .questionOptions span {
+    font-size: 15px;
+  }
+
+  .questionCustomAnswer {
+    flex: 1;
+    grid-template-rows: auto minmax(64px, 1fr);
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .questionCustomAnswer textarea {
+    height: 100%;
+    min-height: 64px;
+    padding: 10px 12px;
+  }
+
+  .questionAnswerSource {
+    min-height: 18px;
+    margin-top: 4px;
+  }
+
+  .questionPager {
+    min-height: 54px;
+    padding: 7px 20px;
+  }
+
+  .questionPager button {
+    min-height: 36px;
+  }
+
+  .questionPager .questionDots button {
+    width: 8px;
+    min-width: 8px;
+    height: 8px;
+    min-height: 8px;
+    padding: 0;
+  }
+
+  .questionPager .questionDots button[aria-current="step"] {
+    width: 24px;
+  }
+
+  .questionAuxiliaryActions {
+    min-height: 48px;
+    margin-top: 6px;
+    padding: 6px 12px;
+  }
+
+  .questionAuxiliaryActions button {
+    min-height: 34px;
+  }
+}
+
 .questionStack {
   display: grid;
   gap: 12px;
@@ -801,6 +1350,49 @@
   min-width: 156px;
   padding: 0 24px;
   box-shadow: 0 7px 18px rgba(197, 43, 13, 0.18);
+}
+
+.ideaStep {
+  padding-bottom: 28px;
+}
+
+.ideaStep .stepHero {
+  min-height: 136px;
+  padding-top: 16px;
+  padding-bottom: 12px;
+}
+
+.ideaStep .stepActions {
+  position: static;
+  min-height: 62px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+@media (min-width: 701px) {
+  .ideaStep {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .ideaStep .ideaCapture {
+    display: flex;
+    min-height: 314px;
+    height: auto;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .ideaStep .ideaCapture > textarea {
+    height: auto;
+    flex: 1;
+  }
+
+  .ideaStep .stepActions {
+    margin-top: 18px;
+  }
 }
 
 .secondaryAction:hover {
@@ -1446,6 +2038,70 @@
   }
 }
 
+@keyframes questionInkIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes evidenceSheetSettle {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scaleY(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes evidenceLineScan {
+  0% {
+    opacity: 0;
+    transform: translateX(0) skewX(-14deg);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(760%) skewX(-14deg);
+  }
+}
+
+@keyframes questionPromptIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes questionChoiceIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stepView *,
   .stepView *::before,
@@ -1465,6 +2121,10 @@
 }
 
 .frozenNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
   margin-top: 12px;
   padding: 9px 12px;
   border: 1px solid var(--rule);
@@ -1472,6 +2132,251 @@
   color: var(--ink-muted);
   background: rgba(255, 250, 247, 0.96);
   font-size: 12px;
+}
+
+.frozenNotice p {
+  margin: 0;
+}
+
+.frozenNotice button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirmationTransition {
+  display: grid;
+  min-height: calc(100svh - 138px);
+  place-items: center;
+  padding: 32px;
+}
+
+.confirmationTransitionCard {
+  display: grid;
+  width: min(540px, 100%);
+  min-height: 290px;
+  place-items: center;
+  align-content: center;
+  padding: 44px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 60px rgba(52, 39, 27, 0.09);
+  text-align: center;
+}
+
+.confirmationTransitionCard > span {
+  margin-bottom: 24px;
+  color: var(--red);
+  font: 700 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.16em;
+}
+
+.confirmationTransitionCard > i {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-bottom: 15px;
+  border: 1px solid var(--rule);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  color: var(--red);
+  font-size: 18px;
+  font-style: normal;
+  animation: brief-confirmation-spin 900ms linear infinite;
+}
+
+.confirmationTransitionCard > i[data-completed="true"] {
+  border-color: var(--red);
+  animation: none;
+}
+
+.confirmationTransitionCard h1 {
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.confirmationTransitionCard p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.confirmationInterruption,
+.confirmationDecision,
+.confirmationError {
+  margin-top: 14px;
+  border: 1px solid var(--red-line);
+  border-left: 3px solid var(--red);
+  background: rgba(255, 250, 247, 0.97);
+}
+
+.confirmationInterruption {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.confirmationInterruption > span,
+.confirmationDecision > header > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--red-line);
+  border-radius: 50%;
+  color: var(--red);
+  font: 700 12px "Cascadia Mono", Consolas, monospace;
+}
+
+.confirmationInterruption strong,
+.confirmationDecision > header strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+}
+
+.confirmationInterruption p,
+.confirmationDecision > header p,
+.confirmationError p {
+  margin: 3px 0 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.confirmationInterruption button,
+.confirmationError button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirmationDecision {
+  padding: 18px 20px;
+}
+
+.confirmationDecision > header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.confirmationDecision fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0 44px;
+  padding: 0;
+  border: 0;
+}
+
+.confirmationDecision legend {
+  margin-bottom: 7px;
+  color: var(--ink-faint);
+  font: 700 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.confirmationDecision label {
+  display: grid;
+  min-height: 54px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.confirmationDecision label:has(input:checked) {
+  border-color: var(--red-line);
+  background: var(--red-soft);
+}
+
+.confirmationDecision label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.confirmationDecision label strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+}
+
+.confirmationDecision label small {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.confirmationDecision footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.confirmationDecision footer button {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid var(--red);
+  color: #fff;
+  background: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirmationDecision footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.confirmationError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+}
+
+.confirmationError p {
+  color: var(--red);
+}
+
+.confirmationError > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.confirmationError button[data-primary="true"] {
+  color: #fff;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+@keyframes brief-confirmation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirmationTransitionCard > i {
+    animation: none;
+  }
 }
 
 .exampleConfirm {

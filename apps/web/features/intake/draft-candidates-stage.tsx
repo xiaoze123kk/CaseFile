@@ -371,7 +371,7 @@ export function DraftCandidatesStage() {
     <section className={styles.candidatesStage} aria-labelledby="candidates-stage-title">
       <header className={styles.stageHeader}>
         <div>
-          <span>第 5 步 / 深稿候选与采用</span>
+          <span>第 4 步 / 深稿候选与采用</span>
           <h1 id="candidates-stage-title">先选定创作策略，再生成一份完整深稿。</h1>
         </div>
         <dl>

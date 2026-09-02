@@ -55,6 +55,7 @@
 | `apps/web/features/analyst-workbench/workbench-canvas-controls.tsx`、`workbench-icon.tsx`、`workbench-geometry.ts`、`workbench-presenters.ts` | 工作台内部复用的画布控件、悬浮提示、图标、几何边界和展示标签；不承载跨功能业务状态。 |
 | `apps/web/features/analyst-workbench/timeline/` | 时间线专属的无时区时间解析、React+D3 比例轴、点/整段区间拖动、人物/地点泳道、时间确定性与问题叠层、窄屏编辑清单和写入前影响预览，以及 Current Draft 的独立版本化线性 Exposure Plan 编辑；事实时间写入仍走 Draft revision，披露顺序只推进 Plan revision，二者均不绕过身份与并发门禁。 |
 | `apps/web/features/workflow/` | 原稿建案、独立润色候选审阅、Brief 原子拆解/人工确认、Brief → Draft 和工作台的唯一产品实现，以及设置弹窗、SSE 可恢复安全审计轨迹、完成门禁、目标无关对象展示与有限编辑；直接接真实 API/Workflow Store。 |
+| `apps/web/features/intake/intake-center.tsx`、`intake-model.ts`、`brief-confirmation-feedback.tsx` | 真实四步建案中心、创作简报编辑、确定性 inline 决策门禁，以及后台确认中的归档式状态过渡；`brief_review` 仅作为隐藏服务端生命周期，不再拥有独立页面。 |
 | `apps/web/features/intake/visual-intake-demo.tsx`、`visual-intake-demo.module.css` | `/visual-intake` 的隔离式桌面视觉实验：编排三条起案入口、共同追问/确认、Brief 失效更新、冻结与修订历史，并实现“活的卷宗脊柱”视觉；不调用 API 或持久化状态。 |
 | `apps/web/features/intake/reverse-parse-stage.tsx`、`reverse-parse-stage.module.css` | 路径 C 反向解析审阅：文档上传与解析进度、解析块来源高亮跳转、grading 分级与 field_sources 区分展示、逐项确认/拒绝/重试、高风险项警示，并形成 Brief 候选进入后续冻结/生成流程。 |
 | `apps/web/features/workflow/task-recovery.ts` | 三类真实 TaskRun 共用的最近任务/本地指针恢复、轮询、事件积压合并和按游标重连 SSE。 |

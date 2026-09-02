@@ -1291,7 +1291,7 @@ export function errorMessage(error: unknown) {
       not_found: "没有找到请求的数据。",
       method_not_allowed: "当前操作不受支持。",
       brief_intake_already_adopted:
-        "当前建案已进入正式创作简报审阅，不能再回退修改。",
+        "当前创作简报已进入确认流程；请重试确认，或先建立简报修订。",
       provider_setting_required: "请先配置当前模型服务。",
       provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",

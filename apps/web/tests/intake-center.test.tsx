@@ -85,6 +85,8 @@ function buildFakeBackend() {
   let failNextAnchorExtract = false;
   let failNextQuestionRevision = false;
   let failNextQuestionGeneration = false;
+  let resolutionNeedsConfirmation = false;
+  let failNextBriefConfirmation = false;
   const generationDraftRevisions: number[] = [];
   const generationDraftIds: number[] = [];
   const adoptionCurrentDraftIds: number[] = [];
@@ -307,7 +309,9 @@ function buildFakeBackend() {
           core_selling_points: "agent_suggestion",
           content_outline: "agent_suggestion",
           reasoning_goal: "agent_suggestion",
-          resolution_mode: "user_confirmed",
+          resolution_mode: resolutionNeedsConfirmation
+            ? "agent_suggestion"
+            : "user_confirmed",
           conclusion_mode: "agent_suggestion",
           author_answer: "unresolved",
           constraints: "unresolved",
@@ -540,6 +544,8 @@ function buildFakeBackend() {
       failNextAnchorExtract = false;
       failNextQuestionRevision = false;
       failNextQuestionGeneration = false;
+      resolutionNeedsConfirmation = false;
+      failNextBriefConfirmation = false;
       failNextDraftAdoption = false;
       draftAdoptionGate = null;
       generationDraftRevisions.length = 0;
@@ -548,6 +554,12 @@ function buildFakeBackend() {
     },
     setFailNextDraftAdoption: (value: boolean) => {
       failNextDraftAdoption = value;
+    },
+    setResolutionNeedsConfirmation: (value: boolean) => {
+      resolutionNeedsConfirmation = value;
+    },
+    setFailNextBriefConfirmation: (value: boolean) => {
+      failNextBriefConfirmation = value;
     },
     markFormalBriefReview: () => {
       formalBriefReview = true;
@@ -562,6 +574,7 @@ function buildFakeBackend() {
     listConfiguredProviders: async () => configuredProviders,
     isProviderAuthFailure: isAuthFailure,
     isBriefIntakeRevisionConflict: isRevisionConflict,
+    isBriefConfirmationRevisionConflict: isRevisionConflict,
     runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => {
       let lastError: unknown = null;
       for (const provider of configuredProviders) {
@@ -662,7 +675,7 @@ function buildFakeBackend() {
     ) => {
       if (failNextQuestionGeneration) {
         failNextQuestionGeneration = false;
-        throw new Error("追问服务暂不可用，请稍后重试或手动建案。");
+        throw new Error("追问服务暂不可用，请返回原稿后重试。");
       }
       if (failNextQuestionRevision) {
         failNextQuestionRevision = false;
@@ -833,6 +846,8 @@ function buildFakeBackend() {
       candidateId: number,
     ) => {
       briefRevision += 1;
+      formalBriefReview = true;
+      revision += 1;
       const candidate = candidates.find(
         (item) => item.candidate_id === candidateId,
       );
@@ -865,7 +880,11 @@ function buildFakeBackend() {
       briefContent = content;
       return briefView();
     },
-    confirmBrief: async () => {
+    confirmBrief: vi.fn(async () => {
+      if (failNextBriefConfirmation) {
+        failNextBriefConfirmation = false;
+        throw new Error("建案确认服务暂不可用。");
+      }
       versionNo += 1;
       briefRevision += 1;
       briefVersionId = versionNo;
@@ -874,7 +893,7 @@ function buildFakeBackend() {
         version_no: versionNo,
         content: briefContent ?? ({} as never),
       };
-    },
+    }),
     fetchDraftCandidates: async () => draftCandidates,
     adoptDraftCandidateWithReconciliation: async (
       _projectId: number,
@@ -925,7 +944,7 @@ vi.mock("@/lib/api-client", () => ({
   unarchiveProject: fake.backend.unarchiveProject,
 }));
 
-function renderIntake() {
+function renderLanding() {
   return render(
     <CaseSessionProvider>
       <IntakeCenter />
@@ -933,8 +952,28 @@ function renderIntake() {
   );
 }
 
+function renderIntake() {
+  const view = renderLanding();
+  const pathA = screen.queryByRole("button", { name: /我有一个想法/u });
+  if (pathA) fireEvent.click(pathA);
+  return view;
+}
+
 async function flush() {
   await act(async () => {});
+}
+
+async function reachBriefWithoutQuestions() {
+  fake.backend.setQuestionBatch([]);
+  renderIntake();
+  fireEvent.change(screen.getByLabelText("写下最初想法"), {
+    target: { value: "一名档案员发现三份可靠记录指向不存在的时间。" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+  await flush();
+  fireEvent.click(screen.getByRole("button", { name: /形成创作简报/u }));
+  await flush();
+  fireEvent.click(screen.getByRole("radio", { name: /唯一解/u }));
 }
 
 afterEach(() => {
@@ -947,17 +986,36 @@ afterEach(() => {
 });
 
 describe("intake center", () => {
-  it("keeps the real A-path functions in the official intake surface", () => {
-    renderIntake();
+  it("uses the three-card official landing and removes redundant side rails", async () => {
+    renderLanding();
 
     expect(
-      screen.getByRole("heading", {
-        name: "把念头照亮，留下可追溯的起案依据。",
-      }),
+      screen.getByRole("heading", { name: "你的故事，想从哪里开始？" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CASE INTAKE / 故事从此落笔")).toBeInTheDocument();
+    expect(
+      screen.getByText(/走过的线索都会替你留在案卷里/u),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /我有一个想法/u })).toBeEnabled();
     expect(screen.getByRole("button", { name: /帮我想一个/u })).toBeEnabled();
     expect(screen.getByRole("button", { name: /我有已有内容/u })).toBeEnabled();
+    expect(screen.queryByLabelText("建案入口")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("实时简报映射")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("建案进度")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("测试项目")).toBeInTheDocument());
+    expect(screen.getByText("午夜回航旧案")).toBeInTheDocument();
+  });
+
+  it("moves the real A, B, and C functions behind the landing cards", async () => {
+    const view = renderLanding();
+
+    fireEvent.click(screen.getByRole("button", { name: /我有一个想法/u }));
+
+    expect(
+      screen.getByRole("heading", {
+        name: "把一闪而过的念头，留在故事开始的地方。",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("radio", { name: /表达优化/u }),
     ).toBeChecked();
@@ -965,7 +1023,37 @@ describe("intake center", () => {
       screen.getByRole("radio", { name: /叙事增强/u }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("写下最初想法")).toHaveValue("");
-    expect(screen.getByText("实时简报映射")).toBeInTheDocument();
+    const ideaFocusPlane = screen.getByRole("main");
+    const continueAction = screen.getByRole("button", {
+      name: /继续关键追问/u,
+    });
+    expect(ideaFocusPlane).toHaveAttribute("data-focus-layout", "content-fit");
+    expect(
+      screen.queryByRole("button", { name: "关闭提示" }),
+    ).not.toBeInTheDocument();
+    expect(continueAction.closest("footer")?.parentElement).toBe(
+      screen
+        .getByRole("heading", {
+          name: "把一闪而过的念头，留在故事开始的地方。",
+        })
+        .closest("section"),
+    );
+    expect(screen.queryByLabelText("建案入口")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("实时简报映射")).not.toBeInTheDocument();
+
+    view.unmount();
+    renderLanding();
+    fireEvent.click(screen.getByRole("button", { name: /帮我想一个/u }));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "创意方向" })).toBeInTheDocument(),
+    );
+
+    cleanup();
+    renderLanding();
+    fireEvent.click(screen.getByRole("button", { name: /我有已有内容/u }));
+    expect(
+      screen.getByRole("heading", { name: "反向解析审阅" }),
+    ).toBeInTheDocument();
   });
 
   it("hydrates the current project from the URL pointer", async () => {
@@ -973,9 +1061,13 @@ describe("intake center", () => {
     renderIntake();
     await waitFor(() =>
       expect(
-        screen.getByRole("link", { name: /分析师工作台/u }),
-      ).toHaveAttribute("href", "/workbench?project=1"),
+        screen.getByRole("button", { name: "返回首页" }),
+      ).toBeInTheDocument(),
     );
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
+    expect(
+      screen.getByRole("link", { name: /分析师工作台/u }),
+    ).toHaveAttribute("href", "/workbench?project=1");
     expect(screen.queryByText("正在从服务端恢复当前卷宗…")).not.toBeInTheDocument();
   });
 
@@ -1031,27 +1123,35 @@ describe("intake center", () => {
     expect(
       screen.getByText("起案原文已记录，进入关键追问。"),
     ).toBeInTheDocument();
-    const returnToOriginal = screen.getByRole("button", {
-      name: "← 返回原稿",
-    });
-    expect(returnToOriginal.closest("header")).not.toBeNull();
-    const generateBrief = screen.getByRole("button", {
-      name: /形成创作简报/u,
-    });
-    expect(generateBrief).toBeDisabled();
+    expect(screen.getByRole("button", { name: "返回起案" })).toBeInTheDocument();
+    const nextQuestion = screen.getByRole("button", { name: /下一题/u });
+    expect(nextQuestion).toBeDisabled();
 
     fireEvent.click(
-      screen.getByRole("button", {
+      screen.getByRole("radio", {
         name: "找出是谁伪造了那段不存在的时间。",
       }),
     );
+    expect(nextQuestion).toBeEnabled();
+    fireEvent.click(nextQuestion);
+    expect(screen.getByRole("button", { name: "← 上一题" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "← 上一题" }));
+    expect(
+      screen.getByRole("radio", {
+        name: "找出是谁伪造了那段不存在的时间。",
+      }),
+    ).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /下一题/u }));
     fireEvent.click(screen.getByRole("button", { name: "稍后决定" }));
+    const generateBrief = screen.getByRole("button", {
+      name: /形成创作简报/u,
+    });
     expect(generateBrief).toBeEnabled();
     fireEvent.click(generateBrief);
 
     expect(
       screen.getByRole("heading", {
-        name: "确认整体方向，再交给正式审阅。",
+        name: "正在形成可确认的创作简报。",
       }),
     ).toBeInTheDocument();
     expect(
@@ -1062,7 +1162,7 @@ describe("intake center", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: "确认整体方向，再交给正式审阅。",
+        name: "确认这份建案，准备进入深稿。",
       }),
     ).toBeInTheDocument();
     const returnToQuestions = screen.getByRole("button", {
@@ -1118,7 +1218,7 @@ describe("intake center", () => {
       target: { value: "我自己的结论：真正的发送者是未来的档案修复师。" },
     });
     expect(
-      screen.getByRole("button", { name: /进入创作简报审阅/u }),
+      screen.getByRole("button", { name: /确认建案并继续/u }),
     ).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /添加一条卖点/u }));
     expect(screen.getAllByLabelText(/核心卖点第 \d+ 项/u)).toHaveLength(4);
@@ -1142,52 +1242,47 @@ describe("intake center", () => {
       ),
     ).toBe(true);
     expect(screen.getByText("约束抽屉")).toBeInTheDocument();
-    // 服务端已经推进到正式审阅，但页面仍停留在草案步骤；入口必须恢复而不是用旧 revision 重试。
+    // 服务端已经推进到隐藏的 brief_review，页面仍应在第 3 步完成幂等确认。
     fake.backend.markFormalBriefReview();
 
     fireEvent.click(
-      screen.getByRole("button", { name: /进入创作简报审阅/u }),
+      screen.getByRole("button", { name: /确认建案并继续/u }),
     );
-    await flush();
-
     expect(
-      screen.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
+      screen.getByRole("heading", { name: "正在确认建案" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("正在整理创作边界与生成依据……")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存审阅" })).not.toBeInTheDocument();
     expect(
-      screen
-        .getByRole("button", { name: "03 校核 创作简报草案" })
-        .closest("li"),
-    ).toHaveAttribute("data-complete", "true");
-    expect(screen.getByLabelText("审阅作者答案原文")).toHaveValue(
-      "我自己的结论：真正的发送者是未来的档案修复师。",
+      screen.queryByRole("checkbox", { name: /逐条核对答案要点/u }),
+    ).not.toBeInTheDocument();
+    await screen.findByRole(
+      "heading",
+      { name: "建案完成" },
+      { timeout: 1500 },
     );
-    const freeze = screen.getByRole("button", { name: /确认并冻结/u });
-    // 首次进入审阅必须显式核对并保存，冻结才解锁。
-    expect(freeze).toBeDisabled();
+    expect(
+      screen.getByText("CaseFile 已准备好进入深稿阶段。"),
+    ).toBeInTheDocument();
+
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("heading", {
+            name: "先选定创作策略，再生成一份完整深稿。",
+          }),
+        ).toBeInTheDocument(),
+      { timeout: 2000 },
+    );
+
+    // 冻结后回到第 3 步查看同一份只读简报，不再恢复旧审阅页。
     fireEvent.click(
-      screen.getByRole("checkbox", {
-        name: /我已逐条核对答案要点与创作规则/u,
-      }),
+      screen.getByRole("button", { name: "03 建案 创作简报" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "保存审阅" }));
-    await flush();
-    expect(freeze).toBeEnabled();
-    expect(
-      screen.getByText("已满足冻结条件；确认后会保存当前审阅并创建不可变版本。"),
-    ).toBeInTheDocument();
-    fireEvent.click(freeze);
-    await flush();
-
-    expect(
-      screen.getByRole("heading", { name: "先选定创作策略，再生成一份完整深稿。" }),
-    ).toBeInTheDocument();
-
-    // 冻结后回到审阅页必须只读，不允许再次直接冻结。
-    fireEvent.click(
-      screen.getByRole("button", { name: "04 审阅 创作简报审阅" }),
-    );
-    expect(screen.getByRole("button", { name: "已冻结" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "← 返回深稿候选" }));
+    expect(screen.getByLabelText("一句话概念")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "建立简报修订" })).toBeEnabled();
+    expect(screen.queryByText("把生成依据逐条钉在纸面上。")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /返回深稿候选/u }));
 
     await waitFor(() => {
       expect(screen.getByText(/Agent 建议：推理优先/u)).toBeInTheDocument();
@@ -1275,33 +1370,104 @@ describe("intake center", () => {
     );
     expect(routerPush).toHaveBeenCalledWith("/workbench?project=1");
 
-    // 建立简报修订后，审阅与深稿候选在重新冻结前必须不可达。
+    // 建立简报修订后，深稿候选在重新冻结前必须不可达。
     fireEvent.click(screen.getByRole("button", { name: "建立简报修订" }));
     await waitFor(() =>
       expect(
         screen.getByRole("heading", {
-          name: "确认整体方向，再交给正式审阅。",
+          name: "确认这份建案，准备进入深稿。",
         }),
       ).toBeInTheDocument(),
     );
     expect(
-      screen.getByRole("button", { name: "04 审阅 创作简报审阅" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "05 采用 深稿候选与采用" }),
+      screen.getByRole("button", { name: "04 采用 深稿候选与采用" }),
     ).toBeDisabled();
     expect(fake.backend.beginBriefRevision).toHaveBeenCalledWith(1);
 
-    // 修订已在服务端重开，第 3 步修改后必须能再次进入正式审阅。
+    // 修订已在服务端重开，第 3 步可再次走同一个后台确认链。
     fireEvent.click(
-      screen.getByRole("button", { name: /进入创作简报审阅/u }),
+      screen.getByRole("button", { name: /确认建案并继续/u }),
     );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
-      ).toBeInTheDocument(),
-    );
+    expect(
+      screen.getByRole("heading", { name: "正在确认建案" }),
+    ).toBeInTheDocument();
   }, 15_000);
+
+  it("interrupts inline only when the answer provider still needs an author decision", async () => {
+    fake.backend.setResolutionNeedsConfirmation(true);
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "一名档案员发现三份可靠记录指向不存在的时间。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: "找出是谁伪造了那段不存在的时间。",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /下一题/u }));
+    fireEvent.click(screen.getByRole("button", { name: "稍后决定" }));
+    fireEvent.click(screen.getByRole("button", { name: /形成创作简报/u }));
+    await flush();
+
+    fireEvent.click(screen.getByRole("radio", { name: /唯一解/u }));
+    fireEvent.click(screen.getByRole("button", { name: /确认建案并继续/u }));
+
+    const interruption = screen.getByRole("alert");
+    expect(interruption).toHaveTextContent("还有一个判断需要你确认");
+    expect(interruption).toHaveTextContent("当前还没有确定最终答案由谁提供");
+    expect(
+      screen.queryByRole("button", { name: /确认建案并继续/u }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "正在确认建案" }))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(interruption).getByRole("radio", {
+        name: /让 Agent 在深稿中形成答案/u,
+      }),
+    );
+    fireEvent.click(
+      within(interruption).getByRole("button", { name: /确认后继续/u }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "正在确认建案" }),
+    ).toBeInTheDocument();
+    await screen.findByRole(
+      "heading",
+      { name: "建案完成" },
+      { timeout: 1500 },
+    );
+  });
+
+  it("keeps the editable Brief in place when background confirmation fails", async () => {
+    await reachBriefWithoutQuestions();
+    fake.backend.setFailNextBriefConfirmation(true);
+    const confirmationCallsBefore = fake.backend.confirmBrief.mock.calls.length;
+
+    const confirm = screen.getByRole("button", { name: /确认建案并继续/u });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(
+      screen.getByRole("heading", { name: "正在确认建案" }),
+    ).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "建案确认服务暂不可用。",
+      ),
+    );
+    expect(screen.getByLabelText("一句话概念")).toHaveValue(
+      "一名档案员发现三份可靠记录指向不存在的时间。",
+    );
+    expect(screen.getByRole("button", { name: "重新确认" })).toBeEnabled();
+    expect(fake.backend.confirmBrief).toHaveBeenCalledTimes(
+      confirmationCallsBefore + 1,
+    );
+  });
 
   it("lets the author form a brief when the agent decides no questions are needed", async () => {
     fake.backend.setQuestionBatch([]);
@@ -1320,13 +1486,15 @@ describe("intake center", () => {
       screen.getByText(/无需追问；可以直接形成创作简报/u),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
-    expect(screen.getAllByText("无需追问").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/Agent 判断当前原稿信息已足够，无需追问/u),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /形成创作简报/u }));
     await flush();
     expect(
       screen.getByRole("heading", {
-        name: "确认整体方向，再交给正式审阅。",
+        name: "确认这份建案，准备进入深稿。",
       }),
     ).toBeInTheDocument();
   });
@@ -1364,8 +1532,9 @@ describe("intake center", () => {
     fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
     await flush();
 
-    expect(screen.getAllByText("可以暂缓")).toHaveLength(2);
+    expect(screen.getByText("可以暂缓")).toBeInTheDocument();
     expect(screen.queryByText("必须回答")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /下一题/u }));
     expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
   });
 
@@ -1390,7 +1559,7 @@ describe("intake center", () => {
     ).toContain("档案");
   });
 
-  it("keeps manual briefing available when question generation fails", async () => {
+  it("returns to the source after question generation fails without a manual brief fallback", async () => {
     fake.backend.setFailNextQuestionGeneration(true);
     renderIntake();
 
@@ -1404,18 +1573,17 @@ describe("intake center", () => {
       screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "追问服务暂不可用，请稍后重试或手动建案。",
+      "追问服务暂不可用，请返回原稿后重试。",
     );
     expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /手动建立简报/u }),
-    ).toBeEnabled();
+      screen.queryByRole("button", { name: /手动建立简报/u }),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /手动建立简报/u }));
-    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "返回原稿" }));
     expect(
       screen.getByRole("heading", {
-        name: "确认整体方向，再交给正式审阅。",
+        name: "把一闪而过的念头，留在故事开始的地方。",
       }),
     ).toBeInTheDocument();
   });
@@ -1453,7 +1621,7 @@ describe("intake center", () => {
     await flush();
 
     fireEvent.click(
-      screen.getByRole("button", {
+      screen.getByRole("radio", {
         name: "找出是谁伪造了那段不存在的时间。",
       }),
     );
@@ -1467,15 +1635,18 @@ describe("intake center", () => {
     await flush();
 
     expect(
-      screen.getByDisplayValue("找出是谁伪造了那段不存在的时间。"),
+      screen.getByRole("heading", {
+        name: "还需要多少组相互矛盾的记录，才能支撑核心推理？",
+      }),
     ).toBeInTheDocument();
-    // 已回答的原问题只保留一份，追加批次不再产生同题卡片。
+    fireEvent.click(screen.getByRole("button", { name: "前往第 1 题" }));
     expect(
-      screen.getAllByText("作品最终要回答哪一个核心问题？"),
-    ).toHaveLength(1);
-    expect(
-      screen.getByText("还需要多少组相互矛盾的记录，才能支撑核心推理？"),
-    ).toBeInTheDocument();
+      screen.getByRole("radio", {
+        name: "找出是谁伪造了那段不存在的时间。",
+      }),
+    ).toBeChecked();
+    expect(screen.getByDisplayValue("找出是谁伪造了那段不存在的时间。"))
+      .toBeInTheDocument();
   });
 
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {
@@ -1495,7 +1666,7 @@ describe("intake center", () => {
       screen.getByText("作品最终要回答哪一个核心问题？"),
     ).toBeInTheDocument();
     // 必答问题未回答时仍应阻断成案；本测试验证 provider 回退与追问补充。
-    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /下一题/u })).toBeDisabled();
 
     fireEvent.click(
       screen.getByRole("button", { name: "再生成一些问题" }),
@@ -1506,10 +1677,12 @@ describe("intake center", () => {
     await flush();
 
     expect(
-      screen.getByText("还需要多少组相互矛盾的记录，才能支撑核心推理？"),
+      screen.getByRole("heading", {
+        name: "还需要多少组相互矛盾的记录，才能支撑核心推理？",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("必须回答")).toHaveLength(1);
-    expect(screen.getAllByText("可以暂缓")).toHaveLength(3);
+    expect(screen.queryByText("必须回答")).not.toBeInTheDocument();
+    expect(screen.getByText("可以暂缓")).toBeInTheDocument();
   });
 
   it("refreshes and retries when the intake revision changes during question creation", async () => {
@@ -1610,22 +1783,22 @@ describe("case history drawer", () => {
     startCase();
     await flush();
 
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
     fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
     await flush();
 
-    expect(
-      screen.getByRole("dialog", { name: "建案历史档案" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("CF-0001")).toBeInTheDocument();
-    expect(screen.getByText("CF-0002")).toBeInTheDocument();
-    expect(screen.getByText("测试项目")).toBeInTheDocument();
-    expect(screen.getByText("午夜回航旧案")).toBeInTheDocument();
-    expect(screen.getByText("当前卷宗")).toBeInTheDocument();
-    expect(screen.queryByText("封存的旧卷")).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "建案历史档案" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("CF-0001")).toBeInTheDocument();
+    expect(within(dialog).getByText("CF-0002")).toBeInTheDocument();
+    expect(within(dialog).getByText("测试项目")).toBeInTheDocument();
+    expect(within(dialog).getByText("午夜回航旧案")).toBeInTheDocument();
+    expect(within(dialog).getByText("当前卷宗")).toBeInTheDocument();
+    expect(within(dialog).queryByText("封存的旧卷")).not.toBeInTheDocument();
   });
 
   it("reveals archived cases behind the archived toggle and can unarchive them", async () => {
-    renderIntake();
+    renderLanding();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
     await flush();
@@ -1643,21 +1816,21 @@ describe("case history drawer", () => {
   });
 
   it("archives an active case from the drawer", async () => {
-    renderIntake();
+    renderLanding();
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
     await flush();
 
-    const cards = screen.getAllByText("午夜回航旧案");
-    const card = cards[0].closest("article")!;
+    const dialog = screen.getByRole("dialog", { name: "建案历史档案" });
+    const card = within(dialog).getByText("午夜回航旧案").closest("article")!;
     fireEvent.click(
       within(card).getByRole("button", { name: "归档" }),
     );
     await flush();
 
-    expect(screen.queryByText("午夜回航旧案")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("午夜回航旧案")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /已归档/u }));
-    expect(screen.getByText("午夜回航旧案")).toBeInTheDocument();
+    expect(within(dialog).getByText("午夜回航旧案")).toBeInTheDocument();
   });
 
   it("does not offer archive for the currently active case", async () => {
@@ -1665,10 +1838,12 @@ describe("case history drawer", () => {
     await flush();
     startCase();
     await flush();
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
     fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
     await flush();
 
-    const card = screen.getByText("测试项目").closest("article")!;
+    const dialog = screen.getByRole("dialog", { name: "建案历史档案" });
+    const card = within(dialog).getByText("测试项目").closest("article")!;
     expect(
       within(card).queryByRole("button", { name: "归档" }),
     ).not.toBeInTheDocument();
@@ -1685,9 +1860,11 @@ describe("case history drawer", () => {
       screen.queryByRole("button", { name: "回到暂存" }),
     ).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
     fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
     await flush();
-    const card = screen.getByText("午夜回航旧案").closest("article")!;
+    const dialog = screen.getByRole("dialog", { name: "建案历史档案" });
+    const card = within(dialog).getByText("午夜回航旧案").closest("article")!;
     fireEvent.click(within(card).getByRole("button", { name: "调出此卷" }));
     await flush();
 

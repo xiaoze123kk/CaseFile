@@ -131,6 +131,7 @@ async function expectNarrowViewportItem(locator: Locator) {
 
 test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", async ({ page, request }, testInfo) => {
   test.setTimeout(300_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
   const configured = await request.put(`${apiRoot}/settings/provider`, {
     headers: actorHeaders,
     data: {
@@ -156,9 +157,38 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto("/");
+  await page.getByRole("button", { name: /我有一个想法/u }).click();
   await expect(
-    page.getByRole("heading", { name: /把念头照亮/ }),
+    page.getByRole("heading", { name: /把一闪而过的念头/ }),
   ).toBeVisible();
+
+  const ideaSheet = page.locator('main[data-focus-layout="content-fit"]');
+  const polishControl = page
+    .locator('input[name="intake-polish-mode"]')
+    .first()
+    .locator("xpath=ancestor::section[1]");
+  const continueAction = page.getByRole("button", { name: /继续关键追问/ });
+  const layout = await Promise.all([
+    ideaSheet.boundingBox(),
+    polishControl.boundingBox(),
+    continueAction.boundingBox(),
+    continueAction.locator("xpath=ancestor::footer[1]").evaluate((footer) =>
+      window.getComputedStyle(footer).position,
+    ),
+  ]);
+  const [sheetBox, polishBox, actionBox, actionPosition] = layout;
+  expect(sheetBox).not.toBeNull();
+  expect(polishBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(actionPosition).toBe("static");
+  expect(actionBox!.y).toBeGreaterThanOrEqual(polishBox!.y + polishBox!.height);
+  expect(actionBox!.x + actionBox!.width).toBeLessThanOrEqual(
+    sheetBox!.x + sheetBox!.width,
+  );
+  const actionBottomGap =
+    sheetBox!.y + sheetBox!.height - (actionBox!.y + actionBox!.height);
+  expect(actionBottomGap).toBeGreaterThanOrEqual(24);
+  expect(actionBottomGap).toBeLessThanOrEqual(36);
 
   await page
     .getByLabel("写下最初想法")
@@ -169,36 +199,37 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(
     page.getByRole("heading", { name: "只问会改变方向的问题。" }),
   ).toBeVisible();
+  await expectNarrowViewportItem(
+    page.getByRole("region", { name: /关键追问 1 \// }),
+  );
+  await expectNarrowViewportItem(
+    page.locator('section[class*="questionAuxiliaryActions"]'),
+  );
   await expect
     .poll(() => new URL(page.url()).searchParams.get("project"))
     .not.toBeNull();
   const projectId = Number(new URL(page.url()).searchParams.get("project"));
   expect(projectId).toBeGreaterThan(0);
-  const requiredQuestion = page.locator("article").filter({ hasText: "必须回答" });
-  await requiredQuestion
-    .getByLabel("你的回答")
-    .fill("由 Agent 提出候选，但结论必须能由证据链验证。");
+  await page.getByRole("radio", { name: "由 Agent 提出候选" }).check();
+  await page.getByRole("button", { name: /下一题/ }).click();
+  await page.getByRole("button", { name: "稍后决定" }).click();
   await attachPageEvidence(testInfo, page, "02-questions");
   await page.getByRole("button", { name: /形成创作简报/ }).click();
 
   await expect(
-    page.getByRole("heading", { name: "确认整体方向，再交给正式审阅。" }),
+    page.getByRole("heading", { name: "确认这份建案，准备进入深稿。" }),
   ).toBeVisible();
   await page.getByRole("radio", { name: /唯一解/ }).check();
-  await attachPageEvidence(testInfo, page, "03-brief-confirmation");
-  await page.getByRole("button", { name: /进入创作简报审阅/ }).click();
-
-  await expect(
-    page.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
-  ).toBeVisible();
+  await attachPageEvidence(testInfo, page, "03-brief");
+  await page.getByRole("button", { name: /确认建案并继续/ }).click();
+  const answerProviderDecision = page.getByText("还有一个判断需要你确认");
+  await expect(answerProviderDecision).toBeVisible();
   await page
-    .getByRole("checkbox", { name: /我已逐条核对答案要点与创作规则/u })
+    .getByRole("radio", { name: /让 Agent 在深稿中形成答案/ })
     .check();
-  await page.getByRole("button", { name: "保存审阅" }).click();
-  const freezeButton = page.getByRole("button", { name: /确认并冻结/ });
-  await expect(freezeButton).toBeEnabled();
-  await attachPageEvidence(testInfo, page, "04-brief-review");
-  await freezeButton.click();
+  await page.getByRole("button", { name: /确认后继续/ }).click();
+  await expect(page.getByRole("heading", { name: "正在确认建案" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "建案完成" })).toBeVisible();
 
   await expect(
     page.getByRole("heading", {
@@ -206,7 +237,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
     }),
   ).toBeVisible();
   await expect(page.getByText("三种方向已就绪，请由你选择。", { exact: true })).toBeVisible();
-  await attachPageEvidence(testInfo, page, "05-strategy-options");
+  await attachPageEvidence(testInfo, page, "04-strategy-options");
 
   const candidatesUrl = `${apiRoot}/projects/${projectId}/draft-candidates`;
   const draftUrl = `${apiRoot}/projects/${projectId}/draft`;
