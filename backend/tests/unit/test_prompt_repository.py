@@ -48,6 +48,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
+    "prose_writer": "prose-writer-v1",
     "prose_fidelity_judge": "prose-fidelity-judge-v5",
     "prose_adversarial_judge": "prose-adversarial-judge-v5",
     "prose_coherence_judge": "prose-coherence-judge-v5",
@@ -553,6 +554,9 @@ EXPECTED_RELEASE_HASHES = {
     ("idea_generation", "idea-generation-v4"): {
         "system": "d0d69a92ad29a1ab6773121cf9b9f7f5ee9a7bc1b6c102d7d6b4835fa348b0b6"
     },
+    ("prose_writer", "prose-writer-v1"): {
+        "system": "8fb5ffaccb98afc8663ba7a54b4859391a661a1bd3f49f57b962b665683270e1"
+    },
     ("prose_fidelity_judge", "prose-fidelity-judge-v1"): {
         "system": "a280fe22e8dd879496af0852b12903a2540401bc6ff656d04906d661077933d0"
     },
@@ -626,6 +630,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "story_planner_skeleton",
         "story_planner_semantic_fill",
         "scene_compiler_semantic_fill",
+        "prose_writer",
         "prose_fidelity_judge",
         "prose_adversarial_judge",
         "prose_coherence_judge",

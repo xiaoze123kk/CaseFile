@@ -1,0 +1,657 @@
+{
+  "schema_id": "casefile.prose-writer-dev-suite.v1",
+  "suite_id": "n4.5-b1-writer-public-development-v1",
+  "abilities": [
+    "beat_realization",
+    "canon_grounding_major_hallucination",
+    "pov_knowledge",
+    "reveal_control",
+    "location_time_continuity",
+    "causality_ordering",
+    "setup_payoff_scene_outcome",
+    "profile_bounded_surface_detail"
+  ],
+  "variants": [
+    "basic",
+    "implicit_friendly",
+    "constraint_dense"
+  ],
+  "tasks": [
+    {
+      "task_id": "b1_01_beat_realization_basic",
+      "ability": "beat_realization",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_decomposition__basic.json",
+        "hash": "d17d2566d8aadfcd0fa7ea6b6a6b7650956c58069a3dc6072f0f8c612ab1d4ea"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_decomposition__basic.json",
+        "hash": "fbebc5de043749ac0d707bf58a7ea266ea300b0c7ac44e8c8c58d4786ea437ec"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_01_beat_realization_basic.json",
+        "hash": "8789316def11bc8a6437c33ca5fe3d7d6f7949fedd7263c82d6a74ddc14fa599"
+      },
+      "checklist_hash": "9c4a697464f549ead99bea5b28d6eebcbf6d1a3226262a07e504ab4c8e1092ac",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats"
+      ],
+      "input_fingerprint": "8864db380aa90aa8579adfe17275fc10bda2976ad75fead7b30144c9c2b5a9e0",
+      "content_hash": "27f7ead1eb7cbec38072af1c3e135a97428cf3e796a9506cc864ae356a170440"
+    },
+    {
+      "task_id": "b1_02_beat_realization_implicit_friendly",
+      "ability": "beat_realization",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_decomposition__decoy.json",
+        "hash": "574072760cf4fa4598b15b8658c1e122a8a9c245dd9974bf12f01454817b3e2d"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_decomposition__decoy.json",
+        "hash": "6c4f2a762570f8593ba42387d0bd040ca730f33fd23b6840ab813cb790746728"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_02_beat_realization_implicit_friendly.json",
+        "hash": "f6ca4e90088698d34ae9e99cd2e208d5807862c82cdc82c9afcf6e8e0bb46367"
+      },
+      "checklist_hash": "dfdd93d744b5a1539e3191f31a5071aaa1d8ab79d90147733abbb5b50a5632aa",
+      "previous_scene_render_hash": "50fbe0cdfcafaf12944c28bebadc5e1fde4b50979014a8ef37b5e1e149745db6",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats"
+      ],
+      "input_fingerprint": "e3bd64afc809d78512b5f215761c70ea3ee8ba430041cae53b7a6fe76de924a7",
+      "content_hash": "7c751bef1433d10be4e6dd6eab235b28933176da08adee682b67ab81b96907c8"
+    },
+    {
+      "task_id": "b1_03_beat_realization_constraint_dense",
+      "ability": "beat_realization",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_decomposition__dense.json",
+        "hash": "a2a02c5885fd60bde073c47fc2ab2c145d398955f76bea05135e9b58eb9fdffa"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_decomposition__dense.json",
+        "hash": "b126ce1567c2646228c9c2ac594b30476a12d775e8f9627a02d9dbbecde6d65c"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_03_beat_realization_constraint_dense.json",
+        "hash": "38e0276cd5f2e1017a0e8f8590b568562a68cc8785abe1ef93e5af2d73c5f218"
+      },
+      "checklist_hash": "bdeb247591a6a7b08ee64014abc376b9fc71d18f24a6f213c5363b3315bc3aae",
+      "previous_scene_render_hash": "668ec6bfe21d62235719a6f7806a73965607f82c3b1edd0ab6323ac796fd5cab",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats"
+      ],
+      "input_fingerprint": "a3bbe94fec01a3c5c75361c6bcde63f68d4c18d9cf5a28e883ed0b260579f1e1",
+      "content_hash": "f56c8e75246ea1c9d4b8a2fba05cddbf9998f70caa3e5f94a73cb6fd7e6fdcf8"
+    },
+    {
+      "task_id": "b1_04_canon_grounding_major_hallucination_basic",
+      "ability": "canon_grounding_major_hallucination",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_grounding__basic.json",
+        "hash": "06ef417d4ca2a953aa430d460e2433a913d9d07b11e43cceb9370e03018aaec8"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_grounding__basic.json",
+        "hash": "b2d24e0859f4a1cedcdd10b7fbb4b3258e09f2f360d62aa0fab7f225b8d945d1"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_04_canon_grounding_major_hallucination_basic.json",
+        "hash": "206c5699ec1802435f294d2f75879484a9096cae46a8e9c2f110270d6caf119d"
+      },
+      "checklist_hash": "a92534932670c5a2310ddf2e408d3f96729a29055e8101faec827dabba00c257",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats",
+        "/source"
+      ],
+      "input_fingerprint": "2fa5e51a85544d34d35185092b4f6af7dbb41fdd6853568fdfba2b242e45b4ae",
+      "content_hash": "d17d64f1c6b49d19f0699982e5bfe864e37b413d64f18472516e14671d0c37ca"
+    },
+    {
+      "task_id": "b1_05_canon_grounding_major_hallucination_implicit_friendly",
+      "ability": "canon_grounding_major_hallucination",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_grounding__decoy.json",
+        "hash": "702f98d5db21f8df2466ec8804989c49c652681f65921286456aa5d59a15f799"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_grounding__decoy.json",
+        "hash": "1fbd9cfcede24671e2227d59400d721057feef22707ea26bcf83b6864f57aa71"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_05_canon_grounding_major_hallucination_implicit_friendly.json",
+        "hash": "94e74cb353179b40ebe46002e7a2bd7377c6c49142c87a5490ddaa61f8d24023"
+      },
+      "checklist_hash": "d80d98f8fd0f5eb519b8bdd939f213eb28901c36e301ec77ff2332070aca288b",
+      "previous_scene_render_hash": "27bf9a1365273ffea4d81c761eee1c2579a6f10d1b892761800835e14f9da471",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats",
+        "/source"
+      ],
+      "input_fingerprint": "fd296c64f25e82b9e8add21d5c2124a70b6794fc65b814ead48d7b598a375d7c",
+      "content_hash": "b75971f24be17777923f7c8ad27ed4f8630480ab9f30518326da3ff753079f5b"
+    },
+    {
+      "task_id": "b1_06_canon_grounding_major_hallucination_constraint_dense",
+      "ability": "canon_grounding_major_hallucination",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/scene_grounding__dense.json",
+        "hash": "dc0d38f2ee1a133752c09dd3883af2d95a4c71c353eb1ec69b22652bfc100155"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/scene_grounding__dense.json",
+        "hash": "f06746aaf79add4321d0696b29c2978adb95c5008417f301d00f5d4bc73553d7"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_06_canon_grounding_major_hallucination_constraint_dense.json",
+        "hash": "ddace4f291b19e979e455539fdc6c2ea5a84955fe982bf56e33b71bd28f20880"
+      },
+      "checklist_hash": "48ae5f2e4c5f354f7e7391baa0f5e7a99afea61161274f12c242b743a425bc66",
+      "previous_scene_render_hash": "5f5f865058fd74035cacde7ab8620f9bf2718e746b3434645f9fdd7df8fde1d9",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats",
+        "/source"
+      ],
+      "input_fingerprint": "f1dd01cfa1a8bbcb56408869a276b7fe0144cb07dedb3a4f6a5209cff6c3bb46",
+      "content_hash": "70974939c0a3a2f382453383a569e92a465d0fce7858886966f18335b462534e"
+    },
+    {
+      "task_id": "b1_07_pov_knowledge_basic",
+      "ability": "pov_knowledge",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/event_grounding__basic.json",
+        "hash": "649bf9620c0c7111f259d7860eef5604535f745cdab7b429c7d58068af983d5d"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/event_grounding__basic.json",
+        "hash": "724217f107a11e0638ea83c796e41baad0bd2df40de714f0584ec8ec1686e17e"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_07_pov_knowledge_basic.json",
+        "hash": "23470e08bc17233e120259b93b395a02cce1b95210330915d6b65b6a8eeb76a3"
+      },
+      "checklist_hash": "0fb573c59e1e347040cb456d038fb49857ad09a7ebe1a410f0a232e8e4f70966",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/initial_state/character_knowledge",
+        "/beats"
+      ],
+      "input_fingerprint": "0b0245964cbdff9d321ac7492c7937f65116b97b5138c404581c775910ab20be",
+      "content_hash": "4073131bad1ae717d202849af3bf400a2f18e1cbef2efb1ce661d6fbac2ead51"
+    },
+    {
+      "task_id": "b1_08_pov_knowledge_implicit_friendly",
+      "ability": "pov_knowledge",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/event_grounding__decoy.json",
+        "hash": "7254162fa71519c24ad18931c2c694b91b8c2fb8d012e29db8874536448e602b"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/event_grounding__decoy.json",
+        "hash": "b268b60c512808f04ba6aa665144a76c2cac4e5a436e2de696ff4e19577d44f1"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_08_pov_knowledge_implicit_friendly.json",
+        "hash": "35519547fb31705b72fad809140d3329e557bef041d924e9c8d36f3e808b84ff"
+      },
+      "checklist_hash": "50adac14874253b8fd4fee09087f3eb2aa638d64e8765e6a133cf0fba71a2756",
+      "previous_scene_render_hash": "fdde669af41cc065c14ed664693d849625fe5970b4b61d3bad4edba0725ba015",
+      "input_evidence_paths": [
+        "/initial_state/character_knowledge",
+        "/beats"
+      ],
+      "input_fingerprint": "89b8684da38eafc99f049596cf8b9530adcf85236ea3d4205eeb336169a4a35d",
+      "content_hash": "409bd95b6c93285e1d702a9ce7b6a71b902898a747371b4ca6f7379ab845e890"
+    },
+    {
+      "task_id": "b1_09_pov_knowledge_constraint_dense",
+      "ability": "pov_knowledge",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/event_grounding__dense.json",
+        "hash": "627b7bc1bc72a8361634a30c35acef16d0657e31050f6ed726d83cc3868a43b1"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/event_grounding__dense.json",
+        "hash": "51b5b17c95583b5d1beb219a10c0464160d2a0bb943a0349c6981cec581b4033"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_09_pov_knowledge_constraint_dense.json",
+        "hash": "1036c8ea2b040da3129bcbf87b5349a84bb1349fdf93b75302dbba205196fded"
+      },
+      "checklist_hash": "96ab28882f7834fcdb611c543d581302490a7673a0deaddcdd4a1d139ce8b5e5",
+      "previous_scene_render_hash": "5611781375cbb3855a014e2b380a72213e9ff2f671ab82a7a8363fa148cc1dff",
+      "input_evidence_paths": [
+        "/initial_state/character_knowledge",
+        "/beats"
+      ],
+      "input_fingerprint": "4977d52d2b8a24cff0b7cd21260946fff692c40c5a8f4973d8c1adbe0447553e",
+      "content_hash": "f4f9827a32fef5db0771e9efc0093d8400190a40b5efb7d6b9aa1d00ea3db659"
+    },
+    {
+      "task_id": "b1_10_reveal_control_basic",
+      "ability": "reveal_control",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/reveal_control__basic.json",
+        "hash": "c8ee6b7846c5920bc7f13b9bd5d7429187428ffaef8212ad3ceb27cf3560a79a"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/reveal_control__basic.json",
+        "hash": "1f9b2e5dbd133348e77db7385d70f1aacf1d129a266fc7ed21387630bbaed593"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_10_reveal_control_basic.json",
+        "hash": "b6f9986f2e4e781fa7e8a03f3e6f47fb7cd1d1f79e3786e7677f8c5dec4bebe6"
+      },
+      "checklist_hash": "770e2a080fc4497229d62e081f3e3b782ef73fd4203d68070f6223a237e374ae",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/scenes",
+        "/initial_state/audience_exposure"
+      ],
+      "input_fingerprint": "332f74e6c5dec31ef1b1520258d479f2ed55408cb0398c355bd3235674f1820d",
+      "content_hash": "de10508324c5608de9b7c2a13b01cd89ebfd194ad6d67016d2d29d3d4f19d1c4"
+    },
+    {
+      "task_id": "b1_11_reveal_control_implicit_friendly",
+      "ability": "reveal_control",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/reveal_control__decoy.json",
+        "hash": "e2430984e3329f7594d91973929e7c2692b1168a26dac7f28bba5765ecb6d64a"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/reveal_control__decoy.json",
+        "hash": "f3f0f89e66d72443e18a94dd01f2b81c44fc2ade2fb044b8ba47954d84e4da02"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_11_reveal_control_implicit_friendly.json",
+        "hash": "63a54ce448705d8900e4ffcf637fceee18937541f79b5dc04ab1dfb17ac3030b"
+      },
+      "checklist_hash": "179dff199cf2fae070a949cb172aaadbc662d8882d4d10f639a90773100452fe",
+      "previous_scene_render_hash": "3e07eadc6c39e6a5339c4c34d754560d5a4bff739aca225e0b089c46ebc9010b",
+      "input_evidence_paths": [
+        "/scenes",
+        "/initial_state/audience_exposure"
+      ],
+      "input_fingerprint": "2c98edc5393196b594507fd8fa749dbc5758afa3b22e59269131f5bdec0b5c23",
+      "content_hash": "ec6472e0f3a737af366587e8589a63429387a7db0155a55a250580ec427f4d35"
+    },
+    {
+      "task_id": "b1_12_reveal_control_constraint_dense",
+      "ability": "reveal_control",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/reveal_control__dense.json",
+        "hash": "9e74fd06f82cf4f00f0c6fb7e13846e7791ee5c5cb47fdf8c86c2830c2f49497"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/reveal_control__dense.json",
+        "hash": "15b3b6b905bf0692e27ff223a864211ab38a73df0314d732ce3dbe8a07ccd7b9"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_12_reveal_control_constraint_dense.json",
+        "hash": "591be2e20064ac7f23202039faf79f2aeb6de0e814aeacaece48818e4d589b69"
+      },
+      "checklist_hash": "ae8eb937cac03f5ded54a8cf2cfc7fc8d5ab06448e0fdbc1a6677ff3ccfdb659",
+      "previous_scene_render_hash": "78aad2d949fa3b1b17776916fdd5297be5199a4e16156a352d0b78efc85350f7",
+      "input_evidence_paths": [
+        "/scenes",
+        "/initial_state/audience_exposure"
+      ],
+      "input_fingerprint": "23f49e43aa8b6c73f8da8f05781f32ebe4b594c2e16701ddb6afa2849b3e0419",
+      "content_hash": "ecfc6c0ccadeb9b66a9778c1194440b8be6afed58c20dc4177547585281ca16a"
+    },
+    {
+      "task_id": "b1_13_location_time_continuity_basic",
+      "ability": "location_time_continuity",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/temporal_grounding__basic.json",
+        "hash": "4e9d8cada37a950ee933926de2dffc20ee7fca99665e30e7f575d76421dd114e"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/temporal_grounding__basic.json",
+        "hash": "4e1225d40bcca82fd632a32a7be3dcf99be33d7ec07a517936575fb58cac4080"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_13_location_time_continuity_basic.json",
+        "hash": "e61f438256a89ebb65ba93c16ee7bf6febe56df3ededf76774d8ae44bec3df26"
+      },
+      "checklist_hash": "16d19f64c8df3823b365e9fcba83103f724b190d6086192513e060fbe56d1b96",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/initial_state/locations",
+        "/scenes"
+      ],
+      "input_fingerprint": "4999271cac20e6bb53d858a891a576f18e32cbb06d773bcd1ad45faf1a888aab",
+      "content_hash": "78e79176de7bc998310bc035489d26efe1016abe997aec352c0298af292f2858"
+    },
+    {
+      "task_id": "b1_14_location_time_continuity_implicit_friendly",
+      "ability": "location_time_continuity",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/temporal_grounding__decoy.json",
+        "hash": "ff17db7d2d2e3944c0cf450c8df306f61e84c5a615a4f17df079953c019523f9"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/temporal_grounding__decoy.json",
+        "hash": "cac46a6bcd6a764760266436c380999c2cef968d47d6566e33b8e14a7e6cfabd"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_14_location_time_continuity_implicit_friendly.json",
+        "hash": "05f3404bc747be977e0142dddfe1d38556d2a53c3df630027b7cec2a7cacbc10"
+      },
+      "checklist_hash": "ae65d21aa75ccd043e9bd1b554fd8827ab8778cb09e1cd0ddc772e01e7cf7ff8",
+      "previous_scene_render_hash": "405a071c0c5cf169f464df9ebab77c0d9c856fb513cce02358cab128d27f5eba",
+      "input_evidence_paths": [
+        "/initial_state/locations",
+        "/scenes"
+      ],
+      "input_fingerprint": "1b4e76ce069e4651fda6f384c43e6f35807c8022fb44afc7d60ec7cfc12b26de",
+      "content_hash": "d2c297f32dccbd34a6eae52253c610cba2b2cc7b0e903327d1e03a0d074ceae5"
+    },
+    {
+      "task_id": "b1_15_location_time_continuity_constraint_dense",
+      "ability": "location_time_continuity",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/temporal_grounding__dense.json",
+        "hash": "db9db4c67e88229805a5f4828a21065a25c7c5ba00cf4d4f7103d2b6eccc819e"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/temporal_grounding__dense.json",
+        "hash": "9493328a20c13047e58492dd195181a3bde0f659371d853dc43711e6829f845a"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_15_location_time_continuity_constraint_dense.json",
+        "hash": "7bea4be21d282a0a4d6f7a349dc9094182261342d826ce97c3549b67b52d3345"
+      },
+      "checklist_hash": "3ce63407d610adb07f8e592d9ba5dcbe03206a5659804a6d51d44f9887183744",
+      "previous_scene_render_hash": "c834fcb95cfafc798f1c9f84eee9d0a9b24f355565341b25d6f3cba9860d488c",
+      "input_evidence_paths": [
+        "/initial_state/locations",
+        "/scenes"
+      ],
+      "input_fingerprint": "d21de293f9edc5df205c574720edf804c8ffc40ee8275035b6720e0ad73db4a7",
+      "content_hash": "4022ff2de28df1e2b1ec04c427b64a01d26d1a0e4e88b0000aa5ee6da9b798f6"
+    },
+    {
+      "task_id": "b1_16_causality_ordering_basic",
+      "ability": "causality_ordering",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/dependency_transfer__basic.json",
+        "hash": "cd6514c5757c85abd41e1ee15d10283450dad988806a08b8dd8cb9d2958cc21c"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/dependency_transfer__basic.json",
+        "hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_16_causality_ordering_basic.json",
+        "hash": "c056fe8d7b0113d885a838384f575f78fbcdb00d70874965d29ff53cac5984bf"
+      },
+      "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/edges",
+        "/beats"
+      ],
+      "input_fingerprint": "29190dd5959ac9b512db657707e80742325dc2a7dd8f64fc2447b06255bbe6ea",
+      "content_hash": "73457f07a94035781e9aefbb2bf20844b623900a6b9881c8ad81cf0522df19cf"
+    },
+    {
+      "task_id": "b1_17_causality_ordering_implicit_friendly",
+      "ability": "causality_ordering",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/dependency_transfer__decoy.json",
+        "hash": "6789c45f24afdaf20cf84bed7064260d1ac3a3f946d5621e4043665f21542362"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/dependency_transfer__decoy.json",
+        "hash": "0136af0092768058655a49610b72cd6b194b415e3ff8345c1883ea58c752f3d2"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_17_causality_ordering_implicit_friendly.json",
+        "hash": "edde756615ab5481a5cde481496feb3e97cb5250737dc00090bb779b87a8bf57"
+      },
+      "checklist_hash": "61c32688c4667f046147637ef7e37e3393693137a8dc2b9dcd58d09e3115f9f3",
+      "previous_scene_render_hash": "fffc25730b983a29d21fd85b301058774382ae6ae1dfe96064f5aa56d224b1a9",
+      "input_evidence_paths": [
+        "/edges",
+        "/beats"
+      ],
+      "input_fingerprint": "18770750c6c65f575310f5efe70da8ee5488c50e5cb12f693158100974d8fa1a",
+      "content_hash": "183cd5683a1e05de1e2092b4a3920a67edf85aaf01b0d999f0451777ab58ae3e"
+    },
+    {
+      "task_id": "b1_18_causality_ordering_constraint_dense",
+      "ability": "causality_ordering",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/dependency_transfer__dense.json",
+        "hash": "11d540f747bbfc7ec373a0abfe7128b1a6d5eef21972ebc4e7a148244bf3f888"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/dependency_transfer__dense.json",
+        "hash": "a97528c8494a11a90c8a24f00042020b9c2703e5fbceae5d30c4b6ddfc2d1539"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_18_causality_ordering_constraint_dense.json",
+        "hash": "1d88e59d73a2e46d357442ab0cf011e009dc23cc9208ac2e0e3c017adea71c76"
+      },
+      "checklist_hash": "ff9f096dc9e729b47dd7cd59910d79ce6ca216f6a691a1fc49ecdc719844460b",
+      "previous_scene_render_hash": "d872ca07cf8c1c0fd4bd0010765067b5db2c71c01317655c885060295288081c",
+      "input_evidence_paths": [
+        "/edges",
+        "/beats"
+      ],
+      "input_fingerprint": "49868f8fac267d23c2af088c066c097845b2ca4571c04944e957fa65238fc08d",
+      "content_hash": "afbaa411c21503761fb8b6a816d1cfa46484f2534c6bc5726ee25c2b5ff371b3"
+    },
+    {
+      "task_id": "b1_19_setup_payoff_scene_outcome_basic",
+      "ability": "setup_payoff_scene_outcome",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/resolution_execution__basic.json",
+        "hash": "2bf23d3a71852dc4c73b38231ea05545177c5fd7d35c011a5a3488374befec35"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/resolution_execution__basic.json",
+        "hash": "5022370e241a2e40590c22caf92d4b53827605f6e573c0f590c077591f6cf3c1"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_19_setup_payoff_scene_outcome_basic.json",
+        "hash": "4e32b874f2a3f7e7ab17e81433237ccb3f926c5fe092556471a379ca700d5ade"
+      },
+      "checklist_hash": "262d777e3653e69bf19769a063eb3f97a12c4a314d2be3ac7accbac8c8717aa0",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats",
+        "/final_state/open_setups"
+      ],
+      "input_fingerprint": "d3b7612bcd8783e549868b6ecc8fd08faba309396d29c2d4d7ce328e16b59e5b",
+      "content_hash": "5895d0de4319e82102e36d7d40b22ed7c2da6173944a93bcd93e19d5f5ce6f78"
+    },
+    {
+      "task_id": "b1_20_setup_payoff_scene_outcome_implicit_friendly",
+      "ability": "setup_payoff_scene_outcome",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/resolution_execution__decoy.json",
+        "hash": "aa9ff4e0fb91b143486b720f3ba9b66fd691a3970a5ab8b870cdd748ad269dd4"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/resolution_execution__decoy.json",
+        "hash": "ba441f728269c01c228427d032d044d7874efe02ded57b37d290d204cb9701eb"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_20_setup_payoff_scene_outcome_implicit_friendly.json",
+        "hash": "08894181f3694d609fe2c92b729f7bfd1730da5e93fcb1a07c9d79489eb04d84"
+      },
+      "checklist_hash": "485ebec9434aa95d616520514a848feb78591ca398134ff7896d833dff5b81ca",
+      "previous_scene_render_hash": "694eb87794e01d449aa2bf91f4dc45ff80c7bc1a3bc8f72812133ac4327422ed",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats",
+        "/final_state/open_setups"
+      ],
+      "input_fingerprint": "160287e5633f3101bc9216ff6e4d5c37296532060bb3d6f27ca340c7c04dd8ae",
+      "content_hash": "4e888bc9d0738db0444fd43d6e129d3cca2641d915d63004499b1d2fd1af4df7"
+    },
+    {
+      "task_id": "b1_21_setup_payoff_scene_outcome_constraint_dense",
+      "ability": "setup_payoff_scene_outcome",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/resolution_execution__dense.json",
+        "hash": "2052aa89ff186a56ccbf5adaf7098b6eb1dba9fe597678a4d63a2fa79ad6b540"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/resolution_execution__dense.json",
+        "hash": "ccd847cdfaa8d9cb747d0072e5abb10b48077f7c1908e8a8ffce64113a18eed5"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_21_setup_payoff_scene_outcome_constraint_dense.json",
+        "hash": "79c1e3ad5eec4670ee71b5549fbedc8f05b7fcc8fe258def46f892d047a1f728"
+      },
+      "checklist_hash": "9422e4229ae83f63365af97ff4c7c4a7e89c22ba052514dbc2d02c5d08b965f1",
+      "previous_scene_render_hash": "13d97f31bb3f531cb289445e3eca76cda3ba6a0503115755d8abea123f3c5313",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats",
+        "/final_state/open_setups"
+      ],
+      "input_fingerprint": "387d883cb010d22f39e4e5015cefb7ef17f91f4ad687ee30df4a940f2f15e64f",
+      "content_hash": "34447469205d9275ce908c0d525804a37f2e9be691068553c43c752c778cf810"
+    },
+    {
+      "task_id": "b1_22_profile_bounded_surface_detail_basic",
+      "ability": "profile_bounded_surface_detail",
+      "variant": "basic",
+      "scene_id": "scene_1",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/provenance_coverage__basic.json",
+        "hash": "ab6e964aa5399fced4c6cab2720315e68139f6debbb33c7db9c66c8aa756de95"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/provenance_coverage__basic.json",
+        "hash": "73a38a0a73a4b8dd618629481114212393b8da78bd1af2a2b644c22bbd89e789"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_22_profile_bounded_surface_detail_basic.json",
+        "hash": "eb7a94692ea2317ce8fea0e070c18684f335ed8a0ca4e5a307a5f304f453aa11"
+      },
+      "checklist_hash": "c4af70cec6a009a23306f70a75cbb1b0b8c5beda377c9bd9b6f8893bcfdb23b4",
+      "previous_scene_render_hash": null,
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats"
+      ],
+      "input_fingerprint": "507dbaac3ae0ab1e2c2dcc5443e71708d9608df7ec1f9e081c5bca5415310945",
+      "content_hash": "1df892d4751bc2ac194c7e79d864d8573f37418516ccfdc86cf2b6243a529935"
+    },
+    {
+      "task_id": "b1_23_profile_bounded_surface_detail_implicit_friendly",
+      "ability": "profile_bounded_surface_detail",
+      "variant": "implicit_friendly",
+      "scene_id": "scene_2",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/provenance_coverage__decoy.json",
+        "hash": "4cd91dc8b3206a80c7d95e8ffee36f6ef2460eff291e13851add6ea8486e4725"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/provenance_coverage__decoy.json",
+        "hash": "2861223f0b9d86e28e809f9b53abe1b93f5feb84b4887459095aa9e95c612522"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_23_profile_bounded_surface_detail_implicit_friendly.json",
+        "hash": "712171a54982c05baf3e48ea7a12a8e58264f98f36d93ed2a2119dbc067ffed4"
+      },
+      "checklist_hash": "93afb8d018275a82b88aba325e4d8e12154b9dadd734be18d453e2ec976f14ec",
+      "previous_scene_render_hash": "fccf4ed8aede8083e5c6a9c687366648f72f1c05678222a923ea3d3597214440",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats"
+      ],
+      "input_fingerprint": "b117923040e9ea5114b20f5d103f174cd3f7db06f0971150d1c4ff669459899b",
+      "content_hash": "5995505ba6e2493180148c5e7403cc9c268e90e2b48d717fd724b9d73de21a6c"
+    },
+    {
+      "task_id": "b1_24_profile_bounded_surface_detail_constraint_dense",
+      "ability": "profile_bounded_surface_detail",
+      "variant": "constraint_dense",
+      "scene_id": "scene_5",
+      "source_input": {
+        "path": "fixtures/scene_plan_benchmark/v1/inputs/provenance_coverage__dense.json",
+        "hash": "37e08ef91783a0da1c00f8fb34ef22ac49efd71ea4c271b0fc581776dc656ccd"
+      },
+      "scene_plan": {
+        "path": "fixtures/scene_plan_benchmark/v2/runtime_references/provenance_coverage__dense.json",
+        "hash": "d0e09a0fd321a87d334336976e068d1b97f7fe60f4aa676d46352b3cfa9f504c"
+      },
+      "task_asset": {
+        "path": "fixtures/prose_writer_benchmark/v1/tasks/b1_24_profile_bounded_surface_detail_constraint_dense.json",
+        "hash": "5d9ac27a2761702301c71f511f0b307a33067bc88466eb2d56f2278bd27bffe5"
+      },
+      "checklist_hash": "ede701c4484a10542dd7cc934680b9391771abac4bd66a8e7cc3c9dc86cf45de",
+      "previous_scene_render_hash": "65d8a50ad8acce04c1e3fba4eec43c1ceed6215a0597433ca55d2c66dba7b1a8",
+      "input_evidence_paths": [
+        "/scenes",
+        "/beats"
+      ],
+      "input_fingerprint": "f879468d3eed058b9e9113cfd4ea42dc9d5c69106ffd1b543686f46119505a51",
+      "content_hash": "d107fb5ab3b605487751e6fed863aced03e324d063466aaad91039914c6935ca"
+    }
+  ],
+  "qualification": {
+    "qualified": false,
+    "qualification_eligible": false,
+    "stage": "development_baseline_only"
+  },
+  "suite_hash": "f2a5baa8f4ee30c473201222525d94737405989e372ee6ccfd19ae689f00dbc5"
+}

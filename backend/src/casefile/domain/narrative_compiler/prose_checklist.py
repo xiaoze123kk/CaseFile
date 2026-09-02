@@ -14,6 +14,7 @@ from casefile_contracts import (
     ProseJudgeReport,
     ScenePlanIRV2,
     SceneRender,
+    SceneRenderCandidate,
 )
 from pydantic import ValidationError
 
@@ -265,6 +266,74 @@ def validate_scene_render(
     if (stage == "accepted") != (value["selection_reason"] is not None):
         raise CompilerContractError("compiler_scene_render_selection_reason_invalid")
     return parsed
+
+
+def normalize_scene_render_candidate(
+    candidate: dict[str, Any],
+    *,
+    checklist: dict[str, Any],
+    profile: dict[str, Any],
+    component_input_hash: str,
+) -> SceneRender:
+    """Normalize one model-owned Writer candidate into a server-owned Render."""
+
+    if not isinstance(candidate, dict) or set(candidate) != {"schema_id", "blocks"}:
+        raise CompilerContractError("compiler_scene_render_candidate_invalid")
+    if candidate.get("schema_id") != "compiler.scene-render-candidate.v1":
+        raise CompilerContractError("compiler_scene_render_candidate_invalid")
+    raw_blocks = candidate.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise CompilerContractError("compiler_scene_render_candidate_invalid")
+    filtered_blocks: list[dict[str, str]] = []
+    for block in raw_blocks:
+        if not isinstance(block, dict) or set(block) != {"text"}:
+            raise CompilerContractError("compiler_scene_render_candidate_invalid")
+        text = block.get("text")
+        if not isinstance(text, str):
+            raise CompilerContractError("compiler_scene_render_candidate_invalid")
+        if text.strip():
+            filtered_blocks.append({"text": text})
+    try:
+        normalized_candidate = SceneRenderCandidate.model_validate(
+            {"schema_id": candidate["schema_id"], "blocks": filtered_blocks}
+        ).model_dump(mode="json")
+        checklist_json = ProseJudgeChecklist.model_validate(checklist).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
+    if not isinstance(component_input_hash, str) or len(component_input_hash) != 64:
+        raise CompilerContractError("compiler_scene_render_component_input_hash_invalid")
+    try:
+        int(component_input_hash, 16)
+    except ValueError as error:
+        raise CompilerContractError("compiler_scene_render_component_input_hash_invalid") from error
+    render = {
+        "schema_id": "compiler.scene-render.v1",
+        "scene_id": checklist_json["scene_id"],
+        "scene_ordinal": checklist_json["scene_ordinal"],
+        "source": {
+            "checklist_hash": canonical_json_sha256(checklist_json),
+            "profile_hash": checklist_json["source"]["profile_hash"],
+            "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
+            "previous_scene_render_hash": checklist_json["source"][
+                "previous_scene_render_hash"
+            ],
+            "component_input_hash": component_input_hash,
+        },
+        "stage": "writer",
+        "round": 0,
+        "previous_render_hash": None,
+        "blocks": [
+            {
+                "block_id": f"block_{checklist_json['scene_id']}_{ordinal:03d}",
+                "ordinal": ordinal,
+                "text": block["text"],
+            }
+            for ordinal, block in enumerate(normalized_candidate["blocks"], start=1)
+        ],
+        "character_count": sum(len(block["text"]) for block in normalized_candidate["blocks"]),
+        "selection_reason": None,
+    }
+    return validate_scene_render(render, checklist=checklist_json, profile=profile)
 
 
 def validate_prose_judge_report(
@@ -757,4 +826,5 @@ __all__ = [
     "validate_prose_judge_checklist",
     "validate_prose_judge_report",
     "validate_scene_render",
+    "normalize_scene_render_candidate",
 ]

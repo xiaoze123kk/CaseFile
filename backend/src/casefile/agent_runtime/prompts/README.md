@@ -56,6 +56,8 @@ Prompt 版本有三种互斥形态：
 
 四个 `v5` 版本保持 Candidate/Public Report 边界不变，并补齐三项开发集语义：必需 Event 被否定、未来化或假设化时不得放过相关 `location_time`，一个 check 的失败不得传播到正文已实际实现的独立 Beat/Reveal，因果顺序按明确事件关系而非句子排列或自我说明判断。v4 继续保留用于历史调用精确重放。
 
+`prose-writer-v1` 是 N4.5-04 的单轮、无工具完整 Scene Writer。Runtime 在调用前精确复验 ScenePlanIR、NarrativeIR、Profile、Checklist 与前一场 accepted Render，只向模型发送 Checklist 已投影的当前 Scene 权威上下文；模型只返回 `compiler.scene-render-candidate.v1`，Scene identity、stage、round、block ID、字符数与全部 lineage hash 由服务端注入。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

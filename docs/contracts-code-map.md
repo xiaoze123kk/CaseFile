@@ -55,6 +55,7 @@
 | `fixtures/compiler/scene_plan/v1/` | N4.4 SceneCompilerInputBundle 与 ScenePlanIR 最小跨语言往返样例，覆盖 NovelPlanScene 原生 Schema、稳定执行节点、显式图边、来源证明与空揭露状态。 |
 | `fixtures/compiler/prose_rendering/v1/` | N4.5 Profile v2、首场/后续场 Checklist、各 Render stage、Judge 正反 Evidence、Consensus、Quality、NovelCandidate、CompileManifest 及 Schema/领域非法变体。 |
 | `fixtures/prose_judge_benchmark/v1/` | N4.5-02 公开 B0 开发集：8 能力族各含 explicit valid、implicit valid、adversarial invalid，合计 24 Task 与 72 份 base/paraphrase/mutation Render；保存逐 check Gold Evidence、内容 hash、Codex 语义/对抗双遍开发 attestation 及确定性重建脚本。该集合只用于 Council policy 开发选择，不替代独立私有 Holdout。 |
+| `fixtures/prose_writer_benchmark/v1/` | N4.5-04 公开 Writer development baseline：引用当前 N4.4 八能力输入形成 basic/implicit-friendly/constraint-dense 共 24 Task，冻结 Profile、previous accepted Render、Fake candidate、逐 check Gold Evidence、输入/suite/attestation hash；只验证零网络 Writer→Fidelity-only Council 闭环，不构成 B1 资格。 |
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
 | `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
 | `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |

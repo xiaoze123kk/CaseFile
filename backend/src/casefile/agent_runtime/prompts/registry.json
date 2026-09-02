@@ -46,6 +46,9 @@
     "scene_compiler_semantic_fill": {
       "current_version": "scene-compiler-semantic-fill-v6"
     },
+    "prose_writer": {
+      "current_version": "prose-writer-v1"
+    },
     "prose_fidelity_judge": {
       "current_version": "prose-fidelity-judge-v5"
     },
