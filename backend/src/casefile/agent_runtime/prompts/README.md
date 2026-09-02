@@ -58,6 +58,8 @@ Prompt 版本有三种互斥形态：
 
 `prose-writer-v1` 是 N4.5-04 的单轮、无工具完整 Scene Writer。Runtime 在调用前精确复验 ScenePlanIR、NarrativeIR、Profile、Checklist 与前一场 accepted Render，只向模型发送 Checklist 已投影的当前 Scene 权威上下文；模型只返回 `compiler.scene-render-candidate.v1`，Scene identity、stage、round、block ID、字符数与全部 lineage hash 由服务端注入。
 
+`prose-rewriter-v1` 是 N4.5-05 的单轮、无工具完整 Scene Rewrite。每次请求绑定当前 Render、冻结 Fidelity-only Consensus、失败/未决项及此前通过项；模型必须返回完整替代正文，服务端最多生成 `rewrite_1`、`rewrite_2` 两个带直接来源哈希的 Render，并在每轮后重审完整 Checklist。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

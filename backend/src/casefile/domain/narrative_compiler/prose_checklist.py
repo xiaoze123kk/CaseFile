@@ -277,6 +277,62 @@ def normalize_scene_render_candidate(
 ) -> SceneRender:
     """Normalize one model-owned Writer candidate into a server-owned Render."""
 
+    return _normalize_scene_render_candidate(
+        candidate,
+        checklist=checklist,
+        profile=profile,
+        component_input_hash=component_input_hash,
+        stage="writer",
+        round_index=0,
+        previous_render_hash=None,
+    )
+
+
+def normalize_scene_rewrite_candidate(
+    candidate: dict[str, Any],
+    *,
+    checklist: dict[str, Any],
+    profile: dict[str, Any],
+    current_render: dict[str, Any],
+    rewrite_round: int,
+    component_input_hash: str,
+) -> SceneRender:
+    """Normalize one full-Scene Rewrite candidate with direct render lineage."""
+
+    if rewrite_round not in {1, 2}:
+        raise CompilerContractError("compiler_scene_rewrite_round_invalid")
+    try:
+        checklist_json = ProseJudgeChecklist.model_validate(checklist).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
+    current = validate_scene_render(
+        current_render, checklist=checklist_json, profile=profile
+    ).model_dump(mode="json")
+    expected_stage = "writer" if rewrite_round == 1 else "rewrite_1"
+    if current["stage"] != expected_stage or current["round"] != rewrite_round - 1:
+        raise CompilerContractError("compiler_scene_rewrite_source_stage_invalid")
+    return _normalize_scene_render_candidate(
+        candidate,
+        checklist=checklist_json,
+        profile=profile,
+        component_input_hash=component_input_hash,
+        stage=f"rewrite_{rewrite_round}",
+        round_index=rewrite_round,
+        previous_render_hash=canonical_json_sha256(current),
+    )
+
+
+def _normalize_scene_render_candidate(
+    candidate: dict[str, Any],
+    *,
+    checklist: dict[str, Any],
+    profile: dict[str, Any],
+    component_input_hash: str,
+    stage: str,
+    round_index: int,
+    previous_render_hash: str | None,
+) -> SceneRender:
+
     if not isinstance(candidate, dict) or set(candidate) != {"schema_id", "blocks"}:
         raise CompilerContractError("compiler_scene_render_candidate_invalid")
     if candidate.get("schema_id") != "compiler.scene-render-candidate.v1":
@@ -319,9 +375,9 @@ def normalize_scene_render_candidate(
             ],
             "component_input_hash": component_input_hash,
         },
-        "stage": "writer",
-        "round": 0,
-        "previous_render_hash": None,
+        "stage": stage,
+        "round": round_index,
+        "previous_render_hash": previous_render_hash,
         "blocks": [
             {
                 "block_id": f"block_{checklist_json['scene_id']}_{ordinal:03d}",
@@ -827,4 +883,5 @@ __all__ = [
     "validate_prose_judge_report",
     "validate_scene_render",
     "normalize_scene_render_candidate",
+    "normalize_scene_rewrite_candidate",
 ]

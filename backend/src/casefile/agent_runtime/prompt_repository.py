@@ -39,6 +39,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "story_planner_semantic_fill",
     "scene_compiler_semantic_fill",
     "prose_writer",
+    "prose_rewriter",
     "prose_fidelity_judge",
     "prose_adversarial_judge",
     "prose_coherence_judge",

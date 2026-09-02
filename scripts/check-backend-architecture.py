@@ -96,6 +96,8 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/agent_runtime/chat_validation_contracts.py",
     "backend/src/casefile/agent_runtime/provider_adapters/",
     "backend/src/casefile/agent_runtime/prose_writer.py",
+    "backend/src/casefile/agent_runtime/prose_rewriter.py",
+    "backend/src/casefile/agent_runtime/prose_rewrite_supervisor.py",
     "backend/src/casefile/agent_runtime/brief_to_draft_v8/validation.py",
     "backend/src/casefile/application/workflow/",
     "backend/src/casefile/application/chat_public_contracts.py",

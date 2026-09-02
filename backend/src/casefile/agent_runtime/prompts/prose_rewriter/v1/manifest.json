@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_rewriter",
+  "version": "prose-rewriter-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "f07195bf4dd6ee7493eef428895636530de87b5f17e4000c10a32777b7b53126",
+  "previous_version": null,
+  "change_summary": "建立最多两轮、每轮输出完整 Scene 的语义 Rewrite。"
+}
