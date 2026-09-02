@@ -64,6 +64,22 @@ describe("official two-page product boundary", () => {
     expect(`${shell}\n${session}`).not.toContain("sessionStorage");
   });
 
+  it("keeps the visual intake demo on an isolated local-fixture route", () => {
+    const route = source("app/visual-intake/page.tsx");
+    const demo = source("features/intake/visual-intake-demo.tsx");
+    const shell = source("components/product-shell.tsx");
+
+    expect(route).toContain('@/features/intake/visual-intake-demo');
+    expect(shell).toContain('pathname === "/visual-intake"');
+    expect(shell).toContain('"intake-visual-demo"');
+    expect(shell).toContain('"living-dossier-spine"');
+    expect(demo).not.toContain("@/lib/api-client");
+    expect(demo).not.toContain("CaseSession");
+    expect(demo).not.toContain("localStorage");
+    expect(demo).not.toContain("sessionStorage");
+    expect(demo).not.toMatch(/\bfetch\s*\(/u);
+  });
+
   it("keeps the real intake backend and candidate adoption boundary", () => {
     const api = source("features/case-session/case-session-api.ts");
     const session = source("features/case-session/case-session-provider.tsx");
