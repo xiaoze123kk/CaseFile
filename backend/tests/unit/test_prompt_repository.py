@@ -55,8 +55,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_coherence_judge": "prose-coherence-judge-v5",
     "prose_arbiter": "prose-arbiter-v5",
     "prose_quality_critic": "prose-quality-critic-v1",
-    "prose_quality_pairwise": "prose-quality-pairwise-v1",
-    "prose_polisher": "prose-polisher-v2",
+    "prose_quality_pairwise": "prose-quality-pairwise-v2",
+    "prose_polisher": "prose-polisher-v3",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -639,11 +639,17 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_quality_pairwise", "prose-quality-pairwise-v1"): {
         "system": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"
     },
+    ("prose_quality_pairwise", "prose-quality-pairwise-v2"): {
+        "system": "44fff7be022321f1f01df190b5d35900983f4becde3e386ddf4c91f03cc8c064"
+    },
     ("prose_polisher", "prose-polisher-v1"): {
         "system": "79253e33d9abe25ba9a226b0e209dfaf462107fff1f752d8eecfe0a319e77f68"
     },
     ("prose_polisher", "prose-polisher-v2"): {
         "system": "1f2eb0986a81997c953edb6b06a414fec30b49ce4a5f3bc987540dc4545ee731"
+    },
+    ("prose_polisher", "prose-polisher-v3"): {
+        "system": "7a04048b24115cdea341ce89902acf772d100434c36eff11bdca21d3c5c889b2"
     },
 }
 

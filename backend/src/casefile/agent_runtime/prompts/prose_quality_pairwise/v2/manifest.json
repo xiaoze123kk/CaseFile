@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_quality_pairwise",
+  "version": "prose-quality-pairwise-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "44fff7be022321f1f01df190b5d35900983f4becde3e386ddf4c91f03cc8c064",
+  "previous_version": "prose-quality-pairwise-v1",
+  "change_summary": "增加双侧独立评估、缺陷强度裁决与标签交换自检，降低位置偏差和过度 tie。"
+}

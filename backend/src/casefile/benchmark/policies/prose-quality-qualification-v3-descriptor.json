@@ -1,0 +1,61 @@
+{
+  "schema_id": "casefile.prose-quality-qualification-descriptor.v1",
+  "suite_id": "n4.5-b3-quality-polisher-private-qualification-v3",
+  "quality_holdout_count": 16,
+  "polisher_task_count": 24,
+  "quality_focus_distribution": {
+    "pov_voice_consistency": 2,
+    "scene_specificity": 2,
+    "dialogue_narration_naturalness": 2,
+    "dramatic_progression_pacing": 2,
+    "readability_editability": 2,
+    "sentence_rhythm": 2,
+    "redundancy_control": 2,
+    "balanced_tradeoff": 2
+  },
+  "polisher_focus_distribution": {
+    "pov_voice_consistency": 3,
+    "scene_specificity": 3,
+    "dialogue_narration_naturalness": 3,
+    "dramatic_progression_pacing": 3,
+    "readability_editability": 3,
+    "sentence_rhythm": 3,
+    "redundancy_control": 3,
+    "balanced_tradeoff": 3
+  },
+  "quality_preference_distribution": {
+    "a": 4,
+    "b": 8,
+    "tie": 4
+  },
+  "quality_gate_thresholds": {
+    "overall_accuracy_min": 14,
+    "mirrored_consistency_min": 15,
+    "semantic_invalid_max": 0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0
+  },
+  "polisher_gate_thresholds": {
+    "preservation_pass_min": 24,
+    "quality_non_loss_min": 22,
+    "polished_accepted_min": 18,
+    "critical_semantic_regression_max": 0,
+    "rejected_exact_rollback_rate_min": 1.0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0
+  },
+  "loader_version": "prose-quality-suite-loader-v3",
+  "quality_model_id": "deepseek-v4-flash",
+  "generation_model_id": "deepseek-v4-pro",
+  "quality_component_hash": "7d9f9d51aa6e726ff3ca55472581661792208e4e3cd7118caed44ee7ccf076f5",
+  "polisher_component_hash": "257ba467bdf3ec1e65f271774cbe33598be4d164787d89817b9ade49b97ba372",
+  "polisher_prompt_version": "prose-polisher-v3",
+  "public_development_suite_hash": "0a75f29d43da39d702e1d1543780a8fa5d8a3d4e7c2aa18174864a01f603cbc6",
+  "private_suite_hash": "8a36c884213869e6c8d1b664db49a4a9bc68df674f2c20c71f82d46c7d36fd8f",
+  "review_policy": "codex-owner-accepted-review-v1",
+  "review_status": "codex_reviewed",
+  "qualification_eligible": true,
+  "author_attestation_hash": "121dfe9e24779d243fe12e882eb9747daad21e582949904957f90705a304e3fa",
+  "review_attestation_hash": "671766444e62b5c76e2e5f3712396e517f332884f384112f8f978101e52ddbbd",
+  "descriptor_hash": "614f61b26cb691f98c644791ec77d08d0fe8ec7592074fbcd52c97e5bd447c7d"
+}

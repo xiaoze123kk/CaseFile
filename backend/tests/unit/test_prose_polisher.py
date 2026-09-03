@@ -150,6 +150,18 @@ def test_request_is_exact_semantic_findings_bound_and_redacted(
     assert request.input_payload["untrusted_data"]["quality_findings"] == polish_case[
         "findings"
     ]
+    guidance = request.input_payload["server_bindings"]["length_contract"]
+    assert guidance["source_character_count"] == polish_case["original"][
+        "character_count"
+    ]
+    assert guidance["recommended_minimum_character_count"] >= guidance["min"]
+    assert guidance["recommended_maximum_character_count"] <= guidance["max"]
+    assert guidance["enforcement"] == "model_quality_guidance"
+    preservation = request.input_payload["server_bindings"][
+        "preservation_guidance"
+    ]
+    assert preservation["minimum_change_principle"] is True
+    assert preservation["enforcement"] == "model_self_audit_then_semantic_council"
 
 
 def test_candidate_becomes_polished_with_direct_lineage(

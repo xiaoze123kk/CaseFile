@@ -28,7 +28,7 @@ from casefile.benchmark.prose_quality_eval import (
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS
 
 ROOT = Path(__file__).resolve().parents[3]
-GENERATOR = ROOT / "fixtures/prose_quality_benchmark/v1/generate.py"
+GENERATOR = ROOT / "fixtures/prose_quality_benchmark/v2/generate.py"
 
 
 @pytest.fixture(scope="module")

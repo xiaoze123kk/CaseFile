@@ -35,9 +35,9 @@ from casefile.domain.narrative_compiler import (
 
 PROSE_QUALITY_MODEL_ID: Final = "deepseek-v4-flash"
 PROSE_QUALITY_FINDINGS_PROMPT_VERSION: Final = "prose-quality-critic-v1"
-PROSE_QUALITY_PAIRWISE_PROMPT_VERSION: Final = "prose-quality-pairwise-v1"
-PROSE_QUALITY_REQUEST_PROTOCOL: Final = "prose-quality-json-object-v1"
-PROSE_QUALITY_COMPONENT_VERSION: Final = "prose-quality-critic-runtime-v1"
+PROSE_QUALITY_PAIRWISE_PROMPT_VERSION: Final = "prose-quality-pairwise-v2"
+PROSE_QUALITY_REQUEST_PROTOCOL: Final = "prose-quality-json-object-v2"
+PROSE_QUALITY_COMPONENT_VERSION: Final = "prose-quality-critic-runtime-v2"
 PROSE_QUALITY_MAX_TURNS: Final = 1
 PROSE_QUALITY_NETWORK_RETRIES: Final = 0
 PROSE_QUALITY_TEMPERATURE: Final = 0
@@ -118,7 +118,7 @@ PROSE_QUALITY_COMPONENT_HASH: Final = canonical_json_sha256(
         "evidence_catalog_version": PROSE_EVIDENCE_CATALOG_VERSION,
         "evidence_catalog_policy_hash": PROSE_EVIDENCE_CATALOG_POLICY_HASH,
         "quality_dimensions": list(QUALITY_DIMENSIONS),
-        "mirrored_selection": "two-position-polished-win-no-dimension-regression-v1",
+        "mirrored_selection": "two-position-polished-win-no-dimension-regression-v2",
     }
 )
 
