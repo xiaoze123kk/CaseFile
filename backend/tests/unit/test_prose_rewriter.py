@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
     PROSE_COUNCIL_MODEL_ID,
@@ -172,14 +173,21 @@ def test_request_contains_failed_and_preserved_semantics_without_credentials(
     length = payload["server_bindings"]["length_contract"]
     expected = rewrite_case["profile"]["prose"]["target_scene_chars"]
     assert length == {
-        "policy_version": "prose-rewriter-length-contract-v1",
+        "policy_version": "prose-rewriter-length-contract-v2",
         "unit": "unicode_code_points_in_block_text_only",
         "min_chars": expected["min"],
         "max_chars": expected["max"],
         "target_chars": (expected["min"] + expected["max"]) // 2,
+        "generation_plan": {
+            "block_count": 6,
+            "generation_floor_chars": 600,
+            "min_chars_per_block": 100,
+            "target_chars_per_block": 125,
+        },
         "hard_gate": True,
     }
-    assert str(expected["min"]) in request.system_prompt or "min_chars" in request.system_prompt
+    assert "generation_floor_chars" in request.system_prompt
+    assert "min_chars_per_block" in request.system_prompt
 
 
 def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(

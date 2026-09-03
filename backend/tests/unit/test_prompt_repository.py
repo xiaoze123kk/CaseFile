@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -49,8 +50,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
     "prose_writer": "prose-writer-v1",
-    "prose_rewriter": "prose-rewriter-v2",
-    "prose_fidelity_judge": "prose-fidelity-judge-v5",
+    "prose_rewriter": "prose-rewriter-v3",
+    "prose_fidelity_judge": "prose-fidelity-judge-v6",
     "prose_adversarial_judge": "prose-adversarial-judge-v5",
     "prose_coherence_judge": "prose-coherence-judge-v5",
     "prose_arbiter": "prose-arbiter-v5",
@@ -564,6 +565,9 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_rewriter", "prose-rewriter-v2"): {
         "system": "3ad1db4d3b6c5cab1d37a7d3ec84a5ecb8ea58195a1f4d35f730c1eed9ae1d81"
     },
+    ("prose_rewriter", "prose-rewriter-v3"): {
+        "system": "47f42f0b6bde28c96ae3c0e6f98fca69bec3e20b90f2040749c03bcb884fd767"
+    },
     ("prose_fidelity_judge", "prose-fidelity-judge-v1"): {
         "system": "a280fe22e8dd879496af0852b12903a2540401bc6ff656d04906d661077933d0"
     },
@@ -614,6 +618,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("prose_fidelity_judge", "prose-fidelity-judge-v5"): {
         "system": "48a711bb1ca193fbf7adbbe4ae5e3dbd8b7bf87ab5e5ee2b9644a7eb6ee3dbbd"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v6"): {
+        "system": "90a8e66d3a38d624e286bf2d69bf31db5cd8b8294498089816cb638f940e9802"
     },
     ("prose_adversarial_judge", "prose-adversarial-judge-v5"): {
         "system": "dc1785d7e5f4d1ade53b925679f36014b843e4a89bfd881da74ed3d222e01d4d"
@@ -732,28 +739,37 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
 def test_prose_judge_v5_preserves_protocol_and_closes_semantic_gaps(
     agent_id: str,
 ) -> None:
-    current_version = prompt_version_for_task(agent_id)
-    legacy = load_prompt(agent_id, current_version.replace("v5", "v1"))
-    hash_binding = load_prompt(agent_id, current_version.replace("v5", "v2"))
-    catalog_copy = load_prompt(agent_id, current_version.replace("v5", "v3"))
-    candidate_protocol = load_prompt(agent_id, current_version.replace("v5", "v4"))
-    current = load_prompt(agent_id)
+    prefix = agent_id.replace("_", "-")
+    legacy = load_prompt(agent_id, f"{prefix}-v1")
+    hash_binding = load_prompt(agent_id, f"{prefix}-v2")
+    catalog_copy = load_prompt(agent_id, f"{prefix}-v3")
+    candidate_protocol = load_prompt(agent_id, f"{prefix}-v4")
+    semantic_gaps = load_prompt(agent_id, f"{prefix}-v5")
 
     assert hash_binding.previous_version == legacy.version
     assert catalog_copy.previous_version == hash_binding.version
     assert candidate_protocol.previous_version == catalog_copy.version
-    assert current.previous_version == candidate_protocol.version
+    assert semantic_gaps.previous_version == candidate_protocol.version
     assert "server_bindings" not in legacy.system_prompt
     assert "server_evidence_catalog" not in hash_binding.system_prompt
     assert "server_bindings.checklist_hash" in catalog_copy.system_prompt
     assert "不得自行计算哈希" in catalog_copy.system_prompt
-    assert "server_evidence_catalog" in current.system_prompt
-    assert "evidence_id" in current.system_prompt
-    assert "不要输出 role、scene_id 或任何 hash" in current.system_prompt
-    assert "causality_ordering" in current.system_prompt
-    assert "location_time" in current.system_prompt
-    assert "地点正确不能抵消时间失败" in current.system_prompt
-    assert "事件关系优先于句子" in current.system_prompt
+    assert "server_evidence_catalog" in semantic_gaps.system_prompt
+    assert "evidence_id" in semantic_gaps.system_prompt
+    assert "不要输出 role、scene_id 或任何 hash" in semantic_gaps.system_prompt
+    assert "causality_ordering" in semantic_gaps.system_prompt
+    assert "location_time" in semantic_gaps.system_prompt
+    assert "地点正确不能抵消时间失败" in semantic_gaps.system_prompt
+    assert "事件关系优先于句子" in semantic_gaps.system_prompt
+
+
+def test_prose_fidelity_judge_v6_audits_required_evidence_before_output() -> None:
+    current = load_prompt("prose_fidelity_judge")
+
+    assert current.previous_version == "prose-fidelity-judge-v5"
+    assert "required+pass" in current.system_prompt
+    assert "forbidden+fail" in current.system_prompt
+    assert "必须把该项改为 uncertain" in current.system_prompt
 
 
 def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:

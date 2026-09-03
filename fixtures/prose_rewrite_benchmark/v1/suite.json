@@ -20,8 +20,8 @@
   "task_count": 24,
   "council_policy_id": "fidelity-only-v1",
   "council_policy_hash": "b1d492fc9be3ef834e09d2c50b39cc5be19647900ad182db58e25d17c4b18c63",
-  "rewriter_prompt_version": "prose-rewriter-v2",
-  "rewriter_component_hash": "87cd815be0039fb928817702383a9fd586b07c4569eda79eec100d0403bca68b",
+  "rewriter_prompt_version": "prose-rewriter-v3",
+  "rewriter_component_hash": "44c970d5b5500e2cbffcf0a4717b639b39e9455adcdc53c037406dcc078e7988",
   "gate_thresholds": {
     "final_rescue_min": 21,
     "preservation_task_min": 23,
@@ -565,5 +565,5 @@
       "content_hash": "1432a5eb72a099e1e48880a6c44cc6043727edcf18b4402a53ef324e30864d8c"
     }
   ],
-  "suite_hash": "ee82865c651193643461a96b69bde27b321ce6aac4fe2d5be0a4349c66e20113"
+  "suite_hash": "e7953a5f604e303a85ec96a045e0f8593bc12741b3076e6750abf73a70a27470"
 }

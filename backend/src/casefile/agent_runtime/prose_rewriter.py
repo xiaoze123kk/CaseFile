@@ -10,7 +10,6 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 from openai import OpenAI
 from pydantic import ValidationError
 
@@ -25,12 +24,13 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
+from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 
 PROSE_REWRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v2"
-PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v2"
-PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v2"
-PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v1"
+PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v3"
+PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v3"
+PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v3"
+PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v2"
 PROSE_REWRITER_MAX_TURNS: Final = 1
 PROSE_REWRITER_MAX_CALLS_PER_SCENE: Final = 2
 PROSE_REWRITER_NETWORK_RETRIES: Final = 0
@@ -466,12 +466,27 @@ def build_prose_rewriter_request(
     }
     component_input_hash = canonical_json_sha256(binding)
     length_range = profile_json["prose"]["target_scene_chars"]
+    min_chars = length_range["min"]
+    max_chars = length_range["max"]
+    safety_margin = max(32, min(300, (max_chars - min_chars) // 3))
+    generation_floor_chars = min(max_chars, min_chars + safety_margin)
+    target_chars = max(
+        generation_floor_chars,
+        (min_chars + max_chars) // 2,
+    )
+    block_count = max(3, min(8, (target_chars + 124) // 125))
     length_contract = {
         "policy_version": PROSE_REWRITER_LENGTH_POLICY_VERSION,
         "unit": "unicode_code_points_in_block_text_only",
-        "min_chars": length_range["min"],
-        "max_chars": length_range["max"],
-        "target_chars": (length_range["min"] + length_range["max"]) // 2,
+        "min_chars": min_chars,
+        "max_chars": max_chars,
+        "target_chars": target_chars,
+        "generation_plan": {
+            "block_count": block_count,
+            "generation_floor_chars": generation_floor_chars,
+            "min_chars_per_block": generation_floor_chars // block_count,
+            "target_chars_per_block": target_chars // block_count,
+        },
         "hard_gate": True,
     }
     payload = {

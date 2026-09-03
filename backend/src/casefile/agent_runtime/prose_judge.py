@@ -10,7 +10,6 @@ from hashlib import sha256
 from time import perf_counter, sleep
 from typing import Any, Final, Literal, Protocol, cast
 
-from casefile_contracts import ProseConsensusReport, ProseJudgeReport
 from openai import APIConnectionError, APITimeoutError, OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -22,6 +21,7 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
+from casefile_contracts import ProseConsensusReport, ProseJudgeReport
 
 PROSE_COUNCIL_MODEL_ID: Final = "deepseek-v4-pro"
 PROSE_COUNCIL_MAX_TURNS: Final = 1
@@ -31,7 +31,10 @@ PROSE_COUNCIL_RETRYABLE_ERRORS: Final = ("APIConnectionError", "APITimeoutError"
 PROSE_COUNCIL_TEMPERATURE: Final = 0
 PROSE_COUNCIL_MAX_OUTPUT_TOKENS: Final = 8192
 PROSE_COUNCIL_THINKING_ENABLED: Final = False
-PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v5"
+PROSE_JUDGE_REQUEST_PROTOCOL: Final = "prose-judge-json-object-v6"
+PROSE_JUDGE_MISSING_EVIDENCE_RATIONALE: Final = (
+    "该判定缺少协议要求的正文 Evidence，服务端已保守降级为 uncertain。"
+)
 PROSE_JUDGE_SCHEMA_HASH: Final = canonical_json_sha256(ProseJudgeReport.model_json_schema())
 PROSE_JUDGE_CANDIDATE_SCHEMA_ID: Final = "compiler.prose-judge-candidate.v1"
 PROSE_EVIDENCE_CATALOG_VERSION: Final = "prose-evidence-catalog-v2"
@@ -1068,6 +1071,7 @@ def _validated_report(
     if [item["check_id"] for item in candidate["assessments"]] != expected_ids:
         raise ProseCouncilProtocolError("prose_judge_candidate_coverage_mismatch")
     catalog_by_id = {item["evidence_id"]: item for item in evidence_catalog}
+    checks_by_id = {item["check_id"]: item for item in checklist["checks"]}
     assessments: list[dict[str, Any]] = []
     for assessment in candidate["assessments"]:
         evidence_ids = assessment["evidence_ids"]
@@ -1075,10 +1079,19 @@ def _validated_report(
             evidence_id not in catalog_by_id for evidence_id in evidence_ids
         ):
             raise ProseCouncilProtocolError("compiler_prose_judge_evidence_catalog_mismatch")
+        verdict = assessment["verdict"]
+        rationale = assessment["rationale"]
+        polarity = checks_by_id[assessment["check_id"]]["polarity"]
+        if not evidence_ids and (
+            (polarity == "required" and verdict == "pass")
+            or (polarity == "forbidden" and verdict == "fail")
+        ):
+            verdict = "uncertain"
+            rationale = PROSE_JUDGE_MISSING_EVIDENCE_RATIONALE
         assessments.append(
             {
                 "check_id": assessment["check_id"],
-                "verdict": assessment["verdict"],
+                "verdict": verdict,
                 "evidence": [
                     {
                         key: value
@@ -1087,7 +1100,7 @@ def _validated_report(
                     }
                     for evidence_id in evidence_ids
                 ],
-                "rationale": assessment["rationale"],
+                "rationale": rationale,
             }
         )
     report = {
@@ -1148,6 +1161,7 @@ __all__ = [
     "PROSE_JUDGE_CANDIDATE_SCHEMA",
     "PROSE_JUDGE_CANDIDATE_SCHEMA_HASH",
     "PROSE_JUDGE_CANDIDATE_SCHEMA_ID",
+    "PROSE_JUDGE_MISSING_EVIDENCE_RATIONALE",
     "PROSE_JUDGE_REQUEST_PROTOCOL",
     "PROSE_JUDGE_SCHEMA_HASH",
     "ProseArbiterRequest",

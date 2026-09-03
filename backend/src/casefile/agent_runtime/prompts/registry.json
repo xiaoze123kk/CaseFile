@@ -50,10 +50,10 @@
       "current_version": "prose-writer-v1"
     },
     "prose_rewriter": {
-      "current_version": "prose-rewriter-v2"
+      "current_version": "prose-rewriter-v3"
     },
     "prose_fidelity_judge": {
-      "current_version": "prose-fidelity-judge-v5"
+      "current_version": "prose-fidelity-judge-v6"
     },
     "prose_adversarial_judge": {
       "current_version": "prose-adversarial-judge-v5"

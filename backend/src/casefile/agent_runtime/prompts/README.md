@@ -58,7 +58,7 @@ Prompt 版本有三种互斥形态：
 
 `prose-writer-v1` 是 N4.5-04 的单轮、无工具完整 Scene Writer。Runtime 在调用前精确复验 ScenePlanIR、NarrativeIR、Profile、Checklist 与前一场 accepted Render，只向模型发送 Checklist 已投影的当前 Scene 权威上下文；模型只返回 `compiler.scene-render-candidate.v1`，Scene identity、stage、round、block ID、字符数与全部 lineage hash 由服务端注入。
 
-`prose-rewriter-v1` 保留 N4.5-05 初版完整 Scene Rewrite 的历史回放。当前 `prose-rewriter-v2` 在相同单轮、无工具、最多两轮和完整替代正文边界上，把 Profile 的 Unicode 字符上下限与安全目标值提升为显式 `length_contract` 服务端绑定，并要求输出前按全部 `blocks[].text` 自检，修复 v1 在接近最小长度时产生协议失败的问题。
+`prose-rewriter-v1`、`v2` 保留 N4.5-05 初版与首次长度修复的历史回放。当前 `prose-rewriter-v3` 在相同单轮、无工具、最多两轮和完整替代正文边界上，把 Profile 的 Unicode 字符范围投影为带安全余量的 `length_contract` 与明确分段计划；模型不得把服务端拒绝线当作写作目标，输出前须逐 block 与总量复核。`prose-fidelity-judge-v6` 在 v5 语义规则之上增加 Evidence 必填条件的最终逐项审计，无充分目录证据时必须保守返回 `uncertain`。
 
 ## Prompt Package 边界
 

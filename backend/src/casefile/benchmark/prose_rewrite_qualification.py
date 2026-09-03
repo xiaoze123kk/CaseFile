@@ -48,7 +48,7 @@ from casefile.benchmark.prose_rewrite_eval import (
 
 REPORT_VERSION: Final = "casefile.prose-rewrite-qualification-report.v1"
 EXECUTOR_VERSION: Final = "prose-rewrite-qualification-executor-v1"
-FIDELITY_JUDGE_PROMPT_VERSION: Final = "prose-fidelity-judge-v5"
+FIDELITY_JUDGE_PROMPT_VERSION: Final = "prose-fidelity-judge-v6"
 LIVE_CONFIRMATION: Final = "RUN_B2_REWRITE_QUALIFICATION_ONCE"
 SCENE_CALL_BUDGET: Final = 4
 _ATTEMPT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")

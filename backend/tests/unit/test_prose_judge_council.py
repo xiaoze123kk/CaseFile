@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 import pytest
+from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
+
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ADVERSARIAL_POLICY,
     FIDELITY_ONLY_POLICY,
@@ -32,7 +34,6 @@ from casefile.benchmark.prose_judge_eval import (
     load_prose_judge_dev_suite,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
-from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
 
 
 @pytest.fixture(scope="module")
@@ -253,8 +254,6 @@ def test_render_valid_evidence_outside_server_catalog_fails_closed(
         "reordered",
         "wrong_schema",
         "extra_top_level",
-        "required_pass_without_evidence",
-        "forbidden_fail_without_evidence",
         "unknown_evidence_id",
         "duplicate_evidence_id",
     ),
@@ -271,10 +270,6 @@ def test_invalid_judge_protocol_fails_closed(case: dict[str, Any], mutation: str
         report["schema_id"] = "compiler.prose-judge-report.v1"
     elif mutation == "extra_top_level":
         report["render_hash"] = "0" * 64
-    elif mutation == "required_pass_without_evidence":
-        report["assessments"][0]["evidence_ids"] = []
-    elif mutation == "forbidden_fail_without_evidence":
-        report["assessments"][5].update(verdict="fail", evidence_ids=[], rationale="发现提前披露。")
     elif mutation == "unknown_evidence_id":
         report["assessments"][0]["evidence_ids"] = ["evidence_999"]
     else:
@@ -292,6 +287,39 @@ def test_invalid_judge_protocol_fails_closed(case: dict[str, Any], mutation: str
     )
     assert execution.status == "protocol_failed"
     assert provider.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("assessment_index", "verdict"),
+    ((0, "pass"), (5, "fail")),
+)
+def test_evidence_dependent_verdict_without_evidence_becomes_uncertain(
+    case: dict[str, Any], assessment_index: int, verdict: str
+) -> None:
+    report = _report(case, "fidelity")
+    report["assessments"][assessment_index].update(
+        verdict=verdict,
+        evidence_ids=[],
+        rationale="模型给出了没有证据的判定。",
+    )
+
+    execution = execute_semantic_council(
+        FakeProseJudgeProvider(judge_reports=(report,)),
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+
+    assert execution.status == "completed"
+    assert execution.consensus is not None
+    assert execution.consensus["scene_verdict"] == "uncertain"
+    normalized = execution.judge_reports[0]["assessments"][assessment_index]
+    assert normalized["verdict"] == "uncertain"
+    assert normalized["evidence"] == []
+    assert "服务端已保守降级" in normalized["rationale"]
 
 
 def test_render_binding_is_explicit_and_changes_request_fingerprint(
@@ -323,7 +351,7 @@ def test_render_binding_is_explicit_and_changes_request_fingerprint(
     )
     assert original.status == changed.status == "completed"
     assert original.calls[0].request_fingerprint != changed.calls[0].request_fingerprint
-    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v5"
+    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v6"
     assert (
         original.calls[0].request_payload["server_evidence_catalog"]
         != (changed.calls[0].request_payload["server_evidence_catalog"])

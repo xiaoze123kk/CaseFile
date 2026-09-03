@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import (
     DeepSeekProseJudgeProvider,
     FakeProseJudgeProvider,
@@ -138,8 +139,8 @@ def test_mocked_exact_adapters_run_fixed_24_once_and_can_qualify(
     assert report["logical_model_call_count"] == 64
     assert report["physical_transport_attempt_count"] == 64
     assert report["model_id"] == "deepseek-v4-pro"
-    assert report["rewriter_prompt_version"] == "prose-rewriter-v2"
-    assert report["judge_prompt_version"] == "prose-fidelity-judge-v5"
+    assert report["rewriter_prompt_version"] == "prose-rewriter-v3"
+    assert report["judge_prompt_version"] == "prose-fidelity-judge-v6"
     assert report["council_policy_id"] == "fidelity-only-v1"
     assert report["max_rewrites_per_scene"] == 2
     assert report["scene_call_budget"] == 4
