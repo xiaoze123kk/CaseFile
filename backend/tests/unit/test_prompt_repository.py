@@ -57,6 +57,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_quality_critic": "prose-quality-critic-v1",
     "prose_quality_pairwise": "prose-quality-pairwise-v1",
     "prose_polisher": "prose-polisher-v2",
+    "prose_quality_assessment": "prose-quality-assessment-v1",
+    "prose_patch_polisher": "prose-patch-polisher-v1",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -651,6 +653,12 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_polisher", "prose-polisher-v3"): {
         "system": "7a04048b24115cdea341ce89902acf772d100434c36eff11bdca21d3c5c889b2"
     },
+    ("prose_quality_assessment", "prose-quality-assessment-v1"): {
+        "system": "425633419a49b941f3e63c6a4b1a9df80116b569704a385d76c76e572c002891"
+    },
+    ("prose_patch_polisher", "prose-patch-polisher-v1"): {
+        "system": "6efe8f34165ed9cd59d9872c2aae338df03220364da5e2114d2b2d891e1e88d5"
+    },
 }
 
 
@@ -673,6 +681,8 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
             "prose_quality_critic",
             "prose_quality_pairwise",
             "prose_polisher",
+            "prose_quality_assessment",
+            "prose_patch_polisher",
             "general_mutation_planner",
     }
 

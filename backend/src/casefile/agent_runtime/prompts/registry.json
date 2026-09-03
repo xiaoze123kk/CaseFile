@@ -73,6 +73,12 @@
     "prose_polisher": {
       "current_version": "prose-polisher-v2"
     },
+    "prose_quality_assessment": {
+      "current_version": "prose-quality-assessment-v1"
+    },
+    "prose_patch_polisher": {
+      "current_version": "prose-patch-polisher-v1"
+    },
     "general_mutation_planner": {
       "current_version": "general-mutation-planner-v6"
     }

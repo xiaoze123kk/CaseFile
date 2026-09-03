@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_patch_polisher",
+  "version": "prose-patch-polisher-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "6efe8f34165ed9cd59d9872c2aae338df03220364da5e2114d2b2d891e1e88d5",
+  "previous_version": null,
+  "change_summary": "以服务端授权窗口和确定性补丁替代整篇 Scene 重写。"
+}

@@ -1,0 +1,2055 @@
+{
+  "schema_id": "casefile.prose-quality-pointwise-dev-task.v1",
+  "task_id": "quality_v4_dev_06_balanced_paraphrase_tie",
+  "focus": "balanced_paraphrase_tie",
+  "profile": {
+    "schema_id": "compiler.novel-profile.v2",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear",
+      "flashback"
+    ],
+    "exposure_policy": "bound_plan",
+    "prose": {
+      "language": "zh-CN",
+      "narrative_person": "third_person_limited",
+      "narrative_tense": "past",
+      "target_scene_chars": {
+        "min": 300,
+        "max": 1200
+      },
+      "dialogue_ratio": {
+        "min": 0.1,
+        "max": 0.5
+      },
+      "description_density": "balanced",
+      "pacing": "balanced",
+      "style_brief": "克制、清晰，重要信息通过动作和对话呈现。",
+      "forbidden_style_patterns": [
+        "总结式解释凶手动机"
+      ]
+    }
+  },
+  "checklist": {
+    "schema_id": "compiler.prose-judge-checklist.v1",
+    "scene_id": "scene_1",
+    "scene_ordinal": 1,
+    "source": {
+      "scene_plan_hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76",
+      "narrative_ir_hash": "3ae56a41e597941588f4d2fb43bad8a5bb8d3328eb6671b6df15ddbb868bf9a2",
+      "profile_hash": "f8ed6b8b0c59bced6d08a088b1b1b6f941b8d7db5d4e0ff79de9b813ad805376",
+      "previous_scene_render_hash": null,
+      "checklist_policy_version": "prose-checklist-policy-v1",
+      "checklist_policy_hash": "7d38d2374f69b7734e9096959b155bf3d0ff4cb01ecc46bb7eb3628dde0cdff2"
+    },
+    "scene_context": {
+      "objective": "推进 complex_mixed 的 basic 场景 1。",
+      "dramatic_goal": "落实 scene_1 的既定目标。",
+      "conflict": "来源事实与角色目标形成可执行阻力。",
+      "outcome": "硬义务完成并为后续场景留下可追溯状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "knows_refs": [
+              {
+                "object_type": "information_unit",
+                "object_id": "info_restart_log"
+              }
+            ],
+            "believes_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "false_belief_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ]
+          }
+        ],
+        "locations": [
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ]
+          },
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ]
+          },
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ]
+          },
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_safety_observer"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ]
+          }
+        ],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [
+          {
+            "entry_key": "exposure_manual_trace",
+            "status": "introduced",
+            "first_scene_id": "scene_1",
+            "last_scene_id": "scene_1"
+          }
+        ],
+        "character_knowledge": [
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "knows_refs": [
+              {
+                "object_type": "information_unit",
+                "object_id": "info_restart_log"
+              }
+            ],
+            "believes_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "false_belief_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ]
+          }
+        ],
+        "locations": [
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ]
+          },
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ]
+          },
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              }
+            ]
+          },
+          {
+            "subject_ref": {
+              "object_type": "entity",
+              "object_id": "ent_safety_observer"
+            },
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "story_time_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ],
+            "basis_refs": [
+              {
+                "object_type": "event",
+                "object_id": "evt_restart_six"
+              }
+            ]
+          }
+        ],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [
+        "beat_scene_1_001"
+      ],
+      "beats": [
+        {
+          "beat_id": "beat_scene_1_001",
+          "scene_id": "scene_1",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "执行 obligation_scene_1_event_001 并推进场景目标。",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "obligation_keys": [
+            "obligation_scene_1_event_001"
+          ],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              },
+              "field_path": "",
+              "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_1_002",
+          "scene_id": "scene_1",
+          "ordinal": 2,
+          "kind": "exposure",
+          "directive": "执行 obligation_scene_1_exposure_001 并推进场景目标。",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "target_refs": [],
+          "basis_refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            }
+          ],
+          "obligation_keys": [
+            "obligation_scene_1_exposure_001"
+          ],
+          "prerequisite_beat_ids": [
+            "beat_scene_1_001"
+          ],
+          "event_refs": [],
+          "exposure_actions": [
+            {
+              "entry_key": "exposure_manual_trace",
+              "action": "introduce"
+            }
+          ],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              },
+              "field_path": "",
+              "source_fragment_hash": "9adc1888f69651041a2ab6e6820065211a744d9948ea3dad1cf19cf79cbb8fd4"
+            },
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_restart_seven"
+              },
+              "field_path": "",
+              "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+            },
+            {
+              "object_ref": {
+                "object_type": "hypothesis",
+                "object_id": "hyp_automatic_restart"
+              },
+              "field_path": "",
+              "source_fragment_hash": "27312587f803744595e0eb4db9d5f8059465669e75e34803371ededa0bf88cdd"
+            },
+            {
+              "object_ref": {
+                "object_type": "hypothesis",
+                "object_id": "hyp_manual_restart"
+              },
+              "field_path": "",
+              "source_fragment_hash": "bc7fcad806a9aae3e34b1456080bcb166f100b03fbcee9b70051ec93fb1bf990"
+            },
+            {
+              "object_ref": {
+                "object_type": "information_unit",
+                "object_id": "info_manual_trace"
+              },
+              "field_path": "",
+              "source_fragment_hash": "dca993063b5c935f909be90f7085854579f900b9160e697c56ae26e95daddb37"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "exposure_actions": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "action": "introduce"
+        }
+      ],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [
+        "obligation_scene_1_event_001",
+        "obligation_scene_1_exposure_001"
+      ],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            },
+            "field_path": "",
+            "source_fragment_hash": "91da5febae81c62038200b22ba254a4dc856d5127a57616db8c1612bcee767e7"
+          },
+          "label": "����ϵͳ��������",
+          "value": {
+            "description": null,
+            "tags": [
+              "answer"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.96,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "claim_backup_trigger",
+            "title": "����ϵͳ��������",
+            "statement": "���ߴ������ɱ���ϵͳ���ݰ�ȫ��������������",
+            "claim_type": "causal",
+            "support_refs": [
+              {
+                "object_type": "information_unit",
+                "object_id": "info_restart_log"
+              }
+            ],
+            "refute_refs": [],
+            "dependency_claim_refs": [],
+            "status": "supported",
+            "materiality": "critical"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            "field_path": "",
+            "source_fragment_hash": "9adc1888f69651041a2ab6e6820065211a744d9948ea3dad1cf19cf79cbb8fd4"
+          },
+          "label": "�˹���������",
+          "value": {
+            "description": null,
+            "tags": [
+              "answer"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.96,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "claim_manual_trigger",
+            "title": "�˹���������",
+            "statement": "�������˹�����������",
+            "claim_type": "causal",
+            "support_refs": [
+              {
+                "object_type": "information_unit",
+                "object_id": "info_manual_trace"
+              }
+            ],
+            "refute_refs": [],
+            "dependency_claim_refs": [],
+            "status": "supported",
+            "materiality": "critical"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "field_path": "",
+            "source_fragment_hash": "c8025fc1697d497a1e66eb428aa3885a3a2711da61feb9e2263f95db1fdc8e1e"
+          },
+          "label": "���ÿ���ϵͳ",
+          "value": {
+            "description": null,
+            "tags": [
+              "system"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.88,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "ent_backup_system",
+            "entity_type": "system",
+            "name": "���ÿ���ϵͳ",
+            "aliases": [
+              "B ϵͳ"
+            ],
+            "traits": [
+              "�Զ��ӹ�"
+            ],
+            "goals": [
+              "��ֹʵ���ʧ��"
+            ],
+            "secrets": [],
+            "capabilities": [
+              "ǿ��������ϵͳ"
+            ],
+            "knowledge_states": []
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "",
+            "source_fragment_hash": "b4a946493aea213c8f3824c8c0481408e22ff12301825d7460d553dfb387bed3"
+          },
+          "label": "���о�Ա",
+          "value": {
+            "description": null,
+            "tags": [
+              "investigator"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "ent_researcher",
+            "entity_type": "person",
+            "name": "���о�Ա",
+            "aliases": [],
+            "traits": [
+              "����"
+            ],
+            "goals": [
+              "�ָ�ʵ��"
+            ],
+            "secrets": [],
+            "capabilities": [
+              "��ȡϵͳ��־"
+            ],
+            "knowledge_states": [
+              {
+                "as_of_event_ref": {
+                  "object_type": "event",
+                  "object_id": "evt_restart_seven"
+                },
+                "knows_refs": [
+                  {
+                    "object_type": "information_unit",
+                    "object_id": "info_restart_log"
+                  }
+                ],
+                "believes_refs": [
+                  {
+                    "object_type": "claim",
+                    "object_id": "claim_backup_trigger"
+                  }
+                ],
+                "false_belief_refs": [
+                  {
+                    "object_type": "claim",
+                    "object_id": "claim_manual_trigger"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "entity",
+            "object_id": "ent_safety_observer"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_safety_observer"
+            },
+            "field_path": "",
+            "source_fragment_hash": "c6f559b34dbbcc4dc39e463ee846ddba912252cbc94e4dc6f3871b3b0fc1fa1a"
+          },
+          "label": "安全观察员",
+          "value": {
+            "description": null,
+            "tags": [
+              "investigator"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "ent_safety_observer",
+            "entity_type": "person",
+            "name": "安全观察员",
+            "aliases": [],
+            "traits": [
+              "����"
+            ],
+            "goals": [
+              "�ָ�ʵ��"
+            ],
+            "secrets": [],
+            "capabilities": [
+              "��ȡϵͳ��־"
+            ],
+            "knowledge_states": []
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "",
+            "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+          },
+          "label": "ϵͳ���ߴ�����",
+          "value": {
+            "description": null,
+            "tags": [
+              "timeline"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "evt_restart_seven",
+            "title": "ϵͳ���ߴ�����",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:00",
+              "end": "2042-06-01T20:03",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_backup_system"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "cause_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "effect_refs": [],
+            "observed_by_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ]
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "",
+            "source_fragment_hash": "b84e3316b5791cf929a81196e415a172a6b5737d90c082a84c2376197393d4b2"
+          },
+          "label": "系统第六次重启",
+          "value": {
+            "description": null,
+            "tags": [
+              "timeline"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "evt_restart_six",
+            "title": "系统第六次重启",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T19:00",
+              "end": "2042-06-01T19:03",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_backup_system"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "cause_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ],
+            "effect_refs": [],
+            "observed_by_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_safety_observer"
+              }
+            ]
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "",
+            "source_fragment_hash": "27312587f803744595e0eb4db9d5f8059465669e75e34803371ededa0bf88cdd"
+          },
+          "label": "�Զ���ȫ����",
+          "value": {
+            "description": null,
+            "tags": [
+              "primary"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.92,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "hyp_automatic_restart",
+            "title": "�Զ���ȫ����",
+            "proposition": "����ϵͳ���ȶ���ȫ������������ϵͳ��",
+            "target_resolution_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "required_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "falsifier_refs": [],
+            "competing_hypothesis_refs": [
+              {
+                "object_type": "hypothesis",
+                "object_id": "hyp_manual_restart"
+              }
+            ],
+            "evidence_assessments": [
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_restart_log"
+                },
+                "effect": "supports",
+                "strength": "strong",
+                "rationale": "ϵͳ��־ֱ�Ӽ�¼�Զ�������"
+              },
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_manual_trace"
+                },
+                "effect": "contradicts",
+                "strength": "moderate",
+                "rationale": "�˹��ۼ��ṩ�������͡�"
+              }
+            ],
+            "status": "supported",
+            "score": 0.92
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bc7fcad806a9aae3e34b1456080bcb166f100b03fbcee9b70051ec93fb1bf990"
+          },
+          "label": "�˹�����",
+          "value": {
+            "description": null,
+            "tags": [
+              "primary"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.92,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "hyp_manual_restart",
+            "title": "�˹�����",
+            "proposition": "���˴ӿ���̨������������",
+            "target_resolution_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "required_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ],
+            "falsifier_refs": [],
+            "competing_hypothesis_refs": [
+              {
+                "object_type": "hypothesis",
+                "object_id": "hyp_automatic_restart"
+              }
+            ],
+            "evidence_assessments": [
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_restart_log"
+                },
+                "effect": "contradicts",
+                "strength": "moderate",
+                "rationale": "�Զ���־���˹��������ͳ�ͻ��"
+              },
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_manual_trace"
+                },
+                "effect": "supports",
+                "strength": "strong",
+                "rationale": "����̨�ۼ�֧���˹�������"
+              }
+            ],
+            "status": "supported",
+            "score": 0.92
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            },
+            "field_path": "",
+            "source_fragment_hash": "dca993063b5c935f909be90f7085854579f900b9160e697c56ae26e95daddb37"
+          },
+          "label": "�˹������ۼ�",
+          "value": {
+            "description": null,
+            "tags": [
+              "log",
+              "key"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "info_manual_trace",
+            "information_type": "system_log",
+            "title": "�˹������ۼ�",
+            "content": "����̨�����˹������ۼ���",
+            "source_event_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "reliability": "high",
+            "truth_status": "canon_true",
+            "supports_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ],
+            "refutes_claim_refs": [],
+            "availability": {
+              "perspective_refs": [
+                {
+                  "object_type": "entity",
+                  "object_id": "ent_researcher"
+                }
+              ],
+              "acquisition_conditions": [
+                "��ȡʵ�����ն�"
+              ],
+              "alternative_path_refs": []
+            },
+            "classification": "key"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            "field_path": "",
+            "source_fragment_hash": "459f50c195487b3d63f92d7deb8043cc176c161e6202e57c424f9dbeb891b8b7"
+          },
+          "label": "���ߴ�������־",
+          "value": {
+            "description": null,
+            "tags": [
+              "log",
+              "key"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "info_restart_log",
+            "information_type": "system_log",
+            "title": "���ߴ�������־",
+            "content": "����ʧ�����¶ȳ��������Ӻ󣬱���ϵͳִ��ǿ��������",
+            "source_event_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "reliability": "high",
+            "truth_status": "canon_true",
+            "supports_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "refutes_claim_refs": [],
+            "availability": {
+              "perspective_refs": [
+                {
+                  "object_type": "entity",
+                  "object_id": "ent_researcher"
+                }
+              ],
+              "acquisition_conditions": [
+                "��ȡʵ�����ն�"
+              ],
+              "alternative_path_refs": []
+            },
+            "classification": "key"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "field_path": "",
+            "source_fragment_hash": "96b77880205a824f503c28c07f9142e8407a1fef27f7eb952f2a8e06f701aa7e"
+          },
+          "label": "��ʵ����",
+          "value": {
+            "description": null,
+            "tags": [
+              "primary"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "loc_lab",
+            "name": "��ʵ����",
+            "spatial_position": {
+              "coordinate_system": "schematic",
+              "x": 28.0,
+              "y": 42.0,
+              "scene_id": null,
+              "floor_id": null
+            },
+            "parent_ref": null,
+            "adjacency_refs": [
+              {
+                "object_type": "location",
+                "object_id": "loc_corridor"
+              }
+            ],
+            "access_rules": [
+              "�о�Ա���ݿ�"
+            ],
+            "travel_times": [
+              {
+                "to_ref": {
+                  "object_type": "location",
+                  "object_id": "loc_corridor"
+                },
+                "minutes": 2.0,
+                "route_geometry": null
+              }
+            ],
+            "visibility_rules": []
+          }
+        }
+      ],
+      "previous_scene_render": null
+    },
+    "checks": [
+      {
+        "check_id": "check_scene_1_001",
+        "ordinal": 1,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文必须实现 Beat beat_scene_1_001：执行 obligation_scene_1_event_001 并推进场景目标。",
+        "beat_ids": [
+          "beat_scene_1_001"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_002",
+        "ordinal": 2,
+        "kind": "event_modality",
+        "polarity": "required",
+        "expectation": "正文必须以 ScenePlan 规定的模态实现事件 event:evt_restart_seven，不得改写其事实性、否定、条件或时间语义。",
+        "beat_ids": [
+          "beat_scene_1_001"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_003",
+        "ordinal": 3,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文必须实现 Beat beat_scene_1_002：执行 obligation_scene_1_exposure_001 并推进场景目标。",
+        "beat_ids": [
+          "beat_scene_1_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          }
+        ],
+        "event_refs": [],
+        "exposure_entry_keys": [
+          "exposure_manual_trace"
+        ],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_004",
+        "ordinal": 4,
+        "kind": "scene_outcome",
+        "polarity": "required",
+        "expectation": "正文必须形成 ScenePlan 规定的场景结果：硬义务完成并为后续场景留下可追溯状态。",
+        "beat_ids": [
+          "beat_scene_1_001",
+          "beat_scene_1_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [
+          "/expected_state_after"
+        ],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_005",
+        "ordinal": 5,
+        "kind": "reveal_control",
+        "polarity": "required",
+        "expectation": "正文必须按 introduce 实现允许的 Reveal exposure_manual_trace，不得改变其信息范围。",
+        "beat_ids": [
+          "beat_scene_1_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          }
+        ],
+        "event_refs": [],
+        "exposure_entry_keys": [
+          "exposure_manual_trace"
+        ],
+        "state_refs": [
+          "/expected_state_after/audience_exposure",
+          "/state_before/audience_exposure"
+        ],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_006",
+        "ordinal": 6,
+        "kind": "reveal_control",
+        "polarity": "forbidden",
+        "expectation": "正文不得提前呈现禁止的 Reveal exposure_restart_log。",
+        "beat_ids": [],
+        "basis_refs": [],
+        "event_refs": [],
+        "exposure_entry_keys": [
+          "exposure_restart_log"
+        ],
+        "state_refs": [
+          "/state_before/audience_exposure"
+        ],
+        "evidence_policy": "required_on_fail"
+      },
+      {
+        "check_id": "check_scene_1_007",
+        "ordinal": 7,
+        "kind": "pov_knowledge",
+        "polarity": "forbidden",
+        "expectation": "正文不得让 POV 或其他角色知道冻结入站状态未授权的事实。",
+        "beat_ids": [],
+        "basis_refs": [
+          {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        ],
+        "event_refs": [],
+        "exposure_entry_keys": [],
+        "state_refs": [
+          "/expected_state_after/character_knowledge",
+          "/state_before/character_knowledge"
+        ],
+        "evidence_policy": "required_on_fail"
+      },
+      {
+        "check_id": "check_scene_1_008",
+        "ordinal": 8,
+        "kind": "location_time",
+        "polarity": "required",
+        "expectation": "正文必须保持地点 location:loc_lab 与故事时间 event:evt_restart_seven 一致。",
+        "beat_ids": [],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [
+          "/expected_state_after/locations",
+          "/state_before/locations"
+        ],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_009",
+        "ordinal": 9,
+        "kind": "causality_ordering",
+        "polarity": "required",
+        "expectation": "正文必须先实现前置 Beat beat_scene_1_001，再实现 Beat beat_scene_1_002。",
+        "beat_ids": [
+          "beat_scene_1_001",
+          "beat_scene_1_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          }
+        ],
+        "event_refs": [],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_1_010",
+        "ordinal": 10,
+        "kind": "major_hallucination",
+        "polarity": "forbidden",
+        "expectation": "正文不得新增 ScenePlan、NarrativeIR 或冻结状态未授权的重要人物、事件、Reveal、结论或状态变化。",
+        "beat_ids": [
+          "beat_scene_1_001",
+          "beat_scene_1_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [
+          "/expected_state_after",
+          "/state_before"
+        ],
+        "evidence_policy": "required_on_fail"
+      }
+    ]
+  },
+  "render_a": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_1",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+      "profile_hash": "f8ed6b8b0c59bced6d08a088b1b1b6f941b8d7db5d4e0ff79de9b813ad805376",
+      "scene_plan_hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "939006932aaa57019c391105b799575528b5f0caf6fbd059148141949e82c55e"
+    },
+    "stage": "writer",
+    "round": 0,
+    "previous_render_hash": null,
+    "blocks": [
+      {
+        "block_id": "block_scene_1_001",
+        "ordinal": 1,
+        "text": "研究员穿过实验室隔离门，备用控制系统的指示灯贴着第七次重启记录闪动。她暂不判断，先核对控制台上的人工操作痕迹，将时间、温度和登录记录逐项写入纸质表格。蜂鸣声响起时，她让同伴站远些，自己沿线路检查保险模块。屏幕声称恢复由安全规则自动触发，边缘的新鲜指纹却让说法生疑。她只传达已确认的现象，对尚未出现的后续日志保持沉默。封存面板后，她核验封条编号，并请同伴复述操作顺序。双方记录一致，只有重启按钮旁新添一道划痕。她把差异独立标记，不把推测当事实。人工干预的痕迹已经明确，也为下一次核验留下完整记录。离开控制台前，她再次确认封条完整，将纸质表格与现场编号交叉核对。确认已记录的信息没有遗漏后，她和同伴退到隔离门外，等待下一次核验；对任何尚未得到证据支持的解释，她都暂不采纳。"
+      }
+    ],
+    "character_count": 334,
+    "selection_reason": null
+  },
+  "semantic_consensus_a": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_1",
+    "round": 0,
+    "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+    "render_hash": "228441e176f90c73ac55830e8e55808ded407ca918c61e32a1f79d0a52d87959",
+    "council_policy_hash": "6a9d40427d119811db6008a132f12de811cad097760ba6fbb703fe702ab097e0",
+    "judge_report_hashes": [
+      "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_1_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_005",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_006",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_007",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_008",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_009",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_010",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "render_b": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_1",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+      "profile_hash": "f8ed6b8b0c59bced6d08a088b1b1b6f941b8d7db5d4e0ff79de9b813ad805376",
+      "scene_plan_hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "cf3a513bd445783cafef3397e2b92989053a4b6fa3ca0dad353d9638614836f2"
+    },
+    "stage": "polished",
+    "round": 0,
+    "previous_render_hash": "228441e176f90c73ac55830e8e55808ded407ca918c61e32a1f79d0a52d87959",
+    "blocks": [
+      {
+        "block_id": "block_scene_1_001",
+        "ordinal": 1,
+        "text": "备用控制系统的灯在第七次重启记录旁闪着，研究员推开实验室隔离门后先停住了。她没有下结论，而是核对控制台上的人工操作痕迹，把时间、温度与登录记录逐项抄入纸质表格。系统一声蜂鸣，她示意同伴退开，独自沿线路检查保险模块。恢复程序宣称由安全规则自动触发，可边缘的新鲜指纹使这份说明变得可疑。她只说已经确认的现象，没有涉及尚未出现的后续日志。面板封存后，她核验封条编号，让同伴复述操作顺序。两份记录吻合，唯独重启按钮旁出现一道新划痕。她单独标记差异，不让猜测成为事实。至此，人工干预痕迹明确，后续核验所需记录也完整保留。离开控制台前，她再次确认封条完整，将纸质表格与现场编号交叉核对。确认已记录的信息没有遗漏后，她和同伴退到隔离门外，等待下一次核验；对任何尚未得到证据支持的解释，她都暂不采纳。"
+      }
+    ],
+    "character_count": 342,
+    "selection_reason": null
+  },
+  "semantic_consensus_b": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_1",
+    "round": 0,
+    "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+    "render_hash": "1963f172b098b725c18a4405d1d54a7bca338360c69dfc8f117632e0a7ce7237",
+    "council_policy_hash": "8160a4a4f9f6f1db051839f602d10049c51b9917d20872190a92a885f91ca4b5",
+    "judge_report_hashes": [
+      "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_1_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_005",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_006",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_007",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_008",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_009",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_1_010",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "gold": {
+    "render_a": {
+      "schema_id": "compiler.prose-quality-assessment-candidate.v1",
+      "dimensions": [
+        {
+          "dimension": "pov_voice_consistency",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "scene_specificity",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "dialogue_narration_naturalness",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "dramatic_progression_pacing",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "readability_editability",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        }
+      ]
+    },
+    "render_b": {
+      "schema_id": "compiler.prose-quality-assessment-candidate.v1",
+      "dimensions": [
+        {
+          "dimension": "pov_voice_consistency",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "scene_specificity",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "dialogue_narration_naturalness",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "dramatic_progression_pacing",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        },
+        {
+          "dimension": "readability_editability",
+          "severity": "low",
+          "evidence_ids": [
+            "evidence_001"
+          ],
+          "rationale": "该维度存在可定位的表达问题。"
+        }
+      ]
+    },
+    "accept_polished": false
+  },
+  "review_notes": {
+    "source_public_task_hash": "2548998c26a8b35f1266cc4910d90817045e9e00dea45f7ef173d319825e146f",
+    "semantic_review": "both_anonymous_renders_pass_same_checklist",
+    "quality_review": "five_dimension_severity_and_delta_reviewed",
+    "qualification": false
+  },
+  "content_hash": "f52edfb4a2bb9f6c348acb2e9a5d9b56d863425bbff9cf443f67d9e52c26f0e9"
+}

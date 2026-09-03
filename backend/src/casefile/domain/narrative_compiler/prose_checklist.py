@@ -383,6 +383,8 @@ def finalize_scene_render(
         "polish_semantic_rollback",
         "quality_rollback",
         "quality_unstable",
+        "quality_noop",
+        "polish_scope_rollback",
     }
     if (
         original["stage"] not in {"writer", "rewrite_1", "rewrite_2"}

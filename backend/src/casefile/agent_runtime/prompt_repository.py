@@ -47,6 +47,8 @@ SUPPORTED_AGENT_IDS: Final = (
     "prose_quality_critic",
     "prose_quality_pairwise",
     "prose_polisher",
+    "prose_quality_assessment",
+    "prose_patch_polisher",
     "general_mutation_planner",
 )
 

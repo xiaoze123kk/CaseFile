@@ -16,6 +16,11 @@ inconclusive 或 semantic rejected 不得改变已成功的 N4.4 Artifact、Comp
 [`n4.5-agent-judge-protocol.md`](narrative-compiler/n4.5-agent-judge-protocol.md) 与
 [`n4.5-benchmark-qualification.md`](narrative-compiler/n4.5-benchmark-qualification.md)。
 
+B3 v4 将活动候选机制改为匿名单稿五维 Quality Assessment、服务端 3 窗/40% 编辑授权、
+窗口补丁、完整 Preservation Council 与确定性 Quality Delta。服务端不判断文风，只校验
+Schema、Evidence、hash、lineage、窗口权限、语义结论和 `无维度回退 + 目标维度改善`；
+旧 findings/整篇 Polisher/镜像 Pairwise 继续只读保留，供 v1–v3 历史重放。
+
 ## M3.8 GoalSession Runtime 冻结边界
 
 M3.8 的完整决策见 `docs/m3.8-goal-session-runtime.md`。该阶段以 `GoalSession > TaskRun` 为核心：GoalSession 可以跨消息和多个顺序 TaskRun 持续，TaskRun 仍是输入、Provider、Prompt、工具集和预算全部冻结的单次执行切片。M3.8 不扩展 TaskRun 六种状态；waiting、stale、superseded 只属于 GoalSession。

@@ -3608,6 +3608,8 @@ class SelectionReason(Enum):
     polish_semantic_rollback = 'polish_semantic_rollback'
     quality_rollback = 'quality_rollback'
     quality_unstable = 'quality_unstable'
+    quality_noop = 'quality_noop'
+    polish_scope_rollback = 'polish_scope_rollback'
 
 
 class SceneRender(BaseModel):
@@ -3829,6 +3831,121 @@ class ProseQualityReport(BaseModel):
     findings: list[QualityFinding]
     overall_preference: OverallPreference | None
     dimension_preferences: Annotated[list[DimensionPreference], Field(max_length=5)]
+
+
+class QualitySeverity(Enum):
+    none = 'none'
+    low = 'low'
+    medium = 'medium'
+    high = 'high'
+
+
+class EvidenceId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^evidence_[0-9]{3,}$')]
+
+
+class QualityAssessmentDimensionCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    dimension: QualityDimension
+    severity: QualitySeverity
+    evidence_ids: Annotated[list[EvidenceId], Field(max_length=20)]
+    rationale: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class ProseQualityAssessmentCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-quality-assessment-candidate.v1']
+    dimensions: Annotated[
+        list[QualityAssessmentDimensionCandidate], Field(max_length=5, min_length=5)
+    ]
+
+
+class QualityAssessmentDimension(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    dimension: QualityDimension
+    severity: QualitySeverity
+    evidence: Annotated[list[Evidence], Field(max_length=20)]
+    rationale: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class ProseQualityAssessment(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-quality-assessment.v1']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    dimensions: Annotated[
+        list[QualityAssessmentDimension], Field(max_length=5, min_length=5)
+    ]
+
+
+class ProsePolishPatchEdit(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    window_id: Annotated[str, Field(pattern='^window_[0-9]{3}$')]
+    original_text_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    replacement_text: Annotated[str, Field(max_length=16000, min_length=1)]
+
+
+class ProsePolishPatchCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-polish-patch-candidate.v1']
+    source_render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    window_manifest_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    edits: Annotated[list[ProsePolishPatchEdit], Field(max_length=3)]
+
+
+class QualityDimensionDelta(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    dimension: QualityDimension
+    before: QualitySeverity
+    after: QualitySeverity
+    improved: bool
+    regressed: bool
+
+
+class SelectionReason1(Enum):
+    polished_accepted = 'polished_accepted'
+    quality_rollback = 'quality_rollback'
+
+
+class ProseQualityDelta(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-quality-delta.v1']
+    original_render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    polished_render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    original_assessment_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    polished_assessment_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    targeted_dimensions: Annotated[
+        list[QualityDimension], Field(max_length=5, min_length=1)
+    ]
+    dimension_deltas: Annotated[
+        list[QualityDimensionDelta], Field(max_length=5, min_length=5)
+    ]
+    accept_polished: bool
+    selection_reason: SelectionReason1
 
 
 class AcceptedSceneRef(BaseModel):

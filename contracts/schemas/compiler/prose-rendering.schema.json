@@ -237,7 +237,8 @@
             {
               "enum": [
                 "semantic_accepted", "polished_accepted", "polish_semantic_rollback",
-                "quality_rollback", "quality_unstable"
+                "quality_rollback", "quality_unstable", "quality_noop",
+                "polish_scope_rollback"
               ]
             },
             {"type": "null"}
@@ -415,6 +416,138 @@
         "dimension_preferences": {
           "type": "array", "items": {"$ref": "#/$defs/DimensionPreference"}, "maxItems": 5
         }
+      }
+    },
+    "QualitySeverity": {
+      "enum": ["none", "low", "medium", "high"]
+    },
+    "QualityAssessmentDimensionCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "severity", "evidence_ids", "rationale"],
+      "properties": {
+        "dimension": {"$ref": "#/$defs/QualityDimension"},
+        "severity": {"$ref": "#/$defs/QualitySeverity"},
+        "evidence_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^evidence_[0-9]{3,}$"},
+          "maxItems": 20,
+          "uniqueItems": true
+        },
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    },
+    "ProseQualityAssessmentCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "dimensions"],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-quality-assessment-candidate.v1"},
+        "dimensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/QualityAssessmentDimensionCandidate"},
+          "minItems": 5,
+          "maxItems": 5
+        }
+      }
+    },
+    "QualityAssessmentDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "severity", "evidence", "rationale"],
+      "properties": {
+        "dimension": {"$ref": "#/$defs/QualityDimension"},
+        "severity": {"$ref": "#/$defs/QualitySeverity"},
+        "evidence": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/Evidence"},
+          "maxItems": 20
+        },
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    },
+    "ProseQualityAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "scene_id", "render_hash", "dimensions"],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-quality-assessment.v1"},
+        "scene_id": {"$ref": "#/$defs/SceneId"},
+        "render_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "dimensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/QualityAssessmentDimension"},
+          "minItems": 5,
+          "maxItems": 5
+        }
+      }
+    },
+    "ProsePolishPatchEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window_id", "original_text_hash", "replacement_text"],
+      "properties": {
+        "window_id": {"type": "string", "pattern": "^window_[0-9]{3}$"},
+        "original_text_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "replacement_text": {"type": "string", "minLength": 1, "maxLength": 16000}
+      }
+    },
+    "ProsePolishPatchCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "source_render_hash", "window_manifest_hash", "edits"],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-polish-patch-candidate.v1"},
+        "source_render_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "window_manifest_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "edits": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ProsePolishPatchEdit"},
+          "maxItems": 3
+        }
+      }
+    },
+    "QualityDimensionDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "before", "after", "improved", "regressed"],
+      "properties": {
+        "dimension": {"$ref": "#/$defs/QualityDimension"},
+        "before": {"$ref": "#/$defs/QualitySeverity"},
+        "after": {"$ref": "#/$defs/QualitySeverity"},
+        "improved": {"type": "boolean"},
+        "regressed": {"type": "boolean"}
+      }
+    },
+    "ProseQualityDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "original_render_hash", "polished_render_hash",
+        "original_assessment_hash", "polished_assessment_hash", "targeted_dimensions",
+        "dimension_deltas", "accept_polished", "selection_reason"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.prose-quality-delta.v1"},
+        "original_render_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "polished_render_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "original_assessment_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "polished_assessment_hash": {"$ref": "#/$defs/Sha256Hex"},
+        "targeted_dimensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/QualityDimension"},
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true
+        },
+        "dimension_deltas": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/QualityDimensionDelta"},
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "accept_polished": {"type": "boolean"},
+        "selection_reason": {"enum": ["polished_accepted", "quality_rollback"]}
       }
     },
     "AcceptedSceneRef": {

@@ -1,0 +1,18 @@
+{
+  "schema_id": "casefile.prose-quality-pointwise-dev-attestation.v1",
+  "suite_hash": "7471bfd26eb8c760121ecc683bfb3132d88c050cb8693a8fa93ebeb8f20bde98",
+  "reviewer": "Codex",
+  "reviewer_independence": false,
+  "reviewed_task_count": 8,
+  "passes": [
+    "semantic_acceptance",
+    "five_dimension_severity_gold",
+    "delta_gold",
+    "anonymous_single_render_protocol",
+    "development_only"
+  ],
+  "allowed_use": "public_quality_v4_development_only",
+  "qualification": false,
+  "unresolved_findings": [],
+  "attestation_hash": "c578e1407d0a708eb445b0a8bafcb6e430ba47bc301869b4439fd4b0fd71a7f6"
+}

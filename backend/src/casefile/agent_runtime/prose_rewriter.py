@@ -10,7 +10,7 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
+from casefile_contracts import ProseConsensusReport, SceneRenderCandidate
 from openai import OpenAI
 from pydantic import ValidationError
 
@@ -43,8 +43,10 @@ PROSE_REWRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema(
 PROSE_REWRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(
     PROSE_REWRITER_CANDIDATE_SCHEMA
 )
-PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(
-    SceneRender.model_json_schema()
+# Historical v3 identity must not drift when later SceneRender selection reasons are
+# appended for parallel supervisors. The old runtime never emits those new reasons.
+PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = (
+    "a81c4fcaaf6bd7a7f94a99e5d1b57c5afdd585518c85e5c23dfd841ccb5118f2"
 )
 PROSE_REWRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {

@@ -1,0 +1,113 @@
+{
+  "schema_id": "casefile.prose-quality-pointwise-dev-suite.v1",
+  "suite_id": "n4.5-b3-quality-public-development-v4",
+  "suite_role": "development",
+  "task_count": 8,
+  "assessment_count": 16,
+  "quality_dimensions": [
+    "pov_voice_consistency",
+    "scene_specificity",
+    "dialogue_narration_naturalness",
+    "dramatic_progression_pacing",
+    "readability_editability"
+  ],
+  "quality_model_id": "deepseek-v4-pro",
+  "assessment_prompt_version": "prose-quality-assessment-v1",
+  "quality_component_hash": "89eb49268067d280b501683b9225dbbfaebd3777391b2c38462197279f6fafef",
+  "gate_thresholds": {
+    "severity_exact_min": 80,
+    "delta_correct_min": 8,
+    "five_dimension_coverage_min": 16,
+    "evidence_valid_min": 16,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0
+  },
+  "qualification": {
+    "qualified": false,
+    "qualification_eligible": false,
+    "development_baseline": true
+  },
+  "tasks": [
+    {
+      "task_id": "quality_v4_dev_01_readability_clearer",
+      "focus": "readability_clearer",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_01_readability_clearer.json",
+        "hash": "dbdd0556ba896da3ff783ae4d4df6ad01a02ade668f5c07687cdd65241d7afc3"
+      },
+      "pair_fingerprint": "0e1f4742e401149a50566e0545046a65512f0930117feb7410ab01e116eca90c",
+      "content_hash": "a4b6ff5b2f63ac2339352568fc549b078d9d4456f99b6d0796d8346d418ea0d9"
+    },
+    {
+      "task_id": "quality_v4_dev_02_pacing_original",
+      "focus": "pacing_original",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_02_pacing_original.json",
+        "hash": "780f4b0737cde262e089cb0ba62f7cafa8d79bbf53d02dfd6ef98ea6650f8882"
+      },
+      "pair_fingerprint": "0af187ccb5cd4d786ef17f45d1e0c5649a8401c335567e93b4c34427744066c2",
+      "content_hash": "8d34e18ff7e4283b68d57aa07f90e278855c24d9b47700b9e20bfedc2a4943a0"
+    },
+    {
+      "task_id": "quality_v4_dev_03_specificity_polished",
+      "focus": "specificity_polished",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_03_specificity_polished.json",
+        "hash": "33b2705652431dd8cb7539a640aef19ffb34f35bbb8f35063d22fad7a002c176"
+      },
+      "pair_fingerprint": "fb41e1dba743faf985f01275472cf16d3bb9dd822678caba2056a33fa9ec044d",
+      "content_hash": "f9d6916af4253ef55fac9848ba21efa158fcb26cd1c019b0e82b25efddd24751"
+    },
+    {
+      "task_id": "quality_v4_dev_04_voice_consistency",
+      "focus": "voice_consistency",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_04_voice_consistency.json",
+        "hash": "a6d64eeb0d092f6571d806cdadc66e4a361be436c04283feca79a15c1c206b97"
+      },
+      "pair_fingerprint": "89497f5052c963d44e8cd996c83fe041fabf7d6f96c8b1cc1dd8c570c30b3beb",
+      "content_hash": "4898abe84da67fec0f67f2c4bff84ce663156554b007b7029b30be6c0d221e63"
+    },
+    {
+      "task_id": "quality_v4_dev_05_dialogue_naturalness",
+      "focus": "dialogue_naturalness",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_05_dialogue_naturalness.json",
+        "hash": "205d268e91d0c871b4a25d23941f32c807da96293c73486c82af909cd9c347ba"
+      },
+      "pair_fingerprint": "0fb95482513855e58ead51c4fb96c1637575f286026cd7c38699133e9845ee87",
+      "content_hash": "08741dcbd9058bf7ab8a471f2ca604137b92db8b3e04736bacdf3f42ca10b4c3"
+    },
+    {
+      "task_id": "quality_v4_dev_06_balanced_paraphrase_tie",
+      "focus": "balanced_paraphrase_tie",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_06_balanced_paraphrase_tie.json",
+        "hash": "c31ab63278f095b2f923967debff92e7453c70d7c7119f4dd930408091d784e5"
+      },
+      "pair_fingerprint": "8532759681087bcc57a992c2eca90eee150354749d77f1ba7bfc49a9cc026de7",
+      "content_hash": "5d2a3605f598b65d38d94b4836af3e2ff9f3f877eb0d15c589b060521d9ad704"
+    },
+    {
+      "task_id": "quality_v4_dev_07_tradeoff_tie",
+      "focus": "tradeoff_tie",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_07_tradeoff_tie.json",
+        "hash": "c5ec67aa0862ff1c7e91af293273aa166601fddcd15cd0456ccfb2f207461ae2"
+      },
+      "pair_fingerprint": "2080caa42be2ad5f3345596a8008a107d595d044390134d306fae92b00391082",
+      "content_hash": "f0a70583457ef099031b46dcd56deb14cb05a5d491865d2bcf8d066655406366"
+    },
+    {
+      "task_id": "quality_v4_dev_08_original_more_vivid",
+      "focus": "original_more_vivid",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v4/tasks/quality_v4_dev_08_original_more_vivid.json",
+        "hash": "9bac6cd9bf6c0b0b48db89dd453382115ad4e6f23cb09d8af8e60cd6c6ed0a59"
+      },
+      "pair_fingerprint": "7dadab6fc825723f0056f98a989efad120d20e73ec43f396c10b6587fd692b84",
+      "content_hash": "ecee01d8be0e262f6111da4a9dc8a7d850eca826db7d0b01465a8c12557bb910"
+    }
+  ],
+  "suite_hash": "7471bfd26eb8c760121ecc683bfb3132d88c050cb8693a8fa93ebeb8f20bde98"
+}

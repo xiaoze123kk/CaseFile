@@ -2336,7 +2336,15 @@ export interface SceneRender {
   blocks: [SceneRenderBlock, ...SceneRenderBlock[]];
   character_count: number;
   selection_reason:
-    | ("semantic_accepted" | "polished_accepted" | "polish_semantic_rollback" | "quality_rollback" | "quality_unstable")
+    | (
+        | "semantic_accepted"
+        | "polished_accepted"
+        | "polish_semantic_rollback"
+        | "quality_rollback"
+        | "quality_unstable"
+        | "quality_noop"
+        | "polish_scope_rollback"
+      )
     | null;
 }
 export interface SceneRenderSource {
