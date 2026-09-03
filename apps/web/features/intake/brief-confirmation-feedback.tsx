@@ -4,7 +4,54 @@ import type {
   BriefConfirmationIssue,
   BriefResolutionDecision,
 } from "./intake-model";
-import styles from "./intake-early-stages.module.css";
+import styles from "./brief-confirmation-feedback.module.css";
+
+export function BriefRevisionDialog({
+  currentVersion,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  currentVersion: number;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const nextVersion = currentVersion + 1;
+  return (
+    <div className={styles.impactDialogBackdrop} role="presentation">
+      <section
+        aria-describedby="brief-revision-description"
+        aria-labelledby="brief-revision-title"
+        aria-modal="true"
+        className={styles.impactDialog}
+        role="dialog"
+      >
+        <small>VERSION REVISION / 建案修订</small>
+        <span aria-hidden="true">↗</span>
+        <h2 id="brief-revision-title">创建建案修订</h2>
+        <p id="brief-revision-description">
+          当前 V{currentVersion} 会继续保留。CaseFile 将以它为基础，创建一个可编辑的新版本。
+        </p>
+        <div className={styles.revisionVersionPreview}>
+          <span>Brief V{currentVersion} · 已确认</span>
+          <i aria-hidden="true" />
+          <strong>Brief V{nextVersion} · 编辑中</strong>
+        </div>
+        <strong>原版本、现有候选和 Agent 对话都不会丢失。</strong>
+        <footer>
+          <button disabled={pending} onClick={onCancel} type="button">
+            取消
+          </button>
+          <button autoFocus disabled={pending} onClick={onConfirm} type="button">
+            {pending ? "正在创建…" : `创建 V${nextVersion}`}
+            <span aria-hidden="true">→</span>
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
 
 export function BriefConfirmationTransition({
   completed,

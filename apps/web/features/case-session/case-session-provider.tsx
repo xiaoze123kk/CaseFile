@@ -426,6 +426,11 @@ export interface PolishResult {
   parentSourceRecordId: number | null;
 }
 
+export interface DialogueRevisionResult {
+  baseBrief: IntakeBrief;
+  candidate: BriefCandidate;
+}
+
 /** 被历史恢复顶替的当前会话，保存在单槽暂存中。 */
 interface StashedSession {
   projectId: number;
@@ -469,7 +474,9 @@ interface CaseSessionContextValue {
   generateMoreQuestions: () => Promise<void>;
   generateBriefFromAnswers: () => Promise<void>;
   saveCandidateAsNew: () => Promise<void>;
-  createDialogueRevision: (instruction: string) => Promise<void>;
+  createDialogueRevision: (
+    instruction: string,
+  ) => Promise<DialogueRevisionResult>;
   saveCandidateBookmark: (candidateId: number) => Promise<void>;
   activateCandidate: (candidateId: number) => Promise<void>;
   generateAuthorAnswer: (draft?: IntakeBrief) => Promise<string>;
@@ -729,6 +736,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const current = stateRef.current;
     let intake =
       intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
+    const baseCandidateId = intake.current_candidate_id;
     for (const question of intake.questions) {
       const answer = current.answers[question.question_key];
       if (!answer) continue;
@@ -758,6 +766,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           projectIdRef.current!,
           revision,
           provider,
+          baseCandidateId,
+          baseCandidateId === null
+            ? null
+            : "根据最新起案与关键问答重新整理简报；保留当前候选中未受影响的作者修改。",
         ),
       );
       return waitForTask(projectIdRef.current!, task.task_run_id);
@@ -801,6 +813,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       throw new CaseSessionError("先保存一个候选，再发起对话修改。");
     }
     const baseCandidateId = intake.current_candidate_id;
+    const baseBrief =
+      current.briefCandidates.find(
+        (candidate) => candidate.id === baseCandidateId,
+      )?.brief ?? current.brief;
     await runTaskWithProviderFallback(async (provider) => {
       // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
       const fresh = await fetchCaseIntake(projectIdRef.current!);
@@ -815,7 +831,17 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     });
     intakeRef.current = await fetchCaseIntake(projectIdRef.current);
     const mapped = mapIntakeToSessionState(intakeRef.current);
-    dispatch({ type: "patch", patch: { ...mapped, brief: current.brief } });
+    const candidate = mapped.briefCandidates.find(
+      (item) => item.id === mapped.currentBriefCandidateId,
+    );
+    if (!candidate) {
+      throw new CaseSessionError("Agent 已完成修改，但新候选暂时无法读取。");
+    }
+    dispatch({
+      type: "patch",
+      patch: { ...mapped, brief: mapped.brief ?? current.brief },
+    });
+    return { baseBrief, candidate };
   }, []);
 
   const saveCandidateBookmark = useCallback(async (candidateId: number) => {
@@ -989,13 +1015,13 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const projectId = projectIdRef.current;
     if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
     const brief = briefRef.current ?? (await fetchBrief(projectId));
-    const content = current.review
-      ? undefined
-      : mapIntakeBriefToAnchorContent(
-          draft,
-          brief.content,
-          intakeRef.current?.current_source?.source_record_id ?? null,
-        );
+    // 答案候选必须反映作者此刻看到的表单，即使会话中仍保留旧的
+    // review 读模型；后端会把它作为临时上下文，而不是可冻结 Brief 校验。
+    const content = mapIntakeBriefToAnchorContent(
+      draft,
+      brief.content,
+      intakeRef.current?.current_source?.source_record_id ?? null,
+    );
     const result = await runAnchorExtract("suggest_author_answer", content);
     const suggestion = result.suggested_author_answer?.trim();
     if (!suggestion) {

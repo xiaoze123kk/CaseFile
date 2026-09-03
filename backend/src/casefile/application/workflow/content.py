@@ -48,6 +48,9 @@ from casefile.application.task_cancellation import (
     finalize_task_cancellation,
 )
 from casefile.application.workflow_brief_validation import (
+    normalize_author_answer_suggestion_context as _normalize_author_answer_suggestion_context,
+)
+from casefile.application.workflow_brief_validation import (
     require_confirmed_atomics as _require_confirmed_atomics,
 )
 from casefile.application.workflow_brief_validation import validate_brief as _validate_brief
@@ -687,17 +690,28 @@ class ContentWorkflowMixin:
                         "received_revision": expected_brief_revision,
                     },
                 )
-            brief_content = _validate_brief(brief.draft_jsonb)
-            content = _validate_brief(content) if content is not None else brief_content
-            self._validate_brief_sources(owned, content)
-            if mode == "extract" and not content["author_answer"] and not content["boundary_text"]:
+            if mode == "suggest_author_answer":
+                task_content = _normalize_author_answer_suggestion_context(
+                    content if content is not None else brief.draft_jsonb
+                )
+            else:
+                brief_content = _validate_brief(brief.draft_jsonb)
+                task_content = (
+                    _validate_brief(content) if content is not None else brief_content
+                )
+                self._validate_brief_sources(owned, task_content)
+            if (
+                mode == "extract"
+                and not task_content["author_answer"]
+                and not task_content["boundary_text"]
+            ):
                 raise ApplicationError(
                     "brief_extraction_input_empty",
                     "请先填写作者底牌或创作边界，再进行拆解。",
                     status_code=422,
                 )
             setting = self._provider_setting(actor_user_id, provider)
-            input_hash = _json_hash(content)
+            input_hash = _json_hash(task_content)
             task = self._new_task(
                 owned,
                 actor_user_id=actor_user_id,
@@ -707,7 +721,7 @@ class ContentWorkflowMixin:
                 input_source_record_id=None,
                 input_brief_revision=brief.draft_revision,
                 input_hash=input_hash,
-                input_jsonb={"brief": content, "mode": mode},
+                input_jsonb={"brief": task_content, "mode": mode},
             )
             message = (
                 "作者底牌候选生成任务已进入队列"

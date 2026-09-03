@@ -351,6 +351,58 @@ describe("draft candidate completion time", () => {
   });
 });
 
+describe("strategy analysis feedback", () => {
+  it("shows an active, accessible loading instrument while reading the frozen brief", () => {
+    const state = generatingState(false);
+    state.strategyAnalysis.status = "analyzing";
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-busy", "true");
+    expect(status).toHaveTextContent("正在拆读冻结的创作简报");
+    expect(status).toHaveTextContent("完成后由你选择");
+    expect(screen.getByTestId("strategy-analysis-loader")).toBeInTheDocument();
+  });
+
+  it("selects a strategy from its detail area or the keyboard", () => {
+    const state = generatingState(false);
+    state.strategyAnalysis = {
+      status: "ready",
+      options: [
+        {
+          strategy: "structure_first",
+          direction: "先建立完整因果骨架。",
+          focus: "物证交叉验证链",
+          strengths: ["结构稳定"],
+          tradeoffs: ["氛围稍后深化"],
+          brief_fit: "直接匹配冻结建案中的推理目标。",
+        },
+      ],
+      recommendedStrategy: "structure_first",
+      recommendationReason: "适合先固定证据闭环。",
+      error: null,
+    };
+    const selectStrategy = vi.fn();
+    installSession(state, { selectStrategy });
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.queryByText(/Agent 建议/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("适合先固定证据闭环。")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("直接匹配冻结建案中的推理目标。"));
+    expect(selectStrategy).toHaveBeenCalledWith("structure_first");
+
+    const card = screen.getByRole("button", {
+      name: "结构优先：物证交叉验证链",
+    });
+    fireEvent.keyDown(card, { key: "Enter" });
+    fireEvent.keyDown(card, { key: " " });
+    expect(selectStrategy).toHaveBeenCalledTimes(3);
+  });
+});
+
 function installSession(
   state: CaseSessionState,
   overrides: Record<string, unknown> = {},

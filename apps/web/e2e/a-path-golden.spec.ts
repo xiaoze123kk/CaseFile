@@ -197,7 +197,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await page.getByRole("button", { name: /继续关键追问/ }).click();
 
   await expect(
-    page.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    page.getByRole("heading", { name: "沿着疑问的微光，辨认故事的方向。" }),
   ).toBeVisible();
   await expectNarrowViewportItem(
     page.getByRole("region", { name: /关键追问 1 \// }),
@@ -217,7 +217,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await page.getByRole("button", { name: /形成创作简报/ }).click();
 
   await expect(
-    page.getByRole("heading", { name: "确认这份建案，准备进入深稿。" }),
+    page.getByRole("heading", { name: "让故事的方向落定，再向深处落笔。" }),
   ).toBeVisible();
   await page.getByRole("radio", { name: /唯一解/ }).check();
   await attachPageEvidence(testInfo, page, "03-brief");
@@ -233,7 +233,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
 
   await expect(
     page.getByRole("heading", {
-      name: "先选定创作策略，再生成一份完整深稿。",
+      name: "择定故事的航向，让它生长成篇。",
     }),
   ).toBeVisible();
   await expect(page.getByText("三种方向已就绪，请由你选择。", { exact: true })).toBeVisible();
@@ -440,7 +440,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await page.goBack();
   await expect(
     page.getByRole("heading", {
-      name: "先选定创作策略，再生成一份完整深稿。",
+      name: "择定故事的航向，让它生长成篇。",
     }),
   ).toBeVisible();
   const restoredCandidateCard = page
@@ -743,7 +743,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(page).toHaveURL(new RegExp(`/\\?project=${projectId}$`));
   await expect(
     page.getByRole("heading", {
-      name: "先选定创作策略，再生成一份完整深稿。",
+      name: "择定故事的航向，让它生长成篇。",
     }),
   ).toBeVisible();
 

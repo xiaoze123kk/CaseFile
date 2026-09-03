@@ -1,0 +1,450 @@
+.revisionStudio {
+  position: relative;
+  display: grid;
+  margin-top: 16px;
+  grid-template-columns: minmax(240px, 0.52fr) minmax(340px, 1.3fr) minmax(190px, 0.45fr);
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--ink);
+  border-left: 4px solid var(--red);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 24px rgba(52, 39, 27, 0.055);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.revisionStudio[data-pending="true"] {
+  border-color: var(--red);
+  box-shadow: 0 12px 30px rgba(197, 43, 13, 0.12);
+}
+
+.revisionStudio[data-pending="true"]::after {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: -22%;
+  width: 18%;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(197, 43, 13, 0.1), transparent);
+  pointer-events: none;
+  transform: skewX(-14deg);
+  animation: revisionStudioScan 1.8s ease-in-out infinite;
+}
+
+.revisionAgent {
+  position: relative;
+  display: flex !important;
+  min-width: 0;
+  align-items: center;
+  gap: 13px !important;
+  padding: 18px;
+  overflow: hidden;
+  color: white;
+  background:
+    radial-gradient(circle at 22% 50%, rgba(197, 43, 13, 0.35), transparent 36%),
+    #25201c;
+}
+
+.revisionAgent::after {
+  position: absolute;
+  right: -24px;
+  bottom: -32px;
+  width: 92px;
+  height: 92px;
+  content: "";
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 22px rgba(255, 255, 255, 0.025);
+}
+
+.revisionAgent > div {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.revisionAgent em {
+  color: #ef9a85;
+  font: normal 700 8px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.12em;
+}
+
+.revisionAgent b {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 15px;
+}
+
+.revisionAgent small {
+  max-width: 180px;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.revisionAgentMark {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 50%;
+  background: rgba(197, 43, 13, 0.72);
+}
+
+.revisionStudio[data-pending="true"] .revisionAgentMark::before {
+  position: absolute;
+  inset: -5px;
+  content: "";
+  border: 2px solid transparent;
+  border-top-color: #ef9a85;
+  border-right-color: rgba(255, 255, 255, 0.46);
+  border-radius: 50%;
+  animation: revisionAgentOrbit 1.2s linear infinite;
+}
+
+.revisionStudio .revisionAgentMark svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentcolor;
+}
+
+.revisionAgentMark i {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: white;
+  opacity: 0;
+}
+
+.revisionAgentMark i:nth-of-type(1) { top: 7px; right: 8px; }
+.revisionAgentMark i:nth-of-type(2) { right: 5px; bottom: 12px; }
+.revisionAgentMark i:nth-of-type(3) { bottom: 6px; left: 12px; }
+
+.revisionStudio[data-pending="true"] .revisionAgentMark i {
+  animation: revisionAgentNode 1.1s ease-in-out infinite;
+}
+
+.revisionStudio[data-pending="true"] .revisionAgentMark i:nth-of-type(2) {
+  animation-delay: 180ms;
+}
+
+.revisionStudio[data-pending="true"] .revisionAgentMark i:nth-of-type(3) {
+  animation-delay: 360ms;
+}
+
+.revisionStudio textarea {
+  width: auto;
+  min-width: 0;
+  min-height: 92px;
+  margin: 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--hairline);
+  background: var(--paper-high);
+  font-size: 12px;
+  line-height: 1.65;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.revisionStudio textarea:focus {
+  border-color: var(--red-line);
+  box-shadow: inset 3px 0 var(--red);
+  outline: 0;
+}
+
+.revisionStudio > button {
+  min-height: 58px;
+  align-self: center;
+  margin: 14px 14px 14px 0;
+  padding: 10px 16px;
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+  box-shadow: 0 7px 16px rgba(197, 43, 13, 0.16);
+}
+
+.revisionStudio > button:not(:disabled):hover {
+  box-shadow: 0 10px 22px rgba(197, 43, 13, 0.23);
+  transform: translateY(-1px);
+}
+
+.revisionStudio[data-pending="true"] > button:disabled {
+  cursor: wait;
+  opacity: 1;
+}
+
+.revisionStudio > button > span:last-child {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.revisionStudio > button > span:last-child small {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.revisionSubmitPulse {
+  display: flex;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.revisionSubmitPulse i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: white;
+  animation: revisionSubmitDot 900ms ease-in-out infinite;
+}
+
+.revisionSubmitPulse i:nth-child(2) { animation-delay: 140ms; }
+.revisionSubmitPulse i:nth-child(3) { animation-delay: 280ms; }
+
+.revisionReceipt {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--red-line);
+  border-left: 4px solid var(--red);
+  border-radius: 7px;
+  background: rgba(255, 250, 247, 0.94);
+  box-shadow: 0 10px 24px rgba(197, 43, 13, 0.06);
+  animation: confirmationPaperIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.revisionReceipt > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--red-line);
+  background: var(--red-soft);
+}
+
+.revisionReceipt > header > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: white;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.revisionReceipt > header svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.revisionReceipt > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.revisionReceipt > header small {
+  color: var(--red);
+  font: 700 8px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.12em;
+}
+
+.revisionReceipt > header b {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+}
+
+.revisionReceipt > header p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.revisionReceipt ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.revisionReceipt li {
+  display: grid;
+  grid-template-columns: 130px repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.revisionReceipt li > b {
+  color: var(--red);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+}
+
+.revisionReceipt li > div {
+  display: grid;
+  gap: 3px;
+}
+
+.revisionReceipt li span {
+  color: var(--ink-faint);
+  font: 8px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.revisionReceipt del,
+.revisionReceipt ins {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.55;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.revisionReceipt del {
+  opacity: 0.62;
+}
+
+.revisionReceipt ins {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.revisionReceipt > footer,
+.revisionNoChanges {
+  margin: 0;
+  padding: 9px 15px;
+  color: var(--ink-faint);
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.revisionStudio svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+@media (max-width: 1180px) {
+  .revisionStudio {
+    grid-template-columns: 1fr auto;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .revisionStudio {
+    grid-template-columns: 1fr;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: auto;
+  }
+
+  .revisionStudio textarea {
+    margin-bottom: 8px;
+  }
+
+  .revisionStudio > button {
+    margin: 0 14px 14px;
+  }
+
+  .revisionReceipt li {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+@keyframes confirmationPaperIn {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes revisionStudioScan {
+  from {
+    transform: translateX(0) skewX(-14deg);
+  }
+
+  to {
+    transform: translateX(780%) skewX(-14deg);
+  }
+}
+
+@keyframes revisionAgentOrbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes revisionAgentNode {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(0.7);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes revisionSubmitDot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .revisionStudio *,
+  .revisionStudio *::before,
+  .revisionStudio *::after,
+  .revisionReceipt,
+  .revisionReceipt * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
