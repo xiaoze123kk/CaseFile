@@ -19,16 +19,24 @@ export function ProductShell({ children }: { children: ReactNode }) {
   }, []);
 
   const intakeMode = pathname === "/";
+  const visualIntakeMode = pathname === "/visual-intake";
+
+  const shellKind = visualIntakeMode
+    ? "intake-visual-demo"
+    : intakeMode
+      ? "intake-center-v1"
+      : "analyst-workbench-v1";
+  const shellVisual = visualIntakeMode
+    ? "living-dossier-spine"
+    : intakeMode
+      ? "digital-dossier"
+      : "graphite-paper-copper";
 
   return (
     <CaseSessionProvider>
       <div
-        data-casefile-kind={
-          intakeMode ? "intake-center-v1" : "analyst-workbench-v1"
-        }
-        data-casefile-visual={
-          intakeMode ? "digital-dossier" : "graphite-paper-copper"
-        }
+        data-casefile-kind={shellKind}
+        data-casefile-visual={shellVisual}
       >
         {children}
       </div>

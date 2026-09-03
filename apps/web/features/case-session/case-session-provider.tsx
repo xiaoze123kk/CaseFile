@@ -23,9 +23,7 @@ import type {
   TaskView,
 } from "@/lib/api-client";
 import {
-  canFreezeBriefReview,
   createEmptyBrief,
-  missingHardFields,
   mergeReviewIntoBrief,
   type IntakeAnswer,
   type IntakeBrief,
@@ -201,9 +199,7 @@ export interface CaseSessionState {
 
 type CaseSessionAction =
   | { type: "patch"; patch: Partial<CaseSessionState> }
-  | { type: "set_review"; review: BriefReview }
-  | { type: "save_review" }
-  | { type: "freeze_review" }
+  | { type: "confirm_brief"; review: BriefReview; versionNo: number }
   | { type: "start_generation"; strategies: CandidateSlotStrategy[] }
   | {
       type: "update_generation_slot";
@@ -266,23 +262,13 @@ export function caseSessionReducer(
   action: CaseSessionAction,
 ): CaseSessionState {
   if (action.type === "patch") return { ...state, ...action.patch };
-  if (action.type === "set_review") {
-    return { ...state, review: action.review };
-  }
-  if (action.type === "save_review") {
-    if (!state.review) return state;
+  if (action.type === "confirm_brief") {
     return {
       ...state,
-      review: { ...state.review, dirty: false, saved: true },
-    };
-  }
-  if (action.type === "freeze_review") {
-    if (!state.review || !canFreezeBriefReview(state.review)) return state;
-    return {
-      ...state,
-      step: "candidates",
-      furthestStep: Math.max(state.furthestStep, 4),
-      frozenBriefVersion: state.workingBriefVersion,
+      review: action.review,
+      furthestStep: Math.max(state.furthestStep, 3),
+      workingBriefVersion: action.versionNo,
+      frozenBriefVersion: action.versionNo,
     };
   }
   if (action.type === "start_generation") {
@@ -440,6 +426,11 @@ export interface PolishResult {
   parentSourceRecordId: number | null;
 }
 
+export interface DialogueRevisionResult {
+  baseBrief: IntakeBrief;
+  candidate: BriefCandidate;
+}
+
 /** 被历史恢复顶替的当前会话，保存在单槽暂存中。 */
 interface StashedSession {
   projectId: number;
@@ -453,10 +444,7 @@ interface CaseSessionContextValue {
   activeProjectId: number | null;
   activeCandidate: SessionWorkbenchCandidate | null;
   patchState: (patch: Partial<CaseSessionState>) => void;
-  beginBriefReview: () => Promise<void>;
-  setReview: (review: BriefReview) => void;
-  saveReview: () => Promise<void>;
-  freezeReview: () => Promise<boolean>;
+  confirmBriefAndContinue: (draftOverride?: IntakeBrief) => Promise<number>;
   generateCandidates: (
     strategy?: CandidateSlotStrategy,
     attempt?: number,
@@ -485,12 +473,12 @@ interface CaseSessionContextValue {
   continueToQuestions: () => Promise<void>;
   generateMoreQuestions: () => Promise<void>;
   generateBriefFromAnswers: () => Promise<void>;
-  createManualBrief: () => Promise<void>;
   saveCandidateAsNew: () => Promise<void>;
-  createDialogueRevision: (instruction: string) => Promise<void>;
+  createDialogueRevision: (
+    instruction: string,
+  ) => Promise<DialogueRevisionResult>;
   saveCandidateBookmark: (candidateId: number) => Promise<void>;
   activateCandidate: (candidateId: number) => Promise<void>;
-  reextractReview: () => Promise<BriefReview>;
   generateAuthorAnswer: (draft?: IntakeBrief) => Promise<string>;
 }
 
@@ -748,6 +736,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const current = stateRef.current;
     let intake =
       intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
+    const baseCandidateId = intake.current_candidate_id;
     for (const question of intake.questions) {
       const answer = current.answers[question.question_key];
       if (!answer) continue;
@@ -777,6 +766,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           projectIdRef.current!,
           revision,
           provider,
+          baseCandidateId,
+          baseCandidateId === null
+            ? null
+            : "根据最新起案与关键问答重新整理简报；保留当前候选中未受影响的作者修改。",
         ),
       );
       return waitForTask(projectIdRef.current!, task.task_run_id);
@@ -793,30 +786,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       },
     });
   }, [ensureProjectAndSource, startWithFreshIntakeRevision]);
-
-  const createManualBrief = useCallback(async () => {
-    const current = stateRef.current;
-    const intake =
-      intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
-    const content = mapBriefToCandidateContent(
-      createEmptyBrief(current.sourceText),
-    );
-    intakeRef.current = await createBriefCandidate(
-      projectIdRef.current!,
-      intake.revision,
-      content,
-    );
-    const mapped = mapIntakeToSessionState(intakeRef.current);
-    dispatch({
-      type: "patch",
-      patch: {
-        step: "confirmation",
-        furthestStep: Math.max(current.furthestStep, 2),
-        ...mapped,
-        brief: mapped.brief ?? current.brief,
-      },
-    });
-  }, [ensureProjectAndSource]);
 
   const saveCandidateAsNew = useCallback(async () => {
     const current = stateRef.current;
@@ -844,6 +813,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       throw new CaseSessionError("先保存一个候选，再发起对话修改。");
     }
     const baseCandidateId = intake.current_candidate_id;
+    const baseBrief =
+      current.briefCandidates.find(
+        (candidate) => candidate.id === baseCandidateId,
+      )?.brief ?? current.brief;
     await runTaskWithProviderFallback(async (provider) => {
       // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
       const fresh = await fetchCaseIntake(projectIdRef.current!);
@@ -858,7 +831,17 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     });
     intakeRef.current = await fetchCaseIntake(projectIdRef.current);
     const mapped = mapIntakeToSessionState(intakeRef.current);
-    dispatch({ type: "patch", patch: { ...mapped, brief: current.brief } });
+    const candidate = mapped.briefCandidates.find(
+      (item) => item.id === mapped.currentBriefCandidateId,
+    );
+    if (!candidate) {
+      throw new CaseSessionError("Agent 已完成修改，但新候选暂时无法读取。");
+    }
+    dispatch({
+      type: "patch",
+      patch: { ...mapped, brief: mapped.brief ?? current.brief },
+    });
+    return { baseBrief, candidate };
   }, []);
 
   const saveCandidateBookmark = useCallback(async (candidateId: number) => {
@@ -898,101 +881,97 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const beginBriefReview = useCallback(async () => {
-    const current = stateRef.current;
-    const projectId = projectIdRef.current;
-    if (projectId === null) {
-      throw new CaseSessionError("请先完成最初想法与追问。");
-    }
-    // 这个入口可能在上一次请求已经推进服务端状态、但页面尚未完成迁移时再次点击。
-    // 每次都读取权威 Intake，避免用旧 revision 重复提交并卡在第 3 步。
-    let intake = await fetchCaseIntake(projectId);
-    intakeRef.current = intake;
-    const serverAlreadyInReview = intake.stage === "brief_review";
-    if (!serverAlreadyInReview) {
-      const missing = missingHardFields(current.brief);
-      if (missing.length) {
-        throw new CaseSessionError("进入审阅前请补齐：" + missing.join("、") + "。");
+  const confirmBriefAndContinue = useCallback(
+    async (draftOverride?: IntakeBrief) => {
+      const current = stateRef.current;
+      const draft = draftOverride ?? current.brief;
+      const projectId = projectIdRef.current;
+      if (projectId === null) {
+        throw new CaseSessionError("请先完成最初想法与追问。");
       }
-    }
-    const currentCandidate = currentIntakeCandidate(intake);
-    let adoptedBrief: Awaited<ReturnType<typeof fetchBrief>>;
-    if (
-      serverAlreadyInReview &&
-      currentCandidate &&
-      briefsMatch(current.brief, currentCandidate.content)
-    ) {
-      // 简报已在服务端确认且内容未变，直接读取，避免重复采用。
-      adoptedBrief = await fetchBrief(projectId);
-    } else {
-      let candidateId = intake.current_candidate_id;
+      if (current.frozenBriefVersion !== null) {
+        throw new CaseSessionError("创作简报已经冻结；修改内容请先建立简报修订。");
+      }
+
+      // 每次从权威 Intake 开始。上次确认即使只完成了采用或写回，
+      // 也能从 brief_review 状态继续，而不会重复创建不可变版本。
+      let intake = await fetchCaseIntake(projectId);
+      intakeRef.current = intake;
+      let candidate = currentIntakeCandidate(intake);
+
       if (
-        candidateId === null ||
-        !currentCandidate ||
-        !briefsMatch(current.brief, currentCandidate.content)
+        intake.stage === "brief_review" &&
+        (!candidate || !briefsMatch(draft, candidate.content))
       ) {
-        intake = await createBriefCandidate(
+        intake = await beginBriefRevisionRequest(projectId);
+        intakeRef.current = intake;
+        candidate = currentIntakeCandidate(intake);
+      }
+
+      let adoptedBrief: Awaited<ReturnType<typeof fetchBrief>>;
+      if (
+        intake.stage === "brief_review" &&
+        candidate &&
+        briefsMatch(draft, candidate.content)
+      ) {
+        adoptedBrief = await fetchBrief(projectId);
+      } else {
+        let candidateId = intake.current_candidate_id;
+        if (
+          candidateId === null ||
+          !candidate ||
+          !briefsMatch(draft, candidate.content)
+        ) {
+          intake = await createBriefCandidate(
+            projectId,
+            intake.revision,
+            mapBriefToCandidateContent(draft),
+            candidateId,
+          );
+          intakeRef.current = intake;
+          candidateId = intake.current_candidate_id;
+        }
+        if (candidateId === null) {
+          throw new CaseSessionError("当前还没有可采用的候选简报。");
+        }
+        const adopted = await adoptBriefCandidate(
           projectId,
           intake.revision,
-          mapBriefToCandidateContent(current.brief),
           candidateId,
+          intake.brief.draft_revision,
         );
-        intakeRef.current = intake;
-        candidateId = intake.current_candidate_id;
+        intakeRef.current = adopted.intake;
+        adoptedBrief = adopted.brief;
       }
-      if (candidateId === null) {
-        throw new CaseSessionError("当前还没有可采用的候选简报。");
-      }
-      const adopted = await adoptBriefCandidate(
+
+      const pendingDecisions = current.questions
+        .filter((question) => current.answers[question.key]?.pending)
+        .map((question) => question.prompt);
+      const review = {
+        ...mapBriefContentToReview(adoptedBrief.content, pendingDecisions),
+        dirty: false,
+        saved: true,
+      };
+      const content = mapReviewToBriefContent(review, draft, adoptedBrief.content);
+      const savedBrief = await updateBrief(
         projectId,
-        intake.revision,
-        candidateId,
-        intake.brief.draft_revision,
+        adoptedBrief.draft_revision,
+        content,
       );
-      intakeRef.current = adopted.intake;
-      adoptedBrief = adopted.brief;
-    }
-    briefRef.current = adoptedBrief;
-    const pendingDecisions = current.questions
-      .filter((question) => current.answers[question.key]?.pending)
-      .map((question) => question.prompt);
-    const review = mapBriefContentToReview(
-      adoptedBrief.content,
-      pendingDecisions,
-    );
-    dispatch({ type: "set_review", review });
-    dispatch({
-      type: "patch",
-      patch: {
-        step: "review",
-        furthestStep: Math.max(current.furthestStep, 3),
-        brief: current.brief,
-      },
-    });
-  }, []);
-
-  const setReview = useCallback((review: BriefReview) => {
-    dispatch({ type: "set_review", review });
-  }, []);
-
-  const saveReview = useCallback(async () => {
-    const current = stateRef.current;
-    if (!current.review) return;
-    const projectId = projectIdRef.current;
-    if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
-    const brief = briefRef.current ?? (await fetchBrief(projectId));
-    const content = mapReviewToBriefContent(
-      current.review,
-      current.brief,
-      brief.content,
-    );
-    briefRef.current = await updateBrief(
-      projectId,
-      brief.draft_revision,
-      content,
-    );
-    dispatch({ type: "save_review" });
-  }, []);
+      briefRef.current = savedBrief;
+      const version = await confirmBrief(projectId, savedBrief.draft_revision);
+      try {
+        briefRef.current = await fetchBrief(projectId);
+      } catch {
+        // 冻结已经持久化。后续策略分析会按需重新读取 Brief。
+        briefRef.current = null;
+      }
+      dispatch({ type: "confirm_brief", review, versionNo: version.version_no });
+      dispatch({ type: "patch", patch: { brief: draft } });
+      return version.version_no;
+    },
+    [],
+  );
 
   const runAnchorExtract = useCallback(
     async (
@@ -1030,43 +1009,19 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const reextractReview = useCallback(async () => {
-    const current = stateRef.current;
-    if (!current.review) throw new CaseSessionError("审阅尚未建立。");
-    const result = await runAnchorExtract("extract");
-    return {
-      ...current.review,
-      authorAnchors: result.author_anchors.map((anchor, index) => ({
-        id: `anchor-agent-${index + 1}`,
-        statement: anchor.statement,
-        origin: "agent" as const,
-      })),
-      creativeConstraints: result.creative_constraints.map(
-        (constraint, index) => ({
-          id: `constraint-agent-${index + 1}`,
-          statement: constraint.statement,
-          strength: constraint.suggested_strength,
-          origin: "agent" as const,
-        }),
-      ),
-      dirty: true,
-      saved: false,
-    };
-  }, [runAnchorExtract]);
-
   const generateAuthorAnswer = useCallback(async (draftOverride?: IntakeBrief) => {
     const current = stateRef.current;
     const draft = draftOverride ?? current.brief;
     const projectId = projectIdRef.current;
     if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
     const brief = briefRef.current ?? (await fetchBrief(projectId));
-    const content = current.review
-      ? undefined
-      : mapIntakeBriefToAnchorContent(
-          draft,
-          brief.content,
-          intakeRef.current?.current_source?.source_record_id ?? null,
-        );
+    // 答案候选必须反映作者此刻看到的表单，即使会话中仍保留旧的
+    // review 读模型；后端会把它作为临时上下文，而不是可冻结 Brief 校验。
+    const content = mapIntakeBriefToAnchorContent(
+      draft,
+      brief.content,
+      intakeRef.current?.current_source?.source_record_id ?? null,
+    );
     const result = await runAnchorExtract("suggest_author_answer", content);
     const suggestion = result.suggested_author_answer?.trim();
     if (!suggestion) {
@@ -1074,32 +1029,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     }
     return suggestion;
   }, [runAnchorExtract]);
-
-  const freezeReview = useCallback(async () => {
-    const current = stateRef.current;
-    if (!current.review || !canFreezeBriefReview(current.review)) return false;
-    if (current.frozenBriefVersion !== null) {
-      // 已冻结的版本不允许直接再次确认；修改必须走“建立简报修订”。
-      return false;
-    }
-    const projectId = projectIdRef.current;
-    if (projectId === null) return false;
-    // adopt 投影只产出边界原文、不产出原子约束；冻结前先持久化审阅，
-    // 让服务端拿到原子项并通过 brief_creative_constraints_required 门禁。
-    await saveReview();
-    const brief = briefRef.current ?? (await fetchBrief(projectId));
-    const version = await confirmBrief(projectId, brief.draft_revision);
-    briefRef.current = await fetchBrief(projectId);
-    dispatch({ type: "freeze_review" });
-    dispatch({
-      type: "patch",
-      patch: {
-        workingBriefVersion: version.version_no,
-        frozenBriefVersion: version.version_no,
-      },
-    });
-    return true;
-  }, [saveReview]);
 
   const analyzeStrategies = useCallback(async (refresh = false) => {
     const current = stateRef.current;
@@ -1502,12 +1431,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           await generateBriefFromAnswers();
           await refreshLatest();
           return null;
-        case "brief_anchor_extract": {
-          const review = await reextractReview();
-          dispatch({ type: "set_review", review });
-          await refreshLatest();
-          return null;
-        }
         case "brief_strategy_options":
           await analyzeStrategies(true);
           await refreshLatest();
@@ -1532,7 +1455,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       analyzeStrategies,
       generateBriefFromAnswers,
       generateCandidates,
-      reextractReview,
       requestQuestions,
       submitPolish,
     ],
@@ -1763,20 +1685,20 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       review = mapBriefContentToReview(brief.content, pendingDecisions);
       const frozenVersionNo = brief.current_version_no ?? null;
       if (brief.current_version_id !== null && frozenVersionNo !== null) {
-        // 简报已冻结：审阅页按“已冻结”恢复，不再要求作者重新保存。
+        // 简报已冻结：保留生成所需读模型，默认进入深稿候选。
         review = { ...review, dirty: false, saved: true };
-        // 简报已冻结：回到候选稿步骤，恢复工作稿列表与采用状态。
         frozenBriefVersion = frozenVersionNo;
         step = "candidates";
-        furthestStep = 4;
+        furthestStep = 3;
         const candidateViews = await fetchDraftCandidates(projectId);
         const candidateState = mapAuthoritativeDraftCandidateState(candidateViews, review, null);
         draftCandidates = candidateState.draftCandidates;
         adoptedCandidateId = candidateState.adoptedCandidateId;
         previewCandidateId = candidateState.previewCandidateId;
       } else {
-        step = "review";
-        furthestStep = 3;
+        // brief_review 仅是后台生命周期；未冻结时仍恢复到可见的第 3 步。
+        step = "confirmation";
+        furthestStep = 2;
       }
     }
     projectIdRef.current = projectId;
@@ -1985,10 +1907,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       activeProjectId,
       activeCandidate,
       patchState,
-      beginBriefReview,
-      setReview,
-      saveReview,
-      freezeReview,
+      confirmBriefAndContinue,
       analyzeStrategies,
       selectStrategy,
       generateCandidates,
@@ -2009,12 +1928,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       continueToQuestions,
       generateMoreQuestions,
       generateBriefFromAnswers,
-      createManualBrief,
       saveCandidateAsNew,
       createDialogueRevision,
       saveCandidateBookmark,
       activateCandidate,
-      reextractReview,
       generateAuthorAnswer,
     }),
     [
@@ -2024,13 +1941,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       analyzeStrategies,
       adoptCandidate,
       adoptPolish,
-      beginBriefReview,
       beginBriefRevision,
       candidateStatus,
       continueToQuestions,
+      confirmBriefAndContinue,
       createDialogueRevision,
-      createManualBrief,
-      freezeReview,
       generateBriefFromAnswers,
       generateCandidates,
       resumeGeneration,
@@ -2042,15 +1957,12 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       patchState,
       previewCandidate,
       resetSession,
-      reextractReview,
       restoreStashedSession,
       stashAvailable,
       stashCurrentSession,
       saveCandidateAsNew,
       saveCandidateBookmark,
-      saveReview,
       selectStrategy,
-      setReview,
       state,
       submitPolish,
     ],

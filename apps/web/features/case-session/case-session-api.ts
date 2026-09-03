@@ -113,6 +113,18 @@ export function isBriefIntakeRevisionConflict(error: unknown): boolean {
   );
 }
 
+/** 判断建案确认链是否因 Intake 或 Brief 乐观并发版本过期而中断。 */
+export function isBriefConfirmationRevisionConflict(error: unknown): boolean {
+  const codes = new Set([
+    "brief_intake_revision_conflict",
+    "brief_revision_conflict",
+  ]);
+  return (
+    (error instanceof ApiError && codes.has(error.body.code)) ||
+    (error instanceof CaseSessionError && codes.has(error.failureCode ?? ""))
+  );
+}
+
 /**
  * 依次用已配置的 Provider 执行同一操作；仅在认证失败时回退到下一个
  * Provider，其他错误直接抛出。返回实际生效的 Provider 与结果。

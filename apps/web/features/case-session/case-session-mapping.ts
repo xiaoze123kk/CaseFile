@@ -109,8 +109,8 @@ function splitLines(value: string): string[] {
 }
 
 // 服务端 adopt 投影只产出 boundary_text（"必须：…"/"偏好：…" 行），不产出
-// creative_constraints；这里把边界原文解析为原子约束，恢复 fixture 时代
-// "进入审阅即可冻结" 的交互，原子项内容与审阅页展示的边界原文一致。
+// creative_constraints；这里把边界原文确定性解析为原子约束，供第 3 步
+// 后台确认链写回，原子项不会改写作者确认过的边界内容。
 function boundaryLinesToConstraints(
   boundaryText: string,
 ): ConstraintReview[] {
@@ -379,7 +379,7 @@ export function mapBriefContentToReview(
     creativeConstraints,
     pendingDecisions,
     dirty: false,
-    // 正式审阅要求作者先显式保存一次，不再把“刚进入审阅”当作“已保存”。
+    // 调用方只有在后台确认链成功写回后才会将其标记为已保存。
     saved: false,
   };
 }

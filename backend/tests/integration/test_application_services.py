@@ -177,6 +177,55 @@ def test_brief_service_enforces_root_schema_conditions(
         assert WorkflowService(session).get_brief(actor_id, project_id)["draft_revision"] == 1
 
 
+def test_author_answer_suggestion_accepts_incomplete_brief_context(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        project = CaseFileService(session).create_project(
+            actor_id,
+            ProjectCreate(title="未完成建案", description=None, profile=PROFILE),
+        )
+    project_id = int(project["id"])
+
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with factory() as session:
+            workflow = WorkflowService(session)
+            workflow.save_provider_setting(
+                actor_id,
+                provider="openai",
+                api_key="sk-test-author-answer-suggestion",
+                model_id="gpt-5.6-sol",
+                model_is_custom=False,
+            )
+            task = workflow.create_anchor_extract_task(
+                actor_id,
+                project_id,
+                expected_brief_revision=1,
+                provider="openai",
+                mode="suggest_author_answer",
+                content={},
+            )
+
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="author-answer-suggestion-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            completed = WorkflowService(session).get_task(
+                actor_id,
+                project_id,
+                task["task_run_id"],
+            )
+
+    assert completed["status"] == "succeeded"
+    assert completed["result"]["suggested_author_answer"]
+
+
 def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
     workflow_database: tuple[Engine, int, str],
 ) -> None:

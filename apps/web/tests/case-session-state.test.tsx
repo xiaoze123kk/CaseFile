@@ -17,9 +17,11 @@ import {
 } from "@/features/case-session/case-session-provider";
 import {
   atomicReviewComplete,
+  applyBriefResolutionDecision,
   canFreezeBriefReview,
   candidateHistoryVersions,
   createBriefReview,
+  firstBriefConfirmationIssue,
   sampleIdea,
   synthesizeBrief,
 } from "@/features/intake/intake-model";
@@ -52,6 +54,58 @@ function reviewedBriefFixture() {
 }
 
 describe("case session state model", () => {
+  it("reports deterministic Brief confirmation issues in a stable order", () => {
+    const { brief } = reviewedBriefFixture();
+    brief.sources.conclusionMode = "user_confirmed";
+    brief.sources.resolutionMode = "user_confirmed";
+
+    expect(
+      firstBriefConfirmationIssue({
+        ...brief,
+        concept: "",
+        reasoningGoal: "",
+      }),
+    ).toEqual({ kind: "missing_field", field: "concept", label: "一句话概念" });
+    expect(
+      firstBriefConfirmationIssue({
+        ...brief,
+        sources: { ...brief.sources, resolutionMode: "unresolved" },
+      }),
+    ).toEqual({ kind: "resolution_choice_required" });
+    expect(
+      firstBriefConfirmationIssue({
+        ...brief,
+        conclusionMode: "unique",
+        resolutionMode: "open",
+        authorAnswer: "",
+      }),
+    ).toEqual({ kind: "unique_open_conflict" });
+    expect(
+      firstBriefConfirmationIssue({ ...brief, authorAnswer: "" }),
+    ).toEqual({ kind: "author_answer_required", field: "authorAnswer" });
+    expect(firstBriefConfirmationIssue(brief)).toBeNull();
+  });
+
+  it("applies every inline resolution decision without retaining hidden answers", () => {
+    const { brief } = reviewedBriefFixture();
+
+    const author = applyBriefResolutionDecision(brief, "author_anchored");
+    expect(author.resolutionMode).toBe("author_anchored");
+    expect(author.conclusionMode).toBe(brief.conclusionMode);
+    expect(author.authorAnswer).toBe(brief.authorAnswer);
+
+    const agent = applyBriefResolutionDecision(brief, "agent_proposed");
+    expect(agent.resolutionMode).toBe("agent_proposed");
+    expect(agent.authorAnswer).toBe("");
+    expect(agent.sources.resolutionMode).toBe("user_confirmed");
+
+    const open = applyBriefResolutionDecision(brief, "open");
+    expect(open.resolutionMode).toBe("open");
+    expect(open.conclusionMode).toBe("open_interpretation");
+    expect(open.authorAnswer).toBe("");
+    expect(open.sources.conclusionMode).toBe("user_confirmed");
+  });
+
   it("numbers candidate history from one instead of exposing database identifiers", () => {
     expect(
       candidateHistoryVersions([{ id: 31 }, { id: 30 }]),
@@ -115,15 +169,20 @@ describe("case session state model", () => {
     const { brief, review } = reviewedBriefFixture();
     let state: CaseSessionState = {
       ...createInitialCaseSessionState(),
+      step: "confirmation",
+      furthestStep: 2,
       brief,
       review,
     };
 
-    state = caseSessionReducer(state, { type: "freeze_review" });
-    expect(state.frozenBriefVersion).toBeNull();
-    state = caseSessionReducer(state, { type: "save_review" });
-    state = caseSessionReducer(state, { type: "freeze_review" });
+    state = caseSessionReducer(state, {
+      type: "confirm_brief",
+      review: { ...review, saved: true },
+      versionNo: 1,
+    });
     expect(state.frozenBriefVersion).toBe(1);
+    expect(state.step).toBe("confirmation");
+    expect(state.furthestStep).toBe(3);
 
     const candidates = buildWorkbenchCandidates(
       {

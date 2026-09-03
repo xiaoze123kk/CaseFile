@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import {
-  type ReactNode,
   type SetStateAction,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -18,6 +18,7 @@ import {
   archiveIdea,
   regenerateIdea,
   createCaseProject,
+  isBriefConfirmationRevisionConflict,
   type IdeaGenerationPreferences,
 } from "@/features/case-session/case-session-api";
 
@@ -25,8 +26,8 @@ import {
   candidateOriginLabels,
   candidateHistoryVersions,
   conclusionModes,
-  fieldSourceLabels,
-  intakeRoutes,
+  applyBriefResolutionDecision,
+  firstBriefConfirmationIssue,
   missingHardFields,
   polishModes,
   intakeSteps,
@@ -35,6 +36,9 @@ import {
   type IntakeAnswer,
   type IntakeBrief,
   type BriefCandidate,
+  type BriefConfirmationField,
+  type BriefConfirmationIssue,
+  type BriefResolutionDecision,
   type IntakeConstraint,
   type FieldSource,
   type IntakePolishMode,
@@ -43,16 +47,29 @@ import {
   type IntakeStep,
   type IdeaCandidateView,
 } from "./intake-model";
-import { BriefReviewStage } from "./brief-review-stage";
-import { CaseHistoryDrawer } from "./case-history-drawer";
+import {
+  CaseHistoryDrawer,
+  loadCaseHistoryEntries,
+  type CaseHistoryEntry,
+} from "./case-history-drawer";
 import { DraftCandidatesStage } from "./draft-candidates-stage";
 import IdeaCandidatesStage from "./idea-candidates-stage";
+import { FieldShell, SourceBadge } from "./intake-field-shell";
+import { Glyph } from "./intake-glyph";
+import { IntakeLanding } from "./intake-landing";
 import ReverseParseStage from "./reverse-parse-stage";
 import {
   OutlineStagesEditor,
   SellingPointsEditor,
 } from "./structured-list-editor";
+import {
+  BriefConfirmationInterruption,
+  BriefConfirmationTransition,
+  BriefRevisionDialog,
+} from "./brief-confirmation-feedback";
+import feedbackStyles from "./brief-confirmation-feedback.module.css";
 import stageStyles from "./intake-early-stages.module.css";
+import revisionStyles from "./intake-revision.module.css";
 import styles from "./intake-center.module.css";
 
 type BriefTextField =
@@ -65,6 +82,46 @@ type BriefTextField =
   | "riskNotes";
 
 type RawIdeaRecord = Record<string, unknown>;
+
+type BriefConfirmationPhase =
+  | "idle"
+  | "processing"
+  | "needs_input"
+  | "success"
+  | "failed";
+
+type BriefRevisionChangeKey =
+  | "concept"
+  | "reasoningGoal"
+  | "conclusionMode"
+  | "resolutionMode"
+  | "authorAnswer"
+  | "sellingPoints"
+  | "outline"
+  | "scopeEstimate"
+  | "riskNotes"
+  | "constraints";
+
+interface BriefRevisionChange {
+  key: BriefRevisionChangeKey;
+  label: string;
+  before: string;
+  after: string;
+}
+
+interface DialogueRevisionReceipt {
+  projectId: number | null;
+  instruction: string;
+  candidateLabel: string;
+  changes: BriefRevisionChange[];
+}
+
+interface IntakeDependencyInvalidation {
+  projectId: number | null;
+  questions: boolean;
+  brief: boolean;
+  changedAnswerKeys: string[];
+}
 
 const taskTypeLabels: Record<string, string> = {
   brief_polish: "原稿润色",
@@ -80,123 +137,148 @@ function taskTypeLabel(taskType: string) {
   return taskTypeLabels[taskType] ?? "任务";
 }
 
-function Glyph({
-  name,
-}: {
-  name: "archive" | "arrow" | "check" | "compare" | "history" | "spark" | "target";
-}) {
-  if (name === "check") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="m5 12.5 4.2 4.2L19 7" />
-      </svg>
-    );
-  }
-  if (name === "compare") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M7 5h12M7 12h8M7 19h12M3 5h.01M3 12h.01M3 19h.01" />
-      </svg>
-    );
-  }
-  if (name === "history") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 7.5V12l3 2" />
-      </svg>
-    );
-  }
-  if (name === "archive") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M4 7.5h16v12H4zM3 4.5h18v3H3zM8 12h8M9 15.5h6" />
-      </svg>
-    );
-  }
-  if (name === "spark") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M12 2.8 13.8 9l6.2 1.8-6.2 1.8L12 19l-1.8-6.4L4 10.8 10.2 9 12 2.8Z" />
-      </svg>
-    );
-  }
-  if (name === "target") {
-    return (
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="8" />
-        <circle cx="12" cy="12" r="3" />
-        <path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" />
-      </svg>
-    );
-  }
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M5 12h14M14 6l6 6-6 6" />
-    </svg>
-  );
+function formatCandidateTimestamp(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return [
+    `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`,
+    `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`,
+  ].join(" ");
 }
 
-function SourceBadge({ source }: { source: FieldSource }) {
-  return (
-    <span className={stageStyles.sourceBadge} data-source={source}>
-      <i aria-hidden="true" />
-      {fieldSourceLabels[source]}
-    </span>
-  );
+function compactRevisionText(value: string) {
+  const compact = value.trim().replace(/\s+/gu, " ");
+  if (!compact) return "未填写";
+  return compact.length > 58 ? compact.slice(0, 58) + "…" : compact;
 }
 
-function FieldShell({
-  label,
-  hint,
-  source,
-  required = false,
-  wide = false,
-  children,
-}: {
-  label: string;
-  hint: string;
-  source: FieldSource;
-  required?: boolean;
-  wide?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      className={stageStyles.fieldShell}
-      data-required={required || undefined}
-      data-wide={wide}
-    >
-      <header>
-        <div>
-          <label>
-            {label}
-            {required ? <em aria-hidden="true">*</em> : null}
-          </label>
-          <small>{hint}</small>
-        </div>
-        <SourceBadge source={source} />
-      </header>
-      {children}
-    </section>
+function briefListSummary(value: string, unit: string) {
+  const items = value
+    .split(/\r?\n/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length
+    ? `${items.length} ${unit} · ${compactRevisionText(items[0] ?? "")}`
+    : `0 ${unit}`;
+}
+
+function briefConstraintSummary(brief: IntakeBrief) {
+  const items = brief.constraints.filter((constraint) =>
+    constraint.statement.trim(),
   );
+  if (!items.length) return "0 条";
+  return `${items.length} 条 · ${items
+    .slice(0, 2)
+    .map((constraint) => constraint.label)
+    .join("、")}`;
+}
+
+function describeBriefRevision(
+  before: IntakeBrief,
+  after: IntakeBrief,
+): BriefRevisionChange[] {
+  const changes: BriefRevisionChange[] = [];
+  const addTextChange = (
+    key: Exclude<
+      BriefRevisionChangeKey,
+      "conclusionMode" | "resolutionMode" | "sellingPoints" | "outline" | "constraints"
+    >,
+    label: string,
+  ) => {
+    if (before[key].trim() === after[key].trim()) return;
+    changes.push({
+      key,
+      label,
+      before: compactRevisionText(before[key]),
+      after: compactRevisionText(after[key]),
+    });
+  };
+
+  addTextChange("concept", "一句话概念");
+  addTextChange("reasoningGoal", "推理目标");
+
+  if (before.conclusionMode !== after.conclusionMode) {
+    changes.push({
+      key: "conclusionMode",
+      label: "结论模式",
+      before:
+        conclusionModes.find((mode) => mode.value === before.conclusionMode)
+          ?.label ?? before.conclusionMode,
+      after:
+        conclusionModes.find((mode) => mode.value === after.conclusionMode)
+          ?.label ?? after.conclusionMode,
+    });
+  }
+  if (before.resolutionMode !== after.resolutionMode) {
+    changes.push({
+      key: "resolutionMode",
+      label: "结论处理方式",
+      before:
+        resolutionModes.find((mode) => mode.value === before.resolutionMode)
+          ?.label ?? before.resolutionMode,
+      after:
+        resolutionModes.find((mode) => mode.value === after.resolutionMode)
+          ?.label ?? after.resolutionMode,
+    });
+  }
+
+  addTextChange("authorAnswer", "作者答案");
+
+  if (before.sellingPoints.trim() !== after.sellingPoints.trim()) {
+    changes.push({
+      key: "sellingPoints",
+      label: "核心卖点",
+      before: briefListSummary(before.sellingPoints, "项"),
+      after: briefListSummary(after.sellingPoints, "项"),
+    });
+  }
+  if (before.outline.trim() !== after.outline.trim()) {
+    changes.push({
+      key: "outline",
+      label: "内容骨架",
+      before: briefListSummary(before.outline, "阶段"),
+      after: briefListSummary(after.outline, "阶段"),
+    });
+  }
+
+  addTextChange("scopeEstimate", "预计规模");
+  addTextChange("riskNotes", "风险提示");
+
+  const constraintSnapshot = (brief: IntakeBrief) =>
+    JSON.stringify(
+      brief.constraints.map(({ key, statement, strength }) => ({
+        key,
+        statement: statement.trim(),
+        strength,
+      })),
+    );
+  if (constraintSnapshot(before) !== constraintSnapshot(after)) {
+    changes.push({
+      key: "constraints",
+      label: "创作约束",
+      before: briefConstraintSummary(before),
+      after: briefConstraintSummary(after),
+    });
+  }
+  return changes;
 }
 
 export function IntakeCenter() {
   const {
     state,
     patchState,
-    beginBriefReview,
+    confirmBriefAndContinue,
     submitPolish,
     adoptPolish: adoptPolishDraft,
     continueToQuestions: proceedToQuestions,
     generateMoreQuestions: requestMoreQuestions,
     generateBriefFromAnswers: synthesizeBriefFromServer,
     generateAuthorAnswer,
-    createManualBrief,
     saveCandidateAsNew: saveCandidateToServer,
     createDialogueRevision: createDialogueRevisionFromServer,
-    saveCandidateBookmark,
     activateCandidate,
+    beginBriefRevision,
     resetSession: resetSessionState,
     loadProject,
     stashCurrentSession,
@@ -221,6 +303,8 @@ export function IntakeCenter() {
   const [questionGenerationMode, setQuestionGenerationMode] = useState<
     "initial" | "additional" | null
   >(null);
+  const [questionPageIndex, setQuestionPageIndex] = useState(0);
+  const [questionBatchStartIndex, setQuestionBatchStartIndex] = useState(0);
   const [briefGenerationPending, setBriefGenerationPending] = useState(false);
   const [authorAnswerSuggestion, setAuthorAnswerSuggestion] = useState<string | null>(
     null,
@@ -239,21 +323,51 @@ export function IntakeCenter() {
   const [retryingTaskType, setRetryingTaskType] = useState<
     Parameters<typeof retryTask>[0] | null
   >(null);
-  const [notice, setNotice] = useState("建案数据写入开发库；当前项目可通过 URL 恢复。");
+  const [announcement, setAnnouncement] = useState("");
   const [sourceDirty, setSourceDirty] = useState(false);
   const [answersDirty, setAnswersDirty] = useState(false);
   const [briefDirty, setBriefDirty] = useState(false);
   const [questionGenerationFailed, setQuestionGenerationFailed] =
     useState(false);
-  const [manualBriefPending, setManualBriefPending] = useState(false);
   const [candidateSavePending, setCandidateSavePending] = useState(false);
   const [dialogueRevisionPending, setDialogueRevisionPending] =
     useState(false);
-  const [briefReviewPending, setBriefReviewPending] = useState(false);
+  const [dialogueRevisionReceipt, setDialogueRevisionReceipt] =
+    useState<DialogueRevisionReceipt | null>(null);
+  const [dependencyInvalidation, setDependencyInvalidation] =
+    useState<IntakeDependencyInvalidation>({
+      projectId: null,
+      questions: false,
+      brief: false,
+      changedAnswerKeys: [],
+    });
+  const [confirmReturnToIdea, setConfirmReturnToIdea] = useState(false);
+  const [briefRevisionDialogOpen, setBriefRevisionDialogOpen] = useState(false);
+  const [briefRevisionPending, setBriefRevisionPending] = useState(false);
+  const [briefConfirmationPhase, setBriefConfirmationPhase] =
+    useState<BriefConfirmationPhase>("idle");
+  const [briefConfirmationIssue, setBriefConfirmationIssue] =
+    useState<BriefConfirmationIssue | null>(null);
+  const [resolutionDecision, setResolutionDecision] =
+    useState<BriefResolutionDecision | null>(null);
+  const [confirmationRevisionConflict, setConfirmationRevisionConflict] =
+    useState(false);
+  const confirmationIssueRef = useRef<HTMLElement | null>(null);
+  const briefConfirmationInFlight = useRef(false);
   const [confirmingExample, setConfirmingExample] = useState(false);
 
   // ── 当前建案路径（A/B/C）：决定路由高亮与步骤归属 ──────────────────
   const [activePath, setActivePath] = useState<"A" | "B" | "C">("A");
+  const [showLanding, setShowLanding] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return !new URLSearchParams(window.location.search).has("project");
+  });
+  const [landingEntranceActive, setLandingEntranceActive] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return !new URLSearchParams(window.location.search).has("project");
+  });
+  const [landingHistory, setLandingHistory] = useState<CaseHistoryEntry[] | null>(null);
+  const [landingHistoryLoading, setLandingHistoryLoading] = useState(true);
 
   // ── Path B: Idea Generation ───────────────────────────────────────────
   const [showIdeaGeneration, setShowIdeaGeneration] = useState(false);
@@ -265,6 +379,24 @@ export function IntakeCenter() {
 
   // ── Path C: Reverse Parse ────────────────────────────────────────────
   const [showReverseParse, setShowReverseParse] = useState(false);
+
+  useEffect(() => {
+    if (!showLanding) return;
+    let cancelled = false;
+    void loadCaseHistoryEntries()
+      .then((entries) => {
+        if (!cancelled) setLandingHistory(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setLandingHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLandingHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showLanding]);
 
   const ideaFromRecord = (idea: RawIdeaRecord): IdeaCandidateView => ({
     id: idea.id as number,
@@ -401,14 +533,41 @@ export function IntakeCenter() {
   };
 
   useEffect(() => {
-    if (!state.review?.dirty) return;
+    if (!briefDirty) return;
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", warnBeforeLeaving);
     return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
-  }, [state.review?.dirty]);
+  }, [briefDirty]);
+
+  useEffect(() => {
+    if (briefConfirmationPhase !== "needs_input") return;
+    if (briefConfirmationIssue?.kind === "missing_field") {
+      const selectors: Record<BriefConfirmationField, string> = {
+        concept: '[aria-label="一句话概念"]',
+        reasoningGoal: '[aria-label="推理目标"]',
+        conclusionMode: 'input[name="intake-conclusion-mode"]',
+        authorAnswer: '[aria-label="作者答案"]',
+      };
+      document
+        .querySelector<HTMLElement>(selectors[briefConfirmationIssue.field])
+        ?.focus();
+      return;
+    }
+    confirmationIssueRef.current?.focus();
+  }, [briefConfirmationPhase, briefConfirmationIssue]);
+
+  useEffect(() => {
+    if (briefConfirmationPhase !== "success") return;
+    const transitionTimer = window.setTimeout(() => {
+      patchState({ step: "candidates" });
+      setBriefConfirmationPhase("idle");
+      setAnnouncement("建案完成，已进入深稿候选阶段。");
+    }, 700);
+    return () => window.clearTimeout(transitionTimer);
+  }, [briefConfirmationPhase, patchState]);
 
   function resolveState<T>(current: T, next: SetStateAction<T>) {
     return typeof next === "function"
@@ -430,8 +589,6 @@ export function IntakeCenter() {
 
   const stepIndex = intakeSteps.findIndex((item) => item.id === step);
   const questionsPending = questionGenerationMode !== null;
-  const currentCandidate =
-    candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
   const candidateHistoryVersionById = useMemo(
     () => candidateHistoryVersions(candidates),
     [candidates],
@@ -457,10 +614,6 @@ export function IntakeCenter() {
   const failedRecoveryTasks = latestTaskList.filter(
     (task) => task && task.status === "failed",
   );
-  const pendingDecisionCount = Object.values(answers).filter(
-    (answer) => answer.pending,
-  ).length;
-
   const completionSignals = useMemo(
     () => [
       {
@@ -481,13 +634,12 @@ export function IntakeCenter() {
       },
       {
         label: "创作简报",
-        ready: candidates.length > 0,
-        value: candidates.length ? candidates.length + " 个候选" : "尚未形成",
-      },
-      {
-        label: "审阅冻结",
         ready: state.frozenBriefVersion !== null,
-        value: state.frozenBriefVersion ? "已冻结" : "尚未冻结",
+        value: state.frozenBriefVersion
+          ? "已冻结"
+          : candidates.length
+            ? candidates.length + " 个候选"
+            : "尚未形成",
       },
       {
         label: "当前工作稿",
@@ -510,18 +662,64 @@ export function IntakeCenter() {
   const completionCount = completionSignals.filter((signal) => signal.ready).length;
 
   function announce(message: string) {
-    setNotice(message);
+    setAnnouncement(message);
+  }
+
+  function markSourceDependenciesStale() {
+    if (furthestStep < 1) return;
+    setDependencyInvalidation({
+      projectId: activeProjectId,
+      questions: true,
+      brief: furthestStep >= 2,
+      changedAnswerKeys: [],
+    });
+  }
+
+  function markBriefDependencyStale(questionKey: string) {
+    if (furthestStep < 2) return;
+    setDependencyInvalidation((current) => {
+      const scoped =
+        current.projectId === activeProjectId
+          ? current
+          : {
+              projectId: activeProjectId,
+              questions: false,
+              brief: false,
+              changedAnswerKeys: [],
+            };
+      return {
+        ...scoped,
+        brief: true,
+        changedAnswerKeys: scoped.changedAnswerKeys.includes(questionKey)
+          ? scoped.changedAnswerKeys
+          : [...scoped.changedAnswerKeys, questionKey],
+      };
+    });
+  }
+
+  function clearDependencyInvalidation() {
+    setDependencyInvalidation({
+      projectId: activeProjectId,
+      questions: false,
+      brief: false,
+      changedAnswerKeys: [],
+    });
   }
 
   function openReachableStep(target: IntakeStep) {
     const targetIndex = intakeSteps.findIndex((item) => item.id === target);
     if (targetIndex < 0 || targetIndex > furthestStep) return;
     if (target === "candidates" && state.frozenBriefVersion === null) {
-      setError("先完成创作简报审阅并冻结，再生成深稿候选。");
+      setError("先确认并冻结创作简报，再生成深稿候选。");
       return;
     }
-    if (target === "review" && !state.review) {
-      setError("先进入创作简报审阅，再回到审阅步骤。");
+    if (
+      target === "idea" &&
+      furthestStep >= 2 &&
+      state.frozenBriefVersion === null
+    ) {
+      setConfirmReturnToIdea(true);
+      setError(null);
       return;
     }
     // 步骤条不能绕过持久化动作：上游改动未落库时阻止前跳。
@@ -530,7 +728,7 @@ export function IntakeCenter() {
       sourceDirty &&
       targetIndex > stepIndex
     ) {
-      setError("最初想法尚未保存，请先点击“继续关键追问”。");
+      setError("最初想法尚未保存，请先完成新的关键追问研查。");
       return;
     }
     if (
@@ -538,7 +736,11 @@ export function IntakeCenter() {
       answersDirty &&
       targetIndex > stepIndex
     ) {
-      setError("回答尚未并入创作简报，请点击“形成创作简报”或“手动建立简报”。");
+      setError(
+        currentDependencyInvalidation.brief
+          ? "新的判断尚未并入简报，请点击“更新建案简报”。"
+          : "回答尚未并入创作简报，请点击“形成创作简报”。",
+      );
       return;
     }
     if (
@@ -546,15 +748,7 @@ export function IntakeCenter() {
       briefDirty &&
       targetIndex > stepIndex
     ) {
-      setError("创作简报有未保存修改，请先保存为新候选，或通过“进入创作简报审阅”保存。");
-      return;
-    }
-    if (
-      step === "review" &&
-      state.review?.dirty &&
-      targetIndex > stepIndex
-    ) {
-      setError("审阅有未保存修改，保存并冻结后才能生成深稿候选。");
+      setError("创作简报有未确认修改，请先点击“确认建案并继续”。");
       return;
     }
     if (target !== "confirmation") {
@@ -570,9 +764,37 @@ export function IntakeCenter() {
     announce("已切换到" + intakeSteps[targetIndex].label + "。");
   }
 
+  function returnToIdeaStep() {
+    setConfirmReturnToIdea(false);
+    setAuthorAnswerPending(false);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
+    setShowIdeaGeneration(false);
+    setShowReverseParse(false);
+    setStep("idea");
+    setError(null);
+    announce("已返回最初想法；已有问答、简报和候选仍然保留。");
+  }
+
+  function openLandingRoute(code: "A" | "B" | "C") {
+    setLandingEntranceActive(false);
+    setShowLanding(false);
+    setError(null);
+    if (code === "B") {
+      void enterPathB();
+      return;
+    }
+    setActivePath(code);
+    setShowIdeaGeneration(false);
+    setShowReverseParse(code === "C");
+    if (code === "A") setStep("idea");
+    announce(code === "A" ? "已进入想法记录。" : "已进入现有内容导入。");
+  }
+
   function loadExample() {
     setSourceText(sampleIdea);
     setSourceDirty(true);
+    markSourceDependenciesStale();
     setConfirmingExample(false);
     setPolishReviewOpen(false);
     setError(null);
@@ -625,6 +847,7 @@ export function IntakeCenter() {
       );
       setSourceText(polishDraft.trim());
       setSourceDirty(false);
+      markSourceDependenciesStale();
       setPolishReviewOpen(false);
       announce("已采用润色稿，原始版本仍可在来源记录中追溯。");
     } catch (caught) {
@@ -639,15 +862,35 @@ export function IntakeCenter() {
     }
     setError(null);
     setQuestionGenerationFailed(false);
-    setQuestionGenerationMode("initial");
+    const isDependencyRefresh = currentDependencyInvalidation.questions;
+    const firstRefreshedQuestionIndex = isDependencyRefresh
+      ? state.questions.length
+      : 0;
+    setQuestionGenerationMode(isDependencyRefresh ? "additional" : "initial");
+    setQuestionPageIndex(0);
+    setQuestionBatchStartIndex(0);
     setStep("questions");
     try {
-      await proceedToQuestions();
+      if (isDependencyRefresh) {
+        await requestMoreQuestions();
+      } else {
+        await proceedToQuestions();
+      }
       setSourceDirty(false);
       setAnswersDirty(false);
-      announce("起案原文已记录，进入关键追问。");
+      if (isDependencyRefresh) {
+        setQuestionBatchStartIndex(firstRefreshedQuestionIndex);
+        setDependencyInvalidation({
+          projectId: activeProjectId,
+          questions: false,
+          brief: currentDependencyInvalidation.brief,
+          changedAnswerKeys: [],
+        });
+        announce("起案变化已重新研查；原有内容保留，创作简报等待更新。");
+      } else {
+        announce("起案原文已记录，进入关键追问。");
+      }
     } catch (caught) {
-      // 提问失败也保留人工继续路径：停留在追问页，允许“手动建立简报”。
       setQuestionGenerationFailed(true);
       setError(caught instanceof Error ? caught.message : "追问任务未完成。");
     } finally {
@@ -659,10 +902,15 @@ export function IntakeCenter() {
     if (questionsPending) return;
     setError(null);
     setQuestionGenerationMode("additional");
+    const firstNewQuestionIndex = state.questions.length;
     try {
       await requestMoreQuestions();
+      // 旧题与答案仍留在会话/服务端，供 Agent 避免重复并参与后续简报；
+      // 页面只进入本轮追加批次，不再把作者带回已经回答的问题。
+      setQuestionBatchStartIndex(firstNewQuestionIndex);
+      setQuestionPageIndex(0);
       setAnswersDirty(false);
-      announce("已补充新的追问；已有问题和回答保持不变。");
+      announce("补充研查已完成；当前只显示本轮新增问题，已有回答保持不变。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "补充追问任务未完成。");
     } finally {
@@ -680,6 +928,7 @@ export function IntakeCenter() {
       [questionKey]: { text, source, pending: false },
     }));
     setAnswersDirty(true);
+    markBriefDependencyStale(questionKey);
     setError(null);
   }
 
@@ -693,6 +942,7 @@ export function IntakeCenter() {
       },
     }));
     setAnswersDirty(true);
+    markBriefDependencyStale(questionKey);
     announce("这项偏好已放入待决定队列，不会阻止继续。");
   }
 
@@ -702,7 +952,7 @@ export function IntakeCenter() {
       return;
     }
     if (questionGenerationFailed) {
-      setError("关键追问尚未生成。可以返回原稿重试，或使用“手动建立简报”。");
+      setError("关键追问尚未生成，请返回原稿后重试。");
       return;
     }
     setError(null);
@@ -714,28 +964,13 @@ export function IntakeCenter() {
       await synthesizeBriefFromServer();
       setAnswersDirty(false);
       setBriefDirty(false);
+      clearDependencyInvalidation();
       announce("创作简报候选已形成，请逐项校核后采用。");
     } catch (caught) {
       setStep("questions");
       setError(caught instanceof Error ? caught.message : "创作简报生成未完成。");
     } finally {
       setBriefGenerationPending(false);
-    }
-  }
-
-  async function continueManually() {
-    if (manualBriefPending) return;
-    setManualBriefPending(true);
-    setError(null);
-    try {
-      await createManualBrief();
-      setAnswersDirty(false);
-      setBriefDirty(false);
-      announce("已建立人工简报，不包含任何伪造的 Agent 结果。");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "人工简报建立失败。");
-    } finally {
-      setManualBriefPending(false);
     }
   }
 
@@ -800,7 +1035,7 @@ export function IntakeCenter() {
     if (!authorAnswerSuggestion) return;
     updateBriefField("authorAnswer", authorAnswerSuggestion);
     setAuthorAnswerSuggestion(null);
-    announce("已把 Agent 候选放入简报草案；提交审阅前仍可继续改写。 ");
+    announce("已把 Agent 候选放入简报草案；确认建案前仍可继续改写。 ");
   }
 
   function updateConclusionMode(value: ConclusionMode) {
@@ -859,11 +1094,29 @@ export function IntakeCenter() {
       return;
     }
     setDialogueRevisionPending(true);
+    setDialogueRevisionReceipt(null);
     setError(null);
     try {
-      await createDialogueRevisionFromServer(instruction);
+      const result = await createDialogueRevisionFromServer(instruction);
+      const changes = describeBriefRevision(
+        result.baseBrief,
+        result.candidate.brief,
+      );
       setRevisionInstruction("");
-      announce("已从当前候选形成子版本；原候选仍保留。");
+      setBriefDirty(false);
+      setDialogueRevisionReceipt({
+        projectId: activeProjectId,
+        instruction,
+        candidateLabel: result.candidate.label,
+        changes,
+      });
+      announce(
+        changes.length
+          ? `Agent 已形成修改候选，本轮调整：${changes
+              .map((change) => change.label)
+              .join("、")}。`
+          : "Agent 已形成修改候选；未发现字段内容变化。",
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "对话修改未完成。");
     } finally {
@@ -882,31 +1135,107 @@ export function IntakeCenter() {
     }
   }
 
-  async function toggleBookmark(candidateId: number) {
-    setError(null);
-    try {
-      await saveCandidateBookmark(candidateId);
-      announce("候选保存状态已更新。");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "候选保存失败。");
-    }
+  function focusBriefField(field: BriefConfirmationField) {
+    const selectors: Record<BriefConfirmationField, string> = {
+      concept: '[aria-label="一句话概念"]',
+      reasoningGoal: '[aria-label="推理目标"]',
+      conclusionMode: 'input[name="intake-conclusion-mode"]',
+      authorAnswer: '[aria-label="作者答案"]',
+    };
+    window.setTimeout(() => {
+      document.querySelector<HTMLElement>(selectors[field])?.focus();
+    }, 0);
   }
 
-  async function enterBriefReview() {
-    if (briefReviewPending) return;
-    setBriefReviewPending(true);
+  async function runBriefConfirmation(draft: IntakeBrief) {
+    if (briefConfirmationInFlight.current) return;
+    briefConfirmationInFlight.current = true;
+    setBriefConfirmationPhase("processing");
+    setBriefConfirmationIssue(null);
+    setConfirmationRevisionConflict(false);
     setError(null);
     try {
-      await beginBriefReview();
+      await confirmBriefAndContinue(draft);
       setBriefDirty(false);
       setAuthorAnswerPending(false);
       setAuthorAnswerSuggestion(null);
       setAuthorAnswerError(null);
-      announce("已进入创作简报审阅；保存并冻结后才能生成候选稿。");
+      setBriefConfirmationPhase("success");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "进入审阅失败。");
+      setBriefConfirmationPhase("failed");
+      setConfirmationRevisionConflict(
+        isBriefConfirmationRevisionConflict(caught),
+      );
+      setError(caught instanceof Error ? caught.message : "建案确认失败，请重试。");
     } finally {
-      setBriefReviewPending(false);
+      briefConfirmationInFlight.current = false;
+    }
+  }
+
+  function requestBriefConfirmation(draft: IntakeBrief = brief) {
+    const issue = firstBriefConfirmationIssue(draft);
+    if (issue) {
+      setBriefConfirmationIssue(issue);
+      setResolutionDecision(null);
+      setBriefConfirmationPhase("needs_input");
+      setError(null);
+      return;
+    }
+    void runBriefConfirmation(draft);
+  }
+
+  function applyResolutionDecision() {
+    if (!resolutionDecision || !briefConfirmationIssue) return;
+    const next = applyBriefResolutionDecision(brief, resolutionDecision);
+    setBrief(next);
+    setBriefDirty(true);
+    setBriefConfirmationIssue(null);
+    setResolutionDecision(null);
+
+    if (
+      resolutionDecision === "author_anchored" &&
+      !next.authorAnswer.trim()
+    ) {
+      setBriefConfirmationPhase("idle");
+      focusBriefField("authorAnswer");
+      announce("请填写作者答案，再确认建案。");
+      return;
+    }
+    requestBriefConfirmation(next);
+  }
+
+  async function reopenFrozenBrief() {
+    if (briefRevisionPending) return;
+    setBriefRevisionDialogOpen(false);
+    setBriefRevisionPending(true);
+    try {
+      await beginBriefRevision();
+      setBriefConfirmationPhase("idle");
+      setBriefConfirmationIssue(null);
+      setResolutionDecision(null);
+      setBriefDirty(false);
+      clearDependencyInvalidation();
+      setError(null);
+      announce("已从冻结版本建立新的可编辑简报修订。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "建立简报修订失败。");
+    } finally {
+      setBriefRevisionPending(false);
+    }
+  }
+
+  async function reloadLatestBrief() {
+    if (activeProjectId === null) return;
+    try {
+      await loadProject(activeProjectId);
+      setBriefDirty(false);
+      setBriefConfirmationPhase("idle");
+      setBriefConfirmationIssue(null);
+      setConfirmationRevisionConflict(false);
+      setError(null);
+      announce("已载入服务端最新的创作简报。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "载入最新版本失败。");
     }
   }
 
@@ -914,6 +1243,8 @@ export function IntakeCenter() {
     resetSessionState();
     setPolishReviewOpen(false);
     setQuestionGenerationMode(null);
+    setQuestionPageIndex(0);
+    setQuestionBatchStartIndex(0);
     setQuestionGenerationFailed(false);
     setBriefGenerationPending(false);
     setAuthorAnswerPending(false);
@@ -929,12 +1260,19 @@ export function IntakeCenter() {
     setSourceDirty(false);
     setAnswersDirty(false);
     setBriefDirty(false);
-    setManualBriefPending(false);
     setCandidateSavePending(false);
     setDialogueRevisionPending(false);
-    setBriefReviewPending(false);
+    setBriefConfirmationPhase("idle");
+    setBriefConfirmationIssue(null);
+    setResolutionDecision(null);
+    setConfirmationRevisionConflict(false);
+    setConfirmReturnToIdea(false);
+    setBriefRevisionDialogOpen(false);
+    setBriefRevisionPending(false);
+    briefConfirmationInFlight.current = false;
     setConfirmingExample(false);
     setActivePath("A");
+    setShowLanding(true);
     setShowIdeaGeneration(false);
     setShowReverseParse(false);
     setIdeaProjectId(null);
@@ -951,13 +1289,25 @@ export function IntakeCenter() {
     setActivePath("A");
     setShowIdeaGeneration(false);
     setShowReverseParse(false);
+    setQuestionBatchStartIndex(0);
+    setQuestionPageIndex(0);
     try {
       await loadProject(projectId);
       setSourceDirty(false);
       setAnswersDirty(false);
       setBriefDirty(false);
+      clearDependencyInvalidation();
+      setBriefConfirmationPhase("idle");
+      setBriefConfirmationIssue(null);
+      setResolutionDecision(null);
+      setConfirmationRevisionConflict(false);
       setQuestionGenerationFailed(false);
+      setConfirmReturnToIdea(false);
+      setBriefRevisionDialogOpen(false);
+      setBriefRevisionPending(false);
       setHistoryDrawerOpen(false);
+      setLandingEntranceActive(false);
+      setShowLanding(false);
       setError(null);
       announce("已恢复该卷宗；服务端状态已重新同步。");
     } catch (caught) {
@@ -990,9 +1340,15 @@ export function IntakeCenter() {
 
   function restoreStashed() {
     restoreStashedSession();
+    setLandingEntranceActive(false);
+    setShowLanding(false);
     setSourceDirty(false);
     setAnswersDirty(false);
     setBriefDirty(false);
+    setBriefConfirmationPhase("idle");
+    setBriefConfirmationIssue(null);
+    setResolutionDecision(null);
+    setConfirmationRevisionConflict(false);
     setQuestionGenerationFailed(false);
     setError(null);
     announce("已回到暂存的卷宗。");
@@ -1001,21 +1357,82 @@ export function IntakeCenter() {
   const selectedResolutionMode = resolutionModes.find(
     (mode) => mode.value === brief.resolutionMode,
   );
+  const activeConstraintCount = brief.constraints.filter((constraint) =>
+    constraint.statement.trim(),
+  ).length;
+  const currentDependencyInvalidation =
+    dependencyInvalidation.projectId === activeProjectId
+      ? dependencyInvalidation
+      : {
+          projectId: activeProjectId,
+          questions: false,
+          brief: false,
+          changedAnswerKeys: [],
+        };
+  const visibleDialogueRevisionReceipt =
+    dialogueRevisionReceipt?.projectId === activeProjectId
+      ? dialogueRevisionReceipt
+      : null;
+  const dialogueChangedFields = new Set(
+    visibleDialogueRevisionReceipt?.changes.map((change) => change.key) ?? [],
+  );
   const intakeFrozen = state.frozenBriefVersion !== null;
-  // B/C 路径处于各自入口界面时，主工作区只渲染入口，不渲染 01–05 步骤视图。
+  // B/C 路径处于各自入口界面时，主工作区只渲染入口，不渲染 01–04 步骤视图。
   const inEntryView =
     (activePath === "B" && showIdeaGeneration) ||
     (activePath === "C" && showReverseParse);
+  const visibleQuestions =
+    questionGenerationMode === "additional"
+      ? []
+      : state.questions.slice(questionBatchStartIndex);
+  const questionCount = visibleQuestions.length;
+  const visibleQuestionIndex = Math.min(
+    questionPageIndex,
+    Math.max(0, questionCount - 1),
+  );
+  const currentQuestion = visibleQuestions[visibleQuestionIndex] ?? null;
+  const currentQuestionAnswer = currentQuestion
+    ? answers[currentQuestion.key]
+    : undefined;
+  const usesContentFitIdeaLayout =
+    activePath === "A" && !inEntryView && step === "idea";
 
   return (
     <div
       className={styles.intakeCenter}
       data-casefile-surface="intake-center-v1"
+      data-entrance-motion={showLanding && landingEntranceActive ? "true" : undefined}
+      data-intake-view={showLanding ? "landing" : "flow"}
       data-intake-step={step}
     >
-      <header className={styles.topbar}>
+      {showLanding && landingEntranceActive ? (
+        <div
+          aria-hidden="true"
+          className={styles.entrancePrologue}
+          data-testid="landing-entrance-prologue"
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) setLandingEntranceActive(false);
+          }}
+        >
+          <div className={styles.entranceLeaf} data-side="top" />
+          <div className={styles.entranceLeaf} data-side="bottom" />
+          <div className={styles.entranceScan} />
+          <div className={styles.entranceLockup}>
+            <span>CASEFILE ARCHIVE / INTAKE DOSSIER</span>
+            <div className={styles.entranceSeal}>
+              <b>CF</b>
+              <i>01</i>
+            </div>
+            <strong>每个故事，都从一份未解的卷宗开始。</strong>
+            <small>FILE OPENED · 建案中心</small>
+          </div>
+        </div>
+      ) : null}
+
+      {showLanding ? (
+        <header className={styles.topbar}>
         <div className={styles.brandCell}>
-          <Link className={styles.brand} href="/">
+          <Link className={styles.brand} href="/" onClick={() => setShowLanding(true)}>
             <span aria-hidden="true" className={styles.brandMark} />
             <div>
               <strong>CaseFile</strong>
@@ -1068,44 +1485,71 @@ export function IntakeCenter() {
           </button>
           <button
             aria-label="打开模型服务设置"
-            className={styles.accountButton}
+            className={styles.settingsButton}
             onClick={() => window.dispatchEvent(new Event("casefile:open-settings"))}
             title="模型服务设置"
             type="button"
           >
-            <span>A</span>
-            <i aria-hidden="true">⌄</i>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.86 1.86-.06-.06A1.7 1.7 0 0 0 16 18.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.08V20h-5.2v-.08A1.7 1.7 0 0 0 8 18.4a1.7 1.7 0 0 0-1.88.34l-.06.06-1.86-1.86.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.08-.4H2.8V11h.12A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06L6.06 5.2l.06.06A1.7 1.7 0 0 0 8 5.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.08V3.8h5.2v.12A1.7 1.7 0 0 0 16 5.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 1.86 1.86-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.08.4h.12V13h-.12A1.7 1.7 0 0 0 19.4 15Z" />
+            </svg>
           </button>
         </nav>
-      </header>
+        </header>
+      ) : null}
 
-      <nav aria-label="建案进度" className={styles.pulseTrack}>
-        <div className={styles.pulseIdentity}>
-          <div>
-            <span>选择起点</span>
-            <b>四条建案路径</b>
-          </div>
-          <i aria-hidden="true">＋</i>
-        </div>
+      {showLanding ? (
+        <IntakeLanding
+          hasRetainedCase={hasStashedSession || intakeFrozen}
+          historyEntries={landingHistory}
+          historyLoading={landingHistoryLoading}
+          onOpenHistory={() => setHistoryDrawerOpen(true)}
+          onOpenRoute={openLandingRoute}
+          onRestore={(projectId) => void restoreProject(projectId)}
+        />
+      ) : (
+        <>
+          <nav aria-label="建案进度" className={styles.pulseTrack}>
+        <button
+          aria-label="返回首页"
+          className={styles.flowBrand}
+          onClick={() => setShowLanding(true)}
+          type="button"
+        >
+          <span aria-hidden="true" className={styles.brandMark} />
+          <span>
+            <strong>CaseFile</strong>
+            <small>建案中心</small>
+          </span>
+        </button>
         <ol>
           {intakeSteps.map((item, index) => {
             const stepLocked =
               index > furthestStep ||
-              (item.id === "candidates" && state.frozenBriefVersion === null) ||
-              (item.id === "review" && state.review === null);
+              (item.id === "candidates" && state.frozenBriefVersion === null);
+            const stepNeedsUpdate =
+              (item.id === "questions" &&
+                currentDependencyInvalidation.questions) ||
+              (item.id === "confirmation" &&
+                currentDependencyInvalidation.brief);
             return (
               <li
                 data-active={item.id === step}
                 data-complete={
-                  index < stepIndex ||
-                  (item.id === "candidates" && Boolean(state.adoptedCandidateId))
+                  !stepNeedsUpdate &&
+                  (index < stepIndex ||
+                    (item.id === "candidates" && Boolean(state.adoptedCandidateId)))
                 }
+                data-needs-update={stepNeedsUpdate || undefined}
                 data-reachable={!stepLocked}
                 key={item.id}
               >
                 <button
                   aria-current={item.id === step ? "step" : undefined}
-                  aria-label={`${item.no} ${item.shortLabel} ${item.label}`}
+                  aria-label={`${item.no} ${item.shortLabel} ${item.label}${
+                    stepNeedsUpdate ? " 需要更新" : ""
+                  }`}
                   disabled={stepLocked}
                   onClick={() => openReachableStep(item.id)}
                   type="button"
@@ -1115,8 +1559,12 @@ export function IntakeCenter() {
                     <small>{item.shortLabel}</small>
                     <b>{item.label}</b>
                   </div>
-                  {index < stepIndex ||
-                  (item.id === "candidates" && state.adoptedCandidateId) ? (
+                  {stepNeedsUpdate ? (
+                    <i className={styles.stepNeedsUpdate} title="需要更新">
+                      !
+                    </i>
+                  ) : index < stepIndex ||
+                    (item.id === "candidates" && state.adoptedCandidateId) ? (
                     <i className={styles.stepCheck}>
                       <Glyph name="check" />
                     </i>
@@ -1130,12 +1578,15 @@ export function IntakeCenter() {
           })}
         </ol>
         <div className={styles.pulseStatus}>
-          <span>{String(completionCount).padStart(2, "0")} / 05</span>
+          <span>{String(completionCount).padStart(2, "0")} / 04</span>
           <small>建案完成度</small>
+          {hasStashedSession ? (
+            <button onClick={restoreStashed} type="button">回到暂存</button>
+          ) : null}
         </div>
-      </nav>
+          </nav>
 
-      <div className={styles.workspace}>
+          <div className={styles.workspace}>
         {hydration.status === "loading" ? (
           <div aria-live="polite" className={styles.sessionStatus} role="status">
             正在从服务端恢复当前卷宗…
@@ -1146,18 +1597,9 @@ export function IntakeCenter() {
             {hydration.error ?? "当前卷宗恢复失败，请从建案历史重新调出。"}
           </div>
         ) : null}
-        {notice ? (
-          <div aria-live="polite" className={styles.sessionNotice} role="status">
-            <span>{notice}</span>
-            <button
-              aria-label="关闭提示"
-              onClick={() => setNotice("")}
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-        ) : null}
+        <div aria-live="polite" className={styles.srOnly} role="status">
+          {announcement}
+        </div>
         {activeRecoveryTasks.length > 0 ? (
           <div aria-live="polite" className={styles.sessionStatus} role="status">
             已恢复 {activeRecoveryTasks.length} 个进行中的任务；返回对应步骤即可继续查看进度。
@@ -1188,44 +1630,12 @@ export function IntakeCenter() {
             </div>
           </div>
         ) : null}
-        <aside aria-label="建案入口" className={styles.routeDock}>
-          <div className={styles.routeList}>
-            {intakeRoutes.map((route) => {
-              const available = route.state === "available";
-              const isActive = route.code === activePath;
-              return (
-                <button
-                  aria-current={isActive ? "step" : undefined}
-                  data-available={available}
-                  disabled={!available}
-                  key={route.code}
-                  type="button"
-                  onClick={
-                    route.code === "B" ? enterPathB
-                      : route.code === "A" ? () => { setActivePath("A"); setShowIdeaGeneration(false); setShowReverseParse(false); }
-                      : route.code === "C" ? () => { setActivePath("C"); setShowIdeaGeneration(false); setShowReverseParse(true); }
-                      : undefined
-                  }
-                >
-                  <span>{route.code}</span>
-                  <div>
-                    <b>{route.label}</b>
-                    <small>{route.summary}</small>
-                  </div>
-                  <em>{isActive ? "当前路径" : available ? "" : "后续开放"}</em>
-                </button>
-              );
-            })}
-          </div>
-          <section className={styles.routeNote}>
-            <span>为什么先建案？</span>
-            <p>
-              先固定意图、关键问题和边界，后续生成才有可审阅的依据。
-            </p>
-          </section>
-        </aside>
-
-        <main className={styles.focusPlane}>
+        <main
+          className={`${styles.focusPlane} ${
+            usesContentFitIdeaLayout ? styles.ideaFocusPlane : ""
+          }`}
+          data-focus-layout={usesContentFitIdeaLayout ? "content-fit" : "viewport"}
+        >
           {activePath === "C" && showReverseParse ? (
             <ReverseParseStage onFormed={() => setShowReverseParse(false)} />
           ) : activePath === "B" && showIdeaGeneration ? (
@@ -1241,20 +1651,38 @@ export function IntakeCenter() {
               onGenerateAll={generateAll}
             />
           ) : step === "idea" ? (
-            <section className={stageStyles.stepView} aria-labelledby="idea-step-title">
+            <section
+              className={`${stageStyles.stepView} ${stageStyles.ideaStep}`}
+              aria-labelledby="idea-step-title"
+            >
               <header className={stageStyles.stepHero}>
                 <div>
-                  <small>第 1 步 / 记录信号</small>
                   <h1 id="idea-step-title">
-                    把念头照亮，
+                    把一闪而过的念头，
                     <br />
-                    留下可追溯的起案依据。
+                    留在故事开始的地方。
                   </h1>
                 </div>
                 <p>
-                  不必先写成完整故事。记录角色、异常或冲突中的任意一个，后续只追问真正会改变方向的问题。
+                  它还不必是一则完整的故事。一个人、一处异样，或一场隐约的冲突，都足以成为第一枚线索。接下来，我们只追问那些真正会让故事转向的问题。
                 </p>
               </header>
+
+              {!intakeFrozen && currentDependencyInvalidation.questions ? (
+                <section
+                  aria-label="下游内容需要更新"
+                  className={stageStyles.sourceDependencyNotice}
+                  role="status"
+                >
+                  <span aria-hidden="true">!</span>
+                  <div>
+                    <b>起案内容已经改变</b>
+                    <p>
+                      关键追问与创作简报需要重新检查；已有内容、候选和版本都不会丢失。
+                    </p>
+                  </div>
+                </section>
+              ) : null}
 
               {intakeFrozen ? (
                 <>
@@ -1263,12 +1691,19 @@ export function IntakeCenter() {
                     <p>{sourceText || "未记录原文。"}</p>
                     <SourceBadge source="user_original" />
                   </section>
-                  <p className={stageStyles.frozenNotice} role="status">
+                  <p className={feedbackStyles.frozenNotice} role="status">
                     创作简报已冻结为 V
                     {String(state.frozenBriefVersion ?? 1).padStart(2, "0")}
-                    。当前为只读；要修改内容，请到第 5 步选择“建立简报修订”。
+                    。当前为只读；需要修改时请先建立简报修订。
                   </p>
                   <footer className={stageStyles.stepActions}>
+                    <button
+                      className={stageStyles.primaryAction}
+                      onClick={() => setBriefRevisionDialogOpen(true)}
+                      type="button"
+                    >
+                      修改建案
+                    </button>
                     <button
                       className={stageStyles.secondaryAction}
                       onClick={() => openReachableStep("candidates")}
@@ -1302,6 +1737,7 @@ export function IntakeCenter() {
                       onChange={(event) => {
                         setSourceText(event.target.value);
                         setSourceDirty(true);
+                        markSourceDependenciesStale();
                         setError(null);
                       }}
                       placeholder="例如：一名档案员发现三份可靠记录，都指向一段不存在的时间……"
@@ -1310,7 +1746,7 @@ export function IntakeCenter() {
                       value={sourceText}
                     />
                     {confirmingExample ? (
-                      <div className={stageStyles.exampleConfirm} role="alert">
+                      <div className={feedbackStyles.exampleConfirm} role="alert">
                         <p>载入示例会替换当前已输入的最初想法。</p>
                         <button onClick={loadExample} type="button">
                           仍要载入
@@ -1337,6 +1773,7 @@ export function IntakeCenter() {
                           onClick={() => {
                             setSourceText("");
                             setSourceDirty(true);
+                            markSourceDependenciesStale();
                             setError(null);
                           }}
                           type="button"
@@ -1499,7 +1936,9 @@ export function IntakeCenter() {
                   onClick={continueToQuestions}
                   type="button"
                 >
-                  继续关键追问
+                  {currentDependencyInvalidation.questions
+                    ? "重新研查关键追问"
+                    : "继续关键追问"}
                   <Glyph name="arrow" />
                 </button>
               </footer>
@@ -1508,161 +1947,298 @@ export function IntakeCenter() {
 
           {!inEntryView && step === "questions" ? (
             <section
-              className={stageStyles.stepView}
+              className={`${stageStyles.stepView} ${stageStyles.questionFlow}`}
               aria-labelledby="questions-step-title"
             >
-              <header className={stageStyles.stepHero}>
+              <header className={stageStyles.questionFlowHero}>
                 <div>
-                  <small>第 2 步 / 关键追问</small>
-                  <h1 id="questions-step-title">只问会改变方向的问题。</h1>
-                  <button
-                    className={stageStyles.headerBackAction}
-                    disabled={questionsPending}
-                    onClick={() => openReachableStep("idea")}
-                    type="button"
-                  >
-                    ← 返回原稿
-                  </button>
+                  <h1 id="questions-step-title">沿着疑问的微光，辨认故事的方向。</h1>
                 </div>
                 <p>
-                  首轮最多两问，且最多一道硬问题。回答后仍可继续补充可选追问，不会改写已有判断。
+                  一次只确认一个判断；前后切换不会丢失已经选择或写下的回答。
                 </p>
               </header>
 
-              <section className={stageStyles.sourceCapsule}>
-                <span>当前起案原文</span>
-                <p>{sourceText}</p>
-                <SourceBadge source="user_original" />
-              </section>
-
               {intakeFrozen ? (
-                <p className={stageStyles.frozenNotice} role="status">
-                  创作简报已冻结，回答只读。要修改内容，请到第 5 步选择“建立简报修订”。
+                <p className={feedbackStyles.frozenNotice} role="status">
+                  创作简报已冻结，回答只读。需要修改时请先建立简报修订。
                 </p>
               ) : null}
 
-              <div className={stageStyles.questionStack}>
-                {questionsPending ? (
-                  <div
-                    aria-label={
-                      questionGenerationMode === "additional"
-                        ? "Agent 正在继续研查"
-                        : "Agent 正在思考"
-                    }
-                    aria-live="polite"
-                    className={stageStyles.agentThinking}
-                    role="status"
+              {!intakeFrozen && currentDependencyInvalidation.brief ? (
+                <section
+                  aria-label="创作简报需要更新"
+                  className={stageStyles.dependencyNotice}
+                  role="status"
+                >
+                  <span aria-hidden="true">!</span>
+                  <div>
+                    <b>
+                      {currentDependencyInvalidation.changedAnswerKeys.length
+                        ? `已修改 ${currentDependencyInvalidation.changedAnswerKeys.length} 个创作判断`
+                        : "上游内容已经重新研查"}
+                    </b>
+                    <p>
+                      现有 Brief 与候选不会被删除；下一步会基于新的判断重新整理，未受影响的作者修改继续保留。
+                    </p>
+                  </div>
+                  <button
+                    disabled={questionsPending || !hardQuestionsResolved}
+                    onClick={generateBrief}
+                    type="button"
                   >
+                    更新建案简报
+                    <Glyph name="arrow" />
+                  </button>
+                </section>
+              ) : null}
+
+              {questionsPending ? (
+                <div
+                  aria-label={
+                    questionGenerationMode === "additional"
+                      ? "Agent 正在继续研查"
+                      : "Agent 正在思考"
+                  }
+                  aria-live="polite"
+                  className={stageStyles.agentThinking}
+                  role="status"
+                >
+                  <span aria-hidden="true" className={stageStyles.agentThinkingMark}>
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <div className={stageStyles.agentThinkingCopy}>
+                    <strong>
+                      {questionGenerationMode === "additional"
+                        ? "Agent 正在继续研查"
+                        : "Agent 正在思考"}
+                    </strong>
+                    <p>
+                      {questionGenerationMode === "additional"
+                        ? "正在避开已问内容，补充新的方向问题……"
+                        : "正在从起案原文中提炼会改变方向的关键问题……"}
+                    </p>
                     <span
                       aria-hidden="true"
-                      className={stageStyles.agentThinkingMark}
-                    />
-                    <div>
-                      <strong>
-                        {questionGenerationMode === "additional"
-                          ? "Agent 正在继续研查"
-                          : "Agent 正在思考"}
-                      </strong>
-                      <p>
-                        {questionGenerationMode === "additional"
-                          ? "正在避开已问内容，补充新的方向问题……"
-                          : "正在从起案原文中提炼会改变方向的关键问题……"}
-                      </p>
-                    </div>
+                      className={stageStyles.agentThinkingTrace}
+                      data-testid="agent-thinking-motion"
+                    >
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                    </span>
                   </div>
-                ) : state.questions.length === 0 && !error ? (
-                  <p className={stageStyles.emptyQuestions}>
-                    Agent 判断当前原稿信息已足够，无需追问；可以直接形成创作简报。
-                  </p>
-                ) : questionGenerationFailed && !error ? (
-                  <p className={stageStyles.emptyQuestions}>
-                    Agent 未能生成关键追问。你可以返回原稿重试，或直接使用“手动建立简报”继续。
-                  </p>
-                ) : null}
-                {state.questions.map((question) => {
-                  const answer = answers[question.key];
-                  const resolved = Boolean(answer);
-                  return (
-                    <article data-resolved={resolved} key={question.key}>
-                      <header>
-                        <span>Q{String(question.ordinal).padStart(2, "0")}</span>
-                        <div>
-                          <h2>{question.prompt}</h2>
-                          <p>{question.impact}</p>
-                        </div>
-                        <em>{question.required ? "必须回答" : "可以暂缓"}</em>
-                      </header>
-                      <div className={stageStyles.answerComposer}>
-                        <label htmlFor={"intake-answer-" + question.key}>
-                          你的回答
-                        </label>
-                        <textarea
-                          id={"intake-answer-" + question.key}
-                          disabled={questionsPending || intakeFrozen}
-                          onChange={(event) =>
-                            updateAnswer(question.key, event.target.value)
-                          }
-                          placeholder="用一句话锁定你的方向……"
-                          rows={3}
-                          value={answer?.pending ? "" : answer?.text ?? ""}
-                        />
-                        <div className={stageStyles.suggestionList}>
-                          <span>快速采用一个方向</span>
-                          {question.suggestions.map((suggestion) => (
-                            <button
+                </div>
+              ) : null}
+
+              {!questionsPending && questionCount === 0 && !error ? (
+                <section
+                  aria-labelledby="questions-complete-title"
+                  aria-live="polite"
+                  className={stageStyles.questionsComplete}
+                  role="status"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={stageStyles.questionsCompleteSweep}
+                    data-testid="questions-complete-motion"
+                  />
+                  <div className={stageStyles.questionsCompleteCopy}>
+                    <span className={stageStyles.questionsCompleteEyebrow}>
+                      QUESTION REVIEW / COMPLETE
+                    </span>
+                    <h2 id="questions-complete-title">
+                      <span>当前信息</span>
+                      <span>已经足够。</span>
+                    </h2>
+                    <p>
+                      Agent 已完成方向缺口研查，没有发现仍需作者确认、且会改变创作方向的问题。
+                    </p>
+                    <strong>无需追问；可以直接形成创作简报。</strong>
+                  </div>
+                  <div aria-hidden="true" className={stageStyles.questionsCompleteSeal}>
+                    <span>02</span>
+                    <Glyph name="check" />
+                    <small>研查完成</small>
+                  </div>
+                  <div className={stageStyles.questionsCompleteMeta}>
+                    <span>方向缺口 <b>0</b></span>
+                    <span>下一步 <b>03 / 创作简报</b></span>
+                  </div>
+                </section>
+              ) : null}
+              {!questionsPending && questionGenerationFailed && !error ? (
+                <p className={stageStyles.emptyQuestions}>
+                  Agent 未能生成关键追问。请返回原稿后重试。
+                </p>
+              ) : null}
+
+              {currentQuestion ? (
+                <section
+                  aria-label={`关键追问 ${visibleQuestionIndex + 1} / ${questionCount}`}
+                  className={stageStyles.questionWorkspace}
+                >
+                  <header className={stageStyles.questionContextBar}>
+                    <div>
+                      <span>当前起案依据</span>
+                      <p>{sourceText}</p>
+                    </div>
+                    <strong>{visibleQuestionIndex + 1} / {questionCount}</strong>
+                  </header>
+
+                  <div className={stageStyles.questionPrompt} key={currentQuestion.key}>
+                    <h2>{currentQuestion.prompt}</h2>
+                    <p>{currentQuestion.impact}</p>
+
+                    {currentQuestion.suggestions.length > 0 ? (
+                      <fieldset
+                        aria-label={`选择“${currentQuestion.prompt}”的回答`}
+                        className={stageStyles.questionOptions}
+                      >
+                        {currentQuestion.suggestions.map((suggestion) => (
+                          <label
+                            data-selected={
+                              (!currentQuestionAnswer?.pending &&
+                                currentQuestionAnswer?.text === suggestion) ||
+                              undefined
+                            }
+                            key={suggestion}
+                          >
+                            <input
+                              checked={
+                                !currentQuestionAnswer?.pending &&
+                                currentQuestionAnswer?.text === suggestion
+                              }
                               disabled={questionsPending || intakeFrozen}
-                              key={suggestion}
-                              onClick={() =>
+                              name={`question-suggestion-${currentQuestion.key}`}
+                              onChange={() =>
                                 updateAnswer(
-                                  question.key,
+                                  currentQuestion.key,
                                   suggestion,
                                   "agent_suggestion",
                                 )
                               }
-                              type="button"
-                            >
-                              {suggestion}
-                            </button>
-                          ))}
-                        </div>
-                        <footer>
-                          {answer ? (
-                            <SourceBadge source={answer.source} />
-                          ) : (
-                            <span>等待你的判断</span>
-                          )}
-                          {!question.required ? (
-                            <button
-                              disabled={questionsPending || intakeFrozen}
-                              onClick={() => markQuestionPending(question.key)}
-                              type="button"
-                            >
-                              稍后决定
-                            </button>
-                          ) : null}
-                        </footer>
-                      </div>
-                    </article>
-                  );
-                })}
-                {state.questions.length > 0 ? (
-                  <section className={stageStyles.moreQuestions}>
-                    <div>
-                      <span>还想继续深挖？</span>
-                      <p>保留现有问题和回答，再补充最多两道不重复的可选问题。</p>
+                              type="radio"
+                            />
+                            <span>{suggestion}</span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    ) : null}
+
+                    <label className={stageStyles.questionCustomAnswer}>
+                      <span>或写下你的补充判断 <small>选填</small></span>
+                      <textarea
+                        aria-label={`回答：${currentQuestion.prompt}`}
+                        disabled={questionsPending || intakeFrozen}
+                        onChange={(event) =>
+                          updateAnswer(currentQuestion.key, event.target.value)
+                        }
+                        placeholder="用一句话锁定你的方向……"
+                        rows={5}
+                        value={
+                          currentQuestionAnswer?.pending
+                            ? ""
+                            : currentQuestionAnswer?.text ?? ""
+                        }
+                      />
+                    </label>
+                    <div className={stageStyles.questionAnswerSource}>
+                      {currentQuestionAnswer ? (
+                        <SourceBadge source={currentQuestionAnswer.source} />
+                      ) : (
+                        <span>等待你的判断</span>
+                      )}
                     </div>
+                  </div>
+
+                  <footer className={stageStyles.questionPager}>
                     <button
-                      disabled={questionsPending || intakeFrozen}
-                      onClick={generateMoreQuestions}
+                      className={stageStyles.secondaryAction}
+                      disabled={questionsPending}
+                      onClick={() => {
+                        if (visibleQuestionIndex === 0) openReachableStep("idea");
+                        else setQuestionPageIndex(visibleQuestionIndex - 1);
+                      }}
                       type="button"
                     >
-                      {questionGenerationMode === "additional"
-                        ? "正在补充问题…"
-                        : "再生成一些问题"}
+                      {visibleQuestionIndex === 0 ? "返回起案" : "← 上一题"}
                     </button>
-                  </section>
-                ) : null}
-              </div>
+                    <div aria-label="追问进度" className={stageStyles.questionDots}>
+                      {visibleQuestions.map((question, index) => (
+                        <button
+                          aria-current={index === visibleQuestionIndex ? "step" : undefined}
+                          aria-label={`前往第 ${index + 1} 题`}
+                          key={question.key}
+                          onClick={() => setQuestionPageIndex(index)}
+                          type="button"
+                        />
+                      ))}
+                    </div>
+                    <div>
+                      {!currentQuestion.required ? (
+                        <button
+                          className={stageStyles.textAction}
+                          disabled={questionsPending || intakeFrozen}
+                          onClick={() => markQuestionPending(currentQuestion.key)}
+                          type="button"
+                        >
+                          稍后决定
+                        </button>
+                      ) : null}
+                      {visibleQuestionIndex < questionCount - 1 ? (
+                        <button
+                          className={stageStyles.primaryAction}
+                          disabled={
+                            questionsPending ||
+                            (currentQuestion.required && !currentQuestionAnswer?.text.trim())
+                          }
+                          onClick={() => setQuestionPageIndex(visibleQuestionIndex + 1)}
+                          type="button"
+                        >
+                          下一题 <Glyph name="arrow" />
+                        </button>
+                      ) : (
+                        <button
+                          className={stageStyles.primaryAction}
+                          disabled={
+                            questionsPending ||
+                            questionGenerationFailed ||
+                            !hardQuestionsResolved ||
+                            intakeFrozen
+                          }
+                          onClick={generateBrief}
+                          type="button"
+                        >
+                          {intakeFrozen
+                            ? "简报已冻结"
+                            : currentDependencyInvalidation.brief
+                              ? "更新建案简报"
+                              : "形成创作简报"}
+                          <Glyph name="arrow" />
+                        </button>
+                      )}
+                    </div>
+                  </footer>
+                </section>
+              ) : null}
+
+              {questionCount > 0 ? (
+                <section className={stageStyles.questionAuxiliaryActions}>
+                  <div><strong>需要再确认一层？</strong><span>已有问题和回答不会被改写。</span></div>
+                  <button
+                    disabled={questionsPending || intakeFrozen}
+                    onClick={generateMoreQuestions}
+                    type="button"
+                  >
+                    {questionGenerationMode === "additional" ? "正在补充问题…" : "再生成一些问题"}
+                  </button>
+                </section>
+              ) : null}
 
               {error ? (
                 <p className={stageStyles.inlineError} role="alert">
@@ -1670,15 +2246,16 @@ export function IntakeCenter() {
                 </p>
               ) : null}
 
-              <footer className={stageStyles.stepActions}>
+              {questionCount === 0 ? (
+                <footer className={stageStyles.stepActions}>
                 <div>
                   <button
                     className={stageStyles.secondaryAction}
-                    disabled={questionsPending || manualBriefPending || intakeFrozen}
-                    onClick={continueManually}
+                    disabled={questionsPending}
+                    onClick={() => openReachableStep("idea")}
                     type="button"
                   >
-                    {manualBriefPending ? "正在建立人工简报…" : "手动建立简报"}
+                    返回原稿
                   </button>
                   <button
                     className={stageStyles.primaryAction}
@@ -1691,11 +2268,16 @@ export function IntakeCenter() {
                     onClick={generateBrief}
                     type="button"
                   >
-                    {intakeFrozen ? "简报已冻结" : "形成创作简报"}
+                    {intakeFrozen
+                      ? "简报已冻结"
+                      : currentDependencyInvalidation.brief
+                        ? "更新建案简报"
+                        : "形成创作简报"}
                     <Glyph name="arrow" />
                   </button>
                 </div>
-              </footer>
+                </footer>
+              ) : null}
             </section>
           ) : null}
 
@@ -1707,13 +2289,12 @@ export function IntakeCenter() {
             >
               <header className={stageStyles.stepHero}>
                 <div>
-                  <small>第 3 步 / 形成简报</small>
                   <h1 id="confirmation-loading-title">
-                    确认整体方向，再交给正式审阅。
+                    正在形成可确认的创作简报。
                   </h1>
                 </div>
                 <p>
-                  页面已经准备好。Agent 正在把原稿与已确认回答整理成可逐项审阅的创作简报。
+                  Agent 正在把原稿与已确认回答整理成可直接确认的创作简报。
                 </p>
               </header>
 
@@ -1735,15 +2316,31 @@ export function IntakeCenter() {
             </section>
           ) : null}
 
-          {!inEntryView && step === "confirmation" && !briefGenerationPending ? (
-            <section className={stageStyles.stepView} aria-labelledby="confirmation-step-title">
-              <header className={stageStyles.stepHero}>
+          {!inEntryView &&
+          step === "confirmation" &&
+          !briefGenerationPending &&
+          (briefConfirmationPhase === "processing" ||
+            briefConfirmationPhase === "success") ? (
+            <BriefConfirmationTransition
+              completed={briefConfirmationPhase === "success"}
+            />
+          ) : null}
+
+          {!inEntryView &&
+          step === "confirmation" &&
+          !briefGenerationPending &&
+          briefConfirmationPhase !== "processing" &&
+          briefConfirmationPhase !== "success" ? (
+            <section
+              className={`${stageStyles.stepView} ${stageStyles.confirmationStep}`}
+              aria-labelledby="confirmation-step-title"
+            >
+              <header className={`${stageStyles.stepHero} ${stageStyles.confirmationHero}`}>
                 <div>
-                  <small>第 3 步 / 校核简报</small>
-                  <h1 id="confirmation-step-title">确认整体方向，再交给正式审阅。</h1>
+                  <h1 id="confirmation-step-title">让故事的方向落定，再向深处落笔。</h1>
                   <button
                     className={stageStyles.headerBackAction}
-                    disabled={briefGenerationPending || briefReviewPending}
+                    disabled={briefGenerationPending}
                     onClick={() => {
                       setAuthorAnswerPending(false);
                       setAuthorAnswerSuggestion(null);
@@ -1752,60 +2349,44 @@ export function IntakeCenter() {
                     }}
                     type="button"
                   >
-                    ← 返回追问
+                    <span aria-hidden="true">←</span>
+                    <span>
+                      <b>返回关键追问</b>
+                      <small aria-hidden="true">修改上一步答案</small>
+                    </span>
                   </button>
                 </div>
-                <p>
-                  每个字段都保留来源。表单修改和对话修改会产生新候选，不覆盖旧版本。
-                </p>
               </header>
 
               {intakeFrozen ? (
-                <p className={stageStyles.frozenNotice} role="status">
-                  创作简报已冻结为 V
-                  {String(state.frozenBriefVersion ?? 1).padStart(2, "0")}
-                  ，当前为只读。需要修改请到第 5 步选择“建立简报修订”。
-                </p>
-              ) : null}
-
-              <div className={stageStyles.confirmationToolbar}>
-                <div>
-                  <span>当前候选</span>
-                  <b>{currentCandidate?.label ?? "人工简报"}</b>
-                  <small>{currentCandidate?.createdAt ?? "尚未保存"}</small>
-                </div>
-                <div>
-                  {intakeFrozen ? (
-                    <span data-status="ready">已冻结只读</span>
-                  ) : missingFields.length ? (
-                    <span data-status="missing">还缺 {missingFields.length} 项</span>
-                  ) : (
-                    <span data-status="ready">可以采用</span>
-                  )}
+                <div className={feedbackStyles.frozenNotice} role="status">
+                  <p>
+                    创作简报已冻结为 V
+                    {String(state.frozenBriefVersion ?? 1).padStart(2, "0")}
+                    ，当前为只读。后续修改会建立新的简报版本。
+                  </p>
                   <button
-                    disabled={
-                      intakeFrozen || !currentCandidate || currentCandidate.bookmarked
-                    }
-                    onClick={() =>
-                      currentCandidate && toggleBookmark(currentCandidate.id)
-                    }
+                    disabled={briefRevisionPending}
+                    onClick={() => setBriefRevisionDialogOpen(true)}
                     type="button"
                   >
-                    {currentCandidate?.bookmarked ? "已保存候选" : "保存候选书签"}
+                    {briefRevisionPending ? "正在创建修订…" : "修改建案"}
                   </button>
                 </div>
-              </div>
+              ) : null}
 
               <fieldset
-                className={stageStyles.briefEditor}
+                className={feedbackStyles.briefEditor}
                 disabled={intakeFrozen}
               >
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("concept")}
+                  field="concept"
                   hint="概括核心设定与冲突"
+                  icon="target"
                   label="一句话概念"
                   required
                   source={brief.sources.concept}
-                  wide
                 >
                   <textarea
                     aria-label="一句话概念"
@@ -1818,11 +2399,13 @@ export function IntakeCenter() {
                   />
                 </FieldShell>
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("reasoningGoal")}
+                  field="reasoning"
                   hint="定义作品最终必须回答的问题"
+                  icon="compare"
                   label="推理目标"
                   required
                   source={brief.sources.reasoningGoal}
-                  wide
                 >
                   <textarea
                     aria-label="推理目标"
@@ -1835,7 +2418,10 @@ export function IntakeCenter() {
                   />
                 </FieldShell>
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("conclusionMode")}
+                  field="conclusion"
                   hint="决定验证器如何判断结论是否成立；每个项目必须明确选择。"
+                  icon="check"
                   label="结论模式"
                   required
                   source={brief.sources.conclusionMode}
@@ -1859,7 +2445,7 @@ export function IntakeCenter() {
                   </div>
                   {brief.sources.conclusionMode === "agent_suggestion" ? (
                     <button
-                      className={stageStyles.suggestionConfirm}
+                      className={feedbackStyles.suggestionConfirm}
                       onClick={() => updateConclusionMode(brief.conclusionMode)}
                       type="button"
                     >
@@ -1872,7 +2458,10 @@ export function IntakeCenter() {
                   ) : null}
                 </FieldShell>
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("resolutionMode")}
+                  field="resolution"
                   hint="选择答案由谁提供，以及深稿是否必须收束"
+                  icon="target"
                   label="结论处理方式"
                   source={brief.sources.resolutionMode}
                   wide
@@ -1907,7 +2496,10 @@ export function IntakeCenter() {
                 </FieldShell>
                 {brief.resolutionMode === "author_anchored" ? (
                   <FieldShell
-                    hint="只有已经知道答案时填写"
+                    agentChanged={dialogueChangedFields.has("authorAnswer")}
+                    field="answer"
+                    hint="知道答案可直接填写；还没有答案也可以让 Agent 先拟一版"
+                    icon="spark"
                     label="作者答案"
                     required
                     source={brief.sources.authorAnswer}
@@ -1929,7 +2521,22 @@ export function IntakeCenter() {
                           onClick={() => void generateAuthorAnswerSuggestion()}
                           type="button"
                         >
-                          {authorAnswerPending ? "Agent 正在拟定…" : "让 Agent 先拟一版"}
+                          {authorAnswerPending ? (
+                            <>
+                              <span
+                                aria-hidden="true"
+                                className={stageStyles.authorAnswerPendingDots}
+                                data-testid="author-answer-thinking"
+                              >
+                                <i />
+                                <i />
+                                <i />
+                              </span>
+                              <span>Agent 正在拟定…</span>
+                            </>
+                          ) : (
+                            "让 Agent 先拟一版"
+                          )}
                         </button>
                         <small>Agent 只提供候选，不会自动写入作者答案。</small>
                       </div>
@@ -1959,10 +2566,12 @@ export function IntakeCenter() {
                   </FieldShell>
                 ) : null}
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("sellingPoints")}
+                  field="selling-points"
                   hint="逐条编辑独立亮点，支持拖动排序"
+                  icon="spark"
                   label="核心卖点"
                   source={brief.sources.sellingPoints}
-                  wide
                 >
                   <SellingPointsEditor
                     onChange={(value) => updateBriefField("sellingPoints", value)}
@@ -1970,10 +2579,12 @@ export function IntakeCenter() {
                   />
                 </FieldShell>
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("outline")}
+                  field="outline"
                   hint="按阶段拆解推进与验证过程"
+                  icon="history"
                   label="内容骨架"
                   source={brief.sources.outline}
-                  wide
                 >
                   <OutlineStagesEditor
                     onChange={(value) => updateBriefField("outline", value)}
@@ -1981,7 +2592,10 @@ export function IntakeCenter() {
                   />
                 </FieldShell>
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("scopeEstimate")}
+                  field="scope"
                   hint="估算角色、场景与体验时长"
+                  icon="archive"
                   label="预计规模"
                   source={brief.sources.scopeEstimate}
                 >
@@ -1996,7 +2610,10 @@ export function IntakeCenter() {
                   />
                 </FieldShell>
                 <FieldShell
+                  agentChanged={dialogueChangedFields.has("riskNotes")}
+                  field="risk"
                   hint="提前标出容易失控的设计风险"
+                  icon="compare"
                   label="风险提示"
                   source={brief.sources.riskNotes}
                 >
@@ -2012,18 +2629,29 @@ export function IntakeCenter() {
                 </FieldShell>
               </fieldset>
 
-              <details className={stageStyles.constraintDrawer}>
+              <details
+                className={stageStyles.constraintDrawer}
+                data-agent-changed={dialogueChangedFields.has("constraints") || undefined}
+                data-has-items={activeConstraintCount > 0}
+              >
                 <summary>
-                  <div>
-                    <span>约束通道</span>
-                    <b>约束抽屉</b>
-                    <small>必须保留、禁止出现、规模、人数、时长与内容尺度</small>
+                  <div className={stageStyles.constraintDrawerLead}>
+                    <span aria-hidden="true" className={stageStyles.constraintDrawerIcon}>
+                      <Glyph name="archive" />
+                    </span>
+                    <div>
+                      <span>约束抽屉 / BOUNDARY CHANNEL</span>
+                      <b>创作约束设置</b>
+                      <small>必须保留、禁止出现、规模、人数、时长与内容尺度</small>
+                    </div>
                   </div>
-                  <em>
-                    {brief.constraints.filter((constraint) => constraint.statement.trim())
-                      .length}{" "}
-                    项已填写
-                  </em>
+                  <div className={stageStyles.constraintDrawerState}>
+                    <em>{activeConstraintCount} 项已填写</em>
+                    <span aria-hidden="true">
+                      <i>展开设置</i>
+                      <Glyph name="arrow" />
+                    </span>
+                  </div>
                 </summary>
                 <div className={stageStyles.constraintGrid}>
                   {brief.constraints.map((constraint) => (
@@ -2063,14 +2691,23 @@ export function IntakeCenter() {
                 </div>
               </details>
 
-              <section className={stageStyles.revisionStudio}>
-                <div>
-                  <span>
+              <section
+                aria-busy={dialogueRevisionPending}
+                aria-live="polite"
+                className={revisionStyles.revisionStudio}
+                data-pending={dialogueRevisionPending}
+              >
+                <div className={revisionStyles.revisionAgent}>
+                  <span aria-hidden="true" className={revisionStyles.revisionAgentMark}>
                     <Glyph name="spark" />
+                    <i />
+                    <i />
+                    <i />
                   </span>
                   <div>
+                    <em>CASEFILE AGENT / REVISION</em>
                     <b>对话修改</b>
-                    <small>只提交这一轮指令，并从当前候选生成子版本。</small>
+                    <small>告诉 Agent 要改变什么；未提及的字段默认保持不变。</small>
                   </div>
                 </div>
                 <textarea
@@ -2090,10 +2727,71 @@ export function IntakeCenter() {
                   onClick={createDialogueRevision}
                   type="button"
                 >
-                  {dialogueRevisionPending ? "正在生成修改候选…" : "生成修改候选"}
-                  <Glyph name="arrow" />
+                  {dialogueRevisionPending ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className={revisionStyles.revisionSubmitPulse}
+                      >
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      <span>
+                        <b>Agent 正在生成</b>
+                        <small>对照当前候选</small>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      交给 Agent 修改
+                      <Glyph name="arrow" />
+                    </>
+                  )}
                 </button>
               </section>
+
+              {visibleDialogueRevisionReceipt ? (
+                <section
+                  aria-label="本轮 Agent 修改"
+                  aria-live="polite"
+                  className={revisionStyles.revisionReceipt}
+                  role="status"
+                >
+                  <header>
+                    <span aria-hidden="true"><Glyph name="check" /></span>
+                    <div>
+                      <small>AGENT REVISION / COMPLETE</small>
+                      <b>{visibleDialogueRevisionReceipt.candidateLabel}已生成</b>
+                      <p>执行指令：{visibleDialogueRevisionReceipt.instruction}</p>
+                    </div>
+                  </header>
+                  {visibleDialogueRevisionReceipt.changes.length ? (
+                    <ul>
+                      {visibleDialogueRevisionReceipt.changes.map((change) => (
+                        <li key={change.key}>
+                          <b>{change.label}</b>
+                          <div>
+                            <span>修改前</span>
+                            <del>{change.before}</del>
+                          </div>
+                          <div>
+                            <span>修改后</span>
+                            <ins>{change.after}</ins>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={revisionStyles.revisionNoChanges}>
+                      新候选与原候选的字段内容一致，没有可列出的修改。
+                    </p>
+                  )}
+                  <footer>
+                    未列出的字段保持不变；原候选仍保留在候选历史中。
+                  </footer>
+                </section>
+              ) : null}
 
               <section className={stageStyles.candidateHistory} data-open={historyOpen}>
                 <button onClick={() => setHistoryOpen((open) => !open)} type="button">
@@ -2116,7 +2814,7 @@ export function IntakeCenter() {
                           <b>{candidate.label}</b>
                           <small>
                             {candidateOriginLabels[candidate.origin]} ·{" "}
-                            {candidate.createdAt}
+                            {formatCandidateTimestamp(candidate.createdAt)}
                           </small>
                           <p>{candidate.brief.concept}</p>
                         </div>
@@ -2142,115 +2840,93 @@ export function IntakeCenter() {
                 ) : null}
               </section>
 
-              {error ? (
-                <p className={stageStyles.inlineError} role="alert">
-                  {error}
-                </p>
+              {!intakeFrozen && briefConfirmationIssue ? (
+                <BriefConfirmationInterruption
+                  decision={resolutionDecision}
+                  issue={briefConfirmationIssue}
+                  issueRef={confirmationIssueRef}
+                  onConfirmDecision={applyResolutionDecision}
+                  onDecisionChange={setResolutionDecision}
+                  onReturnToField={() => {
+                    setBriefConfirmationIssue(null);
+                    setBriefConfirmationPhase("idle");
+                    if (briefConfirmationIssue.kind === "missing_field") {
+                      focusBriefField(briefConfirmationIssue.field);
+                    }
+                  }}
+                />
               ) : null}
 
+              {error ? (
+                <div className={feedbackStyles.confirmationError} role="alert">
+                  <p>{error}</p>
+                  <div>
+                    {confirmationRevisionConflict ? (
+                      <button onClick={() => void reloadLatestBrief()} type="button">
+                        载入最新版本
+                      </button>
+                    ) : null}
+                    {briefConfirmationPhase === "failed" ? (
+                      <button
+                        data-primary="true"
+                        onClick={() => requestBriefConfirmation()}
+                        type="button"
+                      >
+                        重新确认
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {intakeFrozen ||
+              (!briefConfirmationIssue && briefConfirmationPhase !== "failed") ? (
               <footer className={stageStyles.stepActions}>
                 <div>
-                  <button
-                    className={stageStyles.secondaryAction}
-                    disabled={
-                      intakeFrozen ||
-                      candidateSavePending ||
-                      missingFields.length > 0
-                    }
-                    onClick={saveCandidate}
-                    type="button"
-                  >
-                    {candidateSavePending ? "正在保存候选…" : "保存为新候选"}
-                  </button>
-                  <button
-                    className={stageStyles.primaryAction}
-                    disabled={intakeFrozen || briefReviewPending}
-                    onClick={enterBriefReview}
-                    type="button"
-                  >
-                    {intakeFrozen
-                      ? "简报已冻结"
-                      : briefReviewPending
-                        ? "正在进入审阅…"
-                        : "进入创作简报审阅"}
-                    <Glyph name="arrow" />
-                  </button>
+                  {intakeFrozen ? (
+                    <button
+                      className={stageStyles.primaryAction}
+                      onClick={() => setStep("candidates")}
+                      type="button"
+                    >
+                      返回深稿候选
+                      <Glyph name="arrow" />
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className={stageStyles.secondaryAction}
+                        disabled={
+                          candidateSavePending ||
+                          missingFields.length > 0
+                        }
+                        onClick={saveCandidate}
+                        type="button"
+                      >
+                        {candidateSavePending ? "正在保存候选…" : "保存为新候选"}
+                      </button>
+                      <button
+                        className={stageStyles.primaryAction}
+                        onClick={() => requestBriefConfirmation()}
+                        type="button"
+                      >
+                        确认建案并继续
+                        <Glyph name="arrow" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </footer>
+              ) : null}
             </section>
           ) : null}
-
-          {!inEntryView && step === "review" ? <BriefReviewStage /> : null}
 
           {!inEntryView && step === "candidates" ? <DraftCandidatesStage /> : null}
         </main>
 
-        <aside aria-label="实时简报映射" className={styles.liveBrief}>
-          <header>
-            <div>
-              <span>实时简报</span>
-              <b>实时简报映射</b>
-            </div>
-            <em>{completionCount}/5</em>
-          </header>
-          <div
-            aria-label={"建案完成度 " + completionCount + "/5"}
-            className={styles.signalMeter}
-            role="progressbar"
-            aria-valuemax={5}
-            aria-valuemin={0}
-            aria-valuenow={completionCount}
-          >
-            {completionSignals.map((signal) => (
-              <i data-ready={signal.ready} key={signal.label} />
-            ))}
           </div>
-          <div className={styles.signalRows}>
-            {completionSignals.map((signal) => (
-              <section data-ready={signal.ready} key={signal.label}>
-                <i aria-hidden="true" />
-                <span>{signal.label}</span>
-                <b>{signal.value}</b>
-              </section>
-            ))}
-          </div>
-          <section className={styles.liveExtract}>
-            <header>
-              <span>当前概念</span>
-              <SourceBadge
-                source={
-                  brief.concept
-                    ? brief.sources.concept
-                    : sourceText
-                      ? "user_original"
-                      : "unresolved"
-                }
-              />
-            </header>
-            <p>
-              {brief.concept ||
-                sourceText ||
-                "写下最初想法后，这里会持续映射建案结果。"}
-            </p>
-          </section>
-          <section className={styles.pendingQueue}>
-            <header>
-              <span>待决定</span>
-              <b>{pendingDecisionCount}</b>
-            </header>
-            {pendingDecisionCount > 0 ? (
-              <>
-                <p>已标记的偏好会在正式审阅时继续确认。</p>
-                <button onClick={() => openReachableStep("questions")} type="button">
-                  回到问题处理
-                </button>
-              </>
-            ) : (
-              <p>没有被隐藏的待决定事项。</p>
-            )}
-          </section>
-        </aside>
-      </div>
+        </>
+      )}
 
       <CaseHistoryDrawer
         currentProjectId={activeProjectId}
@@ -2259,6 +2935,46 @@ export function IntakeCenter() {
         onRestore={restoreProject}
         open={historyDrawerOpen}
       />
+      {confirmReturnToIdea ? (
+        <div className={feedbackStyles.impactDialogBackdrop} role="presentation">
+          <section
+            aria-labelledby="return-to-idea-title"
+            aria-modal="true"
+            className={feedbackStyles.impactDialog}
+            role="alertdialog"
+          >
+            <small>DEPENDENCY NOTICE / 依赖提示</small>
+            <span aria-hidden="true">!</span>
+            <h2 id="return-to-idea-title">返回修改起案内容？</h2>
+            <p>修改原始内容可能影响：</p>
+            <ul>
+              <li>当前关键追问</li>
+              <li>已生成的创作简报</li>
+            </ul>
+            <strong>已有内容、候选和版本不会丢失。</strong>
+            <footer>
+              <button
+                onClick={() => setConfirmReturnToIdea(false)}
+                type="button"
+              >
+                取消
+              </button>
+              <button autoFocus onClick={returnToIdeaStep} type="button">
+                返回修改
+                <Glyph name="arrow" />
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+      {briefRevisionDialogOpen ? (
+        <BriefRevisionDialog
+          currentVersion={state.frozenBriefVersion ?? state.workingBriefVersion}
+          onCancel={() => setBriefRevisionDialogOpen(false)}
+          onConfirm={() => void reopenFrozenBrief()}
+          pending={briefRevisionPending}
+        />
+      ) : null}
     </div>
   );
 }

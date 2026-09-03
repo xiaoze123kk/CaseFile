@@ -2,7 +2,6 @@ export type IntakeStep =
   | "idea"
   | "questions"
   | "confirmation"
-  | "review"
   | "candidates";
 
 export type IntakePolishMode =
@@ -128,6 +127,34 @@ export interface BriefReview {
   saved: boolean;
 }
 
+export type BriefConfirmationField =
+  | "concept"
+  | "reasoningGoal"
+  | "conclusionMode"
+  | "authorAnswer";
+
+export type BriefResolutionDecision =
+  | "author_anchored"
+  | "agent_proposed"
+  | "open";
+
+export type BriefConfirmationIssue =
+  | {
+      kind: "missing_field";
+      field: Exclude<BriefConfirmationField, "authorAnswer">;
+      label: string;
+    }
+  | {
+      kind: "resolution_choice_required";
+    }
+  | {
+      kind: "unique_open_conflict";
+    }
+  | {
+      kind: "author_answer_required";
+      field: "authorAnswer";
+    };
+
 export const intakeSteps: Array<{
   id: IntakeStep;
   no: string;
@@ -136,9 +163,8 @@ export const intakeSteps: Array<{
 }> = [
   { id: "idea", no: "01", label: "最初想法", shortLabel: "输入" },
   { id: "questions", no: "02", label: "关键追问", shortLabel: "追问" },
-  { id: "confirmation", no: "03", label: "创作简报草案", shortLabel: "校核" },
-  { id: "review", no: "04", label: "创作简报审阅", shortLabel: "审阅" },
-  { id: "candidates", no: "05", label: "深稿候选与采用", shortLabel: "采用" },
+  { id: "confirmation", no: "03", label: "创作简报", shortLabel: "建案" },
+  { id: "candidates", no: "04", label: "深稿候选与采用", shortLabel: "采用" },
 ];
 
 export const intakeRoutes = [
@@ -624,6 +650,70 @@ export function missingHardFields(brief: IntakeBrief): string[] {
     missing.push("作者答案");
   }
   return missing;
+}
+
+/**
+ * Return the first author-actionable problem that blocks freezing the Brief.
+ * The ordering is intentional: repair concrete content before asking the
+ * author to resolve relationships between otherwise valid choices.
+ */
+export function firstBriefConfirmationIssue(
+  brief: IntakeBrief,
+): BriefConfirmationIssue | null {
+  if (!brief.concept.trim()) {
+    return { kind: "missing_field", field: "concept", label: "一句话概念" };
+  }
+  if (!brief.reasoningGoal.trim()) {
+    return { kind: "missing_field", field: "reasoningGoal", label: "推理目标" };
+  }
+  if (brief.sources.conclusionMode !== "user_confirmed") {
+    return {
+      kind: "missing_field",
+      field: "conclusionMode",
+      label: "结论模式",
+    };
+  }
+  if (brief.sources.resolutionMode !== "user_confirmed") {
+    return { kind: "resolution_choice_required" };
+  }
+  if (
+    brief.conclusionMode === "unique" &&
+    brief.resolutionMode === "open"
+  ) {
+    return { kind: "unique_open_conflict" };
+  }
+  if (
+    brief.resolutionMode === "author_anchored" &&
+    !brief.authorAnswer.trim()
+  ) {
+    return { kind: "author_answer_required", field: "authorAnswer" };
+  }
+  return null;
+}
+
+export function applyBriefResolutionDecision(
+  brief: IntakeBrief,
+  decision: BriefResolutionDecision,
+): IntakeBrief {
+  return {
+    ...brief,
+    resolutionMode: decision === "open" ? "open" : decision,
+    conclusionMode:
+      decision === "open" ? "open_interpretation" : brief.conclusionMode,
+    authorAnswer: decision === "author_anchored" ? brief.authorAnswer : "",
+    sources: {
+      ...brief.sources,
+      resolutionMode: "user_confirmed",
+      conclusionMode:
+        decision === "open"
+          ? "user_confirmed"
+          : brief.sources.conclusionMode,
+      authorAnswer:
+        decision === "author_anchored"
+          ? brief.sources.authorAnswer
+          : "unresolved",
+    },
+  };
 }
 
 export function firstMeaningfulLine(value: string): string {

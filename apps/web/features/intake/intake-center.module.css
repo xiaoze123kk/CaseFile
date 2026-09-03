@@ -11,6 +11,8 @@
   --red-line: #d9afa6;
   --rule: #ded8cf;
   --hairline: #ece7df;
+  --center-wash-solid: rgba(252, 251, 248, 0.52);
+  --center-wash-fade: rgba(252, 251, 248, 0.16);
   position: relative;
   width: 100%;
   min-width: 0;
@@ -21,13 +23,35 @@
   background-image:
     linear-gradient(rgba(26, 28, 25, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(26, 28, 25, 0.035) 1px, transparent 1px),
+    radial-gradient(
+      ellipse at center,
+      var(--center-wash-solid) 0 34%,
+      var(--center-wash-fade) 52%,
+      transparent 74%
+    ),
     url("/intake-pencil-dossier.svg");
-  background-position: 0 0, 0 0, center;
-  background-repeat: repeat, repeat, no-repeat;
-  background-size: 18px 18px, 18px 18px, cover;
+  background-position: 0 0, 0 0, center, center;
+  background-repeat: repeat, repeat, no-repeat, no-repeat;
+  background-size: 18px 18px, 18px 18px, 100% 100%, cover;
   font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.intakeCenter[data-intake-view="flow"] {
+  --center-wash-solid: rgba(252, 251, 248, 0.78);
+  --center-wash-fade: rgba(252, 251, 248, 0.3);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .intakeCenter *,
@@ -70,6 +94,155 @@
   outline-offset: 2px;
 }
 
+.entrancePrologue {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  overflow: hidden;
+  color: var(--ink);
+  pointer-events: none;
+  animation: dossierPrologueRelease 1800ms linear forwards;
+}
+
+.entranceLeaf {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  left: 0;
+  height: 50.2%;
+  overflow: hidden;
+  background-color: #f6f2ea;
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 50% 100%, rgba(197, 43, 13, 0.07), transparent 34%);
+  background-size: 18px 18px, 18px 18px, 100% 100%;
+  animation-duration: 700ms;
+  animation-delay: 720ms;
+  animation-timing-function: cubic-bezier(0.74, 0, 0.22, 1);
+  animation-fill-mode: forwards;
+}
+
+.entranceLeaf[data-side="top"] {
+  top: 0;
+  border-bottom: 1px solid rgba(197, 43, 13, 0.5);
+  box-shadow: 0 16px 40px rgba(54, 34, 22, 0.13);
+  animation-name: dossierLeafOpenTop;
+}
+
+.entranceLeaf[data-side="bottom"] {
+  bottom: 0;
+  border-top: 1px solid rgba(197, 43, 13, 0.5);
+  box-shadow: 0 -16px 40px rgba(54, 34, 22, 0.13);
+  animation-name: dossierLeafOpenBottom;
+}
+
+.entranceScan {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 50%;
+  width: min(620px, 62vw);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--red) 18% 82%, transparent);
+  box-shadow: 0 0 18px rgba(197, 43, 13, 0.34);
+  transform: translateX(-50%);
+  animation: dossierScanPass 680ms 90ms cubic-bezier(0.3, 0.02, 0.24, 1) both;
+}
+
+.entranceLockup {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  min-width: min(520px, 72vw);
+  place-items: center;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  animation: dossierLockup 1120ms cubic-bezier(0.24, 0.74, 0.3, 1) both;
+}
+
+.entranceLockup > span,
+.entranceLockup > small {
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.18em;
+}
+
+.entranceLockup > span {
+  color: var(--red);
+}
+
+.entranceLockup > small {
+  color: var(--ink-faint);
+}
+
+.entranceLockup > strong {
+  margin: 18px 0 8px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: clamp(20px, 2vw, 30px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.entranceSeal {
+  position: relative;
+  display: grid;
+  width: 82px;
+  height: 82px;
+  margin-top: 24px;
+  place-items: center;
+  color: #fff8ef;
+  border: 1px solid #8f1f09;
+  background: #a9280e;
+  box-shadow:
+    0 14px 30px rgba(92, 30, 13, 0.26),
+    inset 0 0 0 4px #a9280e,
+    inset 0 0 0 5px rgba(255, 240, 222, 0.52);
+  transform: rotate(-2deg);
+  animation: dossierSealStrike 650ms 130ms cubic-bezier(0.16, 0.84, 0.28, 1.18) both;
+}
+
+.entranceSeal::before,
+.entranceSeal::after {
+  position: absolute;
+  content: "";
+  background: rgba(255, 241, 224, 0.38);
+}
+
+.entranceSeal::before {
+  top: 10px;
+  bottom: 10px;
+  left: 50%;
+  width: 1px;
+}
+
+.entranceSeal::after {
+  top: 50%;
+  right: 10px;
+  left: 10px;
+  height: 1px;
+}
+
+.entranceSeal b,
+.entranceSeal i {
+  position: relative;
+  z-index: 1;
+  font: 700 19px/1 "Cascadia Mono", Consolas, monospace;
+  font-style: normal;
+}
+
+.entranceSeal b {
+  align-self: end;
+  margin-bottom: 5px;
+}
+
+.entranceSeal i {
+  align-self: start;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
 .topbar {
   position: sticky;
   z-index: 30;
@@ -82,6 +255,31 @@
   border-bottom: 1px solid var(--rule);
   background: rgba(253, 251, 247, 0.97);
   backdrop-filter: blur(10px);
+}
+
+.intakeCenter[data-entrance-motion="true"] .topbar {
+  border-bottom-color: transparent;
+  animation: dossierChromeIn 430ms 780ms cubic-bezier(0.22, 0.78, 0.3, 1) backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .topbar::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  content: "";
+  background: var(--rule);
+  transform-origin: left center;
+  animation: dossierRuleDraw 740ms 820ms cubic-bezier(0.2, 0.74, 0.26, 1) backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .topbar .brandMark {
+  animation: dossierSealSettle 620ms 850ms cubic-bezier(0.2, 0.82, 0.28, 1) backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .topbarLinks > * {
+  animation: dossierTextIn 340ms 930ms ease-out backwards;
 }
 
 .brandCell,
@@ -287,35 +485,41 @@
   font: 700 21px/1 Arial, sans-serif;
 }
 
-.topbarLinks .accountButton {
-  gap: 8px;
-  padding: 0 0 0 5px;
-}
-
-.accountButton > span {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  color: white;
-  border-radius: 50%;
-  background: #b9a186;
-  font: 14px "Cascadia Mono", Consolas, monospace;
-}
-
-.accountButton > i {
+.topbarLinks .settingsButton {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
   color: var(--ink);
-  font-style: normal;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+}
+
+.settingsButton > svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.45;
+}
+
+.topbarLinks .settingsButton:hover {
+  color: var(--red);
+  border-color: var(--red-line);
+  background: var(--red-soft);
 }
 
 .pulseTrack {
   position: sticky;
   z-index: 25;
-  top: 80px;
+  top: 0;
   display: grid;
   height: 90px;
   min-height: 90px;
-  grid-template-columns: 240px minmax(0, 1fr) 150px;
+  grid-template-columns: 246px minmax(0, 1fr) 150px;
   border-bottom: 1px solid var(--rule);
   background: rgba(255, 255, 255, 0.96);
 }
@@ -383,7 +587,7 @@
   min-width: 0;
   margin: 0;
   padding: 0;
-  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  grid-template-columns: repeat(4, minmax(112px, 1fr));
   list-style: none;
 }
 
@@ -452,6 +656,24 @@
   border-color: var(--ink);
 }
 
+.pulseTrack li[data-needs-update="true"] {
+  background:
+    linear-gradient(0deg, var(--red) 0 3px, transparent 3px),
+    linear-gradient(90deg, rgba(197, 43, 13, 0.08), rgba(255, 249, 246, 0.82));
+}
+
+.pulseTrack li[data-needs-update="true"] button > span {
+  color: var(--red);
+  border-color: var(--red);
+  border-style: dashed;
+  background: white;
+}
+
+.pulseTrack li[data-needs-update="true"] small,
+.pulseTrack li[data-needs-update="true"] b {
+  color: var(--red);
+}
+
 .stepCheck {
   display: grid;
   width: 17px;
@@ -495,19 +717,526 @@
   font-size: 16px;
 }
 
-.workspace {
-  position: relative;
+.flowBrand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px;
+  text-align: left;
+  border: 0;
+  border-right: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.flowBrand:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.flowBrand .brandMark {
+  width: 48px;
+  height: 48px;
+  border-radius: 9px;
+  background-size: 104px 69px;
+}
+
+.flowBrand > span:last-child {
   display: grid;
   min-width: 0;
-  min-height: calc(100svh - 170px);
-  grid-template-columns: 264px minmax(0, 1fr) 314px;
-  gap: 0;
+  gap: 3px;
+}
+
+.flowBrand strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 23px;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.flowBrand small {
+  color: var(--red);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.pulseStatus button {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  color: var(--ink-faint);
+  background: transparent;
+  font-size: 9px;
+}
+
+.pulseStatus button:hover {
+  border-bottom-color: var(--red);
+  color: var(--red);
+}
+
+.stepNeedsUpdate {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: white;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 4px var(--red-soft);
+  font: normal 800 11px "Cascadia Mono", Consolas, monospace;
+  animation: dependencyAttention 1.8s ease-in-out infinite;
+}
+
+@keyframes dependencyAttention {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(197, 43, 13, 0.08);
+  }
+
+  50% {
+    box-shadow: 0 0 0 7px rgba(197, 43, 13, 0.02);
+  }
+}
+
+.workspace {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: calc(100svh - 90px);
   padding: 0;
 }
 
+.landing {
+  position: relative;
+  width: min(1500px, calc(100% - 80px));
+  min-height: calc(100svh - 80px);
+  margin: 0 auto;
+  overflow: hidden;
+  padding: 62px 0 52px;
+}
+
+.landing::before,
+.landing::after {
+  position: absolute;
+  z-index: 0;
+  width: 246px;
+  height: 246px;
+  border: 1px solid rgba(26, 28, 25, 0.07);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 31px transparent, inset 0 0 0 32px rgba(26, 28, 25, 0.055);
+  content: "";
+  pointer-events: none;
+}
+
+.landing::before {
+  top: 32px;
+  left: -180px;
+}
+
+.landing::after {
+  right: -124px;
+  bottom: -78px;
+}
+
+.landing > * {
+  position: relative;
+  z-index: 1;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landing::before,
+.intakeCenter[data-entrance-motion="true"] .landing::after {
+  animation: dossierWatermarkIn 860ms 740ms ease-out backwards;
+}
+
+.landingHero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.landingHero > span {
+  color: var(--red);
+  font: 700 11px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.17em;
+}
+
+.landingHero h1 {
+  margin: 15px 0 5px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: clamp(52px, 5.2vw, 76px);
+  font-weight: 600;
+  letter-spacing: -0.06em;
+  line-height: 1.14;
+}
+
+.landingHero > p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 15px;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingHero > span {
+  animation: dossierTextIn 360ms 810ms ease-out backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingHero h1 {
+  animation: dossierTitleReveal 600ms 860ms cubic-bezier(0.2, 0.78, 0.28, 1) backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingHero > p {
+  animation: dossierTextIn 430ms 1000ms ease-out backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .retainedCaseNotice {
+  animation: dossierTextIn 380ms 1100ms ease-out backwards;
+}
+
+.retainedCaseNotice {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 25px;
+  padding: 10px 16px;
+  border: 1px solid rgba(197, 43, 13, 0.25);
+  color: #6f2a1c;
+  background: rgba(255, 250, 247, 0.78);
+  font-size: 11px;
+}
+
+.retainedCaseNotice strong {
+  color: var(--red);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.landingRoutes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 26px;
+  margin-top: 52px;
+}
+
+.landingRouteCard {
+  position: relative;
+  display: flex;
+  min-height: 326px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 34px 36px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 36px rgba(58, 43, 31, 0.065);
+  text-align: left;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.landingRouteCard:hover {
+  border-color: rgba(197, 43, 13, 0.36);
+  box-shadow: 0 22px 44px rgba(58, 43, 31, 0.09);
+  transform: translateY(-3px);
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingRouteCard {
+  animation: dossierCardSettle 500ms cubic-bezier(0.2, 0.78, 0.28, 1) backwards;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingRouteCard:nth-child(1) {
+  animation-delay: 1090ms;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingRouteCard:nth-child(2) {
+  animation-delay: 1160ms;
+}
+
+.intakeCenter[data-entrance-motion="true"] .landingRouteCard:nth-child(3) {
+  animation-delay: 1230ms;
+}
+
+.landingRouteNumber {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  color: var(--red);
+  background: var(--paper-low);
+  font: 700 13px "Cascadia Mono", Consolas, monospace;
+}
+
+.landingRouteTarget {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  width: 70px;
+  height: 70px;
+  border: 1px solid rgba(26, 28, 25, 0.07);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 17px, rgba(26, 28, 25, 0.07) 17px 18px, transparent 18px),
+    linear-gradient(90deg, transparent 49.4%, rgba(26, 28, 25, 0.06) 50%, transparent 50.6%),
+    linear-gradient(transparent 49.4%, rgba(26, 28, 25, 0.06) 50%, transparent 50.6%);
+}
+
+.landingRouteCard > strong {
+  margin-top: 46px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 27px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.landingRouteCard > p {
+  max-width: 250px;
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.landingRouteAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 25px;
+  color: var(--red);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+}
+
+.landingRouteAction::before {
+  position: absolute;
+  bottom: 72px;
+  left: 36px;
+  width: 82px;
+  height: 1px;
+  background: rgba(197, 43, 13, 0.22);
+  content: "";
+}
+
+.landingRouteAction b {
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.recentCases {
+  margin-top: 54px;
+}
+
+.intakeCenter[data-entrance-motion="true"] .recentCases {
+  animation: dossierTextIn 430ms 1340ms ease-out backwards;
+}
+
+@keyframes dossierPrologueRelease {
+  0%,
+  92% { opacity: 1; visibility: visible; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+@keyframes dossierLeafOpenTop {
+  to { transform: translateY(-104%); }
+}
+
+@keyframes dossierLeafOpenBottom {
+  to { transform: translateY(104%); }
+}
+
+@keyframes dossierScanPass {
+  0% { opacity: 0; transform: translate(-50%, 0); }
+  16% { opacity: 1; }
+  84% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, 100svh); }
+}
+
+@keyframes dossierLockup {
+  0% { opacity: 0; transform: translate(-50%, calc(-50% + 10px)); }
+  20%,
+  64% { opacity: 1; transform: translate(-50%, -50%); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% - 8px)); }
+}
+
+@keyframes dossierSealStrike {
+  0% { opacity: 0; transform: scale(1.55) rotate(-8deg); filter: blur(3px); }
+  62% { opacity: 1; transform: scale(0.96) rotate(-2deg); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) rotate(-2deg); filter: blur(0); }
+}
+
+@keyframes dossierChromeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes dossierRuleDraw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes dossierSealSettle {
+  from {
+    opacity: 0;
+    transform: scale(0.9) rotate(-2deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes dossierTitleReveal {
+  from {
+    opacity: 0;
+    clip-path: inset(100% 0 0);
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes dossierTextIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dossierCardSettle {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dossierWatermarkIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.recentCases > header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.recentCases > header::after {
+  height: 1px;
+  flex: 1;
+  background: var(--rule);
+  content: "";
+}
+
+.recentCases h2 {
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 16px;
+}
+
+.recentCases > header button {
+  order: 3;
+  padding: 0;
+  border: 0;
+  color: var(--red);
+  background: transparent;
+  font-size: 11px;
+}
+
+.recentCaseGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.recentCase {
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: 24px minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 18px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.8);
+  text-align: left;
+}
+
+.recentCase:hover {
+  border-color: var(--red-line);
+  background: #fff;
+}
+
+.recentCase > svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 1.5;
+}
+
+.recentCase > span {
+  display: grid;
+}
+
+.recentCase strong {
+  overflow: hidden;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentCase small,
+.recentCase time {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.recentCase > b {
+  color: var(--red);
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.recentCasesEmpty {
+  margin: 0;
+  padding: 22px;
+  border: 1px solid var(--rule);
+  color: var(--ink-faint);
+  background: rgba(255, 255, 255, 0.72);
+  text-align: center;
+}
+
 .sessionStatus,
-.sessionStatusError,
-.sessionNotice {
+.sessionStatusError {
   grid-column: 1 / -1;
   margin: 12px 20px 0;
   padding: 9px 12px;
@@ -516,23 +1245,6 @@
   color: var(--ink-muted);
   background: rgba(255, 250, 247, 0.96);
   font-size: 12px;
-}
-
-.sessionNotice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-left-color: var(--accent);
-}
-
-.sessionNotice button {
-  padding: 0 6px;
-  border: 0;
-  color: var(--ink-faint);
-  background: transparent;
-  font-size: 14px;
-  line-height: 1;
 }
 
 .sessionStatusError {
@@ -704,8 +1416,9 @@
 
 .focusPlane {
   position: relative;
-  min-height: calc(100svh - 202px);
-  margin: 16px 0;
+  width: min(1180px, calc(100% - 40px));
+  min-height: calc(100svh - 122px);
+  margin: 16px auto 20px;
   overflow: clip;
   background:
     var(--paper);
@@ -729,6 +1442,23 @@
 .focusPlane > * {
   position: relative;
   z-index: 1;
+}
+
+.ideaFocusPlane {
+  min-height: 0;
+  margin-bottom: clamp(28px, 5vh, 56px);
+}
+
+@media (min-width: 701px) {
+  .ideaFocusPlane {
+    display: flex;
+    min-height: calc(100svh - 154px);
+  }
+
+  .intakeCenter[data-intake-step="questions"] .focusPlane {
+    display: flex;
+    margin-bottom: 4px;
+  }
 }
 
 .liveBrief {
@@ -764,7 +1494,7 @@
 .signalMeter {
   display: grid;
   height: 6px;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 2px;
   padding: 0;
   background: var(--paper-mid);
@@ -912,7 +1642,16 @@
   }
 
   .pulseTrack {
-    grid-template-columns: 132px minmax(0, 1fr) 78px;
+    grid-template-columns: 76px minmax(0, 1fr) 78px;
+  }
+
+  .flowBrand {
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .flowBrand > span:last-child {
+    display: none;
   }
 
   .pulseTrack ol {
@@ -990,21 +1729,16 @@
     display: inline;
   }
 
-  .topbarLinks .accountButton {
+  .topbarLinks .settingsButton {
     width: 42px;
     min-width: 42px;
-    gap: 4px;
     padding: 0;
-  }
-
-  .accountButton > i {
-    font-size: 11px;
   }
 
   .pulseTrack {
     position: relative;
     top: auto;
-    grid-template-columns: minmax(0, 1fr) 66px;
+    grid-template-columns: 62px minmax(0, 1fr) 66px;
   }
 
   .pulseIdentity {
@@ -1013,7 +1747,7 @@
 
   .pulseTrack ol {
     overflow-x: visible;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .pulseTrack li button {
@@ -1149,6 +1883,7 @@
   .intakeCenter *::before,
   .intakeCenter *::after {
     scroll-behavior: auto !important;
+    animation-delay: 0.01ms !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

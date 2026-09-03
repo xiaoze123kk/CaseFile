@@ -9,6 +9,43 @@ from pydantic import ValidationError
 
 from casefile.application.errors import ApplicationError
 
+_RESOLUTION_MODES = {"author_anchored", "agent_proposed", "open"}
+
+
+def normalize_author_answer_suggestion_context(
+    content: dict[str, Any],
+) -> dict[str, Any]:
+    """Build ephemeral Agent context without requiring a freeze-ready Brief."""
+
+    def text(field: str, fallback: str) -> str:
+        value = content.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:20_000]
+        return fallback
+
+    def optional_text(field: str) -> str | None:
+        value = content.get(field)
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()[:20_000]
+        return normalized or None
+
+    resolution_mode = content.get("resolution_mode")
+    return {
+        "creative_intent": text("creative_intent", "当前创意尚未填写"),
+        "reasoning_proposition": text(
+            "reasoning_proposition",
+            "尚待明确的核心推理问题",
+        ),
+        "resolution_mode": (
+            resolution_mode
+            if resolution_mode in _RESOLUTION_MODES
+            else "agent_proposed"
+        ),
+        "author_answer": optional_text("author_answer"),
+        "boundary_text": optional_text("boundary_text"),
+    }
+
 
 def validate_brief(content: dict[str, Any]) -> dict[str, Any]:
     try:
@@ -98,4 +135,8 @@ def require_confirmed_atomics(content: dict[str, Any]) -> None:
         )
 
 
-__all__ = ["require_confirmed_atomics", "validate_brief"]
+__all__ = [
+    "normalize_author_answer_suggestion_context",
+    "require_confirmed_atomics",
+    "validate_brief",
+]

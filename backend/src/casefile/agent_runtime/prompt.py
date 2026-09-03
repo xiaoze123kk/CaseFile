@@ -174,6 +174,7 @@ def anchor_extract_input(
     payload = {
         "input_hash": input_hash,
         "mode": mode,
+        "creative_intent": brief.get("creative_intent"),
         "resolution_mode": brief["resolution_mode"],
         "reasoning_proposition": brief["reasoning_proposition"],
         "author_answer": brief["author_answer"],
