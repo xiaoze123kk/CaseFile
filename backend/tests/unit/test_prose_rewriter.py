@@ -169,6 +169,17 @@ def test_request_contains_failed_and_preserved_semantics_without_credentials(
     ):
         assert forbidden not in serialized
     assert payload["server_bindings"]["max_rewrites_per_scene"] == 2
+    length = payload["server_bindings"]["length_contract"]
+    expected = rewrite_case["profile"]["prose"]["target_scene_chars"]
+    assert length == {
+        "policy_version": "prose-rewriter-length-contract-v1",
+        "unit": "unicode_code_points_in_block_text_only",
+        "min_chars": expected["min"],
+        "max_chars": expected["max"],
+        "target_chars": (expected["min"] + expected["max"]) // 2,
+        "hard_gate": True,
+    }
+    assert str(expected["min"]) in request.system_prompt or "min_chars" in request.system_prompt
 
 
 def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(

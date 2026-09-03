@@ -1,6 +1,6 @@
 {
   "schema_id": "casefile.prose-rewrite-dev-attestation.v1",
-  "suite_hash": "537ead5d7c4b91fa7e1159bcfaa9dc0c659c92e9f30d36b8ea4bff833c61e114",
+  "suite_hash": "ee82865c651193643461a96b69bde27b321ce6aac4fe2d5be0a4349c66e20113",
   "reviewer": "Codex",
   "reviewer_independence": false,
   "reviewed_task_count": 24,
@@ -13,5 +13,5 @@
   "allowed_use": "public_rewrite_development_only",
   "qualification": false,
   "unresolved_findings": [],
-  "attestation_hash": "01caa04ad3a0cdd3d53fb4a9ca2aabdda3c0edb29b463b46f594064bb9ca07a6"
+  "attestation_hash": "1b08a8bf6529cf192a24abb3fe8425aa993d3b189d2b75025d7513404eb30150"
 }

@@ -27,9 +27,10 @@ from casefile.domain.narrative_compiler import (
 )
 
 PROSE_REWRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v1"
-PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v1"
-PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v1"
+PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v2"
+PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v2"
+PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v2"
+PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v1"
 PROSE_REWRITER_MAX_TURNS: Final = 1
 PROSE_REWRITER_MAX_CALLS_PER_SCENE: Final = 2
 PROSE_REWRITER_NETWORK_RETRIES: Final = 0
@@ -52,6 +53,7 @@ PROSE_REWRITER_COMPONENT_HASH: Final = canonical_json_sha256(
         "candidate_schema_hash": PROSE_REWRITER_CANDIDATE_SCHEMA_HASH,
         "render_schema_hash": PROSE_REWRITER_RENDER_SCHEMA_HASH,
         "normalization": "full-scene-rewrite-with-direct-render-lineage-v1",
+        "length_contract": PROSE_REWRITER_LENGTH_POLICY_VERSION,
         "council_policy_hash": FIDELITY_ONLY_POLICY.policy_hash,
         "max_rewrites_per_scene": PROSE_REWRITER_MAX_CALLS_PER_SCENE,
     }
@@ -463,6 +465,15 @@ def build_prose_rewriter_request(
         "remaining_scene_call_budget": remaining_scene_call_budget,
     }
     component_input_hash = canonical_json_sha256(binding)
+    length_range = profile_json["prose"]["target_scene_chars"]
+    length_contract = {
+        "policy_version": PROSE_REWRITER_LENGTH_POLICY_VERSION,
+        "unit": "unicode_code_points_in_block_text_only",
+        "min_chars": length_range["min"],
+        "max_chars": length_range["max"],
+        "target_chars": (length_range["min"] + length_range["max"]) // 2,
+        "hard_gate": True,
+    }
     payload = {
         "server_bindings": {
             **binding,
@@ -470,6 +481,7 @@ def build_prose_rewriter_request(
             "candidate_schema_id": PROSE_REWRITER_CANDIDATE_SCHEMA_ID,
             "render_schema_id": PROSE_REWRITER_RENDER_SCHEMA_ID,
             "max_rewrites_per_scene": PROSE_REWRITER_MAX_CALLS_PER_SCENE,
+            "length_contract": length_contract,
         },
         "untrusted_data": {
             "checklist": checklist_json,
@@ -651,6 +663,7 @@ __all__ = [
     "PROSE_REWRITER_CANDIDATE_SCHEMA_HASH",
     "PROSE_REWRITER_COMPONENT_HASH",
     "PROSE_REWRITER_MAX_CALLS_PER_SCENE",
+    "PROSE_REWRITER_LENGTH_POLICY_VERSION",
     "PROSE_REWRITER_MODEL_ID",
     "PROSE_REWRITER_PROMPT_VERSION",
     "PROSE_REWRITER_REQUEST_PROTOCOL",

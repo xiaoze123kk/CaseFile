@@ -572,6 +572,9 @@ def _completed_call_audit(
     call: ProseRewriterProviderResult | ProseJudgeProviderResult,
     rewrite_round: int,
 ) -> dict[str, Any]:
+    candidate_character_count, candidate_block_count = _candidate_size(
+        call.candidate if component == "rewriter" else None
+    )
     return {
         "component": component,
         "rewrite_round": rewrite_round,
@@ -582,6 +585,8 @@ def _completed_call_audit(
         "input_hash": call.input_hash,
         "component_input_hash": getattr(call, "component_input_hash", None),
         "output_hash": call.output_hash,
+        "candidate_character_count": candidate_character_count,
+        "candidate_block_count": candidate_block_count,
         "model_id": call.model_id,
         "prompt_version": call.prompt_version,
         "usage": {key: int(call.usage.get(key, 0)) for key in _USAGE_KEYS},
@@ -591,6 +596,18 @@ def _completed_call_audit(
             _transport_attempt_audit(attempt) for attempt in call.transport_attempts
         ],
     }
+
+
+def _candidate_size(candidate: Any) -> tuple[int | None, int | None]:
+    if not isinstance(candidate, dict) or not isinstance(candidate.get("blocks"), list):
+        return None, None
+    blocks = candidate["blocks"]
+    if any(
+        not isinstance(block, dict) or not isinstance(block.get("text"), str)
+        for block in blocks
+    ):
+        return None, None
+    return sum(len(block["text"]) for block in blocks), len(blocks)
 
 
 def _failed_call_audit(

@@ -138,12 +138,23 @@ def test_mocked_exact_adapters_run_fixed_24_once_and_can_qualify(
     assert report["logical_model_call_count"] == 64
     assert report["physical_transport_attempt_count"] == 64
     assert report["model_id"] == "deepseek-v4-pro"
-    assert report["rewriter_prompt_version"] == "prose-rewriter-v1"
+    assert report["rewriter_prompt_version"] == "prose-rewriter-v2"
     assert report["judge_prompt_version"] == "prose-fidelity-judge-v5"
     assert report["council_policy_id"] == "fidelity-only-v1"
     assert report["max_rewrites_per_scene"] == 2
     assert report["scene_call_budget"] == 4
     assert fake_rewriter.call_count == fake_judge.call_count == 32
+    rewrite_call_audits = [
+        call
+        for row in report["rows"]
+        for call in row["calls"]
+        if call["component"] == "rewriter"
+    ]
+    assert all(
+        300 <= call["candidate_character_count"] <= 1200
+        for call in rewrite_call_audits
+    )
+    assert all(call["candidate_block_count"] >= 1 for call in rewrite_call_audits)
     assert report["report_hash"] == canonical_hash(
         {key: value for key, value in report.items() if key != "report_hash"}
     )
@@ -172,7 +183,6 @@ def test_mocked_exact_adapters_run_fixed_24_once_and_can_qualify(
         "secret-must-not-survive",
         "request_payload",
         "raw_response",
-        "candidate",
         "api_key",
         "Authorization",
     ):

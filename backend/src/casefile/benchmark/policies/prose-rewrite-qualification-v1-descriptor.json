@@ -26,12 +26,12 @@
     "infrastructure_failure_max": 0
   },
   "loader_version": "prose-rewrite-suite-loader-v1",
-  "public_development_suite_hash": "537ead5d7c4b91fa7e1159bcfaa9dc0c659c92e9f30d36b8ea4bff833c61e114",
+  "public_development_suite_hash": "ee82865c651193643461a96b69bde27b321ce6aac4fe2d5be0a4349c66e20113",
   "private_suite_hash": "98c1aaefc8f240c67f77a49a68314120af3a1066d92638fafd1eb7b9ff277995",
   "review_policy": "codex-owner-accepted-review-v1",
   "review_status": "codex_reviewed",
   "qualification_eligible": true,
   "author_attestation_hash": "b0874f67599b32df4ad0dec933479a3f83d77ad20e43f8d7a5aff658da74062e",
   "review_attestation_hash": "b02c1777c465766d54ff2230da5189c1e95dd96dfab8babde386c88128c30907",
-  "descriptor_hash": "6175e3851a5a42d1e9d6c3d7582520c8428b5043e04ebde760456ee216338d64"
+  "descriptor_hash": "eb23f7bc8efb36f4774edcfd30ebd62b48d8f9aac23b43aee01993a0069778b4"
 }

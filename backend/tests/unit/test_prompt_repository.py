@@ -49,7 +49,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
     "prose_writer": "prose-writer-v1",
-    "prose_rewriter": "prose-rewriter-v1",
+    "prose_rewriter": "prose-rewriter-v2",
     "prose_fidelity_judge": "prose-fidelity-judge-v5",
     "prose_adversarial_judge": "prose-adversarial-judge-v5",
     "prose_coherence_judge": "prose-coherence-judge-v5",
@@ -560,6 +560,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("prose_rewriter", "prose-rewriter-v1"): {
         "system": "f07195bf4dd6ee7493eef428895636530de87b5f17e4000c10a32777b7b53126"
+    },
+    ("prose_rewriter", "prose-rewriter-v2"): {
+        "system": "3ad1db4d3b6c5cab1d37a7d3ec84a5ecb8ea58195a1f4d35f730c1eed9ae1d81"
     },
     ("prose_fidelity_judge", "prose-fidelity-judge-v1"): {
         "system": "a280fe22e8dd879496af0852b12903a2540401bc6ff656d04906d661077933d0"
