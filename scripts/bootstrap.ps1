@@ -120,6 +120,9 @@ expected_revision = EXPECTED_DATABASE_REVISION
 expected_tables = {
     "agent_model_calls", "agent_step_runs",
     "agent_thread_context_states",
+    "agent_goal_deliveries", "agent_goal_obligation_dependencies",
+    "agent_goal_obligations", "agent_goal_observations", "agent_goal_revisions",
+    "agent_goal_sessions", "agent_goal_task_runs", "agent_goal_transitions",
     "users", "user_provider_settings", "projects", "casefiles", "drafts", "briefs",
     "brief_versions", "source_records", "brief_intakes", "brief_intake_questions",
     "brief_intake_candidates", "agent_threads", "agent_messages",
@@ -127,7 +130,8 @@ expected_tables = {
     "casefile_contract_refs", "draft_operations", "narrative_phases", "entities",
     "people", "locations", "events", "information_units", "evidence_items",
     "exposure_plans", "exposure_plan_revisions", "exposure_plan_entries",
-    "exposure_plan_entry_refs",
+    "exposure_plan_entry_refs", "exposure_plan_obligations",
+    "exposure_plan_obligation_refs",
     "testimonies", "claims", "knowledge_states", "knowledge_state_entries",
     "hypotheses", "idea_candidates", "imported_documents", "parse_items",
     "reasoning_paths", "reasoning_nodes", "reasoning_edges",
@@ -136,6 +140,8 @@ expected_tables = {
     "task_runs", "task_attempts", "task_events",
     "verification_runs", "verification_findings", "verification_finding_refs",
     "verification_finding_reviews", "verification_finding_patch_operations",
+    "compile_artifacts", "compile_runs", "compiler_profiles",
+    "compiler_profile_versions",
 }
 engine = create_engine(os.environ["DATABASE_URL"])
 with engine.connect() as connection:

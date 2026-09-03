@@ -82,7 +82,35 @@ function metadata(description: string): CoreMetadata {
 }
 
 async function beginQuickEdit() {
+  if (!screen.queryByRole("button", { name: "编辑" })) {
+    await openDossierMode();
+    await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const directory = revealDirectoryBranch("实体");
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+  }
   fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+}
+
+function revealDirectoryBranch(kind: string, subtype = `全部${kind}`) {
+  const directory = screen.getByRole("region", { name: "对象目录结果" });
+  const kindButton = within(directory).getByRole("button", {
+    name: new RegExp(`^${kind}，`),
+  });
+  if (kindButton.getAttribute("aria-pressed") !== "true") {
+    fireEvent.click(kindButton);
+  }
+  const subtypePanel = screen.getByLabelText(`${kind}子类型筛选`);
+  const subtypeButton = within(subtypePanel).getByRole("button", {
+    name: new RegExp(`^${subtype}，`),
+  });
+  if (subtypeButton.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(subtypeButton);
+  }
+  return directory;
 }
 
 function makeCaseFile(entityName = "真实调查员"): CaseFile {
@@ -550,7 +578,65 @@ afterEach(() => {
   localStorage.clear();
 });
 
+async function openDossierMode() {
+  fireEvent.click(
+    await screen.findByRole("tab", {
+      name: /工作台\s*当前工作.*对象档案/u,
+    }),
+  );
+  let directory = await screen.findByRole("region", {
+    name: "对象目录结果",
+  });
+  let selected = Array.from(
+    directory.querySelectorAll<HTMLButtonElement>("button[data-related]"),
+  ).find((button) => button.getAttribute("aria-pressed") === "true");
+  if (!selected) {
+    directory = revealDirectoryBranch("实体", "人物");
+    selected = directory.querySelector<HTMLButtonElement>(
+      "button[data-related]",
+    ) ?? undefined;
+  }
+  if (selected) fireEvent.click(selected);
+}
+
+async function openAnalysisMode() {
+  fireEvent.click(
+    await screen.findByRole("tab", { name: /分析\s*故事结构/u }),
+  );
+}
+
+async function openCompileMode() {
+  fireEvent.click(await screen.findByRole("tab", { name: "编译作品" }));
+}
+
 describe("production analyst workbench", () => {
+  it("shows the current case status inside the object-context panel without the removed next-judgment section", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "从故事未解之处继续" }),
+    ).toBeInTheDocument();
+    const threadEntry = screen.getByRole("region", { name: "对话线程入口" });
+    expect(threadEntry.closest("header")).toBeInTheDocument();
+    const inspector = screen.getByRole("complementary", {
+      name: "对象上下文",
+    });
+    const status = within(inspector).getByRole("region", { name: "工作台状态" });
+    expect(inspector.closest('[data-inspector-open="true"]')).toBeInTheDocument();
+    expect(within(status).getByText("CASE")).toBeInTheDocument();
+    expect(within(status).getByText("R7")).toBeInTheDocument();
+    expect(within(status).getByText("真实测试卷宗")).toBeInTheDocument();
+    for (const label of ["对象", "事件", "人物", "地点"]) {
+      expect(within(status).getByText(label)).toBeInTheDocument();
+    }
+    expect(screen.queryByText("下一步判断")).not.toBeInTheDocument();
+    expect(screen.queryByText("值得关注")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("当前没有阻断问题，可以继续浏览卷宗或进入编译。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows explicit gates for a missing or invalid project id", () => {
     const missing = render(<AnalystWorkbench requestedProjectId={null} />);
 
@@ -611,18 +697,18 @@ describe("production analyst workbench", () => {
     expect(mocks.fetchWorkbenchContext).not.toHaveBeenCalled();
     expect(mocks.loadProject).not.toHaveBeenCalled();
 
+    await openDossierMode();
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
     expect(within(editor).queryByText("候选预览，只读")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "候选预览不可使用 Agent" }),
+      screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "候选预览不可重置" }),
     ).toBeDisabled();
-    expect(screen.getByRole("tab", { name: /导出预览/u })).toBeDisabled();
-    expect(screen.getByRole("tab", { name: /编译中心/u })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "编译作品" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "重新验证" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /补丁审阅/u })).not.toBeInTheDocument();
@@ -637,10 +723,15 @@ describe("production analyst workbench", () => {
     expect(
       screen.getByRole("heading", { name: "正在读取当前工作稿" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", {
+        name: "正在连接项目、装载工作稿并准备分析上下文",
+      }),
+    ).toBeInTheDocument();
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("真实测试卷宗").length).toBeGreaterThan(0);
-    expect(screen.getByText("工作稿 R7")).toBeInTheDocument();
-    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    await openDossierMode();
+    const directory = revealDirectoryBranch("实体");
     const analystRow = within(directory).getByRole("button", {
       name: /真实调查员/,
     });
@@ -680,7 +771,7 @@ describe("production analyst workbench", () => {
   it("scopes persisted canvas layouts by project and Draft", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const first = render(<AnalystWorkbench requestedProjectId={42} />);
-    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /关系图/u }));
     const firstLayoutKey = first.container
       .querySelector("[data-layout-key]")
@@ -693,7 +784,7 @@ describe("production analyst workbench", () => {
       draft_id: 10,
     });
     const second = render(<AnalystWorkbench requestedProjectId={42} />);
-    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /关系图/u }));
     const secondLayoutKey = second.container
       .querySelector("[data-layout-key]")
@@ -712,6 +803,14 @@ describe("production analyst workbench", () => {
     expect(screen.queryByRole("tab", { name: /引用来源/u })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /补丁审阅/u })).not.toBeInTheDocument();
 
+    await openDossierMode();
+    await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const directory = revealDirectoryBranch("实体");
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
     const inspector = screen.getByRole("complementary", {
       name: "对象上下文",
     });
@@ -728,16 +827,9 @@ describe("production analyst workbench", () => {
     fireEvent.click(within(inspector).getByRole("button", { name: "查看完整历史" }));
     expect(screen.getByText("来源 draft_operations #31")).toBeInTheDocument();
 
-    // 技术来源详情下沉到底部来源抽屉，仍可核对 trace id 与正文
-    const drawer = screen.getByRole("region", { name: "来源与运行记录抽屉" });
-    fireEvent.click(
-      within(drawer).getByRole("button", { name: /来源抽屉/ }),
-    );
-    expect(within(drawer).getAllByText("source_records:12").length).toBeGreaterThan(0);
     expect(
-      within(drawer).getAllByText("作者提交的真实原稿正文。").length,
-    ).toBeGreaterThan(0);
-    expect(within(drawer).getAllByText("src_gate_log").length).toBeGreaterThan(0);
+      screen.queryByRole("region", { name: "来源与运行记录抽屉" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps deterministic validator codes and JSON paths out of the persistent inspector", async () => {
@@ -808,6 +900,7 @@ describe("production analyst workbench", () => {
     );
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openAnalysisMode();
     fireEvent.click(await screen.findByRole("tab", { name: /证据对比/ }));
     fireEvent.click(screen.getByRole("tab", { name: "验证问题" }));
 
@@ -865,6 +958,7 @@ describe("production analyst workbench", () => {
     );
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openAnalysisMode();
     fireEvent.click(await screen.findByRole("tab", { name: /证据对比/ }));
     fireEvent.click(screen.getByRole("tab", { name: "验证问题" }));
 
@@ -900,6 +994,7 @@ describe("production analyst workbench", () => {
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
+    await openDossierMode();
     const alerts = screen.getAllByRole("alert");
     expect(alerts[0]).toHaveTextContent("数据库暂时不可用");
     fireEvent.click(screen.getAllByRole("button", { name: "重新读取" })[0]);
@@ -907,42 +1002,28 @@ describe("production analyst workbench", () => {
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledTimes(2);
   });
 
-  it("starts the source drawer collapsed and lets the user expand it", async () => {
+  it("does not render the removed source drawer", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", {
-      name: "搜索对象名称或编号",
-    });
-    const drawer = screen.getByRole("region", {
-      name: "来源与运行记录抽屉",
-    });
-    const toggle = within(drawer).getByRole("button", {
-      name: /来源抽屉/,
-    });
-
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await screen.findByRole("tab", { name: /工作台\s*当前工作/u });
     expect(
-      within(drawer).queryByText("真实来源内容尚未接入"),
+      screen.queryByRole("region", { name: "来源与运行记录抽屉" }),
     ).not.toBeInTheDocument();
-
-    fireEvent.click(toggle);
-
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(
-      within(drawer).getByText("作者提交的真实原稿正文。"),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /来源抽屉/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters all six real object kinds with query-aware counts", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openDossierMode();
     await screen.findByRole("textbox", {
       name: "搜索对象名称或编号",
     });
     const filters = screen.getByLabelText("对象类型筛选");
-    expect(within(filters).getAllByRole("button")).toHaveLength(7);
     expect(
       within(filters).getByRole("button", { name: "核心问题，1 个匹配" }),
     ).toBeInTheDocument();
@@ -988,6 +1069,7 @@ describe("production analyst workbench", () => {
     expect(
       within(filters).getByRole("button", { name: "信息，1 个匹配" }),
     ).toBeInTheDocument();
+    revealDirectoryBranch("信息");
     expect(
       within(screen.getByRole("region", { name: "对象目录结果" })).getByText(
         "门禁记录",
@@ -999,6 +1081,71 @@ describe("production analyst workbench", () => {
     expect(
       within(filters).getByRole("button", { name: "全部对象，7 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("expands and collapses object kinds independently", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    const locationRow = within(directory).getByRole("button", {
+      name: "地点，1 个匹配",
+    });
+    expect(
+      within(directory).queryByRole("button", { name: /档案馆门禁/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(locationRow);
+    expect(locationRow).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(directory).queryByRole("button", { name: /档案馆门禁/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByLabelText("地点子类型筛选")).getByRole("button", {
+        name: "全部地点，1 个匹配",
+      }),
+    );
+    expect(
+      within(directory).getByRole("button", { name: /档案馆门禁/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(locationRow);
+    expect(locationRow).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(directory).queryByRole("button", { name: /档案馆门禁/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(locationRow);
+    expect(locationRow).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(directory).queryByRole("button", { name: /档案馆门禁/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens a left-rail object as conversation context instead of a dossier card grid", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const directory = revealDirectoryBranch("实体");
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /值班员/ }),
+    );
+
+    expect(
+      screen.getByRole("region", { name: "卷宗统筹 Agent 对话" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("当前上下文")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("complementary", { name: "对象上下文" }))
+        .getByRole("heading", { name: "值班员" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("选择对象查看当前事实、关系与来源；详细编辑会在右侧按需打开。"),
+    ).not.toBeInTheDocument();
   });
 
   it("nests real object subtypes under the active primary category", async () => {
@@ -1018,17 +1165,23 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(draft);
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openDossierMode();
     await screen.findByRole("textbox", {
       name: "搜索对象名称或编号",
     });
-    fireEvent.click(screen.getByRole("button", { name: "实体，2 个匹配" }));
+    const entityKind = screen.getByRole("button", {
+      name: "实体，2 个匹配",
+    });
+    if (entityKind.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(entityKind);
+    }
 
     const entitySubtypes = screen.getByLabelText("实体子类型筛选");
     expect(
       within(entitySubtypes).getByRole("button", {
         name: "全部实体，2 个匹配",
       }),
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toHaveAttribute("aria-expanded", "false");
     expect(
       within(entitySubtypes).getByRole("button", { name: "人物，1 个匹配" }),
     ).toBeInTheDocument();
@@ -1072,10 +1225,11 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openDossierMode();
     await screen.findByRole("textbox", {
       name: "搜索对象名称或编号",
     });
-    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    const directory = revealDirectoryBranch("信息");
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
@@ -1097,11 +1251,21 @@ describe("production analyst workbench", () => {
       "true",
     );
     expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("tab", {
+        name: /工作台\s*当前工作.*对象档案/u,
+      }),
+    );
+    const updatedDirectory = screen.getByRole("region", {
+      name: "对象目录结果",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "事件，1 个匹配" }),
+      ).toHaveAttribute("aria-pressed", "true"),
+    );
     expect(
-      screen.getByRole("button", { name: "事件，1 个匹配" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      within(directory).getByRole("button", { name: /门禁开启/ }),
+      within(updatedDirectory).getByRole("button", { name: /门禁开启/ }),
     ).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -1109,9 +1273,11 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const directory = await screen.findByRole("region", {
+    await openDossierMode();
+    await screen.findByRole("region", {
       name: "对象目录结果",
     });
+    const directory = revealDirectoryBranch("实体");
     fireEvent.click(
       within(directory).getByRole("button", { name: /真实调查员/ }),
     );
@@ -1141,6 +1307,7 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithKnowledgeStates(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openDossierMode();
     const directory = await screen.findByRole("region", {
       name: "对象目录结果",
     });
@@ -1179,6 +1346,7 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openDossierMode();
     const directory = await screen.findByRole("region", {
       name: "对象目录结果",
     });
@@ -1237,47 +1405,42 @@ describe("production analyst workbench", () => {
     expect(within(changes).getByText("采用 Draft 候选")).toBeInTheDocument();
   });
 
-  it("attaches author-language citations to fields with exact source spans", async () => {
+  it("keeps author-language citations informational after removing the source drawer", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const directory = await screen.findByRole("region", {
+    await openDossierMode();
+    await screen.findByRole("region", {
       name: "对象目录结果",
     });
+    const directory = revealDirectoryBranch("信息");
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
 
     const editor = screen.getByRole("region", { name: "对象详情与编辑" });
-    const citation = await within(editor).findByRole("button", {
-      name: "来源：你的修订 ②",
-    });
+    const citation = await within(editor).findByLabelText("来源：你的修订 ②");
     expect(citation).toHaveTextContent("你的修订 ②");
-    fireEvent.click(citation);
-
-    const drawer = screen.getByRole("region", {
-      name: "来源与运行记录抽屉",
-    });
     expect(
-      within(drawer).getByText(
-        "作者修订：九点整门禁被值班员开启。 值班员确认了这条记录。",
-      ),
-    ).toBeInTheDocument();
+      within(editor).queryByRole("button", { name: "来源：你的修订 ②" }),
+    ).not.toBeInTheDocument();
   });
 
   it("moves object context back and forward like browser history", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const directory = await screen.findByRole("region", {
+    await openDossierMode();
+    await screen.findByRole("region", {
       name: "对象目录结果",
     });
+    let directory = revealDirectoryBranch("实体");
     const editor = () => screen.getByRole("region", { name: "对象详情与编辑" });
     const editorHeading = () => within(editor()).getByRole("heading", { level: 2 });
-    const backButton = screen.getByRole("button", {
+    let backButton = screen.getByRole("button", {
       name: "后退到上一个对象",
     });
-    const forwardButton = screen.getByRole("button", {
+    let forwardButton = screen.getByRole("button", {
       name: "前进到下一个对象",
     });
     expect(backButton).toBeDisabled();
@@ -1289,14 +1452,23 @@ describe("production analyst workbench", () => {
     expect(editorHeading()).toHaveTextContent("真实调查员");
 
     // 在关系图视角选择门禁记录：历史帧应记下“关系图”这个视角
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    await openDossierMode();
+    await screen.findByRole("region", { name: "对象目录结果" });
+    directory = revealDirectoryBranch("信息");
+    backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
     expect(editorHeading()).toHaveTextContent("门禁记录");
-    fireEvent.click(
-      within(directory).getByRole("button", { name: /值班员/ }),
-    );
+    directory = revealDirectoryBranch("实体");
+    fireEvent.click(within(directory).getByRole("button", { name: /值班员/ }));
     expect(editorHeading()).toHaveTextContent("值班员");
 
     fireEvent.click(backButton);
@@ -1327,10 +1499,13 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithConclusion(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const directory = await screen.findByRole("region", { name: "对象目录结果" });
+    await openDossierMode();
+    await screen.findByRole("region", { name: "对象目录结果" });
+    const directory = revealDirectoryBranch("核心问题");
     fireEvent.click(
       within(directory).getByRole("button", { name: /谁改写了记录/ }),
     );
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /时间线/ }));
 
     const timeline = container.querySelector(
@@ -1353,28 +1528,52 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openDossierMode();
     await screen.findByRole("textbox", {
       name: "搜索对象名称或编号",
     });
-    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    const directory = revealDirectoryBranch("假设");
     fireEvent.click(
       within(directory).getByRole("button", { name: /记录曾被改写/ }),
     );
 
     const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
-    const views = [
+    const analysisViews = [
       ["时间线", "timeline"],
       ["关系图", "relations"],
       ["推理分析", "reasoning"],
       ["地图", "map"],
-      ["导出预览", "export"],
-      ["编译中心", "compile"],
       ["证据对比", "evidence"],
     ] as const;
 
     expect(screen.queryByRole("tab", { name: /卷宗编辑器/ })).not.toBeInTheDocument();
 
-    for (const [label, view] of views) {
+    await openAnalysisMode();
+    for (const [label, view] of analysisViews) {
+      fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
+      expect(canvas).toHaveAttribute("data-workbench-view", view);
+      expect(canvas).toHaveAttribute("data-draft-revision", "R7");
+      expect(canvas).toHaveAttribute(
+        "data-selected-object-id",
+        "hyp_record_tampered",
+      );
+      expect(screen.getByRole("tab", { name: new RegExp(label) })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      if (view === "reasoning") {
+        fireEvent.click(screen.getByRole("tab", { name: "竞争矩阵" }));
+        expect(
+          screen.getByText("当前问题只有一个假设，至少需要两个解释才能比较。"),
+        ).toBeInTheDocument();
+      }
+    }
+
+    await openCompileMode();
+    for (const [label, view] of [
+      ["编译中心", "compile"],
+      ["导出预览", "export"],
+    ] as const) {
       fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
       expect(canvas).toHaveAttribute("data-workbench-view", view);
       expect(canvas).toHaveAttribute("data-draft-revision", "R7");
@@ -1388,9 +1587,6 @@ describe("production analyst workbench", () => {
       );
     }
 
-    expect(
-      screen.getByText("当前问题只有一个假设，至少需要两个解释才能比较。"),
-    ).toBeInTheDocument();
     expect(screen.queryByText("角色提前知道“第五人权限”")).not.toBeInTheDocument();
     expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();
   });
@@ -1426,6 +1622,7 @@ describe("production analyst workbench", () => {
     );
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    await openAnalysisMode();
     fireEvent.click(
       await screen.findByRole("tab", { name: /证据对比/ }),
     );
@@ -1441,7 +1638,7 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
     const marker = await screen.findByRole(
       "button",
@@ -1478,7 +1675,7 @@ describe("production analyst workbench", () => {
     mocks.patchCaseDraftObject.mockResolvedValueOnce({});
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
     fireEvent.click(
       await screen.findByRole(
@@ -1550,7 +1747,7 @@ describe("production analyst workbench", () => {
       .mockResolvedValueOnce({});
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
     fireEvent.click(
       await screen.findByRole(
@@ -1598,6 +1795,7 @@ describe("production analyst workbench", () => {
     );
 
     await screen.findByRole("status", { name: "候选预览只读提示" });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
     fireEvent.click(
       await screen.findByRole(
@@ -1622,7 +1820,7 @@ describe("production analyst workbench", () => {
     await beginQuickEdit();
     const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
-    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /分析\s*故事结构/u }));
 
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "未保存的调查员名称",
@@ -1636,10 +1834,11 @@ describe("production analyst workbench", () => {
       "data-selected-object-id",
       "ent_real_analyst",
     );
-    expect(screen.getByRole("tab", { name: /时间线/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(
+      screen.getByRole("tab", {
+        name: /工作台\s*当前工作.*对象档案/u,
+      }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByTestId("spatial-map-canvas")).toBeNull();
   });
 
@@ -1647,9 +1846,7 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", {
-      name: "搜索对象名称或编号",
-    });
+    await openAnalysisMode();
     expect(
       screen.getByRole("heading", { name: "真实测试卷宗" }),
     ).toBeInTheDocument();
@@ -1663,13 +1860,12 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", {
-      name: "搜索对象名称或编号",
-    });
-    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    await openDossierMode();
+    const directory = revealDirectoryBranch("假设");
     fireEvent.click(
       within(directory).getByRole("button", { name: /记录曾被改写/ }),
     );
+    await openAnalysisMode();
 
     expect(screen.getByRole("heading", { name: "记录曾被改写" })).toBeInTheDocument();
     const relationContext = screen.getByRole("region", { name: "关系上下文" });
@@ -1685,9 +1881,11 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const directory = await screen.findByRole("region", {
+    await openDossierMode();
+    await screen.findByRole("region", {
       name: "对象目录结果",
     });
+    const directory = revealDirectoryBranch("信息");
     const backButton = screen.getByRole("button", {
       name: "后退到上一个对象",
     });
@@ -1704,9 +1902,6 @@ describe("production analyst workbench", () => {
     await beginQuickEdit();
     const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
-    fireEvent.click(
-      within(directory).getByRole("button", { name: /门禁记录/ }),
-    );
     fireEvent.click(forwardButton);
 
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
@@ -1719,8 +1914,10 @@ describe("production analyst workbench", () => {
     ).toHaveTextContent("请先保存或取消修改");
 
     fireEvent.click(screen.getByRole("button", { name: "取消修改" }));
+    await openDossierMode();
+    const refreshedDirectory = revealDirectoryBranch("信息");
     fireEvent.click(
-      within(directory).getByRole("button", { name: /门禁记录/ }),
+      within(refreshedDirectory).getByRole("button", { name: /门禁记录/ }),
     );
     await beginQuickEdit();
     const content = screen.getByRole("textbox", { name: "正文" });
@@ -1793,7 +1990,7 @@ describe("production analyst workbench", () => {
     );
 
     render(<AnalystWorkbench requestedProjectId={42} />);
-    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    await screen.findByRole("tab", { name: /工作台\s*当前工作/u });
     fireEvent.click(
       screen.getByRole("button", { name: /当前工作稿.*真实测试卷宗/u }),
     );
@@ -1807,6 +2004,7 @@ describe("production analyst workbench", () => {
         name: /当前工作稿.*服务端当前工作稿/u,
       }),
     ).toBeInTheDocument();
+    await openDossierMode();
     expect(screen.getByRole("heading", { name: "服务端当前稿人物" })).toBeInTheDocument();
     expect(mocks.loadProject).toHaveBeenCalledTimes(2);
   });
@@ -1814,13 +2012,9 @@ describe("production analyst workbench", () => {
   it("reveals graph selections in the directory and highlights direct relations", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
-    const { container } = render(
-      <AnalystWorkbench requestedProjectId={42} />,
-    );
+    render(<AnalystWorkbench requestedProjectId={42} />);
 
-    await screen.findByRole("textbox", {
-      name: "搜索对象名称或编号",
-    });
+    await openAnalysisMode();
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
     const graph = screen.getByRole("application", { name: "事件关系图" });
     expect(
@@ -1841,11 +2035,14 @@ describe("production analyst workbench", () => {
 
     fireEvent.click(operatorNode, { ctrlKey: true });
     expect(screen.getByRole("heading", { name: "值班员" })).toBeInTheDocument();
+    await openDossierMode();
     expect(
       screen.getByRole("button", { name: "实体，2 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(operatorNode).toHaveAttribute("aria-pressed", "true");
-    expect(container.querySelector('[data-mobile-region="inspector"]')).toBeTruthy();
+    expect(
+      screen.getByRole("complementary", { name: "对象上下文" }),
+    ).toBeInTheDocument();
     expect(
       consoleError.mock.calls.filter(([message]) =>
         String(message).includes("same key"),
@@ -1892,7 +2089,7 @@ describe("production analyst workbench", () => {
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "我的未保存名称",
     );
-    expect(screen.getByText("工作稿 R8")).toBeInTheDocument();
+    expect(screen.getAllByText("工作稿 R8").length).toBeGreaterThan(0);
     const editor = screen.getByRole("region", { name: "对象详情与编辑" });
     expect(within(editor).getByRole("status")).toHaveTextContent(
       "工作稿已更新。你的输入已保留，请核对最新版后再次保存。",

@@ -24,6 +24,7 @@ export function WorkbenchAgentThreadMenu({
   onSetPinned,
   onSetArchived,
   onSearch,
+  placement = "panel",
 }: {
   threads: AgentThreadView[];
   selectedThread?: AgentThreadView | null;
@@ -35,6 +36,7 @@ export function WorkbenchAgentThreadMenu({
   onSetPinned: (thread: AgentThreadView, isPinned: boolean) => Promise<void>;
   onSetArchived: (thread: AgentThreadView, archived: boolean) => Promise<void>;
   onSearch: (query: string, includeArchived: boolean) => Promise<void>;
+  placement?: "panel" | "toolbar";
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -174,7 +176,11 @@ export function WorkbenchAgentThreadMenu({
   }
 
   return (
-    <div className={styles.agentThreadManager} onKeyDown={handleEscape}>
+    <div
+      className={styles.agentThreadManager}
+      data-placement={placement}
+      onKeyDown={handleEscape}
+    >
       <button
         aria-controls="agent-thread-listbox"
         aria-expanded={open}

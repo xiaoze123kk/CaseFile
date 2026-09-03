@@ -28,26 +28,27 @@
 | `apps/web/components/archive-shell.tsx` | 全站唯一产品壳、真实项目侧栏、七模块产品地图、Provider 设置入口和工作流导航。 |
 | `apps/web/components/archive-ui.tsx` | 无 Store 依赖的 Case Spine、文档头、面板头、状态徽记等全站设计系统组件。 |
 | `apps/web/public/casefile-brand.png` | 用户确认并按导航栏尺寸优化的 CaseFile 品牌位图。 |
+| `apps/web/public/casefile-agent-mascot-3d.png` | 工作台底部 Agent 输入框左侧的透明背景 3D 卷宗调查员角色图标。 |
 
 ## 业务功能模块
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts`、`workbench-views.ts` | 分析师工作台页面编排、跨面板共享状态、Current Draft 全量重载与本地 Fixture 数据模型；`workbench-views.ts` 是八种生产主画布视图的唯一注册表；证据对比视图内含「证据矩阵」与「验证问题」两个子视图。 |
+| `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts`、`workbench-views.ts` | 分析师工作台三大模块页面编排（工作台、分析、编译作品）；工作台内部合并当前工作总览与对象档案，共用顶部入口和左侧对象索引，左侧对象选择直接进入 Agent 对话并把对象作为右侧 Inspector 与对话上下文，不再维护中央对象卡片墙；其余模式按上下文切换导航，并共享按需 Inspector、轻量 Agent 入口、跨面板状态、Current Draft 全量重载与本地 Fixture 数据模型；`workbench-views.ts` 是底层生产画布视图的唯一注册表，时间/关系/推理/证据/空间归入分析模式，导出/编译归入编译模式；证据对比视图内含「证据矩阵」与「验证问题」两个子视图。 |
 | `apps/web/features/analyst-workbench/workbench-scope-switcher.tsx`、`workbench-scope-switcher.module.css` | 顶部全局项目切换与标题栏工作稿切换；负责真实列表、加载/失败/空态、指针并发激活、键盘关闭/焦点恢复和返回建案中心生成新稿。 |
 | `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts`、`workbench-spatial-model.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和空间卷宗工作台模型；空间纯数据层负责 WGS84、场景坐标、确定性拓扑、未定位地点、地点级事件聚合、空间关系规范化和图层可见性过滤，Fixture 只通过显式适配器进入。 |
 | `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-detail-model.ts`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css`、`workbench-object-persistence.ts` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数；详情模型集中转换真实对象、中文词汇、关联引用和结构锁，详情面板提供浏览态、按需快速编辑、关联事件和未保存切换保护；持久化 Hook 统一对象/空间位置 PATCH、Current Draft 重载和 revision 冲突结果，不依赖 client-only 地图组件。 |
-| `apps/web/features/analyst-workbench/workbench-context-panels.tsx`、`workbench-context-panels.module.css` | 展示当前 Draft 的真实确定性验证、冻结 Brief 来源正文/追溯标识和只追加审计事实，并统一加载、空态、错误、重试与专属面板样式。 |
+| `apps/web/features/analyst-workbench/workbench-context-panels.tsx`、`workbench-context-panels.module.css` | 展示当前 Draft 的真实确定性验证与只追加审计事实，并统一加载、空态、错误、重试与专属面板样式。 |
 | `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、卷宗编辑、导出预览与编译中心等次级主画布视图。 |
 | `apps/web/features/analyst-workbench/spatial-map/` | client-only 空间卷宗边界；React 视图管理模式、分模式图层/视口、状态核验、未定位抽屉、快览与显式位置编辑，独立 controls/preview-card 避免主视图膨胀；Leaflet renderer 分别使用地理 CRS 与 `CRS.Simple`，只产生关系覆盖层及拖动坐标预览，不负责 PATCH 或 revision。 |
 | `apps/web/features/analyst-workbench/workbench-relationship-graph.tsx`、`workbench-reasoning-graph.tsx` | 将关系与推理读模型适配为只读画布场景，声明节点类型颜色、图例、详情选择和无障碍替代表。 |
 | `apps/web/features/analyst-workbench/workbench-evidence-comparison.tsx` | 证据对比视图的「证据 × 假设」矩阵：按核心问题展示每条信息/证据对每个假设的支持/冲突/中立判定、强度与理由，并在选中单元格时给出可靠度、叙事分类、信息类型与支持/反驳的主张；数据来自 `reasoningGroups`（`Hypothesis.evidence_assessments`），真实工作稿立即可用。 |
 | `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：统一展示确定性与持久化 Agent finding 的来源、severity、规则代码、JSON 路径、字段路径、状态和可定位证据，并可发起普通 CaseFile Chat TaskRun 的验证重跑；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
-| `apps/web/features/analyst-workbench/workbench-agent-surface.tsx`、`workbench-agent-composer.tsx`、`workbench-agent.module.css` | 卷宗统筹 Agent 的 `closed / quick / desk` 表面边界、基于真实 Workbench Focus 的上下文输入、中文 IME 安全的多行 Composer，以及独立于主工作台的 Agent 视觉布局。 |
+| `apps/web/features/analyst-workbench/workbench-agent-surface.tsx`、`workbench-agent-composer.tsx`、`workbench-agent.module.css` | 卷宗统筹 Agent 的底部主聊天框 `dock` 与完整对话 `desk` 表面边界、基于真实 Workbench Focus 的上下文输入、中文 IME 安全的 Composer，以及独立于主工作台的 Agent 视觉布局；底栏直接发送并进入完整对话，不再维护 Quick Ask 浮层。 |
 | `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread 与公共 Message/Run 控制器、公共 SSE 恢复、消息发送与 Patch API 生命周期；opaque handle 仅保存在控制器状态中，并向 Workbench Inspector 提供生成契约中的作者审阅事实。 |
-| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的公共 Patch/Finding 唯一审阅所有者：按“你要求的修改 / 为保持一致性同步调整”展示中文 target、field、before/after/why、影响与原子规则，支持公共 warning 确认、Apply/Undo/Redo；不展示内部操作、版本、hash 或 policy，也不自行推导 can_apply。 |
-| `apps/web/features/analyst-workbench/workbench-agent-desk.tsx` | Desk/Quick 的统一阅读列布局：Header、Conversation、Task Strip、预设指令和 Composer 组合，不拥有领域状态。 |
 | `apps/web/features/analyst-workbench/workbench-agent-thread-menu.tsx` | Agent Thread 搜索、Combobox/Listbox 键盘选择、新建、置顶、重命名、归档和归档筛选呈现；持久化由 live panel 回调完成。 |
+| `apps/web/features/analyst-workbench/workbench-agent-desk.tsx` | 完整 Agent Desk 的阅读列布局：Header、Conversation、Task Strip、预设指令和 Composer 组合，不拥有领域状态。 |
+| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的公共 Patch/Finding 唯一审阅所有者：按“你要求的修改 / 为保持一致性同步调整”展示中文 target、field、before/after/why、影响与原子规则，支持公共 warning 确认、Apply/Undo/Redo；不展示内部操作、版本、hash 或 policy，也不自行推导 can_apply。 |
 | `apps/web/features/analyst-workbench/workbench-agent-task-strip.tsx` | 公共 Run activity、上下文状态、验证摘要、停止回复和终态摘要的 Sticky 展示；不显示 token、Provider、Prompt 或内部阶段。 |
 | `apps/web/features/analyst-workbench/workbench-agent-conversation.tsx` | 基于生成 Public DTO 的调查记录式消息 Turn、公共引用/Finding/Patch 摘要入口和 Workbench 定位回调；不读取原始 Task result，也不执行 Patch 写入。 |
 | `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 本地预览 Agent 编排；与生产面板共享 Agent Surface，但不接真实 Thread/Task 持久化。 |

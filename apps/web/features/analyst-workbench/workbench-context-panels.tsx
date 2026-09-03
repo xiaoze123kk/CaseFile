@@ -1,7 +1,6 @@
 import type {
   WorkbenchAuditEntryView,
   WorkbenchContextView,
-  WorkbenchSourceView,
 } from "@/lib/api-client";
 
 import styles from "./workbench-context-panels.module.css";
@@ -110,78 +109,6 @@ export function WorkbenchValidationPanel({
   );
 }
 
-export function WorkbenchSourcesPanel({
-  state,
-  onRetry,
-}: {
-  state: WorkbenchContextState;
-  onRetry: () => void;
-}) {
-  const context = state.data;
-  if (!context) {
-    return (
-      <ContextStateMessage
-        emptyDetail="当前冻结简报没有登记来源记录。"
-        emptyTitle="暂无来源记录"
-        loadingTitle="正在读取来源正文"
-        onRetry={onRetry}
-        state={state}
-      />
-    );
-  }
-  if (context.sources.length === 0 && context.contract_source_refs.length === 0) {
-    return (
-      <div className={styles.realEmptyState}>
-        <strong>当前工作稿没有可展示的来源</strong>
-        <p>这里只展示冻结简报实际引用的来源记录，不会补入本地样例。</p>
-        <button onClick={onRetry} type="button">重新读取</button>
-      </div>
-    );
-  }
-  return (
-    <div className={styles.sourceInspector}>
-      <p>来源正文来自冻结简报记录的来源记录；表名、主键和内容哈希共同构成可追溯标识。</p>
-      {context.sources.map((source) => (
-        <SourceRecordCard key={source.trace_id} source={source} />
-      ))}
-      {context.contract_source_refs.length ? (
-        <section className={styles.contractSourceRefs} aria-label="CaseFile 来源片段引用">
-          <header>
-            <strong>CaseFile 来源片段引用</strong>
-            <small>{context.contract_source_refs.length} 个稳定标识</small>
-          </header>
-          <ul>
-            {context.contract_source_refs.map((reference) => (
-              <li key={reference.source_fragment_id}>
-                <code>{reference.source_fragment_id}</code>
-                <span>{reference.paths.join("、")}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-function SourceRecordCard({ source }: { source: WorkbenchSourceView }) {
-  return (
-    <article>
-      <header>
-        <span>{sourceKindLabel(source.source_kind)}</span>
-        <small>{formatDateTime(source.created_at)}</small>
-      </header>
-      <h2>{source.trace_id}</h2>
-      <pre className={styles.sourceRecordBody}>{source.content_text}</pre>
-      <dl className={styles.sourceTraceFacts}>
-        <div><dt>内容哈希</dt><dd><code>{source.content_hash}</code></dd></div>
-        <div><dt>父来源</dt><dd>{source.parent_source_record_id ? `source_records:${source.parent_source_record_id}` : "无"}</dd></div>
-        <div><dt>生成任务</dt><dd>{source.generated_by_task_run_id ? `task_runs:${source.generated_by_task_run_id}` : "作者直接提交"}</dd></div>
-      </dl>
-    </article>
-  );
-}
-
 export function WorkbenchAuditPanel({
   state,
   onRetry,
@@ -237,12 +164,6 @@ function AuditEntry({ entry }: { entry: WorkbenchAuditEntryView }) {
   );
 }
 
-function sourceKindLabel(kind: WorkbenchSourceView["source_kind"]) {
-  if (kind === "human_original") return "作者原稿";
-  if (kind === "human_revision") return "作者修订";
-  return "Agent 润色候选";
-}
-
 function actorLabel(entry: WorkbenchAuditEntryView) {
   if (entry.actor.kind === "user") return `用户 #${entry.actor.user_id ?? "—"}`;
   return entry.actor.ref ? `${entry.actor.kind} · ${entry.actor.ref}` : entry.actor.kind;
@@ -273,14 +194,6 @@ function auditDetail(entry: WorkbenchAuditEntryView) {
 
 function stringDetail(value: unknown) {
   return typeof value === "string" ? value : null;
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(date);
 }
 
 function formatClock(value: string) {

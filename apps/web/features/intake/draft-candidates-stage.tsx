@@ -125,14 +125,17 @@ export function DraftCandidatesStage() {
     selectedSlot?.latestTask &&
       ACTIVE_GENERATION_TASK_STATUSES.has(selectedSlot.latestTask.status),
   );
+  const taskCancelled = selectedSlot?.latestTask?.status === "cancelled";
+  const pipelineActive = taskActive || Boolean(generating && !selectedSlot?.latestTask);
   // 运行中的可恢复部件失败仍在重试上限内，属于流水线自动修复，
   // 不弹失败提示；只有重试耗尽、任务真正失败时才展示失败门禁。
   const recovering = Boolean(taskActive && failedComponent?.recoverable);
   const pipeline = pipelineRows(latestComponentSteps);
   const pipelineProgress = pipelineProgressFor(
     pipeline,
-    componentSteps.length === 0,
+    pipelineActive && componentSteps.length === 0,
     recovering,
+    taskCancelled,
   );
   const coordinatorFallback = failedComponent?.component_id === "run_coordinator";
   const failureIssues = coordinatorFallback && taskFailure?.issues.length
@@ -540,10 +543,26 @@ export function DraftCandidatesStage() {
       {generationError ? <p className={styles.generationError} role="alert">{generationError}</p> : null}
 
       {showPipeline && selectedSlot ? (
-        <section className={styles.agentPipeline} aria-label="深稿生成部件进度">
+        <section
+          aria-label="深稿生成部件进度"
+          className={styles.agentPipeline}
+          data-active={pipelineActive || undefined}
+          data-complete={pipelineProgress.completedCount === pipeline.length || undefined}
+        >
           <header>
             <div><span>{selectedSlot.latestTask?.prompt_version ?? "正在创建任务"}</span><strong>六步生成流水线</strong></div>
-            <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
+            <div className={styles.pipelineAttempt}>
+              <span
+                aria-hidden="true"
+                className={styles.pipelineSignal}
+                data-testid="pipeline-signal"
+              >
+                <i />
+                <i />
+                <i />
+              </span>
+              <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
+            </div>
           </header>
           <div className={styles.pipelineProgressSummary}>
             <div className={styles.pipelineProgressCopy}>
@@ -558,15 +577,26 @@ export function DraftCandidatesStage() {
               aria-valuemax={6}
               aria-valuenow={pipelineProgress.completedCount}
             >
-              <span style={{ width: `${(pipelineProgress.completedCount / 6) * 100}%` }} />
+              <span
+                data-active={pipelineActive || undefined}
+                style={{ width: `${(pipelineProgress.completedCount / 6) * 100}%` }}
+              />
             </div>
           </div>
           <ol>
             {pipeline.map((row, index) => {
               const rowStatus =
-                recovering && row.status === "failed" ? "recovering" : row.status;
+                taskCancelled && row.status === "running"
+                  ? "stopped"
+                  : recovering && row.status === "failed"
+                    ? "recovering"
+                    : row.status;
               return (
-                <li data-status={rowStatus} key={row.id}>
+                <li
+                  data-status={rowStatus}
+                  key={row.id}
+                  style={{ "--pipeline-order": index } as CSSProperties}
+                >
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   <div>
                     <strong>{row.id === "domain_drafters" && row.children
@@ -576,9 +606,11 @@ export function DraftCandidatesStage() {
                     {row.children ? (
                       <ul>{row.children.map((child) => {
                         const childStatus =
-                          recovering && child.status === "failed"
-                            ? "recovering"
-                            : child.status;
+                          taskCancelled && child.status === "running"
+                            ? "stopped"
+                            : recovering && child.status === "failed"
+                              ? "recovering"
+                              : child.status;
                         return (
                           <li data-status={childStatus} key={child.id}>
                             {child.label} · {stepStatusLabel(childStatus)}
@@ -708,8 +740,10 @@ function pipelineProgressFor(
   rows: ReturnType<typeof pipelineRows>,
   creatingTask: boolean,
   recovering: boolean,
+  cancelled: boolean,
 ) {
   const completedCount = rows.filter((row) => row.status === "succeeded" || row.status === "reused").length;
+  if (cancelled) return { completedCount, label: "本次生成已停止" };
   if (creatingTask) return { completedCount, label: "正在创建任务" };
   const failedIndex = rows.findIndex((row) => row.status === "failed");
   const runningIndex = rows.findIndex((row) => row.status === "running");
@@ -728,8 +762,8 @@ function pipelineProgressFor(
   return { completedCount, label: "正在创建任务" };
 }
 
-function stepStatusLabel(status: PipelineStatus | "recovering") {
-  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过", recovering: "修复中" }[status];
+function stepStatusLabel(status: PipelineStatus | "recovering" | "stopped") {
+  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过", recovering: "修复中", stopped: "已停止" }[status];
 }
 
 function componentLabel(componentId: string) {

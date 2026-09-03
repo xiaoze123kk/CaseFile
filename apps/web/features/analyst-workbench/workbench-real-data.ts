@@ -91,16 +91,6 @@ const referenceKindOrder: WorkbenchReferenceKind[] = [
   "unknown",
 ];
 
-const emptyDrawer: WorkbenchModel["drawer"] = {
-  audioTitle: "暂无真实来源录音",
-  audioDuration: "—",
-  audioProgress: "0 / 0",
-  keyTime: "—",
-  keyExcerpt: "",
-  transcript: "当前工作稿尚未接入来源抽屉。",
-  logs: [],
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1391,7 +1381,6 @@ export function mapCaseFileToWorkbenchModel(
     objectCounts: countObjects(caseObjects),
     timelineEvents,
     validationIssues,
-    sourceItems: [],
     graphNodes: relationshipGraph.nodes,
     graphEdges: relationshipGraph.edges,
     relationshipGraph,
@@ -1401,7 +1390,6 @@ export function mapCaseFileToWorkbenchModel(
     mapMarkers: [],
     mapLabels: [],
     map,
-    drawer: emptyDrawer,
     initialAuditEntries: [],
     defaultEventId: timelineEvents[0]?.id ?? null,
     defaultObjectId:
@@ -1509,7 +1497,6 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     objectCounts: countObjects(caseObjects),
     timelineEvents,
     validationIssues: seed.validationIssues,
-    sourceItems: seed.sourceItems,
     graphNodes,
     graphEdges,
     relationshipGraph: { nodes: graphNodes, edges: graphEdges },
@@ -1519,7 +1506,6 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     mapMarkers: seed.mapMarkers,
     mapLabels: seed.mapLabels,
     map,
-    drawer: seed.drawer,
     initialAuditEntries: seed.initialAuditEntries,
     defaultEventId: seed.defaultEventId || null,
     defaultObjectId: seed.defaultObjectId || null,

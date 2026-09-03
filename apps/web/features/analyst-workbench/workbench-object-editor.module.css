@@ -131,11 +131,6 @@
   font: 600 11px/1.4 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
 }
 
-.citationChip:hover {
-  border-color: #c78b3c;
-  background: rgba(199, 139, 60, 0.18);
-}
-
 .valueList { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .valueList li::before { margin-right: 6px; color: #c78b3c; content: "·"; font-weight: 700; }
 

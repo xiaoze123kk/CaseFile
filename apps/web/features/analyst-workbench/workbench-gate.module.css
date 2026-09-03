@@ -1,0 +1,450 @@
+.gatedWorkbench {
+  min-height: 720px;
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+.gatedHeader {
+  grid-template-columns: 220px minmax(260px, 0.82fr) minmax(360px, 1fr) auto auto;
+}
+
+.handoffRoute {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(70px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 22px;
+  color: var(--ink-faint, #77736c);
+  border-right: 1px solid var(--rule, #ded8cf);
+  font-size: 9px;
+}
+
+.handoffRoute i {
+  height: 1px;
+  background: linear-gradient(90deg, var(--rule, #ded8cf), var(--primary, #c52b0d));
+}
+
+.handoffRoute strong {
+  color: var(--primary-strong, #9d230c);
+  font-weight: 650;
+}
+
+.handoffPulse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px;
+  color: var(--ink-muted, #5d5d58);
+  border-right: 1px solid var(--rule, #ded8cf);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.handoffPulse i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary, #c52b0d);
+}
+
+.gate {
+  --gate-paper: #fcfbf8;
+  --gate-paper-low: #f3efe8;
+  --gate-ink: #1a1c19;
+  --gate-muted: #68645e;
+  --gate-rule: #d9d2c8;
+  --gate-red: #c52b0d;
+  --gate-red-dark: #8f210d;
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 100vh;
+  grid-row: 2;
+  place-items: center;
+  overflow: hidden;
+  padding: 42px;
+  color: var(--gate-ink);
+  background-color: var(--gate-paper-low);
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.027) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.027) 1px, transparent 1px),
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.98), rgba(252, 251, 248, 0.72) 34%, transparent 68%);
+  background-size: 20px 20px, 20px 20px, 100% 100%;
+}
+
+.gatedWorkbench .gate { min-height: 0; }
+
+.gate::before,
+.gate::after {
+  position: absolute;
+  pointer-events: none;
+  content: "";
+}
+
+.gate::before {
+  inset: 28px;
+  border: 1px solid rgba(26, 28, 25, 0.075);
+}
+
+.gate::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(720px, 54vw);
+  border-right: 1px solid rgba(197, 43, 13, 0.045);
+  border-left: 1px solid rgba(197, 43, 13, 0.045);
+  transform: translateX(-50%);
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(620px, 100%);
+  min-height: 320px;
+  place-items: center;
+  border: 1px solid var(--gate-rule);
+  background: rgba(252, 251, 248, 0.96);
+  box-shadow: 0 28px 70px rgba(65, 45, 31, 0.11);
+  animation: panel-arrive 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.gate[data-loading="true"] .panel {
+  width: min(760px, 100%);
+  min-height: auto;
+  grid-template-columns: 1fr;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.loadingVisual {
+  position: relative;
+  display: grid;
+  width: 286px;
+  height: 286px;
+  place-items: center;
+  margin-bottom: 18px;
+}
+
+.orbit {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(26, 28, 25, 0.21);
+  border-radius: 50%;
+  animation: orbit-breathe 1.8s ease-in-out infinite;
+}
+
+.orbit::before,
+.orbit::after {
+  position: absolute;
+  border-radius: 50%;
+  content: "";
+}
+
+.orbit::before {
+  inset: 21px;
+  border: 1px solid rgba(197, 43, 13, 0.24);
+}
+
+.orbit::after {
+  inset: -4px;
+  border-top: 2px solid var(--gate-red);
+  border-right: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-left: 2px solid transparent;
+  transform: rotate(-38deg);
+  animation: orbit-turn 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.orbit > i {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-color: rgba(26, 28, 25, 0.36);
+  border-style: solid;
+}
+
+.orbit > i:nth-child(1) { top: 18px; left: 18px; border-width: 1px 0 0 1px; }
+.orbit > i:nth-child(2) { top: 18px; right: 18px; border-width: 1px 1px 0 0; }
+.orbit > i:nth-child(3) { right: 18px; bottom: 18px; border-width: 0 1px 1px 0; }
+.orbit > i:nth-child(4) { bottom: 18px; left: 18px; border-width: 0 0 1px 1px; }
+
+.folioMark {
+  position: relative;
+  width: 150px;
+  height: 176px;
+  transform: translateY(-2px);
+}
+
+.folioShadow,
+.folioSheet,
+.folioFace {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  width: 112px;
+  height: 140px;
+  border: 1px solid #bdb4a8;
+  background: #f3eee6;
+}
+
+.folioShadow {
+  top: 18px;
+  left: 2px;
+  transform: rotate(-11deg);
+  animation: folio-left 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.folioSheet {
+  top: 12px;
+  right: 0;
+  background: #eae3d8;
+  transform: rotate(10deg);
+  animation: folio-right 760ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.folioFace {
+  top: 5px;
+  left: 19px;
+  padding: 28px 20px;
+  overflow: hidden;
+  background: #fffefb;
+  box-shadow: 0 17px 32px rgba(67, 46, 30, 0.19);
+  animation: folio-center 520ms 80ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.folioFace::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  content: "";
+  background: var(--gate-red);
+}
+
+.folioFace > span {
+  display: block;
+  width: 66px;
+  height: 1px;
+  margin-bottom: 10px;
+  background: #afa79c;
+}
+
+.folioFace > span:nth-child(2) { width: 53px; }
+.folioFace > span:nth-child(3) { width: 39px; }
+
+.folioFace b {
+  position: absolute;
+  right: 13px;
+  bottom: 13px;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: var(--gate-red);
+  border: 1.5px solid var(--gate-red);
+  font: 600 21px/1 "Noto Serif SC", "STSong", SimSun, serif;
+  transform: rotate(-7deg);
+  animation: seal-land 420ms 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.scanLine {
+  position: absolute;
+  z-index: 4;
+  top: 5px;
+  left: 19px;
+  width: 112px;
+  height: 1px;
+  opacity: 0;
+  background: var(--gate-red);
+  box-shadow: 0 0 11px rgba(197, 43, 13, 0.42);
+  animation: document-scan 1.25s 320ms ease-in-out infinite;
+}
+
+.gateCopy {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 52px;
+  text-align: center;
+}
+
+.gate[data-loading="true"] .gateCopy { padding: 0; }
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--gate-red-dark);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.kicker::before,
+.kicker::after {
+  width: 20px;
+  height: 1px;
+  content: "";
+  background: rgba(197, 43, 13, 0.52);
+}
+
+.kicker small {
+  position: absolute;
+  top: -24px;
+  color: #918b83;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.gateCopy h1 {
+  max-width: 10em;
+  margin: 18px 0 10px;
+  font: 600 34px/1.18 "Noto Serif SC", "STSong", SimSun, serif;
+  letter-spacing: -0.025em;
+}
+
+.gate[data-loading="true"] .gateCopy h1 {
+  margin-top: 20px;
+  font-size: 42px;
+}
+
+.gateCopy p {
+  max-width: 38ch;
+  margin: 0;
+  color: var(--gate-muted);
+  font-size: 11px;
+  line-height: 1.75;
+}
+
+.loadingStatus {
+  display: grid;
+  width: 260px;
+  gap: 11px;
+  margin-top: 30px;
+}
+
+.loadingStatus > div {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  background: #ded8cf;
+}
+
+.loadingStatus > div i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: var(--gate-red);
+  animation: loading-sweep 1.25s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+
+.loadingStatus > span {
+  color: #918b83;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.gateActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.gateActions a,
+.gateActions button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  color: var(--gate-muted);
+  border: 1px solid var(--gate-rule);
+  background: transparent;
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.gateActions button {
+  color: #fffaf6;
+  border-color: var(--gate-ink);
+  background: var(--gate-ink);
+}
+
+.gateActions :is(a, button):hover {
+  color: #fffaf6;
+  border-color: var(--gate-red);
+  background: var(--gate-red);
+}
+
+@keyframes panel-arrive {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes orbit-breathe {
+  0%, 100% { opacity: 0.62; transform: scale(0.97); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes orbit-turn {
+  from { transform: rotate(-38deg); }
+  to { transform: rotate(322deg); }
+}
+
+@keyframes folio-left {
+  from { opacity: 0; transform: translate(-34px, 12px) rotate(-18deg); }
+  to { opacity: 1; transform: rotate(-11deg); }
+}
+
+@keyframes folio-right {
+  from { opacity: 0; transform: translate(34px, 12px) rotate(18deg); }
+  to { opacity: 1; transform: rotate(10deg); }
+}
+
+@keyframes folio-center {
+  from { opacity: 0; transform: translateY(22px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes seal-land {
+  from { opacity: 0; transform: scale(1.65) rotate(-18deg); }
+  to { opacity: 1; transform: scale(1) rotate(-7deg); }
+}
+
+@keyframes document-scan {
+  0%, 8% { opacity: 0; transform: translateY(0); }
+  18% { opacity: 1; }
+  74% { opacity: 0.8; transform: translateY(138px); }
+  84%, 100% { opacity: 0; transform: translateY(138px); }
+}
+
+@keyframes loading-sweep {
+  0% { opacity: 0; transform: translateX(-105%); }
+  18%, 72% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(270%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .orbit,
+  .orbit::after,
+  .folioShadow,
+  .folioSheet,
+  .folioFace,
+  .folioFace b,
+  .scanLine,
+  .loadingStatus > div i {
+    animation: none;
+  }
+
+  .scanLine { opacity: 0.5; transform: translateY(52px); }
+  .loadingStatus > div i { opacity: 1; transform: none; }
+}

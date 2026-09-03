@@ -1297,29 +1297,81 @@
 }
 
 .agentPipeline {
+  position: relative;
+  isolation: isolate;
   margin: 0 18px 18px;
+  overflow: hidden;
   border: 1px solid var(--ink);
   background: var(--paper-low);
+}
+
+.agentPipeline[data-active="true"]::after {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  left: -18%;
+  width: 14%;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(197, 43, 13, 0.09), transparent);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transform: skewX(-10deg);
+  animation: pipelinePanelScan 2.8s ease-in-out infinite;
+}
+
+.agentPipeline[data-complete="true"] {
+  animation: pipelineCompleteFrame 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .agentPipeline > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 15px 18px;
   border-bottom: 1px solid var(--ink);
 }
 
 .agentPipeline > header span,
 .agentPipeline > header strong { display: block; }
-.agentPipeline > header span { color: var(--red); font: 11px "Cascadia Mono", monospace; }
-.agentPipeline > header b { font: 12px "Cascadia Mono", monospace; }
+.agentPipeline > header span { color: var(--red); font: 11px "Cascadia Mono", monospace; letter-spacing: 0.04em; }
+.agentPipeline > header strong {
+  margin-top: 2px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+}
+.agentPipeline > header b { font: 12px "Cascadia Mono", monospace; letter-spacing: 0.04em; }
+.pipelineAttempt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pipelineSignal {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+}
+.pipelineSignal i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+.agentPipeline[data-active="true"] .pipelineSignal i {
+  background: var(--red);
+  animation: pipelineSignalPulse 900ms ease-in-out infinite;
+}
+.agentPipeline[data-active="true"] .pipelineSignal i:nth-child(2) { animation-delay: 150ms; }
+.agentPipeline[data-active="true"] .pipelineSignal i:nth-child(3) { animation-delay: 300ms; }
+.agentPipeline[data-complete="true"] .pipelineSignal i { background: #356548; }
 .pipelineProgressSummary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 42%);
   align-items: center;
   gap: 18px;
-  padding: 11px 14px;
+  padding: 13px 18px;
   border-bottom: 1px solid var(--rule);
   background: color-mix(in srgb, var(--paper-low) 90%, var(--ink) 10%);
 }
@@ -1330,8 +1382,16 @@
   gap: 16px;
   min-width: 0;
 }
-.pipelineProgressCopy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pipelineProgressCopy span { flex: 0 0 auto; color: var(--ink-muted); font: 11px "Cascadia Mono", monospace; }
+.pipelineProgressCopy strong {
+  overflow: hidden;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pipelineProgressCopy span { flex: 0 0 auto; color: var(--ink-muted); font: 12px "Cascadia Mono", monospace; }
 .pipelineProgressBar {
   position: relative;
   height: 8px;
@@ -1347,31 +1407,219 @@
   pointer-events: none;
 }
 .pipelineProgressBar > span {
+  position: relative;
   display: block;
   height: 100%;
-  background: #356548;
-  transition: width 220ms ease-out;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, #2f5c42, #477d5c 52%, #2f5c42),
+    #356548;
+  background-size: 180% 100%;
+  transition: width 420ms cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+.pipelineProgressBar > span[data-active="true"] {
+  animation: pipelineProgressFlow 1.5s linear infinite;
+}
+.pipelineProgressBar > span[data-active="true"]::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -32px;
+  width: 28px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.78), transparent);
+  transform: skewX(-18deg);
+  animation: pipelineProgressGlint 1.25s ease-in-out infinite;
 }
 .agentPipeline > ol { display: grid; grid-template-columns: repeat(6, 1fr); margin: 0; padding: 0; list-style: none; }
-.agentPipeline > ol > li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; min-height: 86px; padding: 12px; border-right: 1px solid var(--rule); }
+.agentPipeline > ol > li {
+  position: relative;
+  display: grid;
+  min-height: 118px;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  padding: 19px 16px 16px;
+  overflow: hidden;
+  border-right: 1px solid var(--rule);
+  transition: color 240ms ease, background-color 240ms ease;
+}
+.agentPipeline > ol > li::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: var(--rule);
+  transform-origin: left center;
+}
+.agentPipeline > ol > li::after {
+  position: absolute;
+  top: -3px;
+  left: 13px;
+  width: 8px;
+  height: 8px;
+  content: "";
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--paper-high);
+}
 .agentPipeline > ol > li:last-child { border-right: 0; }
-.agentPipeline li > span { color: var(--ink-muted); font: 11px "Cascadia Mono", monospace; }
+.agentPipeline > ol > li > span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+  font: 700 12px "Cascadia Mono", monospace;
+  letter-spacing: 0.02em;
+}
 .agentPipeline li strong,
 .agentPipeline li small { display: block; }
-.agentPipeline li small { margin-top: 4px; color: var(--ink-muted); }
-.agentPipeline li[data-status="running"] { background: color-mix(in srgb, var(--red) 7%, transparent); }
+.agentPipeline > ol > li > div > strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.015em;
+  line-height: 1.4;
+}
+.agentPipeline li small {
+  margin-top: 7px;
+  color: var(--ink-muted);
+  font: 11px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.04em;
+}
+.agentPipeline > ol > li[data-status="pending"] { opacity: 0.68; }
+.agentPipeline > ol > li[data-status="running"] { background: color-mix(in srgb, var(--red) 9%, transparent); }
+.agentPipeline[data-active="true"] > ol > li[data-status="running"]::before {
+  background: linear-gradient(90deg, transparent, var(--red) 28% 72%, transparent);
+  background-size: 180% 100%;
+  animation: pipelineTrackFlow 1.35s linear infinite;
+}
+.agentPipeline[data-active="true"] > ol > li[data-status="running"]::after {
+  border-color: var(--red);
+  background: var(--red);
+  box-shadow: 0 0 0 5px rgba(197, 43, 13, 0.1), 0 0 16px rgba(197, 43, 13, 0.36);
+  animation: pipelineNodeBeacon 920ms ease-in-out infinite alternate;
+}
+.agentPipeline[data-active="true"] > ol > li[data-status="running"] > span {
+  color: var(--red);
+  border-color: var(--red-line);
+  background: var(--paper-high);
+  animation: pipelineIndexPulse 920ms ease-in-out infinite alternate;
+}
+.agentPipeline[data-active="true"] > ol > li[data-status="running"] > span::before {
+  position: absolute;
+  inset: -5px;
+  content: "";
+  border: 1px solid transparent;
+  border-top-color: var(--red);
+  border-right-color: var(--red-line);
+  border-radius: 50%;
+  animation: pipelineIndexOrbit 1.2s linear infinite;
+}
 .agentPipeline li[data-status="failed"] { color: var(--red); }
 .agentPipeline li[data-status="recovering"] { color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, transparent); }
+.agentPipeline > ol > li[data-status="stopped"] {
+  color: var(--ink-muted);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+.agentPipeline > ol > li[data-status="stopped"]::before { background: var(--ink-faint); }
+.agentPipeline > ol > li[data-status="stopped"]::after {
+  border-color: var(--ink-faint);
+  background: var(--paper-high);
+}
+.agentPipeline > ol > li[data-status="stopped"] > span {
+  color: var(--ink-faint);
+  border-color: var(--rule);
+}
+.agentPipeline > ol > li[data-status="succeeded"],
+.agentPipeline > ol > li[data-status="reused"] {
+  animation: pipelineCellResolve 460ms calc(var(--pipeline-order) * 65ms) cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.agentPipeline > ol > li[data-status="succeeded"]::before,
+.agentPipeline > ol > li[data-status="reused"]::before { background: #356548; }
+.agentPipeline > ol > li[data-status="succeeded"]::after,
+.agentPipeline > ol > li[data-status="reused"]::after {
+  border-color: #356548;
+  background: #356548;
+}
 .agentPipeline li[data-status="succeeded"] > span,
 .agentPipeline li[data-status="reused"] > span { color: #356548; }
-.agentPipeline li ul { margin: 8px 0 0; padding: 0; list-style: none; font-size: 11px; }
+.agentPipeline li ul {
+  margin: 11px 0 0;
+  padding: 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+  line-height: 1.55;
+  list-style: none;
+}
 .agentPipeline li ul li { padding: 2px 0; }
+.agentPipeline[data-active="true"] li ul li[data-status="running"] {
+  color: var(--red);
+  animation: pipelineChildPulse 1s ease-in-out infinite alternate;
+}
 .componentFailure { display: grid; gap: 7px; padding: 12px 14px; border-top: 1px solid var(--red); color: var(--red); }
 .componentFailure p { margin: 0; font-size: 12px; }
 .componentFailure code { display: block; white-space: normal; color: var(--ink); }
 .componentFailure button { justify-self: start; }
 .componentRecovering { display: grid; gap: 7px; padding: 12px 14px; border-top: 1px solid var(--warning); color: var(--warning); }
 .componentRecovering p { margin: 0; font-size: 12px; }
+
+@keyframes pipelinePanelScan {
+  from { transform: translateX(0) skewX(-10deg); }
+  to { transform: translateX(860%) skewX(-10deg); }
+}
+
+@keyframes pipelineCompleteFrame {
+  0% { box-shadow: 0 0 0 0 rgba(53, 101, 72, 0); }
+  45% { box-shadow: 0 0 0 4px rgba(53, 101, 72, 0.16); }
+  100% { box-shadow: 0 0 0 0 rgba(53, 101, 72, 0); }
+}
+
+@keyframes pipelineSignalPulse {
+  0%, 100% { opacity: 0.25; transform: translateY(1px); }
+  50% { opacity: 1; transform: translateY(-1px); }
+}
+
+@keyframes pipelineProgressFlow {
+  to { background-position: -180% 0; }
+}
+
+@keyframes pipelineProgressGlint {
+  from { transform: translateX(0) skewX(-18deg); }
+  to { transform: translateX(620px) skewX(-18deg); }
+}
+
+@keyframes pipelineTrackFlow {
+  from { background-position: 180% 0; }
+  to { background-position: -180% 0; }
+}
+
+@keyframes pipelineNodeBeacon {
+  to { box-shadow: 0 0 0 8px rgba(197, 43, 13, 0.02), 0 0 22px rgba(197, 43, 13, 0.48); }
+}
+
+@keyframes pipelineIndexPulse {
+  to { background: var(--red-soft); box-shadow: inset 0 0 0 2px rgba(197, 43, 13, 0.08); }
+}
+
+@keyframes pipelineIndexOrbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pipelineCellResolve {
+  from { opacity: 0.4; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pipelineChildPulse {
+  to { opacity: 0.48; }
+}
 
 .oldCandidates {
   margin: 0 18px 18px;
@@ -1530,7 +1778,12 @@
   .strategyLoadingLedger::after,
   .generationMeter > span,
   .pipelineProgressBar > span,
-  .candidateCard {
+  .candidateCard,
+  .agentPipeline,
+  .agentPipeline::after,
+  .agentPipeline *,
+  .agentPipeline *::before,
+  .agentPipeline *::after {
     animation: none;
     transition: none;
   }

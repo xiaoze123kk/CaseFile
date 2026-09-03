@@ -6,16 +6,12 @@ import type {
   PublicAgentEvent,
   PublicAgentMessage,
   PublicAgentRun,
-  PublicContextState,
   PublicPatchReviewResult,
   PublicPatchSet,
-  PublicRoutingInterpretation,
-  PublicVerificationStatus,
 } from "@casefile/contracts";
 
 import {
   applyAgentPatchSet,
-  cancelAgentRun,
   createAgentThread,
   errorMessage,
   getAgentRun,
@@ -23,7 +19,6 @@ import {
   listAgentThreads,
   redoAgentPatchSet,
   sendAgentMessage,
-  sendAgentRoutingFeedback,
   simulateAgentPatchSet,
   streamAgentRunEvents,
   undoAgentPatchSet,
@@ -34,16 +29,13 @@ import {
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
-import styles from "./workbench-agent.module.css";
 import { WorkbenchAgentComposer } from "./workbench-agent-composer";
 import {
   WorkbenchAgentConversation,
   agentAuditFindingsFor,
 } from "./workbench-agent-conversation";
 import { WorkbenchAgentDesk } from "./workbench-agent-desk";
-import { agentPromptPresets } from "./workbench-agent-presets";
 import type { AgentSurface } from "./workbench-agent-surface";
-import { WorkbenchAgentTaskStrip } from "./workbench-agent-task-strip";
 import { WorkbenchAgentThreadMenu } from "./workbench-agent-thread-menu";
 import { WorkbenchAgentInspector } from "./workbench-agent-inspector";
 
@@ -58,14 +50,6 @@ const TERMINAL_RUN_STATUSES = new Set<PublicAgentRun["status"]>([
   "failed",
   "cancelled",
 ]);
-
-const interpretationLabels: Record<PublicRoutingInterpretation, string> = {
-  conversation: "交流问答",
-  analysis: "分析",
-  logic_review: "逻辑复查",
-  change_request: "修改卷宗",
-  clarification: "补充说明",
-};
 
 const focusViewLabels: Record<string, string> = {
   timeline: "时间线",
@@ -107,13 +91,13 @@ export function AgentLivePanel({
   kickoff,
   referenceLabels,
   onLocateObject,
-  onLocateEvent,
   onFocusPatch = () => undefined,
-  onFocusFinding = () => undefined,
   focusPatchSetId,
   focusFindingId,
   inspectorHost,
+  threadHost,
   onDraftChanged,
+  disabled = false,
   onClose,
   surface = "desk",
   onContinueInDesk = () => undefined,
@@ -136,7 +120,9 @@ export function AgentLivePanel({
   focusPatchSetId?: number | null;
   focusFindingId?: string | null;
   inspectorHost?: HTMLElement | null;
+  threadHost?: HTMLElement | null;
   onDraftChanged: () => Promise<void>;
+  disabled?: boolean;
   onClose: () => void;
   surface?: AgentSurface;
   onContinueInDesk?: () => void;
@@ -157,15 +143,6 @@ export function AgentLivePanel({
   const [patchError, setPatchError] = useState<string | null>(null);
   const [localFocusPatchSetId, setLocalFocusPatchSetId] = useState<number | null>(null);
   const [localFocusFindingId, setLocalFocusFindingId] = useState<string | null>(null);
-  const [feedbackByMessage, setFeedbackByMessage] = useState<
-    Record<number, PublicRoutingInterpretation>
-  >({});
-  const [contextByRun, setContextByRun] = useState<
-    Record<number, PublicContextState | null>
-  >({});
-  const [verificationByRun, setVerificationByRun] = useState<
-    Record<number, { status: PublicVerificationStatus; summary: string }>
-  >({});
   const [revisionByPatch, setRevisionByPatch] = useState<Record<number, number>>({});
 
   const followsRef = useRef(new Map<number, AbortController>());
@@ -185,7 +162,7 @@ export function AgentLivePanel({
   );
 
   useEffect(() => {
-    if (surface !== "quick") return;
+    if (surface !== "desk") return;
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -212,8 +189,8 @@ export function AgentLivePanel({
     [projectId],
   );
 
-  const reloadMessages = useCallback(async () => {
-    const threadId = selectedThreadIdRef.current;
+  const reloadMessages = useCallback(async (requestedThreadId?: number) => {
+    const threadId = requestedThreadId ?? selectedThreadIdRef.current;
     if (threadId === null) return;
     const requestId = ++messagesRequestRef.current;
     setMessagesLoading(true);
@@ -252,7 +229,6 @@ export function AgentLivePanel({
       }
       setThreads(rows);
       setThreadMenuRows(rows);
-      setMessagesLoading(true);
       setSelectedThreadId((current) =>
         current !== null && rows.some((row) => row.thread_id === current)
           ? current
@@ -312,23 +288,7 @@ export function AgentLivePanel({
       followsRef.current.set(runId, controller);
 
       function receiveEvent(event: PublicAgentEvent) {
-        if (event.event === "run.context") {
-          setContextByRun((previous) => ({
-            ...previous,
-            [runId]: event.context_state,
-          }));
-          return;
-        }
-        if (event.event === "run.verification") {
-          setVerificationByRun((previous) => ({
-            ...previous,
-            [runId]: {
-              status: event.verification_status,
-              summary: event.summary,
-            },
-          }));
-          return;
-        }
+        if (event.event === "run.context" || event.event === "run.verification") return;
         setLiveRuns((previous) => {
           const current = previous[runId] ?? initialRun;
           if (event.event === "run.accepted" || event.event === "run.completed") {
@@ -434,7 +394,6 @@ export function AgentLivePanel({
   const inputDisabled =
     selectedThreadId === null ||
     threadsLoading ||
-    messagesLoading ||
     busy ||
     finishing ||
     creatingThread ||
@@ -466,6 +425,7 @@ export function AgentLivePanel({
       upsertThread(created);
       setMessagesLoading(true);
       setSelectedThreadId(created.thread_id);
+      onContinueInDesk();
       return created;
     } catch (caught) {
       setMessagesError(errorMessage(caught));
@@ -583,24 +543,6 @@ export function AgentLivePanel({
     threadsLoading,
   ]);
 
-  async function cancelCurrentRun() {
-    if (pendingEntry === null) return;
-    setMessagesError(null);
-    try {
-      const run = await cancelAgentRun(
-        LOCAL_ACTOR_ID,
-        projectId,
-        pendingEntry.run.run_id,
-      );
-      setLiveRuns((previous) => ({
-        ...previous,
-        [run.run_id]: run,
-      }));
-    } catch (caught) {
-      setMessagesError(errorMessage(caught));
-    }
-  }
-
   function retryMessage(message: PublicAgentMessage) {
     const previousUser = [...messages]
       .sort((a, b) => b.sequence - a.sequence)
@@ -612,30 +554,6 @@ export function AgentLivePanel({
           candidate.body !== null,
       );
     if (previousUser?.body) void send(previousUser.body);
-  }
-
-  async function submitRoutingFeedback(
-    message: PublicAgentMessage,
-    interpretation: PublicRoutingInterpretation,
-  ) {
-    if (selectedThreadId === null) return;
-    setMessagesError(null);
-    try {
-      await sendAgentRoutingFeedback(
-        LOCAL_ACTOR_ID,
-        projectId,
-        selectedThreadId,
-        message.message_id,
-        interpretation,
-      );
-      setFeedbackByMessage((previous) => ({
-        ...previous,
-        [message.message_id]: interpretation,
-      }));
-    } catch (caught) {
-      setMessagesError(errorMessage(caught));
-      throw caught;
-    }
   }
 
   function updatePatchSet(patchSet: PublicPatchSet) {
@@ -775,8 +693,6 @@ export function AgentLivePanel({
     }
   }
 
-  const promptsDisabled = inputDisabled || creatingThread;
-
   const selectedThread = useMemo(
     () =>
       threads.find((thread) => thread.thread_id === selectedThreadId) ?? null,
@@ -796,18 +712,6 @@ export function AgentLivePanel({
     return chips;
   }, [focus, referenceLabels]);
 
-  const latestRun = useMemo(
-    () =>
-      [...messages]
-        .sort((left, right) => right.sequence - left.sequence)
-        .find((message) => message.run !== null)?.run ?? null,
-    [messages],
-  );
-  const runForStrip =
-    pendingLiveRun ??
-    (latestRun === null
-      ? null
-      : (liveRuns[latestRun.run_id] ?? latestRun));
   const searchThreads = useCallback(
     async (query: string, includeArchived: boolean) => {
       await refreshThreads({ query, includeArchived });
@@ -863,109 +767,8 @@ export function AgentLivePanel({
         inspectorHost,
       )
     : null;
-  const focusPatch = (id: number) => {
-    setLocalFocusPatchSetId(id);
-    setLocalFocusFindingId(null);
-    onFocusPatch(id);
-  };
-  const focusFinding = (id: string) => {
-    setLocalFocusFindingId(id);
-    setLocalFocusPatchSetId(null);
-    onFocusFinding(id);
-  };
-
-  if (surface === "desk" || surface === "quick") {
-    return (
-    <>
-    <WorkbenchAgentDesk
-      composer={
-        <WorkbenchAgentComposer
-          busy={busy}
-          contextChips={contextChips}
-          disabled={inputDisabled}
-          draft={draft}
-          onCancel={
-            surface === "quick" && busy && pendingEntry !== null
-              ? () => void cancelCurrentRun()
-              : undefined
-          }
-          onContinueInDesk={
-            surface === "quick" ? onContinueInDesk : undefined
-          }
-          onDraftChange={setDraft}
-          onSend={() => void send(draft)}
-          focusRequest={focusRequest}
-          surface={surface}
-        />
-      }
-      conversation={
-        <WorkbenchAgentConversation
-          busy={busy}
-          liveRuns={liveRuns}
-          messages={messages}
-          messagesError={messagesError}
-          messagesLoading={messagesLoading}
-          onLocateEvent={onLocateEvent}
-          onLocateObject={onLocateObject}
-          onFocusPatch={focusPatch}
-          onFocusFinding={focusFinding}
-          onReconnect={() => void bootstrap()}
-          onReloadMessages={() => void reloadMessages()}
-          onRetryMessage={retryMessage}
-          renderRoutingFeedback={(message) => {
-            return message.interpretation === null ? null : (
-              <RoutingFeedback
-                interpretation={message.interpretation}
-                onSubmitted={(interpretation) =>
-                  submitRoutingFeedback(message, interpretation)
-                }
-                submittedIntent={feedbackByMessage[message.message_id]}
-              />
-            );
-          }}
-          selectedThreadTitle={selectedThread?.title ?? null}
-          surface={surface}
-          threadsError={threadsError}
-          threadsLoading={threadsLoading}
-        />
-      }
-      onClose={onClose}
-      prompts={
-        <div className={styles.agentPrompts} aria-label="统筹指令">
-          {agentPromptPresets.map((preset) => (
-            <button
-              disabled={promptsDisabled}
-              key={preset.id}
-              onClick={() => void send(preset.prompt, preset.routingHint)}
-              type="button"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      }
-      surface={surface}
-      taskStrip={
-        <WorkbenchAgentTaskStrip
-          contextState={
-            runForStrip === null
-              ? null
-              : (contextByRun[runForStrip.run_id] ?? null)
-          }
-          verificationProgress={
-            runForStrip === null
-              ? null
-              : (verificationByRun[runForStrip.run_id] ?? null)
-          }
-          onCancel={
-            busy && pendingEntry !== null
-              ? () => void cancelCurrentRun()
-              : undefined
-          }
-          run={runForStrip}
-        />
-      }
-      threadManager={
+  const threadPortal = threadHost
+    ? createPortal(
         <WorkbenchAgentThreadMenu
           disabled={threadsLoading || creatingThread}
           onCreate={createThread}
@@ -973,114 +776,98 @@ export function AgentLivePanel({
           onSearch={searchThreads}
           onSelect={(thread) => {
             upsertThread(thread);
-            setMessagesLoading(true);
-            setSelectedThreadId(thread.thread_id);
+            if (thread.thread_id !== selectedThreadId) {
+              setSelectedThreadId(thread.thread_id);
+            }
+            void reloadMessages(thread.thread_id);
+            onContinueInDesk();
           }}
           onSetArchived={setThreadArchived}
           onSetPinned={setThreadPinned}
           selectedThread={selectedThread}
           selectedThreadId={selectedThreadId}
           threads={threadMenuRows}
+          placement="toolbar"
+        />,
+        threadHost,
+      )
+    : null;
+  const focusPatch = (id: number) => {
+    setLocalFocusPatchSetId(id);
+    setLocalFocusFindingId(null);
+    onFocusPatch(id);
+  };
+  if (surface === "dock") {
+    return (
+      <>
+        <WorkbenchAgentComposer
+          busy={busy}
+          contextChips={contextChips}
+          disabled={disabled}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={() => {
+            if (!draft.trim() || inputDisabled) return;
+            onContinueInDesk();
+            void send(draft);
+          }}
+          focusRequest={focusRequest}
+          submitDisabled={inputDisabled}
+          surface="dock"
         />
-      }
-    />
-    {inspectorPortal ?? (
-      inspectorFindings.length > 0 ||
-      inspectorPatches.length > 0 ||
-      localFocusPatchSetId !== null ||
-      localFocusFindingId !== null
-    ? (
-      <WorkbenchAgentInspector
-        {...inspectorProps}
-        onFocusPatch={focusPatch}
-      />
-    ) : null)}
-    </>
+        {inspectorPortal}
+        {threadPortal}
+      </>
     );
-  }
-  return inspectorPortal;
-}
-function RoutingFeedback({
-  interpretation,
-  submittedIntent,
-  onSubmitted,
-}: {
-  interpretation: PublicRoutingInterpretation;
-  submittedIntent?: PublicRoutingInterpretation;
-  onSubmitted: (intent: PublicRoutingInterpretation) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [selection, setSelection] = useState<PublicRoutingInterpretation | "">("");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submit() {
-    if (selection === "" || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSubmitted(selection);
-      setEditing(false);
-    } catch {
-      // The panel surfaces the API error near the message list.
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
-    <div className={styles.agentRouteMeta} aria-label="请求理解">
-      <span className={styles.agentRouteChip}>
-        理解为：{interpretationLabels[interpretation]}
-      </span>
-      {submittedIntent ? (
-        <span className={styles.agentRouteSubmitted}>
-          已更正为：{interpretationLabels[submittedIntent]}
-        </span>
-      ) : editing ? (
-        <span className={styles.agentRouteFeedback}>
-          <select
-            aria-label="正确的请求类型"
-            onChange={(event) =>
-              setSelection(event.target.value as PublicRoutingInterpretation)
-            }
-            value={selection}
-          >
-            <option value="" disabled>
-              选择正确理解
-            </option>
-            {(
-              Object.entries(interpretationLabels) as Array<
-                [PublicRoutingInterpretation, string]
-              >
-            ).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            disabled={selection === "" || submitting}
-            onClick={() => void submit()}
-            type="button"
-          >
-            {submitting ? "提交中…" : "确认更正"}
-          </button>
-          <button
-            disabled={submitting}
-            onClick={() => setEditing(false)}
-            type="button"
-          >
-            取消
-          </button>
-        </span>
-      ) : (
-        <button
-          className={styles.agentRouteFeedbackButton}
-          onClick={() => setEditing(true)}
-          type="button"
-        >
-          理解不对
-        </button>
+    <>
+      {threadPortal}
+      <WorkbenchAgentDesk
+        composer={
+          <WorkbenchAgentComposer
+            busy={busy}
+            contextChips={contextChips}
+            disabled={inputDisabled}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={() => void send(draft)}
+            focusRequest={focusRequest}
+            surface="dock"
+          />
+        }
+        conversation={
+          <WorkbenchAgentConversation
+            liveRuns={liveRuns}
+            messages={messages}
+            messagesError={messagesError}
+            messagesLoading={messagesLoading}
+            onReconnect={() => void bootstrap()}
+            onReloadMessages={() => void reloadMessages()}
+            onRetryMessage={retryMessage}
+            selectedThreadTitle={selectedThread?.title ?? null}
+            threadsError={threadsError}
+            threadsLoading={threadsLoading}
+          />
+        }
+        prompts={null}
+        surface="desk"
+        taskStrip={null}
+      />
+      {inspectorPortal ?? (
+        inspectorFindings.length > 0 ||
+        inspectorPatches.length > 0 ||
+        localFocusPatchSetId !== null ||
+        localFocusFindingId !== null
+          ? (
+              <WorkbenchAgentInspector
+                {...inspectorProps}
+                onFocusPatch={focusPatch}
+              />
+            )
+          : null
       )}
-    </div>
+    </>
   );
 }

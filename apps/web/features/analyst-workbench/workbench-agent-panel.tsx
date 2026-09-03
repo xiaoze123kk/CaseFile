@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WorkbenchSeed } from "./analyst-fixture";
 import styles from "./workbench-agent.module.css";
 import { WorkbenchAgentComposer } from "./workbench-agent-composer";
-import { agentPromptPresets } from "./workbench-agent-presets";
-import { WorkbenchIcon } from "./workbench-icon";
+import { WorkbenchAgentDesk } from "./workbench-agent-desk";
 import { reasoningOutcomeLabels } from "./workbench-presenters";
 import type { AgentSurface } from "./workbench-agent-surface";
 
@@ -79,14 +78,16 @@ export function AgentPanel({
   surface,
   onContinueInDesk,
   contextChips,
+  disabled = false,
   focusRequest = 0,
 }: {
   seed: WorkbenchSeed;
   unresolvedCount: number;
   onClose: () => void;
-  surface: Exclude<AgentSurface, "closed">;
+  surface: AgentSurface;
   onContinueInDesk: () => void;
   contextChips: string[];
+  disabled?: boolean;
   focusRequest?: number;
 }) {
   const [messages, setMessages] = useState<AgentMessage[]>([
@@ -107,11 +108,11 @@ export function AgentPanel({
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && surface === "desk") onClose();
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
+  }, [onClose, surface]);
 
   function send(prompt: string) {
     const normalized = prompt.trim();
@@ -136,18 +137,40 @@ export function AgentPanel({
     timersRef.current.push(timer);
   }
 
+  if (surface === "dock") {
+    return (
+      <WorkbenchAgentComposer
+        busy={thinking}
+        contextChips={contextChips}
+        disabled={disabled || thinking}
+        draft={draft}
+        onDraftChange={setDraft}
+        onSend={() => {
+          if (!draft.trim() || disabled || thinking) return;
+          send(draft);
+          onContinueInDesk();
+        }}
+        focusRequest={focusRequest}
+        surface="dock"
+      />
+    );
+  }
+
   return (
-    <section aria-label="卷宗统筹 Agent 对话" className={styles.agentPanel}>
-      <header className={styles.agentHeader}>
-        <div>
-          <span>卷宗统筹</span>
-          <strong>{surface === "desk" ? "统筹台" : "快速询问"}</strong>
-        </div>
-        <button aria-label="关闭 Agent 对话" onClick={onClose} type="button">
-          <WorkbenchIcon name="close" />
-        </button>
-      </header>
-      <div aria-live="polite" className={styles.agentMessages}>
+    <WorkbenchAgentDesk
+      composer={
+        <WorkbenchAgentComposer
+          busy={thinking}
+          contextChips={contextChips}
+          disabled={disabled || thinking}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={() => send(draft)}
+          focusRequest={focusRequest}
+          surface="dock"
+        />
+      }
+      conversation={<div aria-live="polite" className={styles.agentMessages}>
         {messages.map((message) => (
           <p
             className={styles.agentMessage}
@@ -160,30 +183,10 @@ export function AgentPanel({
         {thinking ? (
           <p className={styles.agentThinking}>Agent 正在统筹卷宗…</p>
         ) : null}
-      </div>
-      <div className={styles.agentPrompts} aria-label="统筹指令">
-        {agentPromptPresets.map((preset) => (
-          <button
-            disabled={thinking}
-            key={preset.id}
-            onClick={() => send(preset.prompt)}
-            type="button"
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-      <WorkbenchAgentComposer
-        busy={thinking}
-        contextChips={contextChips}
-        disabled={thinking}
-        draft={draft}
-        onContinueInDesk={surface === "quick" ? onContinueInDesk : undefined}
-        onDraftChange={setDraft}
-        onSend={() => send(draft)}
-        focusRequest={focusRequest}
-        surface={surface}
-      />
-    </section>
+      </div>}
+      prompts={null}
+      surface="desk"
+      taskStrip={null}
+    />
   );
 }

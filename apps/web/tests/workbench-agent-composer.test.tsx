@@ -16,7 +16,7 @@ describe("WorkbenchAgentComposer", () => {
         draft="检查时间冲突"
         onDraftChange={vi.fn()}
         onSend={onSend}
-        surface="quick"
+        surface="desk"
       />,
     );
 
@@ -32,33 +32,27 @@ describe("WorkbenchAgentComposer", () => {
     expect(screen.getByText("EVT-012")).toBeInTheDocument();
   });
 
-  it("uses Ctrl+Shift+Enter to continue from Quick Ask into Agent Desk", () => {
-    const onContinueInDesk = vi.fn();
-    const onSend = vi.fn();
+  it("renders the compact dock composer without extra controls", () => {
     render(
       <WorkbenchAgentComposer
         busy={false}
         contextChips={[]}
         disabled={false}
         draft=""
-        onContinueInDesk={onContinueInDesk}
         onDraftChange={vi.fn()}
-        onSend={onSend}
-        surface="quick"
+        onSend={vi.fn()}
+        surface="dock"
       />,
     );
 
-    fireEvent.keyDown(
-      screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" }),
-      { ctrlKey: true, key: "Enter", shiftKey: true },
-    );
-
-    expect(onContinueInDesk).toHaveBeenCalledTimes(1);
-    expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getByText("未选择对象")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("写下你的疑问，让卷宗循着线索回答……"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("当前上下文")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
   });
 
-  it("refocuses Quick Ask when the trigger is activated again", () => {
+  it("refocuses the dock composer when its shortcut is activated again", () => {
     const props = {
       busy: false,
       contextChips: [],
@@ -66,7 +60,7 @@ describe("WorkbenchAgentComposer", () => {
       draft: "",
       onDraftChange: vi.fn(),
       onSend: vi.fn(),
-      surface: "quick" as const,
+      surface: "dock" as const,
     };
     const { rerender } = render(<WorkbenchAgentComposer {...props} focusRequest={1} />);
     const input = screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" });

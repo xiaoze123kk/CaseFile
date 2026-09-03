@@ -31,14 +31,9 @@ import styles from "./workbench-context-inspector.module.css";
 export function CandidatePreviewFactBoundary({
   area,
 }: {
-  area: "sources" | "audit" | "relations";
+  area: "audit" | "relations";
 }) {
   const copy = {
-    sources: {
-      title: "候选预览不读取当前工作稿来源",
-      detail:
-        "候选正文中的稳定引用仍可核对，但来源记录正文只随当前工作稿读模型展示。",
-    },
     audit: {
       title: "候选尚未进入当前工作稿",
       detail:
@@ -109,7 +104,6 @@ export function WorkbenchContextInspector({
   onSelectObject,
   onSelectRelatedEvent,
   onReloadContext,
-  onOpenSources,
 }: {
   document: CaseFileDocument | null;
   selectedObjectId: string | null;
@@ -129,7 +123,6 @@ export function WorkbenchContextInspector({
   onSelectObject: (objectId: string) => void;
   onSelectRelatedEvent: (eventId: string) => void;
   onReloadContext?: () => void;
-  onOpenSources: () => void;
 }) {
   const model = useMemo(
     () =>
@@ -163,7 +156,6 @@ export function WorkbenchContextInspector({
           key={selectedObjectId}
           navigationNotice={navigationNotice}
           onDirtyChange={onDirtyChange}
-          onOpenSources={onOpenSources}
           onSave={onSave}
           onSelectObject={onSelectObject}
           readOnly={readOnly}

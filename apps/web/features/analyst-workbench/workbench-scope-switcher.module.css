@@ -282,3 +282,47 @@
     transition: none;
   }
 }
+
+/* Workbench uses the same light dossier grammar as the intake center. */
+.projectScope {
+  border-right-color: var(--rule, #ded8cf);
+  background: rgba(252, 251, 248, 0.74);
+}
+
+.scopeTrigger > span {
+  color: var(--ink-faint, #70706a);
+}
+
+.scopeTrigger > strong {
+  color: var(--ink, #1a1c19);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-weight: 600;
+}
+
+.scopeTrigger > i {
+  color: var(--primary, #c52b0d);
+}
+
+.scopeTrigger:hover,
+.scopeTrigger[aria-expanded="true"] {
+  background: var(--primary-soft, #fff0ec);
+}
+
+.scopeMenu {
+  color: var(--ink, #1a1c19);
+  border-color: var(--red-line, #d9afa6);
+  background: #fcfbf8;
+  box-shadow: 0 18px 34px rgba(73, 47, 31, 0.16);
+}
+
+.menuItem:hover,
+.menuItem:focus-visible,
+.menuItem[data-current="true"] {
+  background: var(--primary-soft, #fff0ec);
+}
+
+.menuItem b,
+.scopeMenu[data-kind="draft"] .menuItem b,
+.createDraftLink {
+  color: var(--primary-strong, #9d230c);
+}

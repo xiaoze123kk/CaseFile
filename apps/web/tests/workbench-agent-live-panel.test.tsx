@@ -174,9 +174,9 @@ describe("workbench public agent live panel", () => {
     renderPanel();
 
     expect(await screen.findByText("公开回复正文。")).toBeInTheDocument();
-    expect(screen.getByText("理解为：分析")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "引用 1" }));
-    expect(screen.getByRole("button", { name: "卷宗 · 林澈" })).toBeInTheDocument();
+    expect(screen.queryByText("结论")).not.toBeInTheDocument();
+    expect(screen.queryByText("理解为：分析")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "引用 1" })).not.toBeInTheDocument();
     expect(screen.queryByText(/provider|prompt|token|route_source|TaskRun/i)).not.toBeInTheDocument();
   });
 
@@ -224,11 +224,16 @@ describe("workbench public agent live panel", () => {
     });
     await waitFor(() => expect(composer).toBeEnabled());
     fireEvent.change(composer, { target: { value: "检查时间线。" } });
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    await waitFor(() => expect(sendButton).toBeEnabled());
+    fireEvent.click(sendButton);
 
     expect(await screen.findByText("检查时间线。")).toBeInTheDocument();
-    expect(await screen.findByText("卷宗统筹 · 正在检查前后一致性")).toBeInTheDocument();
-    expect(screen.getByText("对话内容较长，正在控制上下文")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Agent 回复状态")).not.toBeInTheDocument();
+    expect(composer).toHaveAttribute(
+      "placeholder",
+      "卷宗正在梳理线索，请稍候……",
+    );
     expect(mocks.sendAgentMessage).toHaveBeenCalledWith(
       1,
       1,
@@ -250,52 +255,24 @@ describe("workbench public agent live panel", () => {
     );
   });
 
-  it("cancels through the public run endpoint", async () => {
-    const pending = message({ status: "pending", body: null, run: run() });
-    mocks.listAgentMessages.mockResolvedValue([pending]);
-    mocks.cancelAgentRun.mockResolvedValue(
-      run({ status: "cancelling", cancellable: false }),
-    );
-    mocks.streamAgentRunEvents.mockImplementation(
-      async (
-        _actorId: number,
-        _projectId: number,
-        _runId: number,
-        _onEvent: (event: PublicAgentEvent) => void,
-        signal: AbortSignal,
-      ) =>
-        await new Promise<number>((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(new DOMException("aborted")), {
-            once: true,
-          });
-        }),
-    );
-    renderPanel();
+  it("keeps the composer enabled after reopening the current thread", async () => {
+    const threadHost = document.createElement("div");
+    document.body.appendChild(threadHost);
+    renderPanel({ threadHost });
 
-    fireEvent.click(await screen.findByRole("button", { name: "停止回复" }));
-    await waitFor(() => expect(mocks.cancelAgentRun).toHaveBeenCalledWith(1, 1, 80));
-    expect(await screen.findByText("卷宗统筹 · 正在取消")).toBeInTheDocument();
-  });
-
-  it("submits user-facing interpretation feedback without route metadata", async () => {
-    mocks.listAgentMessages.mockResolvedValue([message()]);
-    renderPanel();
-
-    fireEvent.click(await screen.findByRole("button", { name: "理解不对" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "正确的请求类型" }), {
-      target: { value: "change_request" },
+    const composer = await screen.findByRole("textbox", {
+      name: "给卷宗统筹 Agent 的指令",
     });
-    fireEvent.click(screen.getByRole("button", { name: "确认更正" }));
-    await waitFor(() =>
-      expect(mocks.sendAgentRoutingFeedback).toHaveBeenCalledWith(
-        1,
-        1,
-        7,
-        90,
-        "change_request",
-      ),
-    );
-    expect(screen.queryByText(/llm|rule_preset|route_source|路由/)).not.toBeInTheDocument();
+    await waitFor(() => expect(composer).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: /主线复查/ }));
+    fireEvent.click(screen.getByRole("option", { name: /主线复查/ }));
+
+    await waitFor(() => expect(mocks.listAgentMessages).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(composer).toBeEnabled());
+    fireEvent.change(composer, { target: { value: "你好" } });
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    threadHost.remove();
   });
 
   it("uses public review/apply/undo/redo DTOs and keeps handles out of the UI", async () => {

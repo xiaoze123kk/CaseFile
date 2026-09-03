@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import {
   type CSSProperties,
@@ -46,8 +47,8 @@ import {
   fetchDraftCandidatePreview,
   previewCaseDraftEventTime,
 } from "@/features/case-session/case-session-api";
-import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
+import gateStyles from "./workbench-gate.module.css";
 import { AgentLivePanel } from "./workbench-agent-live-panel";
 import { AgentPanel } from "./workbench-agent-panel";
 import {
@@ -76,14 +77,8 @@ import {
   recordObjectFocus,
   type ObjectFocusFrame,
 } from "./workbench-navigation-history";
-import {
-  CandidatePreviewFactBoundary,
-  WorkbenchContextInspector,
-} from "./workbench-context-inspector";
-import {
-  type WorkbenchContextState,
-  WorkbenchSourcesPanel,
-} from "./workbench-context-panels";
+import { WorkbenchContextInspector } from "./workbench-context-inspector";
+import { type WorkbenchContextState } from "./workbench-context-panels";
 import {
   mapCaseFileToWorkbenchModel,
   mapFixtureToWorkbenchModel,
@@ -126,8 +121,8 @@ const SpatialMapView = dynamic(
   },
 );
 
-type MobileRegion = "objects" | "canvas" | "inspector" | "sources";
-type DrawerTab = "audio" | "transcript" | "logs" | "retrieval";
+type MobileRegion = "objects" | "canvas" | "inspector";
+type WorkspaceMode = "workbench" | "dossier" | "analysis" | "compile";
 
 interface AuditEntry {
   id: string;
@@ -147,15 +142,41 @@ const mobileRegions: Array<{ id: MobileRegion; label: string }> = [
   { id: "objects", label: "对象" },
   { id: "canvas", label: "主画布" },
   { id: "inspector", label: "上下文" },
-  { id: "sources", label: "来源" },
 ];
 
-const drawerTabs: Array<{ id: DrawerTab; label: string; count?: number }> = [
-  { id: "audio", label: "证词录音", count: 1 },
-  { id: "transcript", label: "转写文本", count: 3 },
-  { id: "logs", label: "模型日志摘要", count: 4 },
-  { id: "retrieval", label: "检索命中", count: 3 },
-];
+const analysisViewOptions = workbenchViewOptions.filter((option) =>
+  ["timeline", "relations", "reasoning", "evidence", "map"].includes(option.id),
+);
+
+const compileViewOptions = workbenchViewOptions.filter((option) =>
+  ["compile", "export"].includes(option.id),
+);
+
+const workspaceModeCopy: Record<
+  WorkspaceMode,
+  { label: string; eyebrow: string; description: string }
+> = {
+  workbench: {
+    label: "工作台",
+    eyebrow: "当前工作",
+    description: "从最值得处理的问题继续",
+  },
+  dossier: {
+    label: "对象档案",
+    eyebrow: "工作台",
+    description: "浏览人物、事件、地点与信息",
+  },
+  analysis: {
+    label: "分析",
+    eyebrow: "故事结构",
+    description: "检查时间、关系、推理与空间",
+  },
+  compile: {
+    label: "编译作品",
+    eyebrow: "阶段出口",
+    description: "把已确认的卷宗转成作品",
+  },
+};
 
 function currentClock() {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -234,8 +255,20 @@ function FocusTrapDialog({
   );
 }
 
-const DEFAULT_RAIL_WIDTH = 254;
-const DEFAULT_INSPECTOR_WIDTH = 400;
+const DEFAULT_RAIL_WIDTH = 224;
+const DEFAULT_INSPECTOR_WIDTH = 344;
+const WORKBENCH_HANDOFF_MIN_MS = 1200;
+
+function waitForWorkbenchHandoff(startedAt: number) {
+  if (process.env.NODE_ENV === "test") return Promise.resolve();
+  const remaining = Math.max(
+    0,
+    WORKBENCH_HANDOFF_MIN_MS - (performance.now() - startedAt),
+  );
+  return remaining === 0
+    ? Promise.resolve()
+    : new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
+}
 
 export function AnalystWorkbench({
   requestedProjectId,
@@ -291,11 +324,13 @@ export function AnalystWorkbench({
       return;
     }
     let active = true;
+    const handoffStartedAt = performance.now();
     if (activeProjectId !== projectId) {
       void loadProject(projectId).catch(() => undefined);
     }
     void fetchCaseDraft(projectId)
-      .then((nextDraft) => {
+      .then(async (nextDraft) => {
+        await waitForWorkbenchHandoff(handoffStartedAt);
         if (active) {
           setDraftLoad({ projectId, draft: nextDraft, error: null });
         }
@@ -333,8 +368,10 @@ export function AnalystWorkbench({
       return;
     }
     let active = true;
+    const handoffStartedAt = performance.now();
     void fetchDraftCandidatePreview(projectId, previewTaskRunId)
-      .then((preview) => {
+      .then(async (preview) => {
+        await waitForWorkbenchHandoff(handoffStartedAt);
         if (active) {
           setPreviewLoad({
             projectId,
@@ -543,7 +580,7 @@ export function AnalystWorkbench({
   if (currentDraftLoad === null) {
     return (
       <WorkbenchGate
-        detail={`项目 ${projectId} · 连接服务端 Draft`}
+        detail={`项目 ${projectId} · 正在连接卷宗数据`}
         loading
         projectId={projectId}
         projectTitle={`项目 ${projectId}`}
@@ -669,33 +706,81 @@ function WorkbenchGate({
   projectTitle?: string;
 }) {
   const gate = (
-    <main className={styles.workbenchGate}>
-      <article aria-busy={loading}>
-        <span>{loading ? "LOADING DRAFT" : "CURRENT DRAFT"}</span>
-        <h1>{title}</h1>
-        <p>{detail}</p>
-        {onRetry ? <button onClick={onRetry} type="button">重新读取</button> : null}
-        <Link href={actionHref}>{actionLabel}</Link>
+    <main className={gateStyles.gate} data-loading={loading}>
+      <article aria-busy={loading} className={gateStyles.panel}>
+        {loading ? (
+          <div aria-hidden="true" className={gateStyles.loadingVisual}>
+            <div className={gateStyles.orbit}>
+              <i /><i /><i /><i />
+            </div>
+            <div className={gateStyles.folioMark}>
+              <i className={gateStyles.folioShadow} />
+              <i className={gateStyles.folioSheet} />
+              <div className={gateStyles.folioFace}>
+                <span /><span /><span />
+                <b>卷</b>
+              </div>
+              <i className={gateStyles.scanLine} />
+            </div>
+          </div>
+        ) : null}
+
+        <div className={gateStyles.gateCopy}>
+          <div className={gateStyles.kicker}>
+            <span>
+              {loading
+                ? (projectId === null ? "分析工作台" : `项目 ${projectId}`)
+                : "当前工作稿"}
+            </span>
+            {!loading ? (
+              <small>{projectId === null ? "CaseFile" : `项目 ${projectId}`}</small>
+            ) : null}
+          </div>
+          <h1>{title}</h1>
+          {!loading ? <p>{detail}</p> : null}
+          {loading ? (
+            <div
+              aria-label="正在连接项目、装载工作稿并准备分析上下文"
+              className={gateStyles.loadingStatus}
+              role="status"
+            >
+              <div><i /></div>
+              <span aria-hidden="true">正在进入分析工作台</span>
+            </div>
+          ) : null}
+          {onRetry || !loading ? (
+            <div className={gateStyles.gateActions}>
+              {onRetry ? <button onClick={onRetry} type="button">重新读取</button> : null}
+              {!loading ? <Link href={actionHref}>{actionLabel}</Link> : null}
+            </div>
+          ) : null}
+        </div>
       </article>
     </main>
   );
-  if (projectId === null) return gate;
+  if (projectId === null || loading) return gate;
 
   return (
-    <div className={`${styles.workbench} ${styles.gatedWorkbench}`}>
-      <header className={styles.topbar}>
+    <div className={`${styles.workbench} ${gateStyles.gatedWorkbench}`}>
+      <header className={`${styles.topbar} ${gateStyles.gatedHeader}`}>
         <div className={styles.brandBlock}>
           <span className={styles.brandMark} aria-hidden="true" />
-          <div><strong>CaseFile</strong><small>推理卷宗</small></div>
         </div>
         <ProjectSwitcher
           currentProjectId={projectId}
           fallbackTitle={projectTitle}
         />
-        <div className={styles.topStatus} aria-hidden="true" />
-        <div className={styles.globalSearch} aria-hidden="true" />
+        <div aria-hidden="true" className={gateStyles.handoffRoute}>
+          <span>建案中心</span>
+          <i />
+          <strong>分析工作台</strong>
+        </div>
+        <div aria-hidden="true" className={gateStyles.handoffPulse}>
+          <i />
+          <span>{loading ? "正在接管" : "工作区"}</span>
+        </div>
         <div className={styles.topActions}>
-          <Link href={`/?project=${projectId}`}>建案中心</Link>
+          <Link href={`/?project=${projectId}`}>返回建案中心</Link>
         </div>
       </header>
       {gate}
@@ -776,6 +861,10 @@ function AnalystWorkbenchSurface({
     loading: false,
   };
   const [view, setView] = useState<WorkbenchView>("timeline");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(
+    realData ? "workbench" : "analysis",
+  );
+  const [navigatorOpen, setNavigatorOpen] = useState(true);
   const [evidenceTab, setEvidenceTab] = useState<"matrix" | "issues">("matrix");
   const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
   const [selectedObjectId, setSelectedObjectId] = useState(seed.defaultObjectId);
@@ -799,10 +888,6 @@ function AnalystWorkbenchSurface({
   const [spatialEditDirty, setSpatialEditDirty] = useState(false);
   const [objectEditorNavigationNotice, setObjectEditorNavigationNotice] =
     useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>("audio");
-  const [playing, setPlaying] = useState(false);
-  const [playhead, setPlayhead] = useState(58);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [mobileRegion, setMobileRegion] = useState<MobileRegion>("canvas");
@@ -822,12 +907,12 @@ function AnalystWorkbenchSurface({
     startWidth: number;
   } | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState<number | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(realData);
   const inspectorResizeRef = useRef<{
     startX: number;
     startWidth: number;
   } | null>(null);
-  const [agentSurface, setAgentSurface] = useState<AgentSurface>("closed");
+  const [agentSurface, setAgentSurface] = useState<AgentSurface>("dock");
   const [agentFocusRequest, setAgentFocusRequest] = useState(0);
   const [agentKickoff, setAgentKickoff] = useState<{
     id: number;
@@ -835,12 +920,12 @@ function AnalystWorkbenchSurface({
     routingHint?: AgentChatRoutingHint;
   } | null>(null);
   const [agentInspectorHost, setAgentInspectorHost] = useState<HTMLElement | null>(null);
+  const [agentThreadHost, setAgentThreadHost] = useState<HTMLElement | null>(null);
   const [agentFocusPatchSetId, setAgentFocusPatchSetId] = useState<number | null>(null);
   const [agentFocusFindingId, setAgentFocusFindingId] = useState<string | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
-  const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -856,7 +941,7 @@ function AnalystWorkbenchSurface({
   function moveRailResize(event: ReactPointerEvent<HTMLDivElement>) {
     const resize = railResizeRef.current;
     if (!resize) return;
-    const width = clamp(resize.startWidth + (event.clientX - resize.startX), 170, 460);
+    const width = clamp(resize.startWidth + (event.clientX - resize.startX), 196, 320);
     setRailWidth(width);
   }
 
@@ -877,8 +962,8 @@ function AnalystWorkbenchSurface({
     if (!resize) return;
     const width = clamp(
       resize.startWidth + resize.startX - event.clientX,
-      340,
-      520,
+      300,
+      420,
     );
     setInspectorWidth(width);
   }
@@ -889,6 +974,9 @@ function AnalystWorkbenchSurface({
 
   const selectedEvent = getEvent(seed, selectedEventId);
   const selectedObject = getObject(seed, selectedObjectId);
+  const workbenchPersonCount = seed.caseFile
+    ? seed.caseFile.entities.filter((entity) => entity.entity_type === "person").length
+    : seed.caseObjects.filter((object) => object.id.startsWith("PER-")).length;
   const visibleSelectedIssueId = seed.validationIssues.some(
     (issue) => issue.id === selectedIssueId,
   )
@@ -962,7 +1050,10 @@ function AnalystWorkbenchSurface({
         event.key.toLowerCase() === "k"
       ) {
         event.preventDefault();
-        if (!writeLocked) openQuickAsk();
+        if (!writeLocked) {
+          setAgentSurface("dock");
+          setAgentFocusRequest((version) => version + 1);
+        }
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -1068,6 +1159,10 @@ function AnalystWorkbenchSurface({
       setObjectEditorNavigationNotice(null);
     }
     if (frame.view !== view) setView(frame.view);
+    setWorkspaceMode(
+      frame.view === "compile" || frame.view === "export" ? "compile" : "analysis",
+    );
+    setAgentSurface("dock");
     return true;
   }
 
@@ -1095,9 +1190,38 @@ function AnalystWorkbenchSurface({
     if (!dirty) setObjectEditorNavigationNotice(null);
   }
 
+  function switchWorkspaceMode(nextMode: WorkspaceMode) {
+    if (nextMode !== workspaceMode && blockDirtyObjectNavigation()) return;
+    setWorkspaceMode(nextMode);
+    if (nextMode === "workbench") {
+      setInspectorOpen(true);
+    }
+    if (nextMode === "compile") {
+      setInspectorOpen(false);
+    }
+    if (nextMode === "analysis" || nextMode === "compile") {
+      setAgentSurface("dock");
+    }
+    if (nextMode === "analysis" && (view === "compile" || view === "export")) {
+      setView("timeline");
+    }
+    if (nextMode === "compile" && view !== "compile" && view !== "export") {
+      setView("compile");
+    }
+    setMobileRegion("canvas");
+    announce(`已进入${workspaceModeCopy[nextMode].label}。`);
+  }
+
   function switchWorkbenchView(nextView: WorkbenchView, label: string) {
     if (nextView !== view && blockDirtyObjectNavigation()) return;
     setView(nextView);
+    if (nextView === "compile" || nextView === "export") {
+      setInspectorOpen(false);
+    }
+    setWorkspaceMode(
+      nextView === "compile" || nextView === "export" ? "compile" : "analysis",
+    );
+    setAgentSurface("dock");
     setMobileRegion("canvas");
     announce(`主画布已切换到${label}。`);
   }
@@ -1124,6 +1248,9 @@ function AnalystWorkbenchSurface({
     setKindFilter("event");
     setSubtypeFilter("all");
     if (!options.preserveView) setView("timeline");
+    setWorkspaceMode("analysis");
+    if (!options.preserveView) setAgentSurface("dock");
+    setInspectorOpen(true);
     setMobileRegion("canvas");
     commitObjectFocus({
       objectId: event.id,
@@ -1153,16 +1280,26 @@ function AnalystWorkbenchSurface({
       : conclusionEventId ?? object.relatedEventIds[0];
     setSelectedEventId(eventId ?? null);
     setObjectEditorNavigationNotice(null);
+    setKindFilter(directoryObjectKind(object.kind));
+    setSubtypeFilter("all");
     if (revealInDirectory) {
       setObjectQuery("");
-      setKindFilter(directoryObjectKind(object.kind));
-      setSubtypeFilter("all");
     }
     if (realData) {
       if (!preserveCanvas) setMobileRegion("inspector");
     }
+    setInspectorOpen(true);
     commitObjectFocus({ objectId: object.id, view });
     announce(`已选择${objectKindLabels[object.kind]}“${object.label}”，相关事件已高亮。`);
+    return true;
+  }
+
+  function openObjectInConversation(objectId: string, revealInDirectory = false) {
+    if (!selectObject(objectId, revealInDirectory, true)) return false;
+    setWorkspaceMode("dossier");
+    setAgentSurface("desk");
+    setInspectorOpen(true);
+    announce("已将当前对象加入对话上下文。");
     return true;
   }
 
@@ -1188,6 +1325,8 @@ function AnalystWorkbenchSurface({
     setKindFilter("event");
     setSubtypeFilter("all");
     setView("evidence");
+    setWorkspaceMode("analysis");
+    setAgentSurface("dock");
     setEvidenceTab("issues");
     setMobileRegion("canvas");
     setManualEditing(false);
@@ -1272,14 +1411,10 @@ function AnalystWorkbenchSurface({
     setKindFilter("all");
     setSubtypeFilter("all");
     setObjectQuery("");
-    setDrawerOpen(false);
-    setDrawerTab("audio");
-    setPlaying(false);
-    setPlayhead(58);
     setManualEditing(false);
     setManualValue(seed.validationIssues[0]?.patchAfter ?? "");
     setAuditEntries([...seed.initialAuditEntries]);
-    setAgentSurface("closed");
+    setAgentSurface("dock");
     commitObjectFocus({ objectId: seed.defaultObjectId, view: "timeline" });
     announce(`工作台数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
   }
@@ -1310,11 +1445,6 @@ function AnalystWorkbenchSurface({
       action: () => {
         if (seed.defaultIssueId) openIssue(seed.defaultIssueId);
       },
-    }, {
-      id: "open-audio",
-      label: `打开${seed.drawer.audioTitle}`,
-      meta: "来源",
-      action: () => { setDrawerOpen(true); setDrawerTab("audio"); setMobileRegion("sources"); announce(`已打开${seed.drawer.audioTitle}。`); },
     }]),
   ];
   const normalizedPaletteQuery = paletteQuery.trim().toLocaleLowerCase("zh-CN");
@@ -1333,14 +1463,22 @@ function AnalystWorkbenchSurface({
   }
 
   function closeAgent() {
-    agentTriggerRef.current?.focus();
-    setAgentSurface("closed");
+    setAgentSurface("dock");
+    if (workspaceMode === "dossier") setWorkspaceMode("workbench");
     setAgentKickoff(null);
+    setAgentFocusRequest((version) => version + 1);
   }
 
-  function openQuickAsk() {
-    setAgentSurface("quick");
-    setAgentFocusRequest((version) => version + 1);
+  function planNextStepsWithAgent() {
+    setWorkspaceMode("workbench");
+    setAgentKickoff({
+      id: Date.now(),
+      prompt:
+        "请基于当前工作稿梳理下一步创作计划：指出最值得推进的情节、仍需补足的关键线索，并按优先级给出具体行动建议。",
+      routingHint: { entrypoint: "free_text" },
+    });
+    setAgentSurface("desk");
+    announce("已请 Agent 基于当前工作稿规划下一步。");
   }
 
   const agentLiveProps =
@@ -1348,6 +1486,7 @@ function AnalystWorkbenchSurface({
       ? {
           draftId: currentDraft.draft_id,
           draftRevision: draftRevision ?? currentDraft.revision,
+          disabled: writeLocked,
           focus: {
             object_ids: selectedObjectId ? [selectedObjectId] : [],
             event_ids: selectedEventId ? [selectedEventId] : [],
@@ -1359,7 +1498,7 @@ function AnalystWorkbenchSurface({
           onClose: closeAgent,
           onContinueInDesk: () => setAgentSurface("desk"),
           onLocateEvent: (eventId: string) => selectEvent(eventId, { preserveView: true }),
-          onLocateObject: (objectId: string) => selectObject(objectId, true),
+          onLocateObject: (objectId: string) => openObjectInConversation(objectId, true),
           onFocusPatch: (patchSetId: number) => {
             setAgentFocusPatchSetId(patchSetId);
             setAgentFocusFindingId(null);
@@ -1377,6 +1516,7 @@ function AnalystWorkbenchSurface({
           focusPatchSetId: agentFocusPatchSetId,
           focusFindingId: agentFocusFindingId,
           inspectorHost: agentInspectorHost,
+          threadHost: agentThreadHost,
           onDraftChanged: onCurrentDraftChanged ?? (async () => {}),
           projectId,
           referenceLabels: {
@@ -1387,29 +1527,29 @@ function AnalystWorkbenchSurface({
         }
       : null;
 
-  const agentSurfaceContent =
-    agentSurface === "closed" ? null : (
-      <WorkbenchAgentSurface surface={agentSurface}>
-        {agentLiveProps ? (
-          <AgentLivePanel {...agentLiveProps} surface={agentSurface} />
-        ) : (
-          <AgentPanel
-            contextChips={[
-              selectedObject?.label,
-              selectedEvent?.label,
-              selectedIssue?.title,
-              workbenchViewOptions.find((option) => option.id === view)?.label,
-            ].filter((value): value is string => Boolean(value))}
-            focusRequest={agentFocusRequest}
-            onClose={closeAgent}
-            onContinueInDesk={() => setAgentSurface("desk")}
-            seed={seed}
-            surface={agentSurface}
-            unresolvedCount={unresolvedCount}
-          />
-        )}
-      </WorkbenchAgentSurface>
-    );
+  const agentSurfaceContent = (
+    <WorkbenchAgentSurface surface={agentSurface}>
+      {agentLiveProps ? (
+        <AgentLivePanel {...agentLiveProps} surface={agentSurface} />
+      ) : (
+        <AgentPanel
+          contextChips={[
+            selectedObject?.label,
+            selectedEvent?.label,
+            selectedIssue?.title,
+            workbenchViewOptions.find((option) => option.id === view)?.label,
+          ].filter((value): value is string => Boolean(value))}
+          disabled={writeLocked}
+          focusRequest={agentFocusRequest}
+          onClose={closeAgent}
+          onContinueInDesk={() => setAgentSurface("desk")}
+          seed={seed}
+          surface={agentSurface}
+          unresolvedCount={unresolvedCount}
+        />
+      )}
+    </WorkbenchAgentSurface>
+  );
 
   return (
     <div
@@ -1422,18 +1562,6 @@ function AnalystWorkbenchSurface({
       <header className={styles.topbar}>
         <div className={styles.brandBlock}>
           <span className={styles.brandMark} aria-hidden="true" />
-          <div><strong>CaseFile</strong><small>推理卷宗</small></div>
-          <button
-            aria-label="打开模型服务设置"
-            className={settingsStyles.settingsEntry}
-            data-casefile-surface="workbench"
-            onClick={() => window.dispatchEvent(new Event("casefile:open-settings"))}
-            title="模型服务设置"
-            type="button"
-          >
-            <span aria-hidden="true" className={settingsStyles.settingsDot} />
-            <span className={settingsStyles.settingsLabel}>模型</span>
-          </button>
         </div>
         {projectId === null ? (
           <div className={styles.caseIdentity}>
@@ -1476,6 +1604,49 @@ function AnalystWorkbenchSurface({
             onBeforeSwitch={() => !blockDirtyObjectNavigation()}
           />
         )}
+        <nav
+          aria-label="主要工作模式"
+          className={styles.workspaceModes}
+          role="tablist"
+        >
+          <button
+            aria-selected={workspaceMode === "workbench" || workspaceMode === "dossier"}
+            className={styles.mergedWorkbenchMode}
+            onClick={() => switchWorkspaceMode("workbench")}
+            role="tab"
+            type="button"
+          >
+            <WorkbenchIcon name="archive" />
+            <span>
+              <strong>工作台</strong>
+              <small>当前工作 · 对象档案</small>
+            </span>
+          </button>
+          <button
+            aria-selected={workspaceMode === "analysis"}
+            className={styles.iconWorkspaceMode}
+            onClick={() => switchWorkspaceMode("analysis")}
+            role="tab"
+            type="button"
+          >
+            <WorkbenchIcon name="command" />
+            <span>
+              <strong>{workspaceModeCopy.analysis.label}</strong>
+              <small>{workspaceModeCopy.analysis.eyebrow}</small>
+            </span>
+          </button>
+          <button
+            aria-selected={workspaceMode === "compile"}
+            className={styles.compileMode}
+            disabled={writeLocked}
+            onClick={() => switchWorkspaceMode("compile")}
+            role="tab"
+            type="button"
+          >
+            <strong>编译作品</strong>
+            <WorkbenchIcon name="export" />
+          </button>
+        </nav>
         <div className={styles.topStatus} aria-label="卷宗状态">
           <button
             data-tone={writeLocked ? "success" : realData ? contextState.error || unresolvedCount > 0 ? "danger" : contextState.data?.validation.status === "passed" ? "success" : "muted" : unresolvedCount > 0 ? "danger" : "success"}
@@ -1490,10 +1661,6 @@ function AnalystWorkbenchSurface({
             <WorkbenchIcon name="validate" />
             <span><small>验证</small><strong>{realData ? realValidationLabel : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
           </button>
-          <button disabled={writeLocked} data-tone="muted" onClick={() => switchWorkbenchView("export", "导出预览")} type="button">
-            <WorkbenchIcon name="export" />
-            <span><small>导出</small><strong>{writeLocked ? "预览锁定" : realData ? "开发预览" : unresolvedCount > 0 ? "门禁阻断" : "可以导出"}</strong></span>
-          </button>
         </div>
         <button className={styles.globalSearch} onClick={() => setPaletteOpen(true)} ref={commandTriggerRef} type="button">
           <WorkbenchIcon name="search" />
@@ -1501,19 +1668,16 @@ function AnalystWorkbenchSurface({
           <kbd>Ctrl K</kbd>
         </button>
         <div className={styles.topActions}>
-          <button aria-label="打开命令面板" onClick={() => setPaletteOpen(true)} type="button"><WorkbenchIcon name="command" /></button>
+          <button aria-label={writeLocked ? "候选预览不可重置" : "重置工作台数据"} disabled={writeLocked} onClick={resetWorkbench} type="button"><WorkbenchIcon name="reset" /></button>
           <button
-            aria-expanded={agentSurface !== "closed"}
-            aria-label={writeLocked ? "候选预览不可使用 Agent" : "打开卷宗统筹 Agent 对话"}
-            disabled={writeLocked}
-            onClick={openQuickAsk}
-            ref={agentTriggerRef}
+            aria-label="打开模型服务设置"
+            onClick={() => window.dispatchEvent(new Event("casefile:open-settings"))}
+            title="模型服务设置"
             type="button"
           >
-            <WorkbenchIcon name="chat" />
+            <WorkbenchIcon name="settings" />
           </button>
-          <button aria-label={writeLocked ? "候选预览不可重置" : "重置工作台数据"} disabled={writeLocked} onClick={resetWorkbench} type="button"><WorkbenchIcon name="reset" /></button>
-          <Link href="/">建案中心</Link>
+          <Link href="/">返回建案中心</Link>
         </div>
       </header>
 
@@ -1555,9 +1719,12 @@ function AnalystWorkbenchSurface({
       <div
         className={styles.workspaceBody}
         data-inspector-open={inspectorOpen}
+        data-navigator-open={navigatorOpen}
         style={
           {
-            "--rail-width": `${railWidth ?? DEFAULT_RAIL_WIDTH}px`,
+            "--rail-width": navigatorOpen
+              ? `${railWidth ?? DEFAULT_RAIL_WIDTH}px`
+              : "0px",
             "--inspector-width": inspectorOpen
               ? `${inspectorWidth ?? DEFAULT_INSPECTOR_WIDTH}px`
               : "0px",
@@ -1582,49 +1749,104 @@ function AnalystWorkbenchSurface({
           onPointerMove={moveInspectorResize}
           onPointerUp={endInspectorResize}
         />
-        <aside aria-label="卷宗对象导航" className={styles.objectRail}>
-          <section className={styles.projectTree}>
-            <div className={styles.railEyebrow}>
-              <span>卷宗对象导航</span>
-              <b>{seed.caseObjects.length}</b>
-            </div>
-            <div className={styles.objectNavTitle}>
-              <span className={styles.projectMonogram}>{seed.caseMeta.monogram}</span>
+        <aside aria-label="当前模式导航" className={styles.objectRail}>
+          <header className={styles.modeRailHeader}>
+            <div>
               <span>
-                <strong>{seed.caseMeta.branchLabel}</strong>
-                <small>
-                  {currentDraft
-                    ? `工作稿 #${currentDraft.draft_id} · R${currentDraft.revision}`
-                    : seed.caseMeta.revision}
-                </small>
+                {workspaceMode === "workbench" || workspaceMode === "dossier"
+                  ? "工作台"
+                  : workspaceModeCopy[workspaceMode].eyebrow}
               </span>
+              <strong>
+                {workspaceMode === "workbench" || workspaceMode === "dossier"
+                  ? "对象档案"
+                  : workspaceModeCopy[workspaceMode].label}
+              </strong>
             </div>
-            <div className={styles.treeBranches}>
-              <button data-active="true" type="button"><i />{seed.caseMeta.branchLabel} <b>{seed.timelineEvents.length}</b></button>
-              {realData ? (
-                <button type="button"><i />{writeLocked ? "候选任务" : "服务端修订"} <b>{writeLocked ? `#${previewCandidate?.task_run_id ?? "—"}` : `R${draftRevision ?? "—"}`}</b></button>
-              ) : (
-                <>
-                  <button type="button"><i />未采用候选 <b>03</b></button>
-                  <button type="button"><i />导出模板 <b>02</b></button>
-                </>
-              )}
-            </div>
-          </section>
+            <button
+              aria-label="收起当前模式导航"
+              onClick={() => setNavigatorOpen(false)}
+              type="button"
+            >
+              <WorkbenchIcon name="chevron" />
+            </button>
+          </header>
 
-          <WorkbenchObjectDirectory
-            kindFilter={kindFilter}
-            kinds={realData ? productionObjectKinds : fixtureObjectKinds}
-            objects={seed.caseObjects}
-            onKindFilterChange={setKindFilter}
-            onQueryChange={setObjectQuery}
-            onSelectObject={(objectId) => selectObject(objectId)}
-            onSubtypeFilterChange={setSubtypeFilter}
-            query={objectQuery}
-            relatedObjectIds={eventRelatedObjectIds}
-            selectedObjectId={selectedObjectId}
-            subtypeFilter={subtypeFilter}
-          />
+          {workspaceMode === "workbench" || workspaceMode === "dossier" ? (
+            <WorkbenchObjectDirectory
+              key={selectedObjectId ?? "none"}
+              kindFilter={kindFilter}
+              kinds={realData ? productionObjectKinds : fixtureObjectKinds}
+              objects={seed.caseObjects}
+              onKindFilterChange={setKindFilter}
+              onQueryChange={setObjectQuery}
+              onSelectObject={(objectId) => {
+                openObjectInConversation(objectId);
+              }}
+              onSubtypeFilterChange={setSubtypeFilter}
+              query={objectQuery}
+              relatedObjectIds={eventRelatedObjectIds}
+              selectedObjectId={selectedObjectId}
+              subtypeFilter={subtypeFilter}
+            />
+          ) : null}
+
+          {workspaceMode === "analysis" ? (
+            <nav
+              aria-label="分析工具"
+              className={styles.modeNavigation}
+              role="tablist"
+            >
+              {analysisViewOptions.map((option) => (
+                <button
+                  aria-selected={view === option.id}
+                  data-nested={option.id === "evidence"}
+                  key={option.id}
+                  onClick={() => switchWorkbenchView(option.id, option.label)}
+                  role="tab"
+                  type="button"
+                >
+                  <span>{option.shortLabel}</span>
+                  <strong>{option.label}</strong>
+                  <small>
+                    {option.id === "timeline"
+                      ? `${seed.timelineEvents.length} 个事件`
+                      : option.id === "relations"
+                        ? `${seed.caseObjects.length} 个对象`
+                        : option.id === "reasoning"
+                          ? `${seed.reasoningPaths.length} 条路径`
+                          : option.id === "evidence"
+                            ? `${unresolvedCount} 个待处理问题`
+                            : `${seed.mapMarkers.length} 个位置`}
+                  </small>
+                </button>
+              ))}
+            </nav>
+          ) : null}
+
+          {workspaceMode === "compile" ? (
+            <nav
+              aria-label="编译工具"
+              className={styles.modeNavigation}
+              role="tablist"
+            >
+              {compileViewOptions.map((option) => (
+                <button
+                  aria-selected={view === option.id}
+                  disabled={writeLocked}
+                  key={option.id}
+                  onClick={() => switchWorkbenchView(option.id, option.label)}
+                  role="tab"
+                  type="button"
+                >
+                  <span>{option.shortLabel}</span>
+                  <strong>{option.label}</strong>
+                  <small>{option.id === "compile" ? "结构与产物" : "发布前检查"}</small>
+                </button>
+              ))}
+            </nav>
+          ) : null}
+
         </aside>
 
         <main
@@ -1637,29 +1859,106 @@ function AnalystWorkbenchSurface({
           onKeyDown={handleTimelineKeys}
           tabIndex={-1}
         >
-          {agentSurface === "desk" ? agentSurfaceContent : null}
-          {agentSurface !== "desk" ? (
-            <>
           <header className={styles.canvasToolbar}>
-            {projectId !== null && currentDraft && onDraftActivated && !writeLocked ? (
-              <DraftSwitcher
-                currentDraft={currentDraft}
-                onActivated={onDraftActivated}
-                onBeforeSwitch={() => !blockDirtyObjectNavigation()}
-                onCurrentDraftChanged={onCurrentDraftChanged}
-                projectId={projectId}
-              />
-            ) : null}
-            <div className={styles.viewTabs} aria-label="主画布视图" role="tablist">
-              {workbenchViewOptions.map((option) => (
-                <button aria-selected={view === option.id} disabled={writeLocked && (option.id === "export" || option.id === "compile")} key={option.id} onClick={() => switchWorkbenchView(option.id, option.label)} role="tab" type="button">
-                  <span>{option.shortLabel}</span>{option.label}
+            <div className={styles.canvasHeading}>
+              <button
+                aria-expanded={navigatorOpen}
+                aria-label={navigatorOpen ? "收起当前模式导航" : "展开当前模式导航"}
+                className={styles.canvasPanelToggle}
+                onClick={() => setNavigatorOpen((open) => !open)}
+                type="button"
+              >
+                <WorkbenchIcon name="command" />
+              </button>
+              <div>
+                <span>{workspaceModeCopy[workspaceMode].eyebrow}</span>
+                <strong>
+                  {workspaceMode === "analysis" || workspaceMode === "compile"
+                    ? workbenchViewOptions.find((option) => option.id === view)?.label
+                    : workspaceModeCopy[workspaceMode].label}
+                </strong>
+              </div>
+            </div>
+            <div className={styles.canvasToolbarActions}>
+              {realData ? (
+                <div
+                  aria-label="对话线程入口"
+                  className={styles.agentThreadHost}
+                  ref={setAgentThreadHost}
+                  role="region"
+                />
+              ) : null}
+              {projectId !== null && currentDraft && onDraftActivated && !writeLocked ? (
+                <DraftSwitcher
+                  currentDraft={currentDraft}
+                  onActivated={onDraftActivated}
+                  onBeforeSwitch={() => !blockDirtyObjectNavigation()}
+                  onCurrentDraftChanged={onCurrentDraftChanged}
+                  projectId={projectId}
+                />
+              ) : null}
+              {agentSurface === "desk" ? (
+                <button
+                  aria-label="收起 Agent 对话"
+                  className={styles.canvasPanelToggle}
+                  onClick={closeAgent}
+                  type="button"
+                >
+                  <WorkbenchIcon name="close" />
                 </button>
-              ))}
+              ) : null}
+              <button
+                aria-expanded={inspectorOpen}
+                aria-label={inspectorOpen ? "收起对象上下文" : "展开对象上下文"}
+                className={styles.canvasPanelToggle}
+                onClick={() => setInspectorOpen((open) => !open)}
+                type="button"
+              >
+                <WorkbenchIcon name="chevron" />
+              </button>
             </div>
           </header>
-          <div className={styles.canvasContent} data-view={view}>
-            {view === "timeline" ? (
+          <div
+            className={styles.canvasContent}
+            data-conversation-active={agentSurface === "desk"}
+            data-mode={agentSurface === "desk" ? "workbench" : workspaceMode}
+            data-view={view}
+          >
+            <div
+              className={styles.canvasWorkspaceContent}
+              hidden={agentSurface === "desk"}
+            >
+            {workspaceMode === "workbench" ? (
+              <section className={styles.workbenchHome}>
+                <div className={styles.workbenchHomeMain}>
+                  <header>
+                    <h1>从故事未解之处继续</h1>
+                  </header>
+                  <div className={styles.workbenchHomeGrid}>
+                    <button onClick={() => switchWorkspaceMode("analysis")} type="button">
+                      <span>继续上次分析</span>
+                      <strong>{seed.caseMeta.branchLabel}</strong>
+                      <small>回到时间与因果结构</small>
+                      <i>继续分析 →</i>
+                    </button>
+                    <button onClick={() => { setWorkspaceMode("analysis"); setView("evidence"); setEvidenceTab("issues"); }} type="button">
+                      <span>检查故事逻辑</span>
+                      <strong>{unresolvedCount} 个问题待判断</strong>
+                      <small>证据、结论与确定性验证</small>
+                      <i>查看问题 →</i>
+                    </button>
+                    <button onClick={planNextStepsWithAgent} type="button">
+                      <span>规划下一步</span>
+                      <strong>让 Agent 梳理创作优先级</strong>
+                      <small>推进情节、补足线索与明确行动</small>
+                      <i>开始规划 →</i>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {workspaceMode === "analysis" && view === "timeline" ? (
               seed.timelineEvents.length ? (
                 selectedEvent ? (
                   <TimelineOverview
@@ -1705,10 +2004,10 @@ function AnalystWorkbenchSurface({
                 <section className={styles.realEmptyState}><strong>当前工作稿还没有事件</strong><p>事件由已采用候选决定；这里不会补入样例时间线。</p></section>
               )
             ) : null}
-            {view === "relations" ? (
+            {workspaceMode === "analysis" && view === "relations" ? (
               <RelationshipGraph layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
             ) : null}
-            {view === "reasoning" ? (
+            {workspaceMode === "analysis" && view === "reasoning" ? (
               <ReasoningGraphView
                 layoutScope={canvasLayoutScope}
                 onSelectObject={(objectId) => selectObject(objectId, true)}
@@ -1734,7 +2033,7 @@ function AnalystWorkbenchSurface({
                 transitionBusy={savingObject}
               />
             ) : null}
-            {view === "map" ? (
+            {workspaceMode === "analysis" && view === "map" ? (
               <SpatialMapView
                 map={seed.map}
                 meta={seed.caseMeta.mapMeta}
@@ -1778,11 +2077,11 @@ function AnalystWorkbenchSurface({
                 title={seed.caseMeta.mapTitle}
               />
             ) : null}
-            {view === "export" ? <ExportView seed={seed} unresolvedCount={unresolvedCount} /> : null}
-            {view === "compile" ? (
+            {workspaceMode === "compile" && view === "export" ? <ExportView seed={seed} unresolvedCount={unresolvedCount} /> : null}
+            {workspaceMode === "compile" && view === "compile" ? (
               <CompileCenterView seed={seed} unresolvedCount={unresolvedCount} />
             ) : null}
-            {view === "evidence" ? (
+            {workspaceMode === "analysis" && view === "evidence" ? (
               <div className={styles.evidenceView}>
                 <div
                   aria-label="证据对比子视图"
@@ -1847,17 +2146,34 @@ function AnalystWorkbenchSurface({
                 )}
               </div>
             ) : null}
-            {agentSurface === "quick" ? agentSurfaceContent : null}
+            </div>
           </div>
-            </>
-          ) : null}
+          <section
+            aria-label="CaseFile Agent 聊天框"
+            className={styles.agentDock}
+            data-surface={agentSurface}
+          >
+            <Image
+              alt=""
+              aria-hidden="true"
+              className={styles.agentMascot}
+              data-testid="agent-mascot"
+              height={72}
+              src="/casefile-agent-mascot-3d.png"
+              width={72}
+            />
+            {agentSurfaceContent}
+          </section>
         </main>
 
         <aside aria-label="对象上下文" className={styles.inspector}>
           <header className={styles.inspectorHeader}>
-            <div><span>对象上下文</span><strong>{getObject(seed, selectedObjectId)?.label ?? selectedEvent?.label ?? "尚未选择对象"}</strong></div>
+            <div>
+              <span>{workspaceMode === "workbench" ? "工作台状态" : "对象上下文"}</span>
+              <strong>{workspaceMode === "workbench" ? seed.caseMeta.title : getObject(seed, selectedObjectId)?.label ?? selectedEvent?.label ?? "尚未选择对象"}</strong>
+            </div>
             <div className={styles.inspectorHeaderActions}>
-              <div aria-label="对象上下文导航历史" className={styles.historyControls} role="group">
+              {workspaceMode !== "workbench" ? <div aria-label="对象上下文导航历史" className={styles.historyControls} role="group">
                 <button
                   aria-label="后退到上一个对象"
                   className={styles.historyButton}
@@ -1880,7 +2196,7 @@ function AnalystWorkbenchSurface({
                 >
                   <WorkbenchIcon name="chevron" />
                 </button>
-              </div>
+              </div> : null}
               <button
                 aria-label="收起对象上下文"
                 aria-expanded={inspectorOpen}
@@ -1896,89 +2212,62 @@ function AnalystWorkbenchSurface({
             </div>
           </header>
           <div className={styles.inspectorContent}>
-            <WorkbenchContextInspector
-              auditEntries={auditEntries}
-              contextState={contextState}
-              document={realDocument}
-              navigationNotice={objectEditorNavigationNotice}
-              onDirtyChange={updateObjectEditorDirty}
-              onOpenSources={() => {
-                setDrawerOpen(true);
-                setMobileRegion("sources");
-              }}
-              onReloadContext={onReloadContext}
-              onSave={onSaveObject}
-              onSelectObject={selectObject}
-              onSelectRelatedEvent={selectEvent}
-              readOnly={writeLocked || !onSaveObject || spatialEditActive}
-              readOnlyReason={
-                spatialEditActive
-                  ? "先保存或取消地图位置预览，再编辑对象字段。"
-                  : undefined
-              }
-              relatedEvents={selectedRelatedEvents}
-              revision={draftRevision ?? 0}
-              revisionLabel={
-                writeLocked
-                  ? `候选任务 #${previewCandidate?.task_run_id ?? "—"}`
-                  : undefined
-              }
-              saving={savingObject}
-              selectedObject={selectedObject ?? null}
-              selectedObjectId={selectedObjectId}
-              writeLocked={writeLocked}
-            />
+            {workspaceMode === "workbench" ? (
+              <section aria-label="工作台状态" className={styles.workbenchCaseSummary}>
+                <header>
+                  <span>CASE</span>
+                  <strong>{seed.caseMeta.revision}</strong>
+                  <small>{seed.origin === "contract" ? "当前工作稿" : "本地预览"}</small>
+                </header>
+                <dl className={styles.caseStatusCounts}>
+                  <div><dt>对象</dt><dd>{seed.caseObjects.length}</dd></div>
+                  <div><dt>事件</dt><dd>{seed.timelineEvents.length}</dd></div>
+                  <div><dt>人物</dt><dd>{workbenchPersonCount}</dd></div>
+                  <div><dt>地点</dt><dd>{seed.caseObjects.filter((object) => object.kind === "location").length}</dd></div>
+                </dl>
+                <section className={styles.caseStatusFocus}>
+                  <span>当前关注</span>
+                  <ul>
+                    <li><i aria-hidden="true" /><div><strong>{seed.caseMeta.title}</strong><small>当前卷宗</small></div></li>
+                    {selectedObject ? <li><i aria-hidden="true" /><div><strong>{selectedObject.label}</strong><small>焦点对象</small></div></li> : null}
+                    {selectedEvent && selectedEvent.id !== selectedObject?.id ? <li><i aria-hidden="true" /><div><strong>{selectedEvent.label}</strong><small>关联事件</small></div></li> : null}
+                  </ul>
+                </section>
+              </section>
+            ) : (
+              <WorkbenchContextInspector
+                auditEntries={auditEntries}
+                contextState={contextState}
+                document={realDocument}
+                navigationNotice={objectEditorNavigationNotice}
+                onDirtyChange={updateObjectEditorDirty}
+                onReloadContext={onReloadContext}
+                onSave={onSaveObject}
+                onSelectObject={selectObject}
+                onSelectRelatedEvent={selectEvent}
+                readOnly={writeLocked || !onSaveObject || spatialEditActive}
+                readOnlyReason={
+                  spatialEditActive
+                    ? "先保存或取消地图位置预览，再编辑对象字段。"
+                    : undefined
+                }
+                relatedEvents={selectedRelatedEvents}
+                revision={draftRevision ?? 0}
+                revisionLabel={
+                  writeLocked
+                    ? `候选任务 #${previewCandidate?.task_run_id ?? "—"}`
+                    : undefined
+                }
+                saving={savingObject}
+                selectedObject={selectedObject ?? null}
+                selectedObjectId={selectedObjectId}
+                writeLocked={writeLocked}
+              />
+            )}
             <div ref={setAgentInspectorHost} />
           </div>
         </aside>
-        {!inspectorOpen ? (
-          <button
-            aria-label="展开对象上下文"
-            aria-expanded={inspectorOpen}
-            className={styles.inspectorRestore}
-            onClick={() => {
-              setInspectorOpen(true);
-              announce("对象上下文已展开。");
-            }}
-            type="button"
-          >
-            <WorkbenchIcon name="chevron" />
-            <span>对象上下文</span>
-          </button>
-        ) : null}
       </div>
-
-      <section aria-label="来源与运行记录抽屉" className={styles.bottomDrawer} data-open={drawerOpen}>
-        <header className={styles.drawerHeader}>
-          <button aria-expanded={drawerOpen} className={styles.drawerToggle} onClick={() => setDrawerOpen((open) => !open)} type="button"><WorkbenchIcon name="chevron" /><span>来源抽屉</span><small>录音、转写与检索依据</small></button>
-          <div className={styles.drawerTabs} role="tablist">
-            {drawerTabs.map((tab) => <button aria-selected={drawerTab === tab.id} key={tab.id} onClick={() => { setDrawerTab(tab.id); setDrawerOpen(true); }} role="tab" type="button">{tab.label}{!realData && tab.count ? <b>{tab.count}</b> : null}</button>)}
-          </div>
-          <div className={styles.drawerObject}><span>绑定对象</span><strong>{selectedEvent?.id ?? "—"}</strong></div>
-        </header>
-        {drawerOpen ? (
-          <div className={styles.drawerContent}>
-            {writeLocked ? (
-              <CandidatePreviewFactBoundary area="sources" />
-            ) : realData ? (
-              <WorkbenchSourcesPanel
-                onRetry={onReloadContext ?? (() => undefined)}
-                state={contextState}
-              />
-            ) : drawerTab === "audio" ? (
-              <div className={styles.audioPlayer}>
-                <button aria-label={playing ? "暂停录音" : "播放录音"} className={styles.playButton} onClick={() => { setPlaying((value) => !value); announce(playing ? "录音已暂停。" : `正在播放${seed.drawer.audioTitle}。`); }} type="button"><WorkbenchIcon name={playing ? "pause" : "play"} /></button>
-                <div className={styles.waveform} aria-label={`录音播放进度 ${playhead}%`} role="progressbar" aria-valuemax={100} aria-valuemin={0} aria-valuenow={playhead}>{Array.from({ length: 42 }, (_, index) => <i data-played={index / 41 * 100 <= playhead} key={index} style={{ height: `${22 + ((index * 17) % 64)}%` }} />)}</div>
-                <div className={styles.audioMeta}><span>{seed.drawer.audioProgress}</span><strong>{seed.drawer.audioTitle}</strong><small>关键短句将在 {seed.drawer.keyTime} 出现 · 共 {seed.drawer.audioDuration}</small></div>
-                <button className={styles.jumpButton} onClick={() => { setPlayhead(62); announce(`播放位置已跳转到 ${seed.drawer.keyTime} 的关键证词。`); }} type="button">跳到 {seed.drawer.keyTime}</button>
-              </div>
-            ) : null}
-            {!realData && drawerTab === "transcript" ? <div className={styles.transcriptPanel}><time>{seed.drawer.keyTime}</time><p><mark>“{seed.drawer.keyExcerpt}”</mark> {seed.drawer.transcript}</p><button disabled={!seed.defaultIssueId} onClick={() => { if (seed.defaultIssueId) openIssue(seed.defaultIssueId); }} type="button">对照验证问题</button></div> : null}
-            {!realData && drawerTab === "logs" ? <div className={styles.logPanel}><ul>{seed.drawer.logs.map((entry) => <li key={`${entry.time}-${entry.actor}`}><span>{entry.time}</span><strong>{entry.actor}</strong><p>{entry.detail}</p></li>)}</ul></div> : null}
-            {!realData && drawerTab === "retrieval" ? <div className={styles.retrievalPanel}>{seed.sourceItems.filter((source) => source.kind === "retrieval" || source.kind === "record").map((source) => <article key={source.id}><span>{source.kind}</span><div><strong>{source.label}</strong><p>{source.excerpt}</p></div><button onClick={() => selectEvent(source.eventId)} type="button">定位</button></article>)}</div> : null}
-          </div>
-        ) : null}
-      </section>
 
       <div aria-atomic="true" aria-live="polite" className={styles.liveStatus} role="status"><span>STATUS</span>{liveMessage}</div>
 

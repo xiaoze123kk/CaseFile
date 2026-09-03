@@ -134,7 +134,7 @@
   display: grid;
   width: 100%;
   min-height: 53px;
-  grid-template-columns: 26px minmax(0, 1fr) 8px;
+  grid-template-columns: 26px minmax(0, 1fr) 12px;
   align-items: center;
   gap: 8px;
   padding: 6px 7px;
@@ -147,7 +147,21 @@
 
 .objectList > button:hover { color: #f7f2e8; background: rgba(255, 255, 255, 0.035); }
 .objectList > button[aria-pressed="true"] { color: #f7f2e8; background: var(--primary-soft); box-shadow: inset 2px 0 var(--primary); }
-.objectList > button > i { width: 6px; height: 6px; border: 1px solid var(--relation); border-radius: 50%; box-shadow: 0 0 0 3px var(--relation-soft); }
+.objectRowChevron {
+  display: grid;
+  width: 12px;
+  height: 18px;
+  place-items: center;
+  color: #9b958c;
+}
+.objectRowChevron svg {
+  width: 11px;
+  height: 11px;
+}
+.objectList > button:hover .objectRowChevron,
+.objectList > button[aria-pressed="true"] .objectRowChevron {
+  color: var(--primary, #c52b0d);
+}
 
 .objectCopy { display: flex; min-width: 0; flex-direction: column; }
 .objectCopy strong { overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -199,4 +213,522 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Light dossier index used by the mode-aware workspace rail. */
+.objectCatalog { padding-top: 10px; }
+.catalogHeading span { color: var(--ink, #1a1c19); }
+.catalogHeading small { color: var(--ink-faint, #70706a); }
+.catalogHeading button { color: var(--ink-muted, #5d5d58); border-color: var(--rule, #ded8cf); }
+.catalogHeading button:hover:not(:disabled) { color: var(--primary, #c52b0d); border-color: #d9afa6; background: #fff0ec; }
+
+.objectSearch {
+  color: var(--ink-faint, #70706a);
+  border-color: var(--rule, #ded8cf);
+  background: rgba(255, 255, 255, 0.58);
+}
+.objectSearch:focus-within { border-color: #d9afa6; box-shadow: inset 2px 0 var(--primary, #c52b0d); }
+.objectSearch input { color: var(--ink, #1a1c19); }
+.objectSearch input::placeholder { color: var(--ink-faint, #70706a); }
+
+.allKindButton {
+  color: var(--ink-muted, #5d5d58);
+  border-color: var(--rule, #ded8cf);
+  background: rgba(255, 255, 255, 0.5);
+}
+.allKindButton:hover { color: var(--ink, #1a1c19); border-color: #d9afa6; background: #fffefb; }
+.allKindButton[aria-pressed="true"] { color: var(--primary-strong, #9d230c); border-color: #d9afa6; background: #fff0ec; box-shadow: inset 2px 0 var(--primary, #c52b0d); }
+.allKindButton small { color: var(--ink-faint, #70706a); }
+
+.primaryKindIndex {
+  border-color: var(--rule, #ded8cf);
+  background: var(--rule, #ded8cf);
+}
+.primaryKindIndex button {
+  color: var(--ink-muted, #5d5d58);
+  background: #fffefb;
+}
+.primaryKindIndex button:hover { color: var(--primary-strong, #9d230c); background: #fff0ec; }
+.primaryKindIndex button[aria-pressed="true"] { color: var(--primary-strong, #9d230c); border-top-color: var(--primary, #c52b0d); background: #fff0ec; }
+
+.subtypePanel { background: rgba(255, 255, 255, 0.48); box-shadow: none; }
+.subtypeHeading { color: var(--ink-muted, #5d5d58); }
+.subtypeHeading small { color: var(--ink-faint, #70706a); }
+.subtypeOptions button { color: var(--ink-muted, #5d5d58); border-color: var(--rule, #ded8cf); background: #fffefb; }
+.subtypeOptions button:hover { color: var(--ink, #1a1c19); border-color: #d9afa6; }
+.subtypeOptions button[aria-pressed="true"] { color: var(--primary-strong, #9d230c); border-color: #d9afa6; background: #fff0ec; }
+
+.objectList { scrollbar-color: #b8b0a5 transparent; }
+.objectList > button { color: var(--ink-muted, #5d5d58); border-bottom-color: rgba(26, 28, 25, 0.09); }
+.objectList > button:hover { color: var(--ink, #1a1c19); background: rgba(255, 255, 255, 0.62); }
+.objectList > button[aria-pressed="true"] { color: var(--ink, #1a1c19); background: #fff0ec; box-shadow: inset 2px 0 var(--primary, #c52b0d); }
+.objectCopy small,
+.objectCopy code { color: var(--ink-faint, #70706a); }
+.objectCopy code::before { color: #b0aaa0; }
+.objectCopy small span { color: var(--ink-muted, #5d5d58); }
+
+.objectKindMark[data-kind="entity"],
+.objectKindMark[data-kind="person"] { color: #647d76; }
+.objectKindMark[data-kind="information"],
+.objectKindMark[data-kind="evidence"] { color: #a27321; }
+.objectKindMark[data-kind="event"] { color: #b7472f; }
+.objectKindMark[data-kind="location"] { color: #786d38; }
+.objectKindMark[data-kind="hypothesis"] { color: #785f76; }
+
+.emptyState { color: var(--ink-muted, #5d5d58); border-left-color: var(--rule, #ded8cf); background: rgba(255, 255, 255, 0.46); }
+.emptyState strong { color: var(--ink, #1a1c19); }
+.emptyState button { color: var(--primary-strong, #9d230c); border-color: #d9afa6; }
+
+/* The directory reads as an archival table of contents: vivid glyphs do the
+   scanning work while the surrounding rail stays quiet. */
+.kindFilters {
+  gap: 3px;
+  margin: 0 10px 10px;
+}
+
+.allKindButton,
+.kindButton {
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 9px 4px 7px;
+  color: var(--ink-muted, #5d5d58);
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 11px;
+  text-align: left;
+}
+
+.allKindButton:hover,
+.kindButton:hover {
+  color: var(--ink, #1a1c19);
+  border-color: rgba(197, 43, 13, 0.12);
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.allKindButton[aria-pressed="true"],
+.kindButton[aria-pressed="true"] {
+  color: var(--ink, #1a1c19);
+  border-color: rgba(197, 43, 13, 0.22);
+  background: #fff2ee;
+  box-shadow: inset 3px 0 var(--primary, #c52b0d);
+}
+
+.allKindButton .kindButtonCopy,
+.kindButtonCopy {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 11px 27px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+
+.allKindButton .kindChevron,
+.kindChevron {
+  display: grid;
+  width: 12px;
+  height: 18px;
+  place-items: center;
+  color: #938e85;
+}
+
+.kindChevron svg {
+  width: 12px;
+  height: 12px;
+  transform: rotate(-90deg);
+  transition: transform 150ms ease;
+}
+
+.kindChevron[data-open="true"] svg { transform: rotate(0); }
+
+.allKindButton .kindGlyph,
+.kindGlyph {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, currentColor 10%, #fff);
+}
+
+.kindGlyph svg { width: 15px; height: 15px; }
+.kindGlyph[data-kind="all"] { color: #9e3f28; }
+.kindGlyph[data-kind="resolution_spec"] { color: #bd3650; }
+.kindGlyph[data-kind="entity"] { color: #8a43a6; }
+.kindGlyph[data-kind="information"] { color: #a56b13; }
+.kindGlyph[data-kind="event"] { color: #6551c4; }
+.kindGlyph[data-kind="location"] { color: #16806f; }
+.kindGlyph[data-kind="hypothesis"] { color: #2775b6; }
+
+.allKindButton .kindLabel,
+.kindLabel {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+  color: inherit;
+  font-weight: 620;
+}
+
+.allKindButton .kindLabel small {
+  margin: 0;
+  color: var(--ink-faint, #70706a);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.primaryKindIndex {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  border: 0;
+  background: transparent;
+}
+
+.kindGroup { display: grid; }
+.primaryKindIndex .kindButton {
+  display: flex;
+  min-height: 40px;
+  align-content: normal;
+  align-items: center;
+  justify-content: space-between;
+  justify-items: normal;
+  gap: 0;
+  padding: 4px 9px 4px 7px;
+  color: var(--ink-muted, #5d5d58);
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 11px;
+}
+
+.primaryKindIndex .kindButton:hover {
+  color: var(--ink, #1a1c19);
+  border-color: rgba(197, 43, 13, 0.12);
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.primaryKindIndex .kindButton[aria-pressed="true"] {
+  color: var(--ink, #1a1c19);
+  border-color: rgba(197, 43, 13, 0.22);
+  border-top-color: rgba(197, 43, 13, 0.22);
+  background: #fff2ee;
+  box-shadow: inset 3px 0 var(--primary, #c52b0d);
+}
+.kindButton > b,
+.allKindButton > b {
+  color: #8b877f;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kindButton[aria-pressed="true"] > b,
+.allKindButton[aria-pressed="true"] > b { color: var(--primary-strong, #9d230c); }
+
+.subtypePanel {
+  gap: 7px;
+  margin: 2px 5px 6px 49px;
+  padding: 8px 0 3px 10px;
+  border: 0;
+  border-left: 1px solid #d8cec4;
+  background: transparent;
+}
+
+.subtypeHeading { padding-right: 4px; }
+.subtypeHeading span { font-size: 8px; }
+.subtypeOptions { gap: 4px; }
+.subtypeOptions button { min-height: 24px; padding: 0 7px; border-radius: 12px; }
+
+.objectList {
+  margin-top: 2px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(26, 28, 25, 0.08);
+}
+
+.objectKindMark {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 10%, #fff);
+}
+
+.objectKindMark svg { width: 15px; height: 15px; }
+.objectKindMark[data-kind="resolution_spec"] { color: #bd3650; }
+.objectKindMark[data-kind="entity"],
+.objectKindMark[data-kind="person"] { color: #8a43a6; }
+.objectKindMark[data-kind="information"],
+.objectKindMark[data-kind="evidence"] { color: #a56b13; }
+.objectKindMark[data-kind="event"] { color: #6551c4; }
+.objectKindMark[data-kind="location"] { color: #16806f; }
+.objectKindMark[data-kind="hypothesis"] { color: #2775b6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kindChevron svg { transition: none; }
+}
+
+/* The rail is a true hierarchy: primary kind, secondary subtype menu, objects. */
+.objectCatalog {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.kindFilters {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.primaryKindIndex {
+  min-height: 0;
+  align-content: start;
+  grid-auto-rows: max-content;
+  padding: 0 0 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: #b8b0a5 transparent;
+  scrollbar-width: thin;
+}
+
+.kindGroup {
+  min-width: 0;
+}
+
+.subtypePanel {
+  margin: 1px 7px 5px 20px;
+  padding: 2px 0 3px 18px;
+  border-left: 1px solid #d8cec4;
+}
+
+.subtypeOptions {
+  display: grid;
+  gap: 1px;
+}
+
+.subtypeOptions button {
+  display: flex;
+  width: 100%;
+  min-height: 25px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 10px;
+  color: var(--ink-muted, #5d5d58);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.subtypeOptions button::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  margin-right: 8px;
+  border-right: 1px solid #a9a197;
+  border-bottom: 1px solid #a9a197;
+  content: "";
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.subtypeOptions button > span { flex: 1; }
+.subtypeOptions button > b { color: #8b877f; font-variant-numeric: tabular-nums; }
+.subtypeOptions button:hover { color: var(--ink, #1a1c19); background: rgba(255, 255, 255, 0.65); }
+.subtypeOptions button[aria-pressed="true"] {
+  color: var(--primary-strong, #9d230c);
+  background: #fff0ec;
+}
+.subtypeOptions button[aria-pressed="true"]::before {
+  border-color: var(--primary, #c52b0d);
+}
+
+.objectList[data-nested="true"] {
+  margin: 1px 0 6px 20px;
+  padding: 2px 0 0 8px;
+  overflow: visible;
+  border-top: 0;
+  border-left: 1px solid rgba(26, 28, 25, 0.11);
+}
+
+.objectList[data-nested="true"] > button {
+  min-height: 42px;
+  justify-items: stretch;
+  padding-right: 5px;
+  padding-left: 6px;
+  overflow: hidden;
+}
+
+.objectList[data-nested="true"] .objectCopy {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.objectList[data-nested="true"] .objectCopy strong {
+  width: 100%;
+  max-width: 100%;
+}
+
+.objectList[data-nested="true"] .objectKindMark {
+  width: 24px;
+  height: 24px;
+}
+
+.objectList[data-nested="true"] .objectKindMark svg {
+  width: 13px;
+  height: 13px;
+}
+
+.kindGroup > .emptyState {
+  margin: 2px 6px 7px 20px;
+}
+
+/* Reference-style contents list: the hit area stays generous, but visible
+   emphasis is confined to the glyph and label instead of a full-width card. */
+.allKindButton,
+.primaryKindIndex .kindButton {
+  min-height: 36px;
+  padding: 3px 5px 3px 2px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.allKindButton:hover,
+.primaryKindIndex .kindButton:hover {
+  border: 0;
+  background: transparent;
+}
+
+.allKindButton[aria-pressed="true"],
+.primaryKindIndex .kindButton[aria-pressed="true"] {
+  color: var(--ink, #1a1c19);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.allKindButton .kindButtonCopy,
+.kindButtonCopy {
+  grid-template-columns: 10px 24px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.allKindButton .kindButtonCopy {
+  grid-template-columns: 24px minmax(0, 1fr);
+}
+
+.allKindButton .kindGlyph,
+.kindGlyph {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.allKindButton[aria-pressed="true"] .kindGlyph,
+.kindButton[aria-pressed="true"] .kindGlyph {
+  background: color-mix(in srgb, currentColor 15%, #fff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.kindGlyph svg { width: 14px; height: 14px; }
+.kindLabel { font-weight: 580; }
+
+.allKindButton > b,
+.kindButton > b {
+  padding-right: 2px;
+  color: #88847d;
+}
+
+.subtypePanel {
+  margin-left: 17px;
+  padding-left: 17px;
+}
+
+.objectList[data-nested="true"] {
+  margin-left: 17px;
+  padding-left: 7px;
+}
+
+.primaryKindIndex .objectList[data-nested="true"] > button {
+  min-height: 37px;
+  padding: 3px 5px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.primaryKindIndex .objectList[data-nested="true"] > button:hover {
+  color: var(--ink, #1a1c19);
+  background: transparent;
+}
+
+.primaryKindIndex .objectList[data-nested="true"] > button[aria-pressed="true"] {
+  color: var(--ink, #1a1c19);
+  background: transparent;
+  box-shadow: none;
+}
+
+.objectList[data-nested="true"] > button[aria-pressed="true"] .objectKindMark {
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent);
+}
+
+.objectList[data-nested="true"] .objectKindMark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.objectList[data-nested="true"] .objectCopy strong { font-size: 10px; }
+.objectList[data-nested="true"] .objectCopy small { margin-top: 2px; font-size: 7.5px; }
+
+/* Object instances belong to an opened secondary branch, never directly to
+   the primary kind. This keeps the rail legible as a three-level tree. */
+.subtypeBranch {
+  display: grid;
+  min-width: 0;
+}
+
+.subtypeOptions .subtypeBranch > button::before {
+  display: none;
+}
+
+.subtypeOptions .subtypeBranch > button {
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.subtypeChevron {
+  display: grid;
+  width: 11px;
+  height: 16px;
+  place-items: center;
+  color: #9b958c;
+}
+
+.subtypeChevron svg {
+  width: 10px;
+  height: 10px;
+  transform: rotate(-90deg);
+  transition: transform 150ms ease;
+}
+
+.subtypeChevron[data-open="true"] svg {
+  transform: rotate(0);
+}
+
+.subtypeBranch > .objectList[data-nested="true"] {
+  margin: 0 0 4px 10px;
+  padding: 1px 0 2px 8px;
+}
+
+.subtypeBranch > .emptyState {
+  margin: 3px 4px 6px 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subtypeChevron svg { transition: none; }
 }

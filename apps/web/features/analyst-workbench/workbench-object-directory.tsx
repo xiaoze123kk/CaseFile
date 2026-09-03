@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   type CaseObject,
@@ -32,6 +32,15 @@ const subtypeOrder: Record<DirectoryObjectKind, string[]> = {
   location: ["schematic", "wgs84", "topology"],
   hypothesis: ["active", "supported", "eliminated", "accepted", "rejected", "undetermined"],
 };
+
+const directoryKindIcons = {
+  resolution_spec: "focus",
+  entity: "entity",
+  information: "document",
+  event: "event",
+  location: "location",
+  hypothesis: "hypothesis",
+} as const;
 
 export function directoryObjectKind(kind: ObjectKind): DirectoryObjectKind {
   if (kind === "person") return "entity";
@@ -79,6 +88,15 @@ export function WorkbenchObjectDirectory({
   onQueryChange: (query: string) => void;
   onSelectObject: (objectId: string) => void;
 }) {
+  const [expandedKinds, setExpandedKinds] = useState<Set<DirectoryObjectKind>>(
+    () => new Set(kindFilter === "all" ? [] : [kindFilter]),
+  );
+  const [expandedSubtype, setExpandedSubtype] = useState<{
+    kind: DirectoryObjectKind;
+    subtype: string | "all";
+  } | null>(() =>
+    kindFilter === "all" ? null : { kind: kindFilter, subtype: subtypeFilter },
+  );
   const normalizedQuery = normalizeQuery(query);
   const queryMatches = useMemo(
     () => objects.filter((object) => matchesQuery(object, normalizedQuery)),
@@ -129,18 +147,6 @@ export function WorkbenchObjectDirectory({
       ]),
     ) as Record<string, number>;
   }, [kindFilter, queryMatches, subtypeOptions]);
-  const visibleObjects = useMemo(
-    () =>
-      kindFilter === "all"
-        ? queryMatches
-        : queryMatches.filter(
-            (object) =>
-              directoryObjectKind(object.kind) === kindFilter &&
-              (subtypeFilter === "all" ||
-                objectSubtype(object) === subtypeFilter),
-          ),
-    [kindFilter, queryMatches, subtypeFilter],
-  );
   const filtered =
     Boolean(normalizedQuery) ||
     kindFilter !== "all" ||
@@ -151,10 +157,63 @@ export function WorkbenchObjectDirectory({
     onSubtypeFilterChange("all");
   }
 
+  function showAllKinds() {
+    selectKind("all");
+    setExpandedKinds(new Set());
+    setExpandedSubtype(null);
+  }
+
+  function toggleKind(kind: DirectoryObjectKind) {
+    const closing = expandedKinds.has(kind) && kindFilter === kind;
+    setExpandedKinds(closing ? new Set() : new Set([kind]));
+    setExpandedSubtype(null);
+    selectKind(closing ? "all" : kind);
+  }
+
+  function toggleSubtype(kind: DirectoryObjectKind, subtype: string | "all") {
+    const closing =
+      expandedSubtype?.kind === kind && expandedSubtype.subtype === subtype;
+    setExpandedSubtype(closing ? null : { kind, subtype });
+    onSubtypeFilterChange(closing ? "all" : subtype);
+  }
+
   function clearFilters() {
     onQueryChange("");
     onKindFilterChange("all");
     onSubtypeFilterChange("all");
+    setExpandedKinds(new Set());
+    setExpandedSubtype(null);
+  }
+
+  function renderObjectButton(object: CaseObject) {
+    const selected = object.id === selectedObjectId;
+    const related = relatedObjectIds.includes(object.id);
+    return (
+      <button
+        aria-pressed={selected}
+        data-related={related}
+        key={object.id}
+        onClick={() => onSelectObject(object.id)}
+        type="button"
+      >
+        <span className={styles.objectKindMark} data-kind={object.kind}>
+          <WorkbenchIcon
+            name={directoryKindIcons[directoryObjectKind(object.kind)]}
+          />
+        </span>
+        <span className={styles.objectCopy}>
+          <strong>{object.label}</strong>
+          <small>
+            <span>{objectSubtypeLabel(objectSubtype(object))}</span>
+            <code>{object.id}</code>
+          </small>
+        </span>
+        {related ? <span className={styles.srOnly}>与当前事件相关</span> : null}
+        <span className={styles.objectRowChevron} aria-hidden="true">
+          <WorkbenchIcon name="chevron" />
+        </span>
+      </button>
+    );
   }
 
   return (
@@ -189,96 +248,145 @@ export function WorkbenchObjectDirectory({
 
       <div className={styles.kindFilters} aria-label="对象类型筛选">
         <button
-          className={styles.allKindButton}
           aria-label={`全部对象，${queryMatches.length} 个匹配`}
           aria-pressed={kindFilter === "all"}
-          onClick={() => selectKind("all")}
+          className={styles.allKindButton}
+          onClick={showAllKinds}
           type="button"
         >
-          <span><small>范围</small>全部对象</span>
+          <span className={styles.kindButtonCopy}>
+            <span className={styles.kindGlyph} data-kind="all">
+              <WorkbenchIcon name="archive" />
+            </span>
+            <span className={styles.kindLabel}>
+              <small>范围</small>
+              <span>全部对象</span>
+            </span>
+          </span>
           <b>{queryMatches.length}</b>
         </button>
-        <div className={styles.primaryKindIndex}>
-          {kinds.map((kind) => (
-            <button
-              aria-label={`${objectKindLabels[kind]}，${counts[kind] ?? 0} 个匹配`}
-              aria-pressed={kindFilter === kind}
-              key={kind}
-              onClick={() => selectKind(kind)}
-              type="button"
-            >
-              <span>{objectKindLabels[kind]}</span>
-              <b>{counts[kind] ?? 0}</b>
-            </button>
-          ))}
-        </div>
-        {kindFilter !== "all" ? (
-          <div
-            aria-label={`${objectKindLabels[kindFilter]}子类型筛选`}
-            className={styles.subtypePanel}
-          >
-            <div className={styles.subtypeHeading}>
-              <span>{objectKindLabels[kindFilter]} / 子类型</span>
-              <small>{subtypeOptions.length} 种类型</small>
-            </div>
-            <div className={styles.subtypeOptions}>
-              <button
-                aria-label={`全部${objectKindLabels[kindFilter]}，${counts[kindFilter] ?? 0} 个匹配`}
-                aria-pressed={subtypeFilter === "all"}
-                onClick={() => onSubtypeFilterChange("all")}
-                type="button"
+        <div
+          aria-label="对象目录结果"
+          className={styles.primaryKindIndex}
+          role="region"
+        >
+          {kinds.map((kind) => {
+            const expanded = expandedKinds.has(kind);
+            return (
+              <div
+                className={styles.kindGroup}
+                data-kind-group={kind}
+                key={kind}
               >
-                全部 <b>{counts[kindFilter] ?? 0}</b>
-              </button>
-              {subtypeOptions.map((subtype) => (
                 <button
-                  aria-label={`${objectSubtypeLabel(subtype)}，${subtypeCounts[subtype] ?? 0} 个匹配`}
-                  aria-pressed={subtypeFilter === subtype}
-                  key={subtype}
-                  onClick={() => onSubtypeFilterChange(subtype)}
+                  aria-expanded={expanded}
+                  aria-label={`${objectKindLabels[kind]}，${counts[kind] ?? 0} 个匹配`}
+                  aria-pressed={kindFilter === kind}
+                  className={styles.kindButton}
+                  onClick={() => toggleKind(kind)}
                   type="button"
                 >
-                  {objectSubtypeLabel(subtype)} <b>{subtypeCounts[subtype] ?? 0}</b>
+                  <span className={styles.kindButtonCopy}>
+                    <span className={styles.kindChevron} data-open={expanded}>
+                      <WorkbenchIcon name="chevron" />
+                    </span>
+                    <span className={styles.kindGlyph} data-kind={kind}>
+                      <WorkbenchIcon name={directoryKindIcons[kind]} />
+                    </span>
+                    <span className={styles.kindLabel}>
+                      {objectKindLabels[kind]}
+                    </span>
+                  </span>
+                  <b>{counts[kind] ?? 0}</b>
                 </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <div
-        aria-label="对象目录结果"
-        className={styles.objectList}
-        role="region"
-      >
-        {visibleObjects.map((object) => {
-          const selected = object.id === selectedObjectId;
-          const related = relatedObjectIds.includes(object.id);
-          return (
-            <button
-              aria-pressed={selected}
-              data-related={related}
-              key={object.id}
-              onClick={() => onSelectObject(object.id)}
-              type="button"
-            >
-              <span className={styles.objectKindMark} data-kind={object.kind}>
-                {objectKindLabels[object.kind].slice(0, 1)}
-              </span>
-              <span className={styles.objectCopy}>
-                <strong>{object.label}</strong>
-                <small>
-                  <span>{objectSubtypeLabel(objectSubtype(object))}</span>
-                  <code>{object.id}</code>
-                </small>
-              </span>
-              {related ? <i aria-label="与当前事件相关" /> : null}
-            </button>
-          );
-        })}
-        {visibleObjects.length === 0 ? (
+                {expanded && kindFilter === kind ? (
+                  <div
+                    aria-label={`${objectKindLabels[kindFilter]}子类型筛选`}
+                    className={styles.subtypePanel}
+                  >
+                    <div className={styles.subtypeOptions}>
+                      {["all", ...subtypeOptions].map((subtype) => {
+                        const branchOpen =
+                          expandedSubtype?.kind === kindFilter &&
+                          expandedSubtype.subtype === subtype;
+                        const branchObjects = queryMatches.filter(
+                          (object) =>
+                            directoryObjectKind(object.kind) === kindFilter &&
+                            (subtype === "all" ||
+                              objectSubtype(object) === subtype),
+                        );
+                        const label =
+                          subtype === "all"
+                            ? `全部${objectKindLabels[kindFilter]}`
+                            : objectSubtypeLabel(subtype);
+                        const count =
+                          subtype === "all"
+                            ? (counts[kindFilter] ?? 0)
+                            : (subtypeCounts[subtype] ?? 0);
+                        return (
+                          <div className={styles.subtypeBranch} key={subtype}>
+                            <button
+                              aria-expanded={branchOpen}
+                              aria-label={`${label}，${count} 个匹配`}
+                              aria-pressed={branchOpen}
+                              onClick={() => toggleSubtype(kindFilter, subtype)}
+                              type="button"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={styles.subtypeChevron}
+                                data-open={branchOpen}
+                              >
+                                <WorkbenchIcon name="chevron" />
+                              </span>
+                              <span>{label}</span>
+                              <b>{count}</b>
+                            </button>
+                            {branchOpen && branchObjects.length > 0 ? (
+                              <div
+                                aria-label={`${label}对象`}
+                                className={styles.objectList}
+                                data-nested="true"
+                                role="group"
+                              >
+                                {branchObjects.map(renderObjectButton)}
+                              </div>
+                            ) : null}
+                            {branchOpen && branchObjects.length === 0 ? (
+                              <div className={styles.emptyState} role="status">
+                                <strong>当前条件没有匹配对象</strong>
+                                <p>选择其他子类型，或清除筛选查看完整目录。</p>
+                                <button onClick={clearFilters} type="button">
+                                  清除筛选
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                {expanded && kindFilter === kind && (counts[kind] ?? 0) === 0 ? (
+                  <div className={styles.emptyState} role="status">
+                    <strong>当前条件没有匹配对象</strong>
+                    <p>选择其他类型，或清除筛选查看完整目录。</p>
+                    <button onClick={clearFilters} type="button">
+                      清除筛选
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+        {kindFilter === "all" && queryMatches.length === 0 ? (
           <div className={styles.emptyState} role="status">
-            <strong>{objects.length ? "当前条件没有匹配对象" : "当前工作稿还没有卷宗对象"}</strong>
+            <strong>
+              {objects.length
+                ? "当前条件没有匹配对象"
+                : "当前工作稿还没有卷宗对象"}
+            </strong>
             <p>
               {objects.length
                 ? "清除筛选后查看完整目录。"

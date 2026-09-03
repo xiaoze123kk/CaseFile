@@ -9,7 +9,16 @@ type WorkbenchIconName =
   | "pause"
   | "close"
   | "reset"
+  | "settings"
+  | "send"
   | "chat"
+  | "archive"
+  | "focus"
+  | "entity"
+  | "document"
+  | "event"
+  | "location"
+  | "hypothesis"
   | "cursor"
   | "hand";
 
@@ -66,10 +75,70 @@ export function WorkbenchIcon({
         <path d="M3 2v4h4" />
       </>
     ),
+    settings: (
+      <>
+        <path d="M2.5 4h3M8.5 4h5M2.5 8h6M11.5 8h2M2.5 12h1.5M7 12h6.5" />
+        <circle cx="7" cy="4" r="1.5" />
+        <circle cx="10" cy="8" r="1.5" />
+        <circle cx="5.5" cy="12" r="1.5" />
+      </>
+    ),
+    send: (
+      <>
+        <path d="m2.5 7.4 11-4.6-4.6 11-1.6-4.1Z" />
+        <path d="m7.3 9.7 2.8-2.8" />
+      </>
+    ),
     chat: (
       <>
         <path d="M2.5 4.5h11v6.5h-7L3 14v-3h-.5Z" />
         <path d="M5.5 7h5M5.5 9h3" />
+      </>
+    ),
+    archive: (
+      <>
+        <path d="M3 3.5h4l1.1 1.4H13v8.2H3Z" />
+        <path d="M3 6.5h10M6 9h4" />
+      </>
+    ),
+    focus: (
+      <>
+        <circle cx="8" cy="8" r="4.6" />
+        <circle cx="8" cy="8" r="1.5" />
+        <path d="M8 1.7v2M8 12.3v2M1.7 8h2M12.3 8h2" />
+      </>
+    ),
+    entity: (
+      <>
+        <circle cx="8" cy="5.2" r="2.3" />
+        <path d="M3.8 13c.4-2.6 1.8-4 4.2-4s3.8 1.4 4.2 4" />
+        <path d="M3.9 6.6a1.7 1.7 0 1 1 1.3-3M12.1 6.6a1.7 1.7 0 1 0-1.3-3" />
+      </>
+    ),
+    document: (
+      <>
+        <path d="M4 2.2h5l3 3V14H4Z" />
+        <path d="M9 2.2v3h3M6 8h4M6 10.5h4" />
+      </>
+    ),
+    event: (
+      <>
+        <circle cx="4" cy="4" r="1.5" />
+        <circle cx="12" cy="8" r="1.5" />
+        <circle cx="4" cy="12" r="1.5" />
+        <path d="M5.5 4c3 0 2.2 4 5 4M5.5 12c3 0 2.2-4 5-4" />
+      </>
+    ),
+    location: (
+      <>
+        <path d="M8 14s4-4.1 4-7.4a4 4 0 1 0-8 0C4 9.9 8 14 8 14Z" />
+        <circle cx="8" cy="6.5" r="1.35" />
+      </>
+    ),
+    hypothesis: (
+      <>
+        <path d="M6 2.2h4M7 2.2v3L3.9 11a1.8 1.8 0 0 0 1.6 2.8h5a1.8 1.8 0 0 0 1.6-2.8L9 5.2v-3" />
+        <path d="M5.5 9.5h5M6.6 7.5h2.8" />
       </>
     ),
     cursor: <path d="m3.5 2.5 9 5.2-4.3 1.2-1.2 4.3Z" />,
