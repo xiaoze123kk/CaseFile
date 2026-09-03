@@ -60,6 +60,8 @@ Prompt 版本有三种互斥形态：
 
 `prose-rewriter-v1`、`v2` 保留 N4.5-05 初版与首次长度修复的历史回放。当前 `prose-rewriter-v3` 在相同单轮、无工具、最多两轮和完整替代正文边界上，把 Profile 的 Unicode 字符范围投影为带安全余量的 `length_contract` 与明确分段计划；模型不得把服务端拒绝线当作写作目标，输出前须逐 block 与总量复核。`prose-fidelity-judge-v6` 在 v5 语义规则之上增加 Evidence 必填条件的最终逐项审计，无充分目录证据时必须保守返回 `uncertain`。
 
+`prose-quality-critic-v1` 只在语义通过后按五个冻结维度产生带服务端 Evidence ID 的文学质量 findings，不改写正文或覆盖 Semantic verdict。`prose-quality-pairwise-v1` 对两份语义合格正文执行匿名 A/B 比较，固定输出整体和五维 `a|b|tie`；Runtime 以相反位置调用两次，模型看不到 original/polished、stage、版本或来源。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

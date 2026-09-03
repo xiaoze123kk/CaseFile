@@ -10,8 +10,6 @@ from typing import Any
 
 import httpx
 import pytest
-from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
-
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ADVERSARIAL_POLICY,
     FIDELITY_ONLY_POLICY,
@@ -34,6 +32,7 @@ from casefile.benchmark.prose_judge_eval import (
     load_prose_judge_dev_suite,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
+from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
 
 
 @pytest.fixture(scope="module")

@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -55,6 +54,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_adversarial_judge": "prose-adversarial-judge-v5",
     "prose_coherence_judge": "prose-coherence-judge-v5",
     "prose_arbiter": "prose-arbiter-v5",
+    "prose_quality_critic": "prose-quality-critic-v1",
+    "prose_quality_pairwise": "prose-quality-pairwise-v1",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -631,6 +632,12 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_arbiter", "prose-arbiter-v5"): {
         "system": "4b9e9ef21569a8ede75ce979f5043dc621372a5d1f8e9e18f9a74c180bc1290a"
     },
+    ("prose_quality_critic", "prose-quality-critic-v1"): {
+        "system": "90647d6341174462190709666c2c7d84e19956f3b5d8af1564da0ad9130dfca1"
+    },
+    ("prose_quality_pairwise", "prose-quality-pairwise-v1"): {
+        "system": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"
+    },
 }
 
 
@@ -648,9 +655,11 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "prose_rewriter",
         "prose_fidelity_judge",
         "prose_adversarial_judge",
-        "prose_coherence_judge",
-        "prose_arbiter",
-        "general_mutation_planner",
+            "prose_coherence_judge",
+            "prose_arbiter",
+            "prose_quality_critic",
+            "prose_quality_pairwise",
+            "general_mutation_planner",
     }
 
     assert deterministic_task_types <= contract_task_types

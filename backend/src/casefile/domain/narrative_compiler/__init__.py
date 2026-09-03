@@ -96,6 +96,15 @@ from casefile.domain.narrative_compiler.prose_checklist import (
     validate_prose_judge_report,
     validate_scene_render,
 )
+from casefile.domain.narrative_compiler.prose_quality import (
+    QUALITY_DIMENSIONS,
+    MirroredQualityDecision,
+    resolve_mirrored_quality,
+    validate_quality_findings_report,
+    validate_quality_pair_inputs,
+    validate_quality_pairwise_report,
+    validate_semantic_acceptance,
+)
 from casefile.domain.narrative_compiler.scene_compiler_input import (
     SCENE_COMPILER_BATCH_SIZE,
     SCENE_COMPILER_INPUT_V2_SCHEMA_ID,
@@ -283,6 +292,9 @@ __all__ = [
     "inspect_scene_plan_v2",
     "normalize_scene_render_candidate",
     "normalize_scene_rewrite_candidate",
+    "QUALITY_DIMENSIONS",
+    "MirroredQualityDecision",
+    "resolve_mirrored_quality",
     "scene_plan_semantic_signature",
     "scene_plan_component_fingerprint",
     "scene_plan_v2_component_fingerprint",
@@ -297,5 +309,9 @@ __all__ = [
     "validate_scene_plan_candidate",
     "validate_scene_plan_v2",
     "validate_scene_render",
+    "validate_quality_findings_report",
+    "validate_quality_pair_inputs",
+    "validate_quality_pairwise_report",
+    "validate_semantic_acceptance",
     "validate_scene_semantic_fill",
 ]

@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
     PROSE_COUNCIL_MODEL_ID,

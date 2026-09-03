@@ -10,6 +10,7 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
+from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 from openai import OpenAI
 from pydantic import ValidationError
 
@@ -24,7 +25,6 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
-from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 
 PROSE_REWRITER_MODEL_ID: Final = "deepseek-v4-pro"
 PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v3"

@@ -10,6 +10,7 @@ from hashlib import sha256
 from time import perf_counter, sleep
 from typing import Any, Final, Literal, Protocol, cast
 
+from casefile_contracts import ProseConsensusReport, ProseJudgeReport
 from openai import APIConnectionError, APITimeoutError, OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -21,7 +22,6 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
-from casefile_contracts import ProseConsensusReport, ProseJudgeReport
 
 PROSE_COUNCIL_MODEL_ID: Final = "deepseek-v4-pro"
 PROSE_COUNCIL_MAX_TURNS: Final = 1
