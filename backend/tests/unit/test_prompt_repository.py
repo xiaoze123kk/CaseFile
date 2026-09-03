@@ -56,6 +56,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_arbiter": "prose-arbiter-v5",
     "prose_quality_critic": "prose-quality-critic-v1",
     "prose_quality_pairwise": "prose-quality-pairwise-v1",
+    "prose_polisher": "prose-polisher-v1",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -638,6 +639,9 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_quality_pairwise", "prose-quality-pairwise-v1"): {
         "system": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"
     },
+    ("prose_polisher", "prose-polisher-v1"): {
+        "system": "79253e33d9abe25ba9a226b0e209dfaf462107fff1f752d8eecfe0a319e77f68"
+    },
 }
 
 
@@ -659,6 +663,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
             "prose_arbiter",
             "prose_quality_critic",
             "prose_quality_pairwise",
+            "prose_polisher",
             "general_mutation_planner",
     }
 

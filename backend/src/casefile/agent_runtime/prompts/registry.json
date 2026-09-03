@@ -70,6 +70,9 @@
     "prose_quality_pairwise": {
       "current_version": "prose-quality-pairwise-v1"
     },
+    "prose_polisher": {
+      "current_version": "prose-polisher-v1"
+    },
     "general_mutation_planner": {
       "current_version": "general-mutation-planner-v6"
     }

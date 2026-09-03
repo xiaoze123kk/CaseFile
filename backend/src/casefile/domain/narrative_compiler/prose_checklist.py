@@ -322,6 +322,97 @@ def normalize_scene_rewrite_candidate(
     )
 
 
+def normalize_scene_polish_candidate(
+    candidate: dict[str, Any],
+    *,
+    checklist: dict[str, Any],
+    profile: dict[str, Any],
+    current_render: dict[str, Any],
+    component_input_hash: str,
+) -> SceneRender:
+    """Normalize a full-Scene polish with direct semantic-source lineage."""
+
+    try:
+        checklist_json = ProseJudgeChecklist.model_validate(checklist).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
+    current = validate_scene_render(
+        current_render, checklist=checklist_json, profile=profile
+    ).model_dump(mode="json")
+    if (
+        current["stage"] not in {"writer", "rewrite_1", "rewrite_2"}
+        or current["selection_reason"] is not None
+    ):
+        raise CompilerContractError("compiler_scene_polish_source_stage_invalid")
+    return _normalize_scene_render_candidate(
+        candidate,
+        checklist=checklist_json,
+        profile=profile,
+        component_input_hash=component_input_hash,
+        stage="polished",
+        round_index=current["round"],
+        previous_render_hash=canonical_json_sha256(current),
+    )
+
+
+def finalize_scene_render(
+    selected_render: dict[str, Any],
+    *,
+    original_render: dict[str, Any],
+    checklist: dict[str, Any],
+    profile: dict[str, Any],
+    component_input_hash: str,
+    selection_reason: str,
+) -> SceneRender:
+    """Create the server-owned accepted copy after semantic/quality selection."""
+
+    try:
+        checklist_json = ProseJudgeChecklist.model_validate(checklist).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
+    original = validate_scene_render(
+        original_render, checklist=checklist_json, profile=profile
+    ).model_dump(mode="json")
+    selected = validate_scene_render(
+        selected_render, checklist=checklist_json, profile=profile
+    ).model_dump(mode="json")
+    valid_reasons = {
+        "polished_accepted",
+        "polish_semantic_rollback",
+        "quality_rollback",
+        "quality_unstable",
+    }
+    if (
+        original["stage"] not in {"writer", "rewrite_1", "rewrite_2"}
+        or selection_reason not in valid_reasons
+    ):
+        raise CompilerContractError("compiler_scene_finalize_selection_invalid")
+    original_hash = canonical_json_sha256(original)
+    if selection_reason == "polished_accepted":
+        if (
+            selected["stage"] != "polished"
+            or selected["round"] != original["round"]
+            or selected["previous_render_hash"] != original_hash
+        ):
+            raise CompilerContractError("compiler_scene_finalize_selection_invalid")
+    elif canonical_json_sha256(selected) != original_hash:
+        raise CompilerContractError("compiler_scene_finalize_selection_invalid")
+    candidate = {
+        "schema_id": "compiler.scene-render-candidate.v1",
+        "blocks": [{"text": block["text"]} for block in selected["blocks"]],
+    }
+    return _normalize_scene_render_candidate(
+        candidate,
+        checklist=checklist_json,
+        profile=profile,
+        component_input_hash=component_input_hash,
+        stage="accepted",
+        round_index=original["round"],
+        previous_render_hash=canonical_json_sha256(selected),
+        selection_reason=selection_reason,
+    )
+
+
 def _normalize_scene_render_candidate(
     candidate: dict[str, Any],
     *,
@@ -331,6 +422,7 @@ def _normalize_scene_render_candidate(
     stage: str,
     round_index: int,
     previous_render_hash: str | None,
+    selection_reason: str | None = None,
 ) -> SceneRender:
 
     if not isinstance(candidate, dict) or set(candidate) != {"schema_id", "blocks"}:
@@ -387,7 +479,7 @@ def _normalize_scene_render_candidate(
             for ordinal, block in enumerate(normalized_candidate["blocks"], start=1)
         ],
         "character_count": sum(len(block["text"]) for block in normalized_candidate["blocks"]),
-        "selection_reason": None,
+        "selection_reason": selection_reason,
     }
     return validate_scene_render(render, checklist=checklist_json, profile=profile)
 

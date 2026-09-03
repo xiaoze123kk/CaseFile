@@ -46,6 +46,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "prose_arbiter",
     "prose_quality_critic",
     "prose_quality_pairwise",
+    "prose_polisher",
     "general_mutation_planner",
 )
 
