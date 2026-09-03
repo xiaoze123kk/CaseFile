@@ -26,9 +26,9 @@ from casefile.domain.narrative_compiler import (
 )
 
 PROSE_POLISHER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v3"
-PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v3"
-PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v3"
+PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v2"
+PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v2"
+PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v2"
 PROSE_POLISHER_MAX_TURNS: Final = 1
 PROSE_POLISHER_NETWORK_RETRIES: Final = 0
 PROSE_POLISHER_TEMPERATURE: Final = 0
@@ -47,7 +47,7 @@ PROSE_POLISHER_COMPONENT_HASH: Final = canonical_json_sha256(
         "request_protocol": PROSE_POLISHER_REQUEST_PROTOCOL,
         "candidate_schema_hash": PROSE_POLISHER_CANDIDATE_SCHEMA_HASH,
         "render_schema_hash": PROSE_POLISHER_RENDER_SCHEMA_HASH,
-        "normalization": "full-scene-polish-soft-target-length-preservation-guidance-v3",
+        "normalization": "full-scene-polish-soft-target-length-v2",
         "preservation_council_policy_hash": FULL_COUNCIL_POLICY.policy_hash,
         "max_calls_per_scene": 1,
     }
@@ -388,14 +388,6 @@ def build_prose_polisher_request(
         "render_schema_hash": PROSE_POLISHER_RENDER_SCHEMA_HASH,
     }
     component_input_hash = canonical_json_sha256(binding)
-    source_character_count = render["character_count"]
-    target_range = profile_json["prose"]["target_scene_chars"]
-    recommended_minimum = max(
-        target_range["min"], (source_character_count * 9 + 9) // 10
-    )
-    recommended_maximum = min(
-        target_range["max"], (source_character_count * 11 + 9) // 10
-    )
     payload = {
         "server_bindings": {
             **binding,
@@ -403,23 +395,8 @@ def build_prose_polisher_request(
             "candidate_schema_id": "compiler.scene-render-candidate.v1",
             "length_contract": {
                 "unit": "unicode_code_points_in_block_text_only",
-                **target_range,
-                "source_character_count": source_character_count,
-                "recommended_minimum_character_count": recommended_minimum,
-                "recommended_maximum_character_count": recommended_maximum,
+                **profile_json["prose"]["target_scene_chars"],
                 "enforcement": "model_quality_guidance",
-            },
-            "preservation_guidance": {
-                "required_check_count": sum(
-                    check["expectation"] == "required"
-                    for check in checklist["checks"]
-                ),
-                "forbidden_check_count": sum(
-                    check["expectation"] == "forbidden"
-                    for check in checklist["checks"]
-                ),
-                "minimum_change_principle": True,
-                "enforcement": "model_self_audit_then_semantic_council",
             },
         },
         "untrusted_data": {

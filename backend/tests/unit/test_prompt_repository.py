@@ -55,8 +55,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_coherence_judge": "prose-coherence-judge-v5",
     "prose_arbiter": "prose-arbiter-v5",
     "prose_quality_critic": "prose-quality-critic-v1",
-    "prose_quality_pairwise": "prose-quality-pairwise-v2",
-    "prose_polisher": "prose-polisher-v3",
+    "prose_quality_pairwise": "prose-quality-pairwise-v1",
+    "prose_polisher": "prose-polisher-v2",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 

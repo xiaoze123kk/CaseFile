@@ -36,16 +36,16 @@ from casefile.domain.narrative_compiler import (
 )
 
 ROOT: Final = Path(__file__).resolve().parents[4]
-PUBLIC_ROOT: Final = ROOT / "fixtures/prose_quality_benchmark"
-DEFAULT_SUITE: Final = PUBLIC_ROOT / "v2/suite.json"
-DEFAULT_ATTESTATION: Final = PUBLIC_ROOT / "v2/review-attestation.json"
+PUBLIC_ROOT: Final = ROOT / "fixtures/prose_quality_benchmark/v1"
+DEFAULT_SUITE: Final = PUBLIC_ROOT / "suite.json"
+DEFAULT_ATTESTATION: Final = PUBLIC_ROOT / "review-attestation.json"
 PRIVATE_ROOT: Final = ROOT / "backend/var/benchmark/private/prose-quality"
 DEFAULT_PRIVATE_QUALIFICATION_SUITE: Final = (
-    PRIVATE_ROOT / "qualification-v3/suite.json"
+    PRIVATE_ROOT / "qualification-v2/suite.json"
 )
 DEFAULT_QUALIFICATION_DESCRIPTOR: Final = (
     ROOT
-    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v3-descriptor.json"
+    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v2-descriptor.json"
 )
 PREFERENCES: Final = ("a", "b", "tie")
 QUALITY_FOCI: Final = (
@@ -106,7 +106,7 @@ def load_prose_quality_dev_suite(
     attestation = _load_json(attestation_path)
     expected = {
         "schema_id": "casefile.prose-quality-dev-suite.v1",
-        "suite_id": "n4.5-b3-quality-public-development-v2",
+        "suite_id": "n4.5-b3-quality-public-development-v1",
         "suite_role": "development",
         "task_count": 8,
         "quality_dimensions": list(QUALITY_DIMENSIONS),
@@ -190,7 +190,7 @@ def load_prose_quality_qualification_suite(
         "prose_quality_qualification_descriptor_hash_invalid",
     )
     expected_descriptor = {
-        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v3",
+        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v2",
         "quality_holdout_count": 16,
         "polisher_task_count": 24,
         "quality_focus_distribution": {focus: 2 for focus in QUALITY_FOCI},
@@ -198,7 +198,7 @@ def load_prose_quality_qualification_suite(
         "quality_preference_distribution": {"a": 4, "b": 8, "tie": 4},
         "quality_gate_thresholds": QUALITY_QUALIFICATION_GATES,
         "polisher_gate_thresholds": POLISHER_QUALIFICATION_GATES,
-        "loader_version": "prose-quality-suite-loader-v3",
+        "loader_version": "prose-quality-suite-loader-v2",
         "quality_model_id": PROSE_QUALITY_MODEL_ID,
         "generation_model_id": PROSE_POLISHER_MODEL_ID,
         "quality_component_hash": PROSE_QUALITY_COMPONENT_HASH,

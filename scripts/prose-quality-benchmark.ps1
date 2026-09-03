@@ -37,7 +37,18 @@ try {
         if (-not $configured) {
             throw "QualificationLive requires CASEFILE_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY."
         }
-        $outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\qualification-v3\$AttemptId"
+        $qualificationRoot = Join-Path $repoRoot "backend\var\benchmark\prose-quality\qualification-v2"
+        $consumedAttempt = Get-ChildItem -LiteralPath $qualificationRoot -Directory `
+            -ErrorAction SilentlyContinue | Where-Object {
+                Test-Path -LiteralPath (Join-Path $_.FullName "attempt-manifest.json") -PathType Leaf
+            } | Select-Object -First 1
+        if ($null -ne $consumedAttempt) {
+            throw (
+                "QualificationLive refuses to reuse the consumed qualification-v2 package. " +
+                "Freeze a new private package before another formal attempt."
+            )
+        }
+        $outputDir = Join-Path $qualificationRoot $AttemptId
         $arguments = @(
             "-m", "casefile.benchmark.prose_quality_qualification",
             "--attempt-id", $AttemptId,
