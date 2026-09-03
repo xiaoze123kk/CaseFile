@@ -12,10 +12,17 @@ import pytest
 from casefile.agent_runtime.prose_quality_critic import FakeProseQualityCriticProvider
 from casefile.benchmark.prose_quality_eval import (
     DEFAULT_ATTESTATION,
+    DEFAULT_PRIVATE_QUALIFICATION_SUITE,
+    DEFAULT_QUALIFICATION_DESCRIPTOR,
     DEFAULT_SUITE,
+    POLISHER_QUALIFICATION_GATES,
+    QUALITY_FOCI,
+    QUALITY_QUALIFICATION_GATES,
+    ProseQualityQualificationBlocked,
     ProseQualitySuiteError,
     canonical_hash,
     load_prose_quality_dev_suite,
+    load_prose_quality_qualification_suite,
     run_prose_quality_development_baseline,
 )
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS
@@ -174,3 +181,66 @@ def test_runner_writes_self_hashed_report(tmp_path: Path) -> None:
     assert written["report_hash"] == canonical_hash(
         {key: value for key, value in written.items() if key != "report_hash"}
     )
+
+
+def test_qualification_descriptor_freezes_private_cohorts_and_review() -> None:
+    descriptor = json.loads(
+        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
+    )
+    assert descriptor["quality_holdout_count"] == 16
+    assert descriptor["polisher_task_count"] == 24
+    assert descriptor["quality_focus_distribution"] == {
+        focus: 2 for focus in QUALITY_FOCI
+    }
+    assert descriptor["polisher_focus_distribution"] == {
+        focus: 3 for focus in QUALITY_FOCI
+    }
+    assert descriptor["quality_gate_thresholds"] == QUALITY_QUALIFICATION_GATES
+    assert descriptor["polisher_gate_thresholds"] == POLISHER_QUALIFICATION_GATES
+    assert descriptor["review_policy"] == "codex-owner-accepted-review-v1"
+    assert descriptor["review_status"] == "codex_reviewed"
+    assert descriptor["qualification_eligible"] is True
+    assert descriptor["descriptor_hash"] == canonical_hash(
+        {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
+    )
+
+
+def test_unreviewed_qualification_blocks_before_private_package_read(
+    tmp_path: Path,
+) -> None:
+    descriptor = json.loads(
+        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
+    )
+    descriptor["review_status"] = "pending_codex_review"
+    descriptor["qualification_eligible"] = False
+    descriptor["descriptor_hash"] = canonical_hash(
+        {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
+    )
+    path = tmp_path / "descriptor.json"
+    path.write_text(json.dumps(descriptor, ensure_ascii=False), encoding="utf-8")
+    with pytest.raises(
+        ProseQualityQualificationBlocked,
+        match="prose_quality_qualification_review_pending",
+    ):
+        load_prose_quality_qualification_suite(tmp_path / "missing.json", path)
+
+
+def test_qualification_rejects_nonprivate_suite_path() -> None:
+    with pytest.raises(
+        ProseQualitySuiteError,
+        match="prose_quality_qualification_private_path_invalid",
+    ):
+        load_prose_quality_qualification_suite(DEFAULT_SUITE)
+
+
+@pytest.mark.skipif(
+    not DEFAULT_PRIVATE_QUALIFICATION_SUITE.is_file(),
+    reason="private B3 qualification package is local-only",
+)
+def test_local_private_qualification_package_is_fully_reviewed_and_valid() -> None:
+    loaded = load_prose_quality_qualification_suite()
+    assert len(loaded["quality_tasks"]) == 16
+    assert len(loaded["polisher_tasks"]) == 24
+    assert loaded["reviewer"]["reviewer"] == "Codex"
+    assert loaded["reviewer"]["reviewer_independence"] is False
+    assert loaded["reviewer"]["unresolved_findings"] == []

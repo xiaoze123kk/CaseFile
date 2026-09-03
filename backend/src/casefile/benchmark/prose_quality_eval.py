@@ -12,6 +12,11 @@ from typing import Any, Final
 
 import rfc8785
 
+from casefile.agent_runtime.prose_polisher import (
+    PROSE_POLISHER_COMPONENT_HASH,
+    PROSE_POLISHER_MODEL_ID,
+    PROSE_POLISHER_PROMPT_VERSION,
+)
 from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_COMPONENT_HASH,
     PROSE_QUALITY_FINDINGS_PROMPT_VERSION,
@@ -26,6 +31,7 @@ from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
     validate_quality_pair_inputs,
+    validate_scene_render,
     validate_semantic_acceptance,
 )
 
@@ -33,7 +39,25 @@ ROOT: Final = Path(__file__).resolve().parents[4]
 PUBLIC_ROOT: Final = ROOT / "fixtures/prose_quality_benchmark/v1"
 DEFAULT_SUITE: Final = PUBLIC_ROOT / "suite.json"
 DEFAULT_ATTESTATION: Final = PUBLIC_ROOT / "review-attestation.json"
+PRIVATE_ROOT: Final = ROOT / "backend/var/benchmark/private/prose-quality"
+DEFAULT_PRIVATE_QUALIFICATION_SUITE: Final = (
+    PRIVATE_ROOT / "qualification-v1/suite.json"
+)
+DEFAULT_QUALIFICATION_DESCRIPTOR: Final = (
+    ROOT
+    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v1-descriptor.json"
+)
 PREFERENCES: Final = ("a", "b", "tie")
+QUALITY_FOCI: Final = (
+    "pov_voice_consistency",
+    "scene_specificity",
+    "dialogue_narration_naturalness",
+    "dramatic_progression_pacing",
+    "readability_editability",
+    "sentence_rhythm",
+    "redundancy_control",
+    "balanced_tradeoff",
+)
 GATE_THRESHOLDS: Final = {
     "overall_accuracy_min": 8,
     "mirrored_consistency_min": 8,
@@ -42,10 +66,30 @@ GATE_THRESHOLDS: Final = {
     "protocol_failure_max": 0,
     "infrastructure_failure_max": 0,
 }
+QUALITY_QUALIFICATION_GATES: Final = {
+    "overall_accuracy_min": 14,
+    "mirrored_consistency_min": 15,
+    "semantic_invalid_max": 0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0,
+}
+POLISHER_QUALIFICATION_GATES: Final = {
+    "preservation_pass_min": 24,
+    "quality_non_loss_min": 22,
+    "polished_accepted_min": 18,
+    "critical_semantic_regression_max": 0,
+    "rejected_exact_rollback_rate_min": 1.0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0,
+}
 
 
 class ProseQualitySuiteError(RuntimeError):
     """The public Quality development package is incomplete or drifted."""
+
+
+class ProseQualityQualificationBlocked(ProseQualitySuiteError):
+    """The private package has not completed its frozen review policy."""
 
 
 def canonical_hash(value: Any) -> str:
@@ -129,6 +173,160 @@ def load_prose_quality_dev_suite(
     ):
         raise ProseQualitySuiteError("prose_quality_suite_distribution_invalid")
     return {"suite": suite, "attestation": attestation, "tasks": tasks}
+
+
+def load_prose_quality_qualification_suite(
+    suite_path: Path = DEFAULT_PRIVATE_QUALIFICATION_SUITE,
+    descriptor_path: Path = DEFAULT_QUALIFICATION_DESCRIPTOR,
+) -> dict[str, Any]:
+    """Load the reviewed private 16-pair and 24-Scene B3 qualification package."""
+
+    descriptor = _load_json(descriptor_path)
+    if descriptor.get("schema_id") != "casefile.prose-quality-qualification-descriptor.v1":
+        raise ProseQualitySuiteError("prose_quality_qualification_descriptor_invalid")
+    _validate_self_hash(
+        descriptor,
+        "descriptor_hash",
+        "prose_quality_qualification_descriptor_hash_invalid",
+    )
+    expected_descriptor = {
+        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v1",
+        "quality_holdout_count": 16,
+        "polisher_task_count": 24,
+        "quality_focus_distribution": {focus: 2 for focus in QUALITY_FOCI},
+        "polisher_focus_distribution": {focus: 3 for focus in QUALITY_FOCI},
+        "quality_preference_distribution": {"a": 4, "b": 8, "tie": 4},
+        "quality_gate_thresholds": QUALITY_QUALIFICATION_GATES,
+        "polisher_gate_thresholds": POLISHER_QUALIFICATION_GATES,
+        "loader_version": "prose-quality-suite-loader-v1",
+        "quality_model_id": PROSE_QUALITY_MODEL_ID,
+        "generation_model_id": PROSE_POLISHER_MODEL_ID,
+        "quality_component_hash": PROSE_QUALITY_COMPONENT_HASH,
+        "polisher_component_hash": PROSE_POLISHER_COMPONENT_HASH,
+        "polisher_prompt_version": PROSE_POLISHER_PROMPT_VERSION,
+    }
+    for key, value in expected_descriptor.items():
+        if descriptor.get(key) != value:
+            raise ProseQualitySuiteError(
+                f"prose_quality_qualification_descriptor_{key}_invalid"
+            )
+    public = load_prose_quality_dev_suite()["suite"]
+    if descriptor.get("public_development_suite_hash") != public["suite_hash"]:
+        raise ProseQualitySuiteError("prose_quality_public_suite_hash_invalid")
+    if (
+        descriptor.get("review_policy") != "codex-owner-accepted-review-v1"
+        or descriptor.get("review_status") != "codex_reviewed"
+        or descriptor.get("qualification_eligible") is not True
+        or not descriptor.get("author_attestation_hash")
+        or not descriptor.get("review_attestation_hash")
+    ):
+        raise ProseQualityQualificationBlocked("prose_quality_qualification_review_pending")
+    resolved = suite_path.resolve()
+    if not resolved.is_relative_to(PRIVATE_ROOT.resolve()) or not resolved.is_file():
+        raise ProseQualitySuiteError("prose_quality_qualification_private_path_invalid")
+    suite = _load_json(resolved)
+    if canonical_hash(suite) != descriptor.get("private_suite_hash"):
+        raise ProseQualitySuiteError("prose_quality_qualification_suite_hash_invalid")
+    _validate_self_hash(
+        suite, "suite_hash", "prose_quality_qualification_suite_self_hash_invalid"
+    )
+    expected_suite = {
+        "schema_id": "casefile.prose-quality-qualification-suite.v1",
+        "suite_id": descriptor["suite_id"],
+        "suite_role": "qualification",
+        "quality_holdout_count": 16,
+        "polisher_task_count": 24,
+        "quality_foci": list(QUALITY_FOCI),
+        "quality_preference_distribution": descriptor[
+            "quality_preference_distribution"
+        ],
+        "quality_gate_thresholds": QUALITY_QUALIFICATION_GATES,
+        "polisher_gate_thresholds": POLISHER_QUALIFICATION_GATES,
+        "quality_model_id": PROSE_QUALITY_MODEL_ID,
+        "generation_model_id": PROSE_POLISHER_MODEL_ID,
+        "quality_component_hash": PROSE_QUALITY_COMPONENT_HASH,
+        "polisher_component_hash": PROSE_POLISHER_COMPONENT_HASH,
+        "polisher_prompt_version": PROSE_POLISHER_PROMPT_VERSION,
+    }
+    for key, value in expected_suite.items():
+        if suite.get(key) != value:
+            raise ProseQualitySuiteError(
+                f"prose_quality_qualification_suite_{key}_invalid"
+            )
+    package_root = resolved.parent
+    author = _load_json(package_root / "author-attestation.json")
+    reviewer = _load_json(package_root / "reviewer-attestation.json")
+    if (
+        canonical_hash(author) != descriptor["author_attestation_hash"]
+        or author.get("role") != "author"
+        or author.get("suite_id") != suite["suite_id"]
+        or author.get("suite_hash") != suite["suite_hash"]
+        or author.get("authored_quality_count") != 16
+        or author.get("authored_polisher_count") != 24
+        or author.get("review_policy") != descriptor["review_policy"]
+        or author.get("review_completed") is not True
+        or author.get("owner_accepted_codex_review") is not True
+        or author.get("unresolved_findings") != []
+        or canonical_hash(reviewer) != descriptor["review_attestation_hash"]
+        or reviewer.get("role") != "reviewer"
+        or reviewer.get("suite_id") != suite["suite_id"]
+        or reviewer.get("suite_hash") != suite["suite_hash"]
+        or reviewer.get("reviewer") != "Codex"
+        or reviewer.get("reviewer_independence") is not False
+        or reviewer.get("review_policy") != descriptor["review_policy"]
+        or reviewer.get("owner_acceptance") is not True
+        or reviewer.get("reviewed_quality_count") != 16
+        or reviewer.get("reviewed_polisher_count") != 24
+        or reviewer.get("unresolved_findings") != []
+    ):
+        raise ProseQualitySuiteError("prose_quality_qualification_review_invalid")
+    quality_descriptors = suite.get("quality_tasks")
+    polisher_descriptors = suite.get("polisher_tasks")
+    if (
+        not isinstance(quality_descriptors, list)
+        or len(quality_descriptors) != 16
+        or not isinstance(polisher_descriptors, list)
+        or len(polisher_descriptors) != 24
+    ):
+        raise ProseQualitySuiteError("prose_quality_qualification_cardinality_invalid")
+    quality_tasks = [
+        _load_private_quality_task(item, package_root) for item in quality_descriptors
+    ]
+    polisher_tasks = [
+        _load_private_polisher_task(item, package_root) for item in polisher_descriptors
+    ]
+    quality_foci = Counter(task["descriptor"]["focus"] for task in quality_tasks)
+    polisher_foci = Counter(task["descriptor"]["focus"] for task in polisher_tasks)
+    preferences = Counter(
+        task["asset"]["gold"]["overall_preference"] for task in quality_tasks
+    )
+    quality_ids = [task["descriptor"]["task_id"] for task in quality_tasks]
+    polisher_ids = [task["descriptor"]["task_id"] for task in polisher_tasks]
+    pair_fingerprints = [
+        task["descriptor"]["pair_fingerprint"] for task in quality_tasks
+    ]
+    input_fingerprints = [
+        task["descriptor"]["input_fingerprint"] for task in polisher_tasks
+    ]
+    if (
+        quality_foci != Counter(descriptor["quality_focus_distribution"])
+        or polisher_foci != Counter(descriptor["polisher_focus_distribution"])
+        or preferences != Counter(descriptor["quality_preference_distribution"])
+        or len(set(quality_ids)) != 16
+        or len(set(polisher_ids)) != 24
+        or set(quality_ids) & set(polisher_ids)
+        or len(set(pair_fingerprints)) != 16
+        or len(set(input_fingerprints)) != 24
+    ):
+        raise ProseQualitySuiteError("prose_quality_qualification_distribution_invalid")
+    return {
+        "descriptor": descriptor,
+        "suite": suite,
+        "author": author,
+        "reviewer": reviewer,
+        "quality_tasks": quality_tasks,
+        "polisher_tasks": polisher_tasks,
+    }
 
 
 def run_prose_quality_development_baseline(
@@ -315,6 +513,168 @@ def _load_task(descriptor: dict[str, Any]) -> dict[str, Any]:
     return {"descriptor": descriptor, "asset": asset}
 
 
+def _load_private_quality_task(
+    descriptor: dict[str, Any], package_root: Path
+) -> dict[str, Any]:
+    asset = _load_private_asset(descriptor, package_root, "quality-tasks")
+    gold = asset.get("gold")
+    if (
+        asset.get("schema_id") != "casefile.prose-quality-qualification-task.v1"
+        or asset.get("task_id") != descriptor.get("task_id")
+        or asset.get("focus") != descriptor.get("focus")
+        or descriptor.get("overall_preference")
+        != (gold.get("overall_preference") if isinstance(gold, dict) else None)
+    ):
+        raise ProseQualitySuiteError("prose_quality_qualification_task_identity_invalid")
+    if (
+        not isinstance(gold, dict)
+        or gold.get("overall_preference") not in PREFERENCES
+        or [item.get("dimension") for item in gold.get("dimension_preferences", [])]
+        != list(QUALITY_DIMENSIONS)
+        or any(
+            item.get("preference") not in PREFERENCES
+            for item in gold.get("dimension_preferences", [])
+        )
+        or asset.get("author_review", {}).get("semantic_status")
+        != "codex_reviewed_owner_accepted"
+        or asset.get("author_review", {}).get("quality_status")
+        != "codex_reviewed_owner_accepted"
+    ):
+        raise ProseQualitySuiteError("prose_quality_qualification_task_gold_invalid")
+    try:
+        validate_semantic_acceptance(
+            asset["semantic_consensus_a"],
+            checklist=asset["checklist"],
+            render=asset["render_a"],
+            profile=asset["profile"],
+        )
+        validate_quality_pair_inputs(
+            checklist=asset["checklist"],
+            original_render=asset["render_a"],
+            polished_render=asset["render_b"],
+            profile=asset["profile"],
+            preservation_consensus=asset["semantic_consensus_b"],
+        )
+    except (KeyError, CompilerContractError) as error:
+        raise ProseQualitySuiteError(
+            "prose_quality_qualification_task_semantic_invalid"
+        ) from error
+    expected = canonical_hash(
+        {
+            "a": canonical_hash(asset["render_a"]),
+            "b": canonical_hash(asset["render_b"]),
+            "gold": gold,
+        }
+    )
+    if descriptor.get("pair_fingerprint") != expected:
+        raise ProseQualitySuiteError(
+            "prose_quality_qualification_pair_fingerprint_invalid"
+        )
+    return {"descriptor": descriptor, "asset": asset}
+
+
+def _load_private_polisher_task(
+    descriptor: dict[str, Any], package_root: Path
+) -> dict[str, Any]:
+    asset = _load_private_asset(descriptor, package_root, "polisher-tasks")
+    if (
+        asset.get("schema_id") != "casefile.prose-polisher-qualification-task.v1"
+        or asset.get("task_id") != descriptor.get("task_id")
+        or asset.get("focus") != descriptor.get("focus")
+        or asset.get("author_review", {}).get("semantic_status")
+        != "codex_reviewed_owner_accepted"
+        or asset.get("author_review", {}).get("surface_issue_status")
+        != "codex_reviewed_owner_accepted"
+    ):
+        raise ProseQualitySuiteError(
+            "prose_polisher_qualification_task_identity_invalid"
+        )
+    target_dimensions = asset.get("target_dimensions")
+    if (
+        not isinstance(target_dimensions, list)
+        or not target_dimensions
+        or len(target_dimensions) != len(set(target_dimensions))
+        or not set(target_dimensions) <= set(QUALITY_DIMENSIONS)
+    ):
+        raise ProseQualitySuiteError(
+            "prose_polisher_qualification_dimensions_invalid"
+        )
+    try:
+        render = validate_scene_render(
+            asset["original_render"],
+            checklist=asset["checklist"],
+            profile=asset["profile"],
+        ).model_dump(mode="json")
+        validate_semantic_acceptance(
+            asset["semantic_consensus"],
+            checklist=asset["checklist"],
+            render=render,
+            profile=asset["profile"],
+        )
+    except (KeyError, CompilerContractError) as error:
+        raise ProseQualitySuiteError(
+            "prose_polisher_qualification_task_semantic_invalid"
+        ) from error
+    critical_ids = [
+        check["check_id"]
+        for check in asset["checklist"]["checks"]
+        if check["kind"]
+        in {"event_modality", "reveal_control", "pov_knowledge", "major_hallucination"}
+    ]
+    if (
+        render["stage"] not in {"writer", "rewrite_1", "rewrite_2"}
+        or asset.get("critical_check_ids") != critical_ids
+    ):
+        raise ProseQualitySuiteError(
+            "prose_polisher_qualification_task_binding_invalid"
+        )
+    expected = canonical_hash(
+        {
+            "render": canonical_hash(render),
+            "consensus": canonical_hash(asset["semantic_consensus"]),
+            "focus": asset["focus"],
+        }
+    )
+    if descriptor.get("input_fingerprint") != expected:
+        raise ProseQualitySuiteError(
+            "prose_polisher_qualification_input_fingerprint_invalid"
+        )
+    return {"descriptor": descriptor, "asset": asset}
+
+
+def _load_private_asset(
+    descriptor: dict[str, Any], package_root: Path, expected_directory: str
+) -> dict[str, Any]:
+    if not isinstance(descriptor, dict):
+        raise ProseQualitySuiteError("prose_quality_qualification_descriptor_invalid")
+    _validate_self_hash(
+        descriptor,
+        "content_hash",
+        "prose_quality_qualification_task_descriptor_hash_invalid",
+    )
+    binding = descriptor.get("task_asset")
+    if not isinstance(binding, dict) or set(binding) != {"path", "hash"}:
+        raise ProseQualitySuiteError("prose_quality_qualification_asset_binding_invalid")
+    relative = Path(str(binding["path"]))
+    asset_path = (package_root / relative).resolve()
+    expected_root = (package_root / expected_directory).resolve()
+    if (
+        relative.is_absolute()
+        or not asset_path.is_relative_to(expected_root)
+        or not asset_path.is_file()
+    ):
+        raise ProseQualitySuiteError("prose_quality_qualification_asset_path_invalid")
+    asset = _load_json(asset_path)
+    if canonical_hash(asset) != binding["hash"]:
+        raise ProseQualitySuiteError("prose_quality_qualification_asset_hash_invalid")
+    _validate_self_hash(
+        asset,
+        "content_hash",
+        "prose_quality_qualification_task_hash_invalid",
+    )
+    return asset
+
+
 def _fake_provider(task: dict[str, Any]) -> FakeProseQualityCriticProvider:
     gold = task["asset"]["gold"]
     return FakeProseQualityCriticProvider(
@@ -389,10 +749,36 @@ def _write_json(path: Path, value: Any) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("fake", "qualification-check"), default="fake")
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--attestation", type=Path, default=DEFAULT_ATTESTATION)
+    parser.add_argument(
+        "--qualification-suite", type=Path, default=DEFAULT_PRIVATE_QUALIFICATION_SUITE
+    )
+    parser.add_argument("--descriptor", type=Path, default=DEFAULT_QUALIFICATION_DESCRIPTOR)
     args = parser.parse_args()
+    if args.mode == "qualification-check":
+        try:
+            loaded = load_prose_quality_qualification_suite(
+                args.qualification_suite, args.descriptor
+            )
+            result = {
+                "status": "ready",
+                "qualified": False,
+                "quality_holdout_count": len(loaded["quality_tasks"]),
+                "polisher_task_count": len(loaded["polisher_tasks"]),
+                "suite_hash": loaded["suite"]["suite_hash"],
+                "error_code": None,
+            }
+        except ProseQualityQualificationBlocked as error:
+            result = {
+                "status": "blocked",
+                "qualified": False,
+                "error_code": str(error),
+            }
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
     report = run_prose_quality_development_baseline(
         suite_path=args.suite,
         attestation_path=args.attestation,
@@ -419,10 +805,17 @@ if __name__ == "__main__":
 
 __all__ = [
     "DEFAULT_ATTESTATION",
+    "DEFAULT_PRIVATE_QUALIFICATION_SUITE",
+    "DEFAULT_QUALIFICATION_DESCRIPTOR",
     "DEFAULT_SUITE",
     "GATE_THRESHOLDS",
+    "POLISHER_QUALIFICATION_GATES",
+    "QUALITY_FOCI",
+    "QUALITY_QUALIFICATION_GATES",
+    "ProseQualityQualificationBlocked",
     "ProseQualitySuiteError",
     "canonical_hash",
     "load_prose_quality_dev_suite",
+    "load_prose_quality_qualification_suite",
     "run_prose_quality_development_baseline",
 ]

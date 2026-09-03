@@ -1,4 +1,6 @@
 param(
+    [ValidateSet("Fake", "QualificationCheck")]
+    [string]$Mode = "Fake",
     [string]$AttemptId = "local"
 )
 
@@ -9,10 +11,14 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     throw "Backend virtual environment is missing. Run scripts/bootstrap.ps1 first."
 }
 
-$outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\n4.5-b3-development\$AttemptId"
 Push-Location $repoRoot
 try {
-    & $python -m casefile.benchmark.prose_quality_eval --output-dir $outputDir
+    if ($Mode -eq "QualificationCheck") {
+        & $python -m casefile.benchmark.prose_quality_eval --mode qualification-check
+    } else {
+        $outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\n4.5-b3-development\$AttemptId"
+        & $python -m casefile.benchmark.prose_quality_eval --mode fake --output-dir $outputDir
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Prose Quality development benchmark failed."
     }
