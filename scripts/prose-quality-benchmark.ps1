@@ -37,7 +37,7 @@ try {
         if (-not $configured) {
             throw "QualificationLive requires CASEFILE_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY."
         }
-        $outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\qualification-v1\$AttemptId"
+        $outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\qualification-v2\$AttemptId"
         $arguments = @(
             "-m", "casefile.benchmark.prose_quality_qualification",
             "--attempt-id", $AttemptId,

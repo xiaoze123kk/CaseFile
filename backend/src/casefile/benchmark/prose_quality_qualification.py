@@ -206,20 +206,12 @@ def _execute_quality_task(
     if execution.status == "completed":
         first, second = execution.reports
         predicted = first["overall_preference"]
-        overall_correct = predicted == gold["overall_preference"] and second[
-            "overall_preference"
-        ] == _swap(gold["overall_preference"])
+        overall_correct = predicted == gold["overall_preference"]
         mirrored_consistent = predicted == _swap(second["overall_preference"])
         dimension_correct = sum(
             first_item == gold_item
-            and second_item
-            == {
-                "dimension": gold_item["dimension"],
-                "preference": _swap(gold_item["preference"]),
-            }
-            for first_item, second_item, gold_item in zip(
+            for first_item, gold_item in zip(
                 first["dimension_preferences"],
-                second["dimension_preferences"],
                 gold["dimension_preferences"],
                 strict=True,
             )

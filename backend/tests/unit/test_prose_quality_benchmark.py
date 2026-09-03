@@ -120,6 +120,40 @@ def test_fake_runner_scores_gold_and_position_symmetry(
     )
 
 
+def test_gold_accuracy_and_mirrored_consistency_are_orthogonal(
+    loaded_suite: dict[str, Any],
+) -> None:
+    first_id = loaded_suite["tasks"][0]["asset"]["task_id"]
+
+    def factory(task: dict[str, Any]) -> FakeProseQualityCriticProvider:
+        gold = task["asset"]["gold"]
+        first = {
+            "schema_id": "compiler.prose-quality-pairwise-candidate.v1",
+            **gold,
+        }
+        swap = {"a": "b", "b": "a", "tie": "tie"}
+        second = {
+            "schema_id": "compiler.prose-quality-pairwise-candidate.v1",
+            "overall_preference": swap[gold["overall_preference"]],
+            "dimension_preferences": [
+                {
+                    "dimension": item["dimension"],
+                    "preference": swap[item["preference"]],
+                }
+                for item in gold["dimension_preferences"]
+            ],
+        }
+        if task["asset"]["task_id"] == first_id:
+            second = first
+        return FakeProseQualityCriticProvider(pairwise_candidates=(first, second))
+
+    report = run_prose_quality_development_baseline(provider_factory=factory)
+    assert report["overall_accuracy"] == {"passed": 8, "total": 8}
+    assert report["dimension_accuracy"] == {"passed": 40, "total": 40}
+    assert report["mirrored_consistency"] == {"passed": 7, "total": 8}
+    assert report["development_gate_passed"] is False
+
+
 def test_failures_keep_fixed_denominator(loaded_suite: dict[str, Any]) -> None:
     first_id = loaded_suite["tasks"][0]["asset"]["task_id"]
 

@@ -252,10 +252,12 @@ def validate_scene_render(
     character_count = sum(len(block["text"]) for block in value["blocks"])
     if value["character_count"] != character_count:
         raise CompilerContractError("compiler_scene_render_character_count_mismatch")
-    length_range = profile_json["prose"]["target_scene_chars"]
-    if not length_range["min"] <= character_count <= length_range["max"]:
-        raise CompilerContractError("compiler_scene_render_length_out_of_bounds")
     stage = value["stage"]
+    length_range = profile_json["prose"]["target_scene_chars"]
+    if stage in {"writer", "rewrite_1", "rewrite_2"} and not (
+        length_range["min"] <= character_count <= length_range["max"]
+    ):
+        raise CompilerContractError("compiler_scene_render_length_out_of_bounds")
     expected_round = {"writer": 0, "rewrite_1": 1, "rewrite_2": 2}.get(stage)
     if expected_round is not None and value["round"] != expected_round:
         raise CompilerContractError("compiler_scene_render_round_invalid")

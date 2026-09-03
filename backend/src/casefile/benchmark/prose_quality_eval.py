@@ -41,11 +41,11 @@ DEFAULT_SUITE: Final = PUBLIC_ROOT / "suite.json"
 DEFAULT_ATTESTATION: Final = PUBLIC_ROOT / "review-attestation.json"
 PRIVATE_ROOT: Final = ROOT / "backend/var/benchmark/private/prose-quality"
 DEFAULT_PRIVATE_QUALIFICATION_SUITE: Final = (
-    PRIVATE_ROOT / "qualification-v1/suite.json"
+    PRIVATE_ROOT / "qualification-v2/suite.json"
 )
 DEFAULT_QUALIFICATION_DESCRIPTOR: Final = (
     ROOT
-    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v1-descriptor.json"
+    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v2-descriptor.json"
 )
 PREFERENCES: Final = ("a", "b", "tie")
 QUALITY_FOCI: Final = (
@@ -190,7 +190,7 @@ def load_prose_quality_qualification_suite(
         "prose_quality_qualification_descriptor_hash_invalid",
     )
     expected_descriptor = {
-        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v1",
+        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v2",
         "quality_holdout_count": 16,
         "polisher_task_count": 24,
         "quality_focus_distribution": {focus: 2 for focus in QUALITY_FOCI},
@@ -198,7 +198,7 @@ def load_prose_quality_qualification_suite(
         "quality_preference_distribution": {"a": 4, "b": 8, "tie": 4},
         "quality_gate_thresholds": QUALITY_QUALIFICATION_GATES,
         "polisher_gate_thresholds": POLISHER_QUALIFICATION_GATES,
-        "loader_version": "prose-quality-suite-loader-v1",
+        "loader_version": "prose-quality-suite-loader-v2",
         "quality_model_id": PROSE_QUALITY_MODEL_ID,
         "generation_model_id": PROSE_POLISHER_MODEL_ID,
         "quality_component_hash": PROSE_QUALITY_COMPONENT_HASH,
@@ -386,11 +386,7 @@ def run_prose_quality_development_baseline(
             continue
         first, second = execution.reports
         gold = asset["gold"]
-        swapped_overall = _swap(gold["overall_preference"])
-        if (
-            first["overall_preference"] == gold["overall_preference"]
-            and second["overall_preference"] == swapped_overall
-        ):
+        if first["overall_preference"] == gold["overall_preference"]:
             overall_correct += 1
         row["predicted_overall"] = first["overall_preference"]
         position_consistent = _swap(second["overall_preference"]) == first[
@@ -400,17 +396,10 @@ def run_prose_quality_development_baseline(
             mirrored_consistent += 1
             row["mirrored_consistent"] = True
         first_dimensions = first["dimension_preferences"]
-        second_dimensions = second["dimension_preferences"]
         task_dimension_correct = sum(
             first_item == gold_item
-            and second_item
-            == {
-                "dimension": gold_item["dimension"],
-                "preference": _swap(gold_item["preference"]),
-            }
-            for first_item, second_item, gold_item in zip(
+            for first_item, gold_item in zip(
                 first_dimensions,
-                second_dimensions,
                 gold["dimension_preferences"],
                 strict=True,
             )

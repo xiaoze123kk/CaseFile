@@ -163,6 +163,30 @@ def test_candidate_becomes_polished_with_direct_lineage(
     assert render["selection_reason"] is None
 
 
+def test_polisher_target_length_is_model_guidance_not_server_rejection(
+    polish_case: dict[str, Any],
+) -> None:
+    short_candidate = {
+        "schema_id": "compiler.scene-render-candidate.v1",
+        "blocks": [{"text": "她核对记录，没有扩大结论。"}],
+    }
+    execution = execute_prose_polisher(
+        FakeProsePolisherProvider(candidates=(short_candidate,)),
+        profile=polish_case["profile"],
+        checklist=polish_case["checklist"],
+        current_render=polish_case["original"],
+        semantic_consensus=polish_case["consensus"],
+        quality_findings=polish_case["findings"],
+        model_id=PROSE_POLISHER_MODEL_ID,
+        api_key="fake",
+    )
+    assert execution.status == "completed"
+    assert execution.render is not None
+    assert execution.render["character_count"] < polish_case["profile"]["prose"][
+        "target_scene_chars"
+    ]["min"]
+
+
 @pytest.mark.parametrize("mutation", ("consensus", "findings", "stage"))
 def test_invalid_upstream_stops_before_polisher(
     polish_case: dict[str, Any], mutation: str

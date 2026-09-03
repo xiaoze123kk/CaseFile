@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_polisher",
+  "version": "prose-polisher-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "1f2eb0986a81997c953edb6b06a414fec30b49ce4a5f3bc987540dc4545ee731",
+  "previous_version": "prose-polisher-v1",
+  "change_summary": "将 Profile 字数范围降为模型质量指导，并强调输出完整 Scene、避免摘要式过度删减。"
+}

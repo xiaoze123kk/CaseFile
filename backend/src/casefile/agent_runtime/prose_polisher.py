@@ -26,9 +26,9 @@ from casefile.domain.narrative_compiler import (
 )
 
 PROSE_POLISHER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v1"
-PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v1"
-PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v1"
+PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v2"
+PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v2"
+PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v2"
 PROSE_POLISHER_MAX_TURNS: Final = 1
 PROSE_POLISHER_NETWORK_RETRIES: Final = 0
 PROSE_POLISHER_TEMPERATURE: Final = 0
@@ -47,7 +47,7 @@ PROSE_POLISHER_COMPONENT_HASH: Final = canonical_json_sha256(
         "request_protocol": PROSE_POLISHER_REQUEST_PROTOCOL,
         "candidate_schema_hash": PROSE_POLISHER_CANDIDATE_SCHEMA_HASH,
         "render_schema_hash": PROSE_POLISHER_RENDER_SCHEMA_HASH,
-        "normalization": "full-scene-polish-with-direct-render-lineage-v1",
+        "normalization": "full-scene-polish-soft-target-length-v2",
         "preservation_council_policy_hash": FULL_COUNCIL_POLICY.policy_hash,
         "max_calls_per_scene": 1,
     }
@@ -396,7 +396,7 @@ def build_prose_polisher_request(
             "length_contract": {
                 "unit": "unicode_code_points_in_block_text_only",
                 **profile_json["prose"]["target_scene_chars"],
-                "hard_gate": True,
+                "enforcement": "model_quality_guidance",
             },
         },
         "untrusted_data": {
