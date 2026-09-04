@@ -70,3 +70,7 @@
 | `fixtures/novel_plan_benchmark/v3/constraint_first_diagnostic_v1.json` | Constraint-First 实验的六 Task × 三 Trial 定向诊断集合及 `ea0bc...` 基线失败分布；只用于开发诊断，不构成正式晋级证据。 |
 | `fixtures/scene_plan_benchmark/v1/` | N4.4 Narrative Execution Benchmark 历史审计源：冻结 8 能力×basic/decoy/dense 的 NovelPlan/NarrativeIR 输入、人工审阅 Reference、每能力一个合法 Alternative、11 个面向 v2 SemanticFill/State Engine 的确定性 Safety Mutation，以及早期 contract-only G3 rubric。 |
 | `fixtures/scene_plan_benchmark/v2/` | 当前 N4.4 G3/G4 资格套件：复用并 hash 绑定 v1 审计输入，为 24 Task 冻结由正式 v2 State Engine 生成的 runtime reference；G3 固定 `deepseek-v4-flash` 盲位 pairwise 协议，正常单调用、仅空响应额外重试一次，并冻结五维 rubric、同源偏差声明与 Task-cluster bootstrap 阈值；G4 固定 v2 语义签名。前瞻门槛以既有 71/72 完整基线冻结，但必须由全新 24×3 Pro 生成 + Flash Judge 报告计算资格。 |
+
+## B3 开发对照描述文件
+
+`fixtures/prose_quality_benchmark/diagnostic-v1/experiment.json` 引用原 v1 公开 8 组样例与审定指纹，冻结 DeepSeek Flash、2/4 调用协议、8×3 交替运行顺序、144 次上限和开发比较条件。该实验不改变原 Gold、公共 Schema、私有资格包或生产指针；`README.md` 说明 Fake/Live 入口、不可覆盖输出和一次性 Live 消费边界。单稿评估与实验报告均为后端内部类型。

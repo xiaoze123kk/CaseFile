@@ -262,3 +262,13 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 - 版本与审计：`draft_snapshots`、`canon_versions`、`audit_events`。
 
 新增或删除表必须同步更新 ORM、迁移、两份数据库说明、元数据测试和本文。
+
+## B3 公开评审对照实验
+
+- `backend/src/casefile/agent_runtime/prose_quality_diagnostic.py`：显式开发候选，两次独立单稿五维评估与两次位置互换比较；使用匿名 Evidence、严格内部类型和完整绑定，不进入生产默认路径。
+- `backend/src/casefile/agent_runtime/prose_quality_critic.py`：通过公开的 `execute_quality_request` 与 `quality_pairwise_report_from_candidate` 复用响应绑定和领域报告校验；内部 Request 支持显式候选 Schema，原基线的 Prompt、请求指纹与行为不变。
+- `backend/src/casefile/agent_runtime/prompts/prose_quality_critic/v2/` 与 `prompts/prose_quality_pairwise/v3/`：仅由实验显式选择的单稿评估/辅助比较 Prompt；registry 的活动 v1 指针不变。
+- `backend/src/casefile/benchmark/prose_quality_diagnostic.py`：公开 8×3 配对实验描述校验、Fake/Live、交替顺序、144 次预算、一次性消费与不可覆盖逐行结果；不导入正式资格执行器。
+- `backend/src/casefile/benchmark/prose_quality_diagnostic_report.py`：双位置整体/五维准确率、镜像一致、Gold 分层、逐题稳定性、旧开发门槛、固定失败分母和可读报告；只有 Live 可以产生开发改进建议，始终 qualified=false。
+- `backend/src/casefile/benchmark/prose_quality_source.py`：开发对照和正式 Quality 资格共用的只读 Git revision/clean/index 身份探针；资格入口保留原错误转换。
+- `backend/tests/unit/test_prose_quality_diagnostic.py`：单侧隔离、互换、Evidence/绑定失败、固定预算/分母、偏好位置与 tie、回归判定、干净源码预检和一次性消费测试。

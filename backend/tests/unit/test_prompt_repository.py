@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -633,8 +634,14 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_arbiter", "prose-arbiter-v5"): {
         "system": "4b9e9ef21569a8ede75ce979f5043dc621372a5d1f8e9e18f9a74c180bc1290a"
     },
+    ("prose_quality_critic", "prose-quality-critic-v2"): {
+        "system": "5a351ccbabff97d9e4cecb6794ecef7dcae2261497f24403a82ee39948eb44b8"
+    },
     ("prose_quality_critic", "prose-quality-critic-v1"): {
         "system": "90647d6341174462190709666c2c7d84e19956f3b5d8af1564da0ad9130dfca1"
+    },
+    ("prose_quality_pairwise", "prose-quality-pairwise-v3"): {
+        "system": "efc5d38b3d46efc23d916b735cd15f2374f0ca6ac69ca1cd1c3fb1f2a9e851bf"
     },
     ("prose_quality_pairwise", "prose-quality-pairwise-v1"): {
         "system": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"

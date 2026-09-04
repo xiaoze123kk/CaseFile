@@ -10,7 +10,6 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import ProseQualityReport
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -32,6 +31,7 @@ from casefile.domain.narrative_compiler import (
     validate_scene_render,
     validate_semantic_acceptance,
 )
+from casefile_contracts import ProseQualityReport
 
 PROSE_QUALITY_MODEL_ID: Final = "deepseek-v4-flash"
 PROSE_QUALITY_FINDINGS_PROMPT_VERSION: Final = "prose-quality-critic-v1"
@@ -44,7 +44,7 @@ PROSE_QUALITY_TEMPERATURE: Final = 0
 PROSE_QUALITY_MAX_OUTPUT_TOKENS: Final = 8192
 PROSE_QUALITY_THINKING_ENABLED: Final = False
 
-QualityRequestKind = Literal["findings", "pairwise"]
+QualityRequestKind = Literal["findings", "pairwise", "assessment"]
 PositionIdentity = Literal["original", "polished"]
 
 
@@ -169,6 +169,7 @@ class ProseQualityRequest:
     temperature: int = PROSE_QUALITY_TEMPERATURE
     max_output_tokens: int = PROSE_QUALITY_MAX_OUTPUT_TOKENS
     thinking_enabled: bool = PROSE_QUALITY_THINKING_ENABLED
+    candidate_schema: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,7 +292,7 @@ class DeepSeekProseQualityCriticProvider:
         )
 
     def _create_completion(self, request: ProseQualityRequest) -> Any:
-        schema = (
+        schema = request.candidate_schema or (
             PROSE_QUALITY_FINDINGS_CANDIDATE_SCHEMA
             if request.request_kind == "findings"
             else PROSE_QUALITY_PAIRWISE_CANDIDATE_SCHEMA
@@ -397,7 +398,7 @@ def execute_quality_findings(
             model_id=model_id,
             api_key=api_key,
         )
-        call = _execute_call(provider, request, recover_call)
+        call = execute_quality_request(provider, request, recover_call)
         report = _findings_report_from_candidate(
             call,
             checklist=checklist,
@@ -447,10 +448,10 @@ def execute_mirrored_pairwise_quality(
                 model_id=model_id,
                 api_key=api_key,
             )
-            call = _execute_call(provider, request, recover_call)
+            call = execute_quality_request(provider, request, recover_call)
             calls.append(call)
             reports.append(
-                _pairwise_report_from_candidate(
+                quality_pairwise_report_from_candidate(
                     call,
                     checklist=checklist,
                     original_render=original,
@@ -714,7 +715,7 @@ def _findings_report_from_candidate(
     ).model_dump(mode="json")
 
 
-def _pairwise_report_from_candidate(
+def quality_pairwise_report_from_candidate(
     result: ProseQualityProviderResult,
     *,
     checklist: dict[str, Any],
@@ -724,6 +725,7 @@ def _pairwise_report_from_candidate(
     preservation_consensus: dict[str, Any],
     position_mapping: dict[str, PositionIdentity],
 ) -> dict[str, Any]:
+    """Normalize a validated call through the shared public pairwise contract."""
     if result.candidate is None:
         raise ProseQualityProtocolError("prose_quality_empty_or_invalid_json")
     try:
@@ -760,11 +762,12 @@ def _pairwise_report_from_candidate(
     ).model_dump(mode="json")
 
 
-def _execute_call(
+def execute_quality_request(
     provider: ProseQualityCriticProvider,
     request: ProseQualityRequest,
     recover_call: Callable[[str], ProseQualityProviderResult | None] | None,
 ) -> ProseQualityProviderResult:
+    """Execute or exactly recover a request and check its server-side bindings."""
     recovered = recover_call(request.request_fingerprint) if recover_call else None
     result = (
         replace(recovered, recovered=True)
@@ -855,5 +858,7 @@ __all__ = [
     "ProseQualityRequest",
     "ProseQualityTransportAttempt",
     "execute_mirrored_pairwise_quality",
+    "execute_quality_request",
+    "quality_pairwise_report_from_candidate",
     "execute_quality_findings",
 ]
