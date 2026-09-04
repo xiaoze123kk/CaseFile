@@ -74,3 +74,7 @@
 ## B3 开发对照描述文件
 
 `fixtures/prose_quality_benchmark/diagnostic-v1/experiment.json` 引用原 v1 公开 8 组样例与审定指纹，冻结 DeepSeek Flash、2/4 调用协议、8×3 交替运行顺序、144 次上限和开发比较条件。该实验不改变原 Gold、公共 Schema、私有资格包或生产指针；`README.md` 说明 Fake/Live 入口、不可覆盖输出和一次性 Live 消费边界。单稿评估与实验报告均为后端内部类型。
+
+## B3 节奏对照样例
+
+`fixtures/prose_quality_benchmark/pacing-v1/` 保存 4 个跨档案室/渡口的最小差异场景、确定性生成脚本、明确标注为人工合成开发凭证的语义审阅、旧 Gold 复核、README 与 12×3 双调用实验 descriptor。复用的旧 8 题与 Gold 保持原文件和指纹；无效重复与功能性重复各 2 题，优稿 A/B 均衡，避免将长度作为偏好。所有数据仅作公开开发，内部类型不改变公共 Schema。

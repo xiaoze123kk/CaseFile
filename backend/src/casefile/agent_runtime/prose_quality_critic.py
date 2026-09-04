@@ -88,23 +88,17 @@ class _QualityPairwiseCandidate(BaseModel):
 
     schema_id: Literal["compiler.prose-quality-pairwise-candidate.v1"]
     overall_preference: Literal["a", "b", "tie"]
-    dimension_preferences: list[_DimensionPreferenceCandidate] = Field(
-        min_length=5, max_length=5
-    )
+    dimension_preferences: list[_DimensionPreferenceCandidate] = Field(min_length=5, max_length=5)
 
 
 PROSE_QUALITY_REPORT_SCHEMA_HASH: Final = canonical_json_sha256(
     ProseQualityReport.model_json_schema()
 )
-PROSE_QUALITY_FINDINGS_CANDIDATE_SCHEMA: Final = (
-    _QualityFindingsCandidate.model_json_schema()
-)
+PROSE_QUALITY_FINDINGS_CANDIDATE_SCHEMA: Final = _QualityFindingsCandidate.model_json_schema()
 PROSE_QUALITY_FINDINGS_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(
     PROSE_QUALITY_FINDINGS_CANDIDATE_SCHEMA
 )
-PROSE_QUALITY_PAIRWISE_CANDIDATE_SCHEMA: Final = (
-    _QualityPairwiseCandidate.model_json_schema()
-)
+PROSE_QUALITY_PAIRWISE_CANDIDATE_SCHEMA: Final = _QualityPairwiseCandidate.model_json_schema()
 PROSE_QUALITY_PAIRWISE_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(
     PROSE_QUALITY_PAIRWISE_CANDIDATE_SCHEMA
 )
@@ -134,9 +128,7 @@ class ProseQualityProtocolError(ProseQualityError):
 class ProseQualityInfrastructureError(ProseQualityError):
     """A Provider failure made the quality result inconclusive."""
 
-    def __init__(
-        self, message: str, *, failed_call: ProseQualityFailedCall | None = None
-    ) -> None:
+    def __init__(self, message: str, *, failed_call: ProseQualityFailedCall | None = None) -> None:
         super().__init__(message)
         self.failed_call = failed_call
 
@@ -205,9 +197,7 @@ class ProseQualityFailedCall:
 
 
 class ProseQualityCriticProvider(Protocol):
-    def assess_quality(
-        self, request: ProseQualityRequest
-    ) -> ProseQualityProviderResult: ...
+    def assess_quality(self, request: ProseQualityRequest) -> ProseQualityProviderResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +217,14 @@ class MirroredQualityExecution:
     decision: MirroredQualityDecision | None
     failed_call: ProseQualityFailedCall | None = None
     error_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PairwiseQualityPolicy:
+    """Explicit experimental prompt binding; None preserves the production baseline."""
+
+    prompt_version: str
+    component_hash: str
 
 
 class DeepSeekProseQualityCriticProvider:
@@ -408,9 +406,7 @@ def execute_quality_findings(
             evidence_catalog=catalog,
         )
     except ProseQualityInfrastructureError as error:
-        return ProseQualityExecution(
-            "inconclusive", None, call, error.failed_call, str(error)
-        )
+        return ProseQualityExecution("inconclusive", None, call, error.failed_call, str(error))
     except (CompilerContractError, ProseQualityProtocolError) as error:
         return ProseQualityExecution("protocol_failed", None, call, error_code=str(error))
     return ProseQualityExecution("completed", report, call)
@@ -427,6 +423,7 @@ def execute_mirrored_pairwise_quality(
     model_id: str,
     api_key: str,
     recover_call: Callable[[str], ProseQualityProviderResult | None] | None = None,
+    pairwise_policy: PairwiseQualityPolicy | None = None,
 ) -> MirroredQualityExecution:
     """Run exactly two opposite-position blind comparisons and select safely."""
 
@@ -447,6 +444,7 @@ def execute_mirrored_pairwise_quality(
                 position_mapping=mapping,
                 model_id=model_id,
                 api_key=api_key,
+                pairwise_policy=pairwise_policy,
             )
             call = execute_quality_request(provider, request, recover_call)
             calls.append(call)
@@ -470,9 +468,7 @@ def execute_mirrored_pairwise_quality(
         return MirroredQualityExecution(
             "protocol_failed", tuple(reports), tuple(calls), None, error_code=str(error)
         )
-    return MirroredQualityExecution(
-        "completed", tuple(reports), tuple(calls), decision
-    )
+    return MirroredQualityExecution("completed", tuple(reports), tuple(calls), decision)
 
 
 def _build_findings_request(
@@ -485,9 +481,9 @@ def _build_findings_request(
     api_key: str,
 ) -> tuple[ProseQualityRequest, dict[str, Any], list[dict[str, Any]]]:
     _validate_model(model_id)
-    render_json = validate_scene_render(
-        render, checklist=checklist, profile=profile
-    ).model_dump(mode="json")
+    render_json = validate_scene_render(render, checklist=checklist, profile=profile).model_dump(
+        mode="json"
+    )
     consensus_json = validate_semantic_acceptance(
         semantic_consensus,
         checklist=checklist,
@@ -550,6 +546,7 @@ def _build_pairwise_request(
     position_mapping: dict[str, PositionIdentity],
     model_id: str,
     api_key: str,
+    pairwise_policy: PairwiseQualityPolicy | None = None,
 ) -> tuple[ProseQualityRequest, dict[str, Any], dict[str, Any]]:
     _validate_model(model_id)
     original, polished = validate_quality_pair_inputs(
@@ -561,10 +558,18 @@ def _build_pairwise_request(
     )
     original_hash = canonical_json_sha256(original)
     polished_hash = canonical_json_sha256(polished)
-    prompt = load_prompt("prose_quality_pairwise", PROSE_QUALITY_PAIRWISE_PROMPT_VERSION)
+    prompt = load_prompt(
+        "prose_quality_pairwise",
+        pairwise_policy.prompt_version
+        if pairwise_policy
+        else PROSE_QUALITY_PAIRWISE_PROMPT_VERSION,
+    )
+    component_hash = (
+        pairwise_policy.component_hash if pairwise_policy else PROSE_QUALITY_COMPONENT_HASH
+    )
     binding = {
         "component_id": "prose_quality_critic",
-        "component_hash": PROSE_QUALITY_COMPONENT_HASH,
+        "component_hash": component_hash,
         "request_kind": "pairwise",
         "source_render_hashes": [original_hash, polished_hash],
         "preservation_consensus_hash": canonical_json_sha256(preservation_consensus),
@@ -579,7 +584,7 @@ def _build_pairwise_request(
     payload = {
         "server_bindings": {
             "component_id": "prose_quality_critic",
-            "component_hash": PROSE_QUALITY_COMPONENT_HASH,
+            "component_hash": component_hash,
             "request_kind": "pairwise",
             "component_input_hash": component_input_hash,
             "candidate_schema_hash": PROSE_QUALITY_PAIRWISE_CANDIDATE_SCHEMA_HASH,
@@ -606,6 +611,7 @@ def _build_pairwise_request(
             model_id,
             api_key,
             position_mapping,
+            component_hash=component_hash,
         ),
         original,
         polished,
@@ -622,12 +628,14 @@ def _request(
     model_id: str,
     api_key: str,
     position_mapping: dict[str, PositionIdentity] | None,
+    *,
+    component_hash: str = PROSE_QUALITY_COMPONENT_HASH,
 ) -> ProseQualityRequest:
     input_hash = canonical_json_sha256(payload)
     fingerprint = canonical_json_sha256(
         {
             "protocol": PROSE_QUALITY_REQUEST_PROTOCOL,
-            "component_hash": PROSE_QUALITY_COMPONENT_HASH,
+            "component_hash": component_hash,
             "request_kind": kind,
             "model_id": model_id,
             "prompt_version": prompt_version,
@@ -668,9 +676,9 @@ def _findings_report_from_candidate(
     if result.candidate is None:
         raise ProseQualityProtocolError("prose_quality_empty_or_invalid_json")
     try:
-        candidate = _QualityFindingsCandidate.model_validate(
-            result.candidate
-        ).model_dump(mode="json")
+        candidate = _QualityFindingsCandidate.model_validate(result.candidate).model_dump(
+            mode="json"
+        )
     except ValidationError as error:
         raise ProseQualityProtocolError("prose_quality_findings_candidate_invalid") from error
     catalog = {item["evidence_id"]: item for item in evidence_catalog}
@@ -729,9 +737,9 @@ def quality_pairwise_report_from_candidate(
     if result.candidate is None:
         raise ProseQualityProtocolError("prose_quality_empty_or_invalid_json")
     try:
-        candidate = _QualityPairwiseCandidate.model_validate(
-            result.candidate
-        ).model_dump(mode="json")
+        candidate = _QualityPairwiseCandidate.model_validate(result.candidate).model_dump(
+            mode="json"
+        )
     except ValidationError as error:
         raise ProseQualityProtocolError("prose_quality_pairwise_candidate_invalid") from error
     if [item["dimension"] for item in candidate["dimension_preferences"]] != list(
@@ -839,6 +847,7 @@ def _zero_usage() -> dict[str, int]:
 
 
 __all__ = [
+    "PairwiseQualityPolicy",
     "DeepSeekProseQualityCriticProvider",
     "FakeProseQualityCriticProvider",
     "MirroredQualityExecution",

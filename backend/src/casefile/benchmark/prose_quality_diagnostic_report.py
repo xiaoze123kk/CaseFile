@@ -20,6 +20,12 @@ def score_diagnostic_row(row: dict[str, Any], gold: dict[str, Any]) -> None:
         mirrored_consistent=False,
         first_dimension_correct=0,
         reverse_dimension_correct=0,
+        first_dimension_results={
+            item["dimension"]: False for item in gold["dimension_preferences"]
+        },
+        reverse_dimension_results={
+            item["dimension"]: False for item in gold["dimension_preferences"]
+        },
     )
     if row["status"] != "completed":
         return
@@ -32,6 +38,15 @@ def score_diagnostic_row(row: dict[str, Any], gold: dict[str, Any]) -> None:
         second["overall_preference"]
     )
     for label, prediction in (("first", first), ("reverse", second)):
+        row[f"{label}_dimension_results"] = {
+            item["dimension"]: (
+                item["preference"] if label == "first" else swap_preference(item["preference"])
+            )
+            == expected["preference"]
+            for item, expected in zip(
+                prediction["dimension_preferences"], gold["dimension_preferences"], strict=True
+            )
+        }
         row[f"{label}_dimension_correct"] = sum(
             (item["preference"] if label == "first" else swap_preference(item["preference"]))
             == expected["preference"]
@@ -41,7 +56,7 @@ def score_diagnostic_row(row: dict[str, Any], gold: dict[str, Any]) -> None:
         )
 
 
-def summarize_arm(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_arm(rows: list[dict[str, Any]], *, task_count: int = 8) -> dict[str, Any]:
     def metric(key: str, total: int) -> dict[str, int]:
         return {"passed": sum(row[key] for row in rows), "total": total}
 
@@ -103,7 +118,11 @@ def summarize_arm(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
     gates = []
     for trial in range(1, 4):
-        selected = [row for row in rows if row["trial"] == trial]
+        selected = [
+            row for row in rows if row["trial"] == trial and row.get("cohort", "legacy") == "legacy"
+        ]
+        if not selected:
+            continue
         values = {
             "overall_accuracy": sum(row["first_correct"] for row in selected),
             "mirrored_consistency": sum(row["mirrored_consistent"] for row in selected),
@@ -120,11 +139,11 @@ def summarize_arm(rows: list[dict[str, Any]]) -> dict[str, Any]:
             }
         )
     return {
-        "first_accuracy": metric("first_correct", 24),
-        "reverse_accuracy": metric("reverse_correct", 24),
-        "mirrored_consistency": metric("mirrored_consistent", 24),
-        "first_dimension_accuracy": metric("first_dimension_correct", 120),
-        "reverse_dimension_accuracy": metric("reverse_dimension_correct", 120),
+        "first_accuracy": metric("first_correct", task_count * 3),
+        "reverse_accuracy": metric("reverse_correct", task_count * 3),
+        "mirrored_consistency": metric("mirrored_consistent", task_count * 3),
+        "first_dimension_accuracy": metric("first_dimension_correct", task_count * 15),
+        "reverse_dimension_accuracy": metric("reverse_dimension_correct", task_count * 15),
         "failure_counts": failures,
         "gold_groups": groups,
         "task_stability": stability,
@@ -191,9 +210,14 @@ def diagnostic_markdown(report: dict[str, Any]) -> str:
             if report["comparison"]["worth_further_validation"]
             else "未满足继续验证条件；保持活动 v2。",
             "",
-            "本报告只覆盖 8 组公开开发样例，每组 3 个 Trial；重复 Trial 不等于新增独立样本。"
-            "候选两次比较共享单稿评估，不是独立评审员共识。"
-            "Fake 只证明实现行为，所有结果 qualified=false。",
+            f"本报告只覆盖 {report['task_count']} 组公开开发样例，每组 3 个 Trial；"
+            "重复 Trial 不等于新增独立样本。"
+            + (
+                "候选两次比较共享单稿评估，不是独立评审员共识。"
+                if report["shared_candidate_assessments"]
+                else "两组均使用两次位置比较，候选只补充节奏标准。"
+            )
+            + "Fake 只证明实现行为，所有结果 qualified=false。",
             "",
             f"源码：`{report['source_before']['revision']}`；源码稳定：`{report['source_stable']}`；数据稳定：`{report['data_stable']}`。",
             f"实验指纹：`{report['experiment_hash']}`；报告指纹：`{report['report_hash']}`。",
@@ -209,6 +233,42 @@ def diagnostic_markdown(report: dict[str, Any]) -> str:
             f"transport {summary['transport_attempt_count']}，"
             f"tokens {summary['usage'].get('total_tokens', 0)}，"
             f"延迟 {summary['latency_ms']} ms；失败/未运行 `{summary['failure_counts']}`。"
+        )
+    if "cohorts" in report:
+        rows.extend(
+            [
+                "",
+                "## 节奏维度分组",
+                "",
+                "| 样例组 | 协议 | 正向节奏正确 | 反向节奏正确 |",
+                "|---|---|---:|---:|",
+            ]
+        )
+        for cohort in ("legacy", "redundant", "functional"):
+            for arm in ("baseline", "candidate"):
+                selected = [r for r in report["rows"] if r["cohort"] == cohort and r["arm"] == arm]
+                counts = [
+                    sum(
+                        r[f"{side}_dimension_results"]["dramatic_progression_pacing"]
+                        for r in selected
+                    )
+                    for side in ("first", "reverse")
+                ]
+                rows.append(
+                    f"| {cohort} | {arm} | {counts[0]}/{len(selected)} "
+                    f"| {counts[1]}/{len(selected)} |"
+                )
+        rows.extend(["", "未满足的冻结条件："])
+        rows.extend(
+            f"- `{key}`" for key, passed in report["comparison"]["checks"].items() if not passed
+        )
+        rows.extend(
+            [
+                "",
+                "新样例是经 Codex 审阅的合成开发场景，语义凭证不是 Live Council 结果。"
+                "旧 tradeoff_tie 整体 Gold 存在主观权衡，保留原标注单独统计；"
+                "详见 gold-review.json。",
+            ]
         )
     rows.extend(
         [

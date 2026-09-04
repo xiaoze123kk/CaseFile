@@ -1,0 +1,1125 @@
+{
+  "schema_id": "casefile.prose-quality-pacing-task.v1",
+  "task_id": "pacing_ferry_suspense",
+  "scene": "ferry",
+  "group": "functional",
+  "profile": {
+    "schema_id": "compiler.novel-profile.v2",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear",
+      "flashback"
+    ],
+    "exposure_policy": "bound_plan",
+    "prose": {
+      "language": "zh-CN",
+      "narrative_person": "third_person_limited",
+      "narrative_tense": "past",
+      "target_scene_chars": {
+        "min": 300,
+        "max": 1200
+      },
+      "dialogue_ratio": {
+        "min": 0,
+        "max": 0.5
+      },
+      "description_density": "balanced",
+      "pacing": "balanced",
+      "style_brief": "克制、清晰，贴近人物等待时的感受，以停顿和具体动作逐步建立悬念。",
+      "forbidden_style_patterns": [
+        "总结式解释凶手动机"
+      ]
+    }
+  },
+  "synthetic_source": {
+    "fixture_kind": "synthetic_public_micro_scene",
+    "task_id": "pacing_ferry_suspense",
+    "facts": [
+      "沈舟独自在渡口候船",
+      "广播已经通知末班船延误",
+      "他没有离开渡口",
+      "也没有认定船已经停航"
+    ],
+    "context": {
+      "objective": "完成微场景的既定动作。",
+      "dramatic_goal": "保持人物有限视角。",
+      "conflict": "眼前观察尚不足以作最终判断。",
+      "outcome": "保留既定未决状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_ferry"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_ferry"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_ferry"
+      },
+      "story_time_refs": [],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [],
+      "beats": [
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_001",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "呈现：沈舟独自在渡口候船",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_1"
+              },
+              "field_path": "",
+              "source_fragment_hash": "f304f507c3bac30c0619633270c71d2a463216984973d5d246c975231732ead7"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_002",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "呈现：广播已经通知末班船延误",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_2"
+              },
+              "field_path": "",
+              "source_fragment_hash": "a4f12468f28058207fe133bbcc419941844693c3c57110e6294ff0856fdebb5e"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_003",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 3,
+          "kind": "event",
+          "directive": "呈现：他没有离开渡口",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_3"
+              },
+              "field_path": "",
+              "source_fragment_hash": "2a06667ded434091edf6114da03fd120973ce8babbdb2dedea03410e1c8a8e19"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_004",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 4,
+          "kind": "event",
+          "directive": "呈现：也没有认定船已经停航",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_4"
+              },
+              "field_path": "",
+              "source_fragment_hash": "53060dc6291bea0ab8c2f965d53ee0803641444f51816887fb38087e1426eac7"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_1"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_2"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_3"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_4"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_1"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            },
+            "field_path": "",
+            "source_fragment_hash": "f304f507c3bac30c0619633270c71d2a463216984973d5d246c975231732ead7"
+          },
+          "label": "沈舟独自在渡口候船",
+          "value": {
+            "description": "沈舟独自在渡口候船"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_2"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            },
+            "field_path": "",
+            "source_fragment_hash": "a4f12468f28058207fe133bbcc419941844693c3c57110e6294ff0856fdebb5e"
+          },
+          "label": "广播已经通知末班船延误",
+          "value": {
+            "description": "广播已经通知末班船延误"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_3"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            },
+            "field_path": "",
+            "source_fragment_hash": "2a06667ded434091edf6114da03fd120973ce8babbdb2dedea03410e1c8a8e19"
+          },
+          "label": "他没有离开渡口",
+          "value": {
+            "description": "他没有离开渡口"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_4"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            },
+            "field_path": "",
+            "source_fragment_hash": "53060dc6291bea0ab8c2f965d53ee0803641444f51816887fb38087e1426eac7"
+          },
+          "label": "也没有认定船已经停航",
+          "value": {
+            "description": "也没有认定船已经停航"
+          }
+        }
+      ],
+      "previous_scene_render": null
+    }
+  },
+  "checklist": {
+    "schema_id": "compiler.prose-judge-checklist.v1",
+    "scene_id": "scene_pacing_ferry_suspense",
+    "scene_ordinal": 1,
+    "source": {
+      "scene_plan_hash": "0734c1b8166eb505fbd82f70ee159a4da2ef7bcbc9984380085a6b432ee72028",
+      "narrative_ir_hash": "612d96688371630e4204a78c8dfe4dcc1a945e581a1b15dc4489d269ff736efb",
+      "profile_hash": "cd4d60d4f89e0c70c212cdc92a60f377df41cbeba6798ac5a7c94924372a12ea",
+      "previous_scene_render_hash": null,
+      "checklist_policy_version": "prose-checklist-policy-v1",
+      "checklist_policy_hash": "7d38d2374f69b7734e9096959b155bf3d0ff4cb01ecc46bb7eb3628dde0cdff2"
+    },
+    "scene_context": {
+      "objective": "完成微场景的既定动作。",
+      "dramatic_goal": "保持人物有限视角。",
+      "conflict": "眼前观察尚不足以作最终判断。",
+      "outcome": "保留既定未决状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_ferry"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_ferry"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_ferry"
+      },
+      "story_time_refs": [],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [],
+      "beats": [
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_001",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "呈现：沈舟独自在渡口候船",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_1"
+              },
+              "field_path": "",
+              "source_fragment_hash": "f304f507c3bac30c0619633270c71d2a463216984973d5d246c975231732ead7"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_002",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "呈现：广播已经通知末班船延误",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_2"
+              },
+              "field_path": "",
+              "source_fragment_hash": "a4f12468f28058207fe133bbcc419941844693c3c57110e6294ff0856fdebb5e"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_003",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 3,
+          "kind": "event",
+          "directive": "呈现：他没有离开渡口",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_3"
+              },
+              "field_path": "",
+              "source_fragment_hash": "2a06667ded434091edf6114da03fd120973ce8babbdb2dedea03410e1c8a8e19"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_suspense_004",
+          "scene_id": "scene_pacing_ferry_suspense",
+          "ordinal": 4,
+          "kind": "event",
+          "directive": "呈现：也没有认定船已经停航",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_suspense_4"
+              },
+              "field_path": "",
+              "source_fragment_hash": "53060dc6291bea0ab8c2f965d53ee0803641444f51816887fb38087e1426eac7"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_1"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_2"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_3"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_suspense_4"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_1"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_1"
+            },
+            "field_path": "",
+            "source_fragment_hash": "f304f507c3bac30c0619633270c71d2a463216984973d5d246c975231732ead7"
+          },
+          "label": "沈舟独自在渡口候船",
+          "value": {
+            "description": "沈舟独自在渡口候船"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_2"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_2"
+            },
+            "field_path": "",
+            "source_fragment_hash": "a4f12468f28058207fe133bbcc419941844693c3c57110e6294ff0856fdebb5e"
+          },
+          "label": "广播已经通知末班船延误",
+          "value": {
+            "description": "广播已经通知末班船延误"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_3"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_3"
+            },
+            "field_path": "",
+            "source_fragment_hash": "2a06667ded434091edf6114da03fd120973ce8babbdb2dedea03410e1c8a8e19"
+          },
+          "label": "他没有离开渡口",
+          "value": {
+            "description": "他没有离开渡口"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_4"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_suspense_4"
+            },
+            "field_path": "",
+            "source_fragment_hash": "53060dc6291bea0ab8c2f965d53ee0803641444f51816887fb38087e1426eac7"
+          },
+          "label": "也没有认定船已经停航",
+          "value": {
+            "description": "也没有认定船已经停航"
+          }
+        }
+      ],
+      "previous_scene_render": null
+    },
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_001",
+        "ordinal": 1,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：沈舟独自在渡口候船",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_suspense_001"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_1"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_1"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_002",
+        "ordinal": 2,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：广播已经通知末班船延误",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_suspense_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_2"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_2"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_003",
+        "ordinal": 3,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：他没有离开渡口",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_suspense_003"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_3"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_3"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_004",
+        "ordinal": 4,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：也没有认定船已经停航",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_suspense_004"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_4"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_suspense_4"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      }
+    ]
+  },
+  "semantic_reviews": {
+    "a": [
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_001",
+        "text": "沈舟独自在渡口候船",
+        "start_char": 198,
+        "end_char": 207
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_002",
+        "text": "广播已经通知末班船延误",
+        "start_char": 208,
+        "end_char": 219
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_003",
+        "text": "他没有离开渡口",
+        "start_char": 312,
+        "end_char": 319
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_004",
+        "text": "也没有认定船已经停航",
+        "start_char": 320,
+        "end_char": 330
+      }
+    ],
+    "b": [
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_001",
+        "text": "沈舟独自在渡口候船",
+        "start_char": 198,
+        "end_char": 207
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_002",
+        "text": "广播已经通知末班船延误",
+        "start_char": 208,
+        "end_char": 219
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_003",
+        "text": "他没有离开渡口",
+        "start_char": 305,
+        "end_char": 312
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_004",
+        "text": "也没有认定船已经停航",
+        "start_char": 313,
+        "end_char": 323
+      }
+    ]
+  },
+  "render_a": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_pacing_ferry_suspense",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "9544e1bb3f40de659e9da2af53991862d0ff958b3864b0c9246c4447c1c3dc4a",
+      "profile_hash": "cd4d60d4f89e0c70c212cdc92a60f377df41cbeba6798ac5a7c94924372a12ea",
+      "scene_plan_hash": "0734c1b8166eb505fbd82f70ee159a4da2ef7bcbc9984380085a6b432ee72028",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "578ec9330f3565c18e8dd9a80a5f87e402e1917bc13efe73e2cfe71ecb216880"
+    },
+    "stage": "writer",
+    "round": 0,
+    "previous_render_hash": null,
+    "blocks": [
+      {
+        "block_id": "block_scene_pacing_ferry_suspense_001",
+        "ordinal": 1,
+        "text": "雾把渡口外的航道遮住了。沈舟坐在候船棚边，鞋底还沾着沿岸小路的泥。棚顶积水从缺口滴下来，他把行李移到干燥的一侧，让视线能越过栏杆看向船来的方向。回程的路很远，他不愿在消息尚未确定时就放弃这趟船。长椅旁贴着一张旧航线图，纸角已经卷起，他用指尖压平它，确认等候的位置没有弄错。他把行李带绕在手腕上，留出起身的余地。除了远处模糊的水声，这里听不见别的动静；他决定留意广播和航道，等到有确实消息再作打算。沈舟独自在渡口候船。广播已经通知末班船延误。他记得岸灯每灭一次，自己就会更担心船错过渡口，但雾里还没有船影。灯灭了。他攥紧船票。灯又亮了，雾里仍没有船影。灯又灭了。他松开被票角硌疼的手，仍盯着航道。灯再亮起时，船影依旧没有出现。他没有离开渡口，也没有认定船已经停航，只把船票展开，继续等待下一次广播。"
+      }
+    ],
+    "character_count": 348,
+    "selection_reason": null
+  },
+  "semantic_consensus_a": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_pacing_ferry_suspense",
+    "round": 0,
+    "checklist_hash": "9544e1bb3f40de659e9da2af53991862d0ff958b3864b0c9246c4447c1c3dc4a",
+    "render_hash": "105d0b4dee5b6bb0b8693b4c32e223cf8f2d00de21707f22c1c90e2ee440d29e",
+    "council_policy_hash": "e7b57454cc7cbaf244c4a89793fc1913282d51eb371b9c3957d13772e0744133",
+    "judge_report_hashes": [
+      "e07050d935dba10d37b96bcbd94bfeef6a1c645d1be0267dbb926dd2192a819e"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "e07050d935dba10d37b96bcbd94bfeef6a1c645d1be0267dbb926dd2192a819e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "e07050d935dba10d37b96bcbd94bfeef6a1c645d1be0267dbb926dd2192a819e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "e07050d935dba10d37b96bcbd94bfeef6a1c645d1be0267dbb926dd2192a819e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "e07050d935dba10d37b96bcbd94bfeef6a1c645d1be0267dbb926dd2192a819e",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "render_b": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_pacing_ferry_suspense",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "9544e1bb3f40de659e9da2af53991862d0ff958b3864b0c9246c4447c1c3dc4a",
+      "profile_hash": "cd4d60d4f89e0c70c212cdc92a60f377df41cbeba6798ac5a7c94924372a12ea",
+      "scene_plan_hash": "0734c1b8166eb505fbd82f70ee159a4da2ef7bcbc9984380085a6b432ee72028",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "4f167057a604b7a2427801fd88d00387300c9a88683cd9efc306db2c67f1e8cb"
+    },
+    "stage": "polished",
+    "round": 0,
+    "previous_render_hash": "105d0b4dee5b6bb0b8693b4c32e223cf8f2d00de21707f22c1c90e2ee440d29e",
+    "blocks": [
+      {
+        "block_id": "block_scene_pacing_ferry_suspense_001",
+        "ordinal": 1,
+        "text": "雾把渡口外的航道遮住了。沈舟坐在候船棚边，鞋底还沾着沿岸小路的泥。棚顶积水从缺口滴下来，他把行李移到干燥的一侧，让视线能越过栏杆看向船来的方向。回程的路很远，他不愿在消息尚未确定时就放弃这趟船。长椅旁贴着一张旧航线图，纸角已经卷起，他用指尖压平它，确认等候的位置没有弄错。他把行李带绕在手腕上，留出起身的余地。除了远处模糊的水声，这里听不见别的动静；他决定留意广播和航道，等到有确实消息再作打算。沈舟独自在渡口候船。广播已经通知末班船延误。他记得岸灯每灭一次，自己就会更担心船错过渡口，但雾里还没有船影。岸灯灭后又亮，他攥紧船票；岸灯再次灭后又亮，他松开被票角硌疼的手，仍盯着航道。两次灯亮时，雾里都没有船影。他没有离开渡口，也没有认定船已经停航，只把船票展开，继续等待下一次广播。"
+      }
+    ],
+    "character_count": 341,
+    "selection_reason": null
+  },
+  "semantic_consensus_b": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_pacing_ferry_suspense",
+    "round": 0,
+    "checklist_hash": "9544e1bb3f40de659e9da2af53991862d0ff958b3864b0c9246c4447c1c3dc4a",
+    "render_hash": "78951c31dbe7e5decfc510427950c28887f0cc51dcd636e53eaf853e467b568a",
+    "council_policy_hash": "e7b57454cc7cbaf244c4a89793fc1913282d51eb371b9c3957d13772e0744133",
+    "judge_report_hashes": [
+      "a62c43ba5370e674e30080e8cf9c8436a7e55bd4a2b9d453f782ead6a8b68c14"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "a62c43ba5370e674e30080e8cf9c8436a7e55bd4a2b9d453f782ead6a8b68c14",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "a62c43ba5370e674e30080e8cf9c8436a7e55bd4a2b9d453f782ead6a8b68c14",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "a62c43ba5370e674e30080e8cf9c8436a7e55bd4a2b9d453f782ead6a8b68c14",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_suspense_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "a62c43ba5370e674e30080e8cf9c8436a7e55bd4a2b9d453f782ead6a8b68c14",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "gold": {
+    "overall_preference": "a",
+    "dimension_preferences": [
+      {
+        "dimension": "pov_voice_consistency",
+        "preference": "tie"
+      },
+      {
+        "dimension": "scene_specificity",
+        "preference": "tie"
+      },
+      {
+        "dimension": "dialogue_narration_naturalness",
+        "preference": "tie"
+      },
+      {
+        "dimension": "dramatic_progression_pacing",
+        "preference": "a"
+      },
+      {
+        "dimension": "readability_editability",
+        "preference": "tie"
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "Codex",
+    "reviewer_independence": false,
+    "semantic_origin": "reviewed_synthetic_fixture_not_live_council",
+    "quality_rationale": "两稿同样写两次明灭、攥紧再松手、船影始终未现。A 的反复以等待的时间节点组织已有动作，让期待一次次落空；较长稿置于 A，控制对长短及位置的机械偏好。",
+    "minimal_difference": "same prefix and suffix; only middle expression changes",
+    "qualification_eligible": false
+  },
+  "content_hash": "d1c5ef75215098afb90f8d5e4e679d0fae61cabb004954301d71eed0159fb0bc"
+}

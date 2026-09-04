@@ -21,6 +21,7 @@ from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_REQUEST_PROTOCOL,
     DeepSeekProseQualityCriticProvider,
     FakeProseQualityCriticProvider,
+    PairwiseQualityPolicy,
     ProseQualityCriticProvider,
     ProseQualityInfrastructureError,
     ProseQualityProtocolError,
@@ -53,6 +54,7 @@ LIVE_ROOT = ROOT / "backend/var/benchmark/prose-quality/diagnostic-v1/live"
 FAKE_ROOT = ROOT / "backend/var/benchmark/prose-quality/diagnostic-v1/fake"
 Arm = Literal["baseline", "candidate"]
 Mode = Literal["fake", "live"]
+Experiment = Literal["independent-v1", "pacing-v1"]
 
 
 class QualityDiagnosticError(RuntimeError):
@@ -115,7 +117,15 @@ def expected_experiment(package: dict[str, Any]) -> dict[str, Any]:
     return {**descriptor, "experiment_hash": canonical_json_sha256(descriptor)}
 
 
-def load_experiment() -> tuple[dict[str, Any], dict[str, Any]]:
+def load_experiment(
+    experiment: Experiment = "independent-v1",
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if experiment == "pacing-v1":
+        from casefile.benchmark.prose_quality_pacing import load_pacing_experiment
+
+        return load_pacing_experiment()
+    if experiment != "independent-v1":
+        raise QualityDiagnosticError("quality_diagnostic_unknown_experiment")
     package = load_prose_quality_dev_suite()
     descriptor = json.loads(EXPERIMENT_PATH.read_text(encoding="utf-8"))
     if descriptor != expected_experiment(package):
@@ -227,8 +237,11 @@ def _execute_row(
     asset: dict[str, Any],
     provider: ProseQualityCriticProvider,
     api_key: str,
+    pairwise_policy: PairwiseQualityPolicy | None = None,
 ) -> None:
-    recorder = DiagnosticCallRecorder(provider, limit=2 if row["arm"] == "baseline" else 4)
+    recorder = DiagnosticCallRecorder(
+        provider, limit=2 if row["arm"] == "baseline" or pairwise_policy else 4
+    )
     arguments = {
         "checklist": asset["checklist"],
         "original_render": asset["render_a"],
@@ -237,9 +250,12 @@ def _execute_row(
         "preservation_consensus": asset["semantic_consensus_b"],
         "api_key": api_key,
     }
-    if row["arm"] == "baseline":
+    if row["arm"] == "baseline" or pairwise_policy is not None:
         execution = execute_mirrored_pairwise_quality(
-            recorder, **arguments, model_id=PROSE_QUALITY_MODEL_ID
+            recorder,
+            **arguments,
+            model_id=PROSE_QUALITY_MODEL_ID,
+            pairwise_policy=pairwise_policy if row["arm"] == "candidate" else None,
         )
     else:
         execution = execute_diagnostic_quality(
@@ -271,6 +287,7 @@ def run_quality_diagnostic(
     *,
     attempt_id: str,
     mode: Mode = "fake",
+    experiment: Experiment = "independent-v1",
     api_key: str = "",
     output_dir: Path | None = None,
     fake_provider_factory: Callable[[dict[str, Any]], ProseQualityCriticProvider] | None = None,
@@ -284,12 +301,20 @@ def run_quality_diagnostic(
         raise QualityDiagnosticError("quality_diagnostic_attempt_or_mode_invalid")
     if mode == "live" and (not api_key.strip() or fake_provider_factory is not None):
         raise QualityDiagnosticError("quality_diagnostic_live_binding_invalid")
-    descriptor, package = load_experiment()
+    descriptor, package = load_experiment(experiment)
+    pairwise_policy = None
+    live_root, fake_root = LIVE_ROOT, FAKE_ROOT
+    if experiment == "pacing-v1":
+        from casefile.benchmark.prose_quality_pacing import pacing_policy
+
+        pairwise_policy = pacing_policy()
+        pacing_output = ROOT / "backend/var/benchmark/prose-quality/pacing-v1"
+        live_root, fake_root = pacing_output / "live", pacing_output / "fake"
     source_before = quality_source_identity(ROOT)
     if mode == "live" and not source_before["clean"]:
         raise QualityDiagnosticError("quality_diagnostic_clean_source_required")
-    destination = output_dir or ((LIVE_ROOT if mode == "live" else FAKE_ROOT) / attempt_id)
-    if mode == "live" and destination.resolve() != (LIVE_ROOT / attempt_id).resolve():
+    destination = output_dir or ((live_root if mode == "live" else fake_root) / attempt_id)
+    if mode == "live" and destination.resolve() != (live_root / attempt_id).resolve():
         raise QualityDiagnosticError("quality_diagnostic_live_output_invalid")
     # Both claims are exclusive; a new attempt name cannot rerun the same Live design.
     destination.mkdir(parents=True, exist_ok=False)
@@ -302,16 +327,18 @@ def run_quality_diagnostic(
         "adapter": "DeepSeekProseQualityCriticProvider" if mode == "live" else "Fake",
     }
     if mode == "live":
-        _write_once(LIVE_ROOT / f"consumed-{descriptor['experiment_hash']}.json", manifest)
+        _write_once(live_root / f"consumed-{descriptor['experiment_hash']}.json", manifest)
     _write_once(destination / "attempt-manifest.json", manifest)
     tasks = {task["asset"]["task_id"]: task for task in package["tasks"]}
     rows: list[dict[str, Any]] = []
     aborted = False
     live_provider = DeepSeekProseQualityCriticProvider() if mode == "live" else None
+    schedule_count = len(descriptor["schedule"])
     for index, scheduled in enumerate(descriptor["schedule"], start=1):
         task = tasks[scheduled["task_id"]]
         row = {
             **scheduled,
+            "cohort": task["asset"].get("group", "legacy"),
             "gold_overall": task["asset"]["gold"]["overall_preference"],
             "pair_fingerprint": task["descriptor"]["pair_fingerprint"],
             "status": "not_run",
@@ -327,33 +354,39 @@ def run_quality_diagnostic(
         if not aborted:
             if progress:
                 progress(
-                    f"[{index}/48] {row['task_id']} trial={row['trial']} arm={row['arm']} started"
+                    f"[{index}/{schedule_count}] {row['task_id']} "
+                    f"trial={row['trial']} arm={row['arm']} started"
                 )
             provider = live_provider or (
                 fake_provider_factory(task)
                 if fake_provider_factory
                 else DiagnosticFakeProvider(task["asset"]["gold"])
             )
-            _execute_row(row, task["asset"], provider, api_key if mode == "live" else "fake")
+            _execute_row(
+                row, task["asset"], provider, api_key if mode == "live" else "fake", pairwise_policy
+            )
             aborted = row["status"] == "inconclusive"
         score_diagnostic_row(row, task["asset"]["gold"])
         rows.append(row)
         _write_once(destination / f"row-{index:02d}.json", row)
         if progress:
             progress(
-                f"[{index}/48] {row['task_id']} trial={row['trial']} arm={row['arm']} "
+                f"[{index}/{schedule_count}] {row['task_id']} "
+                f"trial={row['trial']} arm={row['arm']} "
                 f"status={row['status']} calls={row['call_count']}"
             )
     source_after = quality_source_identity(ROOT)
     data_stable = False
     try:
-        descriptor_after, _ = load_experiment()
+        descriptor_after, _ = load_experiment(experiment)
         data_stable = descriptor_after == descriptor
     except (ValueError, OSError, RuntimeError):
         pass
     source_stable = source_before == source_after
     arms = {
-        arm: summarize_arm([row for row in rows if row["arm"] == arm])
+        arm: summarize_arm(
+            [row for row in rows if row["arm"] == arm], task_count=descriptor["task_count"]
+        )
         for arm in ("baseline", "candidate")
     }
     complete = (
@@ -372,17 +405,31 @@ def run_quality_diagnostic(
         "source_stable": source_stable,
         "data_stable": data_stable,
         "experiment": descriptor,
-        "task_count": 8,
+        "task_count": descriptor["task_count"],
         "trials_per_task": 3,
-        "arm_trial_count": 24,
-        "independent_task_count": 8,
-        "shared_candidate_assessments": True,
+        "arm_trial_count": descriptor["task_count"] * 3,
+        "independent_task_count": descriptor["task_count"],
+        "shared_candidate_assessments": experiment == "independent-v1",
         "semantic_invalid_count": 0,
         "arms": arms,
         "rows": rows,
         "qualification_eligible": False,
         "comparison": diagnostic_comparison(arms, complete=complete, live=mode == "live"),
     }
+    if experiment == "pacing-v1":
+        from casefile.benchmark.prose_quality_pacing import pacing_comparison
+
+        report["schema_id"] = "casefile.prose-quality-pacing-report.v1"
+        report["comparison"] = pacing_comparison(rows, complete=complete, live=mode == "live")
+        report["cohorts"] = {
+            cohort: {
+                arm: summarize_arm(
+                    [r for r in rows if r["cohort"] == cohort and r["arm"] == arm], task_count=count
+                )
+                for arm in ("baseline", "candidate")
+            }
+            for cohort, count in (("legacy", 8), ("redundant", 2), ("functional", 2))
+        }
     report["report_hash"] = canonical_json_sha256(report)
     _write_once(destination / "report.json", report)
     with (destination / "report.md").open("x", encoding="utf-8", newline="\n") as handle:
@@ -394,6 +441,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("fake", "live"), default="fake")
     parser.add_argument("--attempt-id", required=True)
+    parser.add_argument(
+        "--experiment", choices=("independent-v1", "pacing-v1"), default="independent-v1"
+    )
     args = parser.parse_args()
     api_key = ""
     if args.mode == "live":
@@ -404,6 +454,7 @@ def main() -> int:
     report = run_quality_diagnostic(
         attempt_id=args.attempt_id,
         mode=args.mode,
+        experiment=args.experiment,
         api_key=api_key,
         progress=lambda value: print(value, flush=True),
     )

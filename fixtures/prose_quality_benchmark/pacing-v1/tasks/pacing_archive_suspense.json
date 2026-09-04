@@ -1,0 +1,1125 @@
+{
+  "schema_id": "casefile.prose-quality-pacing-task.v1",
+  "task_id": "pacing_archive_suspense",
+  "scene": "archive",
+  "group": "functional",
+  "profile": {
+    "schema_id": "compiler.novel-profile.v2",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear",
+      "flashback"
+    ],
+    "exposure_policy": "bound_plan",
+    "prose": {
+      "language": "zh-CN",
+      "narrative_person": "third_person_limited",
+      "narrative_tense": "past",
+      "target_scene_chars": {
+        "min": 300,
+        "max": 1200
+      },
+      "dialogue_ratio": {
+        "min": 0,
+        "max": 0.5
+      },
+      "description_density": "balanced",
+      "pacing": "balanced",
+      "style_brief": "克制、清晰，贴近人物等待时的感受，以停顿和具体动作逐步建立悬念。",
+      "forbidden_style_patterns": [
+        "总结式解释凶手动机"
+      ]
+    }
+  },
+  "synthetic_source": {
+    "fixture_kind": "synthetic_public_micro_scene",
+    "task_id": "pacing_archive_suspense",
+    "facts": [
+      "借阅单背面有一个陌生签名",
+      "手指压住纸角",
+      "门把手没有转开",
+      "那个签名属于谁，她仍不知道"
+    ],
+    "context": {
+      "objective": "完成微场景的既定动作。",
+      "dramatic_goal": "保持人物有限视角。",
+      "conflict": "眼前观察尚不足以作最终判断。",
+      "outcome": "保留既定未决状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_archive"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_archive"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_archive"
+      },
+      "story_time_refs": [],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [],
+      "beats": [
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_001",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "呈现：借阅单背面有一个陌生签名",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_1"
+              },
+              "field_path": "",
+              "source_fragment_hash": "bacf1d6cfd13f48a0308f9a445444db602bfd4736cf27751832c3c521d05f276"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_002",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "呈现：手指压住纸角",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_2"
+              },
+              "field_path": "",
+              "source_fragment_hash": "fc3ec5e919a33eb5402dbfcd169807c84aa8b0c108c4348a2ffdfed912603187"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_003",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 3,
+          "kind": "event",
+          "directive": "呈现：门把手没有转开",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_3"
+              },
+              "field_path": "",
+              "source_fragment_hash": "93d95b12f05571370c023b1eddf8e6f0c647de19f4e2aa4ffa1d7f25de4b4b81"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_004",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 4,
+          "kind": "event",
+          "directive": "呈现：那个签名属于谁，她仍不知道",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_4"
+              },
+              "field_path": "",
+              "source_fragment_hash": "968210f9fca45968d4e31e48526ef16e15ebd3e731fa0002ba6a9829999595d4"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_1"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_2"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_3"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_4"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_1"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bacf1d6cfd13f48a0308f9a445444db602bfd4736cf27751832c3c521d05f276"
+          },
+          "label": "借阅单背面有一个陌生签名",
+          "value": {
+            "description": "借阅单背面有一个陌生签名"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_2"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            },
+            "field_path": "",
+            "source_fragment_hash": "fc3ec5e919a33eb5402dbfcd169807c84aa8b0c108c4348a2ffdfed912603187"
+          },
+          "label": "手指压住纸角",
+          "value": {
+            "description": "手指压住纸角"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_3"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            },
+            "field_path": "",
+            "source_fragment_hash": "93d95b12f05571370c023b1eddf8e6f0c647de19f4e2aa4ffa1d7f25de4b4b81"
+          },
+          "label": "门把手没有转开",
+          "value": {
+            "description": "门把手没有转开"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_4"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            },
+            "field_path": "",
+            "source_fragment_hash": "968210f9fca45968d4e31e48526ef16e15ebd3e731fa0002ba6a9829999595d4"
+          },
+          "label": "那个签名属于谁，她仍不知道",
+          "value": {
+            "description": "那个签名属于谁，她仍不知道"
+          }
+        }
+      ],
+      "previous_scene_render": null
+    }
+  },
+  "checklist": {
+    "schema_id": "compiler.prose-judge-checklist.v1",
+    "scene_id": "scene_pacing_archive_suspense",
+    "scene_ordinal": 1,
+    "source": {
+      "scene_plan_hash": "b36550248360331608fd6be073f32ac8bdd2e02c2d74b92248151a657663c8ed",
+      "narrative_ir_hash": "58bd582227ccaa021e7271478b87431f70f70cf947534cf14b9f2c1a58c7a21b",
+      "profile_hash": "cd4d60d4f89e0c70c212cdc92a60f377df41cbeba6798ac5a7c94924372a12ea",
+      "previous_scene_render_hash": null,
+      "checklist_policy_version": "prose-checklist-policy-v1",
+      "checklist_policy_hash": "7d38d2374f69b7734e9096959b155bf3d0ff4cb01ecc46bb7eb3628dde0cdff2"
+    },
+    "scene_context": {
+      "objective": "完成微场景的既定动作。",
+      "dramatic_goal": "保持人物有限视角。",
+      "conflict": "眼前观察尚不足以作最终判断。",
+      "outcome": "保留既定未决状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_archive"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_archive"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_archive"
+      },
+      "story_time_refs": [],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [],
+      "beats": [
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_001",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "呈现：借阅单背面有一个陌生签名",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_1"
+              },
+              "field_path": "",
+              "source_fragment_hash": "bacf1d6cfd13f48a0308f9a445444db602bfd4736cf27751832c3c521d05f276"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_002",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "呈现：手指压住纸角",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_2"
+              },
+              "field_path": "",
+              "source_fragment_hash": "fc3ec5e919a33eb5402dbfcd169807c84aa8b0c108c4348a2ffdfed912603187"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_003",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 3,
+          "kind": "event",
+          "directive": "呈现：门把手没有转开",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_3"
+              },
+              "field_path": "",
+              "source_fragment_hash": "93d95b12f05571370c023b1eddf8e6f0c647de19f4e2aa4ffa1d7f25de4b4b81"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_archive_suspense_004",
+          "scene_id": "scene_pacing_archive_suspense",
+          "ordinal": 4,
+          "kind": "event",
+          "directive": "呈现：那个签名属于谁，她仍不知道",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_archive"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_archive_suspense_4"
+              },
+              "field_path": "",
+              "source_fragment_hash": "968210f9fca45968d4e31e48526ef16e15ebd3e731fa0002ba6a9829999595d4"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_1"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_2"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_3"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_archive_suspense_4"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_1"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_1"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bacf1d6cfd13f48a0308f9a445444db602bfd4736cf27751832c3c521d05f276"
+          },
+          "label": "借阅单背面有一个陌生签名",
+          "value": {
+            "description": "借阅单背面有一个陌生签名"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_2"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_2"
+            },
+            "field_path": "",
+            "source_fragment_hash": "fc3ec5e919a33eb5402dbfcd169807c84aa8b0c108c4348a2ffdfed912603187"
+          },
+          "label": "手指压住纸角",
+          "value": {
+            "description": "手指压住纸角"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_3"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_3"
+            },
+            "field_path": "",
+            "source_fragment_hash": "93d95b12f05571370c023b1eddf8e6f0c647de19f4e2aa4ffa1d7f25de4b4b81"
+          },
+          "label": "门把手没有转开",
+          "value": {
+            "description": "门把手没有转开"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_4"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_archive_suspense_4"
+            },
+            "field_path": "",
+            "source_fragment_hash": "968210f9fca45968d4e31e48526ef16e15ebd3e731fa0002ba6a9829999595d4"
+          },
+          "label": "那个签名属于谁，她仍不知道",
+          "value": {
+            "description": "那个签名属于谁，她仍不知道"
+          }
+        }
+      ],
+      "previous_scene_render": null
+    },
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_archive_suspense_001",
+        "ordinal": 1,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：借阅单背面有一个陌生签名",
+        "beat_ids": [
+          "beat_scene_pacing_archive_suspense_001"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_1"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_1"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_002",
+        "ordinal": 2,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：手指压住纸角",
+        "beat_ids": [
+          "beat_scene_pacing_archive_suspense_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_2"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_2"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_003",
+        "ordinal": 3,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：门把手没有转开",
+        "beat_ids": [
+          "beat_scene_pacing_archive_suspense_003"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_3"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_3"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_004",
+        "ordinal": 4,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：那个签名属于谁，她仍不知道",
+        "beat_ids": [
+          "beat_scene_pacing_archive_suspense_004"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_4"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_archive_suspense_4"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      }
+    ]
+  },
+  "semantic_reviews": {
+    "a": [
+      {
+        "check_id": "check_scene_pacing_archive_suspense_001",
+        "text": "借阅单背面有一个陌生签名",
+        "start_char": 207,
+        "end_char": 219
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_002",
+        "text": "手指压住纸角",
+        "start_char": 239,
+        "end_char": 245
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_003",
+        "text": "门把手没有转开",
+        "start_char": 277,
+        "end_char": 284
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_004",
+        "text": "那个签名属于谁，她仍不知道",
+        "start_char": 311,
+        "end_char": 324
+      }
+    ],
+    "b": [
+      {
+        "check_id": "check_scene_pacing_archive_suspense_001",
+        "text": "借阅单背面有一个陌生签名",
+        "start_char": 207,
+        "end_char": 219
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_002",
+        "text": "手指压住纸角",
+        "start_char": 239,
+        "end_char": 245
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_003",
+        "text": "门把手没有转开",
+        "start_char": 291,
+        "end_char": 298
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_004",
+        "text": "那个签名属于谁，她仍不知道",
+        "start_char": 325,
+        "end_char": 338
+      }
+    ]
+  },
+  "render_a": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_pacing_archive_suspense",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "9d09cb90c2d2e5b464f99c6139a49bd8b8cb2af99867e3bbf9a7ec574d0ac47b",
+      "profile_hash": "cd4d60d4f89e0c70c212cdc92a60f377df41cbeba6798ac5a7c94924372a12ea",
+      "scene_plan_hash": "b36550248360331608fd6be073f32ac8bdd2e02c2d74b92248151a657663c8ed",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "779af19489c03ed9d76bde64c7046eee412a2919f708889396bd867b7c29c7ec"
+    },
+    "stage": "writer",
+    "round": 0,
+    "previous_render_hash": null,
+    "blocks": [
+      {
+        "block_id": "block_scene_pacing_archive_suspense_001",
+        "ordinal": 1,
+        "text": "雨水顺着高窗往下淌，档案室只亮着靠墙的那排灯。林岚把湿外套搭在椅背上，用袖口擦去眼镜上的水汽。今晚交接前，她需要弄清借阅手续中那处对不上的地方。桌面很窄，台灯、登记簿和一只空纸袋挤在一起，她先把台灯挪开，给手边的材料腾出位置。走廊里偶尔传来椅脚拖过地面的声响。她把自己的东西收在桌子一侧，另一侧留给待核对的材料，免得离开时混在一起。她没有带走原件的打算，手边也没有足以指认任何人的证据。林岚在档案室找到那张借阅单。借阅单背面有一个陌生签名。她听见门外有人走近，怕翻页声暴露自己，手指压住纸角。她在心里一再提醒自己别翻页，先听脚步停在门口，再听门把手转动。门把手没有转开。门外的人随后走远。她等脚步消失，才将借阅单装入纸袋；那个签名属于谁，她仍不知道。"
+      }
+    ],
+    "character_count": 325,
+    "selection_reason": null
+  },
+  "semantic_consensus_a": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_pacing_archive_suspense",
+    "round": 0,
+    "checklist_hash": "9d09cb90c2d2e5b464f99c6139a49bd8b8cb2af99867e3bbf9a7ec574d0ac47b",
+    "render_hash": "25ac3d1cb8189b3d3ee30dfa4ad5ea30f02d7695af1ee5d3d4dcdef97dfc3861",
+    "council_policy_hash": "e7b57454cc7cbaf244c4a89793fc1913282d51eb371b9c3957d13772e0744133",
+    "judge_report_hashes": [
+      "be3298cb8739a0cc82bbc87b3655237ee81496505f56bf3c3ad9df88bd62e507"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_archive_suspense_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "be3298cb8739a0cc82bbc87b3655237ee81496505f56bf3c3ad9df88bd62e507",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "be3298cb8739a0cc82bbc87b3655237ee81496505f56bf3c3ad9df88bd62e507",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "be3298cb8739a0cc82bbc87b3655237ee81496505f56bf3c3ad9df88bd62e507",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "be3298cb8739a0cc82bbc87b3655237ee81496505f56bf3c3ad9df88bd62e507",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "render_b": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_pacing_archive_suspense",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "9d09cb90c2d2e5b464f99c6139a49bd8b8cb2af99867e3bbf9a7ec574d0ac47b",
+      "profile_hash": "cd4d60d4f89e0c70c212cdc92a60f377df41cbeba6798ac5a7c94924372a12ea",
+      "scene_plan_hash": "b36550248360331608fd6be073f32ac8bdd2e02c2d74b92248151a657663c8ed",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "7b94fce872cc1b4ef9833e0989444ee3b26b8001949f2b795992e11f7b83b9a6"
+    },
+    "stage": "polished",
+    "round": 0,
+    "previous_render_hash": "25ac3d1cb8189b3d3ee30dfa4ad5ea30f02d7695af1ee5d3d4dcdef97dfc3861",
+    "blocks": [
+      {
+        "block_id": "block_scene_pacing_archive_suspense_001",
+        "ordinal": 1,
+        "text": "雨水顺着高窗往下淌，档案室只亮着靠墙的那排灯。林岚把湿外套搭在椅背上，用袖口擦去眼镜上的水汽。今晚交接前，她需要弄清借阅手续中那处对不上的地方。桌面很窄，台灯、登记簿和一只空纸袋挤在一起，她先把台灯挪开，给手边的材料腾出位置。走廊里偶尔传来椅脚拖过地面的声响。她把自己的东西收在桌子一侧，另一侧留给待核对的材料，免得离开时混在一起。她没有带走原件的打算，手边也没有足以指认任何人的证据。林岚在档案室找到那张借阅单。借阅单背面有一个陌生签名。她听见门外有人走近，怕翻页声暴露自己，手指压住纸角。别翻页。她听着脚步停在门口，手指仍压着纸角。别翻页。门把手转动，她把这三个字又默念了一遍。门把手没有转开。门外的人随后走远。她等脚步消失，才将借阅单装入纸袋；那个签名属于谁，她仍不知道。"
+      }
+    ],
+    "character_count": 339,
+    "selection_reason": null
+  },
+  "semantic_consensus_b": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_pacing_archive_suspense",
+    "round": 0,
+    "checklist_hash": "9d09cb90c2d2e5b464f99c6139a49bd8b8cb2af99867e3bbf9a7ec574d0ac47b",
+    "render_hash": "c233f885a5a22eef5f247ae6cd54d94df99080893eb761770b950d6ebd44469f",
+    "council_policy_hash": "e7b57454cc7cbaf244c4a89793fc1913282d51eb371b9c3957d13772e0744133",
+    "judge_report_hashes": [
+      "c46eebe9bc9ec0f5e816483f613d6a7907ace6dc6ed88020dc0b6b80ebfd6891"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_archive_suspense_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "c46eebe9bc9ec0f5e816483f613d6a7907ace6dc6ed88020dc0b6b80ebfd6891",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "c46eebe9bc9ec0f5e816483f613d6a7907ace6dc6ed88020dc0b6b80ebfd6891",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "c46eebe9bc9ec0f5e816483f613d6a7907ace6dc6ed88020dc0b6b80ebfd6891",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_archive_suspense_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "c46eebe9bc9ec0f5e816483f613d6a7907ace6dc6ed88020dc0b6b80ebfd6891",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "gold": {
+    "overall_preference": "b",
+    "dimension_preferences": [
+      {
+        "dimension": "pov_voice_consistency",
+        "preference": "tie"
+      },
+      {
+        "dimension": "scene_specificity",
+        "preference": "tie"
+      },
+      {
+        "dimension": "dialogue_narration_naturalness",
+        "preference": "tie"
+      },
+      {
+        "dimension": "dramatic_progression_pacing",
+        "preference": "b"
+      },
+      {
+        "dimension": "readability_editability",
+        "preference": "tie"
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "Codex",
+    "reviewer_independence": false,
+    "semantic_origin": "reviewed_synthetic_fixture_not_live_council",
+    "quality_rationale": "两稿均包含反复自我提醒、脚步停止、门把手转动和未打开的相同过程。B 将已有提醒落实到两个威胁推进节点，延迟释放悬念；Profile 要求贴近等待过程，因此不能仅因较长和词语重复而判劣。",
+    "minimal_difference": "same prefix and suffix; only middle expression changes",
+    "qualification_eligible": false
+  },
+  "content_hash": "7020eec6e60bff79bad1a96903213660d237192b53518f013f57e11c8ec4ab1e"
+}

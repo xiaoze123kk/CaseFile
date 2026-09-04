@@ -1,0 +1,523 @@
+{
+  "schema_id": "casefile.prose-quality-pacing-experiment.v1",
+  "experiment_id": "b3-public-pacing-rubric-v1",
+  "suite_hash": "7a99c81d9445086afc556a8dd67ab8f1d732542936887d7c8649ed8d29a89882",
+  "attestation_hash": "63ce39b7b972d53b1c3237e4831f92db12fc2a914c8d5a270f0b07a4a764c394",
+  "task_fingerprints": [
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "focus": "readability_clearer",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_01_readability_clearer.json",
+        "hash": "21924f9191f8529008a69517f33d9d190952780ef8e6ed3d8b8851a420a027bd"
+      },
+      "pair_fingerprint": "8f8b0d8dc83709b82a821aa6fc0413b59fd643a70e42c87854b8b0dcff94e617",
+      "content_hash": "bf20e0d8a0987c40f70d110ce0a1c6fdfbe3766232fe744c6aec9e5f73f8e5d4"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "focus": "pacing_original",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_02_pacing_original.json",
+        "hash": "dc967b2bded79818885c71dbb4f150923ecbc2c85508b76aae6034a1646d11f2"
+      },
+      "pair_fingerprint": "4316522773be6e6685625be2647164cd2ba5b57320b7f4efc5181660b32431bf",
+      "content_hash": "fbc69358734f6f517db74dab7ec6ea64b056419ff04a98e8858ecb7411194463"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "focus": "specificity_polished",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_03_specificity_polished.json",
+        "hash": "fc41157fc5b9d0a74918f46146309133169a93ff85c65f9603237c25e16e7916"
+      },
+      "pair_fingerprint": "5c4c5a38e496148df66a7ee5f0fa0d36d4b65c11601086beb350f440cba04498",
+      "content_hash": "7cf3960c6cfb654a346a98f340a58696ae66a47083450b50f4d2c8ed88c3d813"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "focus": "voice_consistency",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_04_voice_consistency.json",
+        "hash": "90604779379906af2038a9b77a4dca3a50c554360b465922bbfec1f7b45d984a"
+      },
+      "pair_fingerprint": "55e1230817a634a1d6c7f947e6920f73272e5a5ad3aea0536a2d524c1e606521",
+      "content_hash": "2dbd21d0cc7885bc52684642bffb50c926fcb20aab3ffbf0f3cbe29c57de9663"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "focus": "dialogue_naturalness",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_05_dialogue_naturalness.json",
+        "hash": "9bbf81d0d194166dd4bc7d0fcfce39aaea0145749348c373a1e7707cc39ccd76"
+      },
+      "pair_fingerprint": "612bb9de65251621ba86433597c3022a4bbd2aab98352b151913962124fa1826",
+      "content_hash": "17c60f6f519fd64920875657be32f8ab8adb5bba0fb8019fc94d7a7fd724fb73"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "focus": "balanced_paraphrase_tie",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_06_balanced_paraphrase_tie.json",
+        "hash": "2548998c26a8b35f1266cc4910d90817045e9e00dea45f7ef173d319825e146f"
+      },
+      "pair_fingerprint": "621e08531b5fbeee1a5fa1f647042b6d32a1b3e81d63fb74dfd4fa002e853429",
+      "content_hash": "01961d27a597431b8494d801f778f005403e2bd421936165a26d3dd57a938f7c"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "focus": "tradeoff_tie",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_07_tradeoff_tie.json",
+        "hash": "53c164ddb1d5fcf6ffefbbfdb948adf67fcfeb0732f4ae0d2344c3027a2f10bc"
+      },
+      "pair_fingerprint": "05fdfe96759450d7b1545f52ae60c9bb4aa8152324699e3c399cb3fa99018165",
+      "content_hash": "14dad90a0a67f8041d74d9f4f8c464c4053d62e73ec30ca576338ba2f626c1d6"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "focus": "original_more_vivid",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_08_original_more_vivid.json",
+        "hash": "f35b0ea7f34742d37b3d4e6c915875775a4c7cde7bff0cc2b047e62ae07dae8b"
+      },
+      "pair_fingerprint": "7de9f1b428155c0b424406c307b784620212c0693f74a3bd04c8534c984b6a92",
+      "content_hash": "6184b3efafc3619f235c63eb96f3913ea1f66fe33f08e4201a6831c2f458b718"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "focus": "redundant",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/pacing-v1/tasks/pacing_archive_redundant.json",
+        "hash": "cd1c332526ff001a59532185545530e823943e12183807377aa354324cd2942d"
+      },
+      "pair_fingerprint": "87eb3a60c50ec4c53dae3a03ae9771f39c0e08cbfe21aed8d142b967981ecf38"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "focus": "functional",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/pacing-v1/tasks/pacing_archive_suspense.json",
+        "hash": "c3d9642895478a1479bfc7ad7398d78cb00054f38c8512c6355015cf1766c249"
+      },
+      "pair_fingerprint": "2d22e148dbd0134aaf961bbf7522351384292b70602adf64be2cc7dc67e96136"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "focus": "redundant",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/pacing-v1/tasks/pacing_ferry_redundant.json",
+        "hash": "fff27f61055592bc3ccf9dcb1a2c47c323e4a66608ed0aa402f3c168e64a3145"
+      },
+      "pair_fingerprint": "08970e50ef2d38b817f84ea741b00296943d1a67a3e2f0045a0d170b14704b41"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "focus": "functional",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/pacing-v1/tasks/pacing_ferry_suspense.json",
+        "hash": "99bd042633216accd0fcd3f8951d2bbacfd01aa24dcd2732b2ae202eb3616a7b"
+      },
+      "pair_fingerprint": "33abd02d63523ce4b393a91129762eb678ba407eb4fc6aeb9edadda1610959b8"
+    }
+  ],
+  "task_count": 12,
+  "trials_per_task": 3,
+  "call_budget": {
+    "baseline": 72,
+    "candidate": 72,
+    "total": 144
+  },
+  "parameters": {
+    "model_id": "deepseek-v4-flash",
+    "temperature": 0,
+    "thinking_enabled": false,
+    "max_output_tokens": 8192,
+    "max_turns": 1,
+    "network_retries": 0
+  },
+  "baseline": {
+    "component_hash": "db56d0e601453fcaa5be7f51ce4d75b203f055fc4195210ab1e8672c0e7d7180",
+    "protocol": "prose-quality-json-object-v1",
+    "prompt_version": "prose-quality-pairwise-v1",
+    "prompt_hash": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"
+  },
+  "candidate": {
+    "component_version": "prose-quality-pacing-rubric-v1",
+    "base_component_hash": "db56d0e601453fcaa5be7f51ce4d75b203f055fc4195210ab1e8672c0e7d7180",
+    "prompt_version": "prose-quality-pairwise-v4",
+    "prompt_hash": "0d3c29bed5f1aa0245cc17bc8069761002e3b525e620e1af7c758d8b54fb7f26",
+    "changed_dimension": "dramatic_progression_pacing",
+    "calls_per_trial": 2,
+    "component_hash": "325ae8df8d06c5be67d331f4ae8b2b52a1315699e631bd3164daabfb4bb68a41"
+  },
+  "schedule": [
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_archive_redundant",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_archive_suspense",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "trial": 3,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_ferry_redundant",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "trial": 1,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "trial": 1,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "trial": 2,
+      "arm": "baseline"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "trial": 2,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "trial": 3,
+      "arm": "candidate"
+    },
+    {
+      "task_id": "pacing_ferry_suspense",
+      "trial": 3,
+      "arm": "baseline"
+    }
+  ],
+  "comparison_policy": "redundancy-both-position-improvement-functional-and-legacy-nonloss-v1",
+  "failure_policy": "protocol-stop-arm-trial-infrastructure-stop-attempt-no-retry-v1",
+  "reuse_policy": "no-response-reuse-two-independent-position-calls",
+  "qualified": false,
+  "qualification_eligible": false,
+  "review_hash": "5294171d7664ccee789b2c7a4374192c4e35bb2f2e3d6d10e9ba7128766d2647",
+  "experiment_hash": "f93900da33b2f654f88441d7f27509b9b1d9d856f6edbdcd3c654ad3241ea70e"
+}

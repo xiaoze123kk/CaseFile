@@ -643,6 +643,9 @@ EXPECTED_RELEASE_HASHES = {
     ("prose_quality_pairwise", "prose-quality-pairwise-v3"): {
         "system": "efc5d38b3d46efc23d916b735cd15f2374f0ca6ac69ca1cd1c3fb1f2a9e851bf"
     },
+    ("prose_quality_pairwise", "prose-quality-pairwise-v4"): {
+        "system": "0d3c29bed5f1aa0245cc17bc8069761002e3b525e620e1af7c758d8b54fb7f26"
+    },
     ("prose_quality_pairwise", "prose-quality-pairwise-v1"): {
         "system": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"
     },

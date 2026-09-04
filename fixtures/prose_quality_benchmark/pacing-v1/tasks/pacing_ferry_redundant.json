@@ -1,0 +1,1125 @@
+{
+  "schema_id": "casefile.prose-quality-pacing-task.v1",
+  "task_id": "pacing_ferry_redundant",
+  "scene": "ferry",
+  "group": "redundant",
+  "profile": {
+    "schema_id": "compiler.novel-profile.v2",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear",
+      "flashback"
+    ],
+    "exposure_policy": "bound_plan",
+    "prose": {
+      "language": "zh-CN",
+      "narrative_person": "third_person_limited",
+      "narrative_tense": "past",
+      "target_scene_chars": {
+        "min": 300,
+        "max": 1200
+      },
+      "dialogue_ratio": {
+        "min": 0,
+        "max": 0.5
+      },
+      "description_density": "balanced",
+      "pacing": "balanced",
+      "style_brief": "克制、清晰，通过核对、发现和行动推进调查。",
+      "forbidden_style_patterns": [
+        "总结式解释凶手动机"
+      ]
+    }
+  },
+  "synthetic_source": {
+    "fixture_kind": "synthetic_public_micro_scene",
+    "task_id": "pacing_ferry_redundant",
+    "facts": [
+      "沈舟在渡口等末班船",
+      "售票窗已经关闭",
+      "牌面和票面的时间相同，都是九点",
+      "没有把那声笛响当成船已经靠岸"
+    ],
+    "context": {
+      "objective": "完成微场景的既定动作。",
+      "dramatic_goal": "保持人物有限视角。",
+      "conflict": "眼前观察尚不足以作最终判断。",
+      "outcome": "保留既定未决状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_ferry"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_ferry"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_ferry"
+      },
+      "story_time_refs": [],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [],
+      "beats": [
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_001",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "呈现：沈舟在渡口等末班船",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_1"
+              },
+              "field_path": "",
+              "source_fragment_hash": "08cae88a4b2f521393b25803eff29439f322e6d10dee28f6769d39cd54c0a521"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_002",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "呈现：售票窗已经关闭",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_2"
+              },
+              "field_path": "",
+              "source_fragment_hash": "4c5860943fef5b2463c85f74d7d242af288ae8416cc7c969e8b9d2ad605b3ae7"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_003",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 3,
+          "kind": "event",
+          "directive": "呈现：牌面和票面的时间相同，都是九点",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_3"
+              },
+              "field_path": "",
+              "source_fragment_hash": "bebf83c364af25856d1237eb059566605357cbe0d1d5975aad21d473a3e07098"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_004",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 4,
+          "kind": "event",
+          "directive": "呈现：没有把那声笛响当成船已经靠岸",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_4"
+              },
+              "field_path": "",
+              "source_fragment_hash": "7e2fbfc66202b6d31458bb458c8cdd9674385e8e8b1e68cafcdb01559b68cbf8"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_1"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_2"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_3"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_4"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_1"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            },
+            "field_path": "",
+            "source_fragment_hash": "08cae88a4b2f521393b25803eff29439f322e6d10dee28f6769d39cd54c0a521"
+          },
+          "label": "沈舟在渡口等末班船",
+          "value": {
+            "description": "沈舟在渡口等末班船"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_2"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            },
+            "field_path": "",
+            "source_fragment_hash": "4c5860943fef5b2463c85f74d7d242af288ae8416cc7c969e8b9d2ad605b3ae7"
+          },
+          "label": "售票窗已经关闭",
+          "value": {
+            "description": "售票窗已经关闭"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_3"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bebf83c364af25856d1237eb059566605357cbe0d1d5975aad21d473a3e07098"
+          },
+          "label": "牌面和票面的时间相同，都是九点",
+          "value": {
+            "description": "牌面和票面的时间相同，都是九点"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_4"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            },
+            "field_path": "",
+            "source_fragment_hash": "7e2fbfc66202b6d31458bb458c8cdd9674385e8e8b1e68cafcdb01559b68cbf8"
+          },
+          "label": "没有把那声笛响当成船已经靠岸",
+          "value": {
+            "description": "没有把那声笛响当成船已经靠岸"
+          }
+        }
+      ],
+      "previous_scene_render": null
+    }
+  },
+  "checklist": {
+    "schema_id": "compiler.prose-judge-checklist.v1",
+    "scene_id": "scene_pacing_ferry_redundant",
+    "scene_ordinal": 1,
+    "source": {
+      "scene_plan_hash": "5325cc308ee19ce69df7d282ad5b3e29a14afbc92783a20075e61351f59481d7",
+      "narrative_ir_hash": "bcd5fae85f7676358acdc684825346909aadef3b6277eca8be8a552051fc28ca",
+      "profile_hash": "6cc4afde4a831f48746665ddfe29b9e9ebd12c88b6fa51a0546e4f8863aa507e",
+      "previous_scene_render_hash": null,
+      "checklist_policy_version": "prose-checklist-policy-v1",
+      "checklist_policy_hash": "7d38d2374f69b7734e9096959b155bf3d0ff4cb01ecc46bb7eb3628dde0cdff2"
+    },
+    "scene_context": {
+      "objective": "完成微场景的既定动作。",
+      "dramatic_goal": "保持人物有限视角。",
+      "conflict": "眼前观察尚不足以作最终判断。",
+      "outcome": "保留既定未决状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_ferry"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_ferry"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_ferry"
+      },
+      "story_time_refs": [],
+      "state_before": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "expected_state_after": {
+        "audience_exposure": [],
+        "character_knowledge": [],
+        "locations": [],
+        "open_setups": []
+      },
+      "prerequisite_scene_ids": [],
+      "prerequisite_beat_ids": [],
+      "beats": [
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_001",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 1,
+          "kind": "event",
+          "directive": "呈现：沈舟在渡口等末班船",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_1"
+              },
+              "field_path": "",
+              "source_fragment_hash": "08cae88a4b2f521393b25803eff29439f322e6d10dee28f6769d39cd54c0a521"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_002",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 2,
+          "kind": "event",
+          "directive": "呈现：售票窗已经关闭",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_2"
+              },
+              "field_path": "",
+              "source_fragment_hash": "4c5860943fef5b2463c85f74d7d242af288ae8416cc7c969e8b9d2ad605b3ae7"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_003",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 3,
+          "kind": "event",
+          "directive": "呈现：牌面和票面的时间相同，都是九点",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_3"
+              },
+              "field_path": "",
+              "source_fragment_hash": "bebf83c364af25856d1237eb059566605357cbe0d1d5975aad21d473a3e07098"
+            }
+          ]
+        },
+        {
+          "beat_id": "beat_scene_pacing_ferry_redundant_004",
+          "scene_id": "scene_pacing_ferry_redundant",
+          "ordinal": 4,
+          "kind": "event",
+          "directive": "呈现：没有把那声笛响当成船已经靠岸",
+          "actor_refs": [
+            {
+              "object_type": "entity",
+              "object_id": "ent_ferry"
+            }
+          ],
+          "target_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            }
+          ],
+          "basis_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            }
+          ],
+          "obligation_keys": [],
+          "prerequisite_beat_ids": [],
+          "event_refs": [
+            {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            }
+          ],
+          "exposure_actions": [],
+          "resolution_actions": [],
+          "state_delta": {
+            "knowledge_transitions": [],
+            "location_assertions": []
+          },
+          "setup_keys": [],
+          "payoff_keys": [],
+          "source_refs": [
+            {
+              "object_ref": {
+                "object_type": "event",
+                "object_id": "evt_pacing_ferry_redundant_4"
+              },
+              "field_path": "",
+              "source_fragment_hash": "7e2fbfc66202b6d31458bb458c8cdd9674385e8e8b1e68cafcdb01559b68cbf8"
+            }
+          ]
+        }
+      ],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_1"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_2"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_3"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_pacing_ferry_redundant_4"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "setup_keys": [],
+      "payoff_keys": [],
+      "obligation_keys": [],
+      "object_catalog": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_1"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_1"
+            },
+            "field_path": "",
+            "source_fragment_hash": "08cae88a4b2f521393b25803eff29439f322e6d10dee28f6769d39cd54c0a521"
+          },
+          "label": "沈舟在渡口等末班船",
+          "value": {
+            "description": "沈舟在渡口等末班船"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_2"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_2"
+            },
+            "field_path": "",
+            "source_fragment_hash": "4c5860943fef5b2463c85f74d7d242af288ae8416cc7c969e8b9d2ad605b3ae7"
+          },
+          "label": "售票窗已经关闭",
+          "value": {
+            "description": "售票窗已经关闭"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_3"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_3"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bebf83c364af25856d1237eb059566605357cbe0d1d5975aad21d473a3e07098"
+          },
+          "label": "牌面和票面的时间相同，都是九点",
+          "value": {
+            "description": "牌面和票面的时间相同，都是九点"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_4"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_pacing_ferry_redundant_4"
+            },
+            "field_path": "",
+            "source_fragment_hash": "7e2fbfc66202b6d31458bb458c8cdd9674385e8e8b1e68cafcdb01559b68cbf8"
+          },
+          "label": "没有把那声笛响当成船已经靠岸",
+          "value": {
+            "description": "没有把那声笛响当成船已经靠岸"
+          }
+        }
+      ],
+      "previous_scene_render": null
+    },
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_001",
+        "ordinal": 1,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：沈舟在渡口等末班船",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_redundant_001"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_1"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_1"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_002",
+        "ordinal": 2,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：售票窗已经关闭",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_redundant_002"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_2"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_2"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_003",
+        "ordinal": 3,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：牌面和票面的时间相同，都是九点",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_redundant_003"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_3"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_3"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_004",
+        "ordinal": 4,
+        "kind": "beat_realization",
+        "polarity": "required",
+        "expectation": "正文保留：没有把那声笛响当成船已经靠岸",
+        "beat_ids": [
+          "beat_scene_pacing_ferry_redundant_004"
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_4"
+          }
+        ],
+        "event_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_pacing_ferry_redundant_4"
+          }
+        ],
+        "exposure_entry_keys": [],
+        "state_refs": [],
+        "evidence_policy": "required_on_pass"
+      }
+    ]
+  },
+  "semantic_reviews": {
+    "a": [
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_001",
+        "text": "沈舟在渡口等末班船",
+        "start_char": 198,
+        "end_char": 207
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_002",
+        "text": "售票窗已经关闭",
+        "start_char": 208,
+        "end_char": 215
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_003",
+        "text": "牌面和票面的时间相同，都是九点",
+        "start_char": 241,
+        "end_char": 256
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_004",
+        "text": "没有把那声笛响当成船已经靠岸",
+        "start_char": 336,
+        "end_char": 350
+      }
+    ],
+    "b": [
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_001",
+        "text": "沈舟在渡口等末班船",
+        "start_char": 198,
+        "end_char": 207
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_002",
+        "text": "售票窗已经关闭",
+        "start_char": 208,
+        "end_char": 215
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_003",
+        "text": "牌面和票面的时间相同，都是九点",
+        "start_char": 241,
+        "end_char": 256
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_004",
+        "text": "没有把那声笛响当成船已经靠岸",
+        "start_char": 299,
+        "end_char": 313
+      }
+    ]
+  },
+  "render_a": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_pacing_ferry_redundant",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "ecc731191a4a1a6b8ef328d48c277eaa8cb5b09953771dfe72d56c2d08f9135a",
+      "profile_hash": "6cc4afde4a831f48746665ddfe29b9e9ebd12c88b6fa51a0546e4f8863aa507e",
+      "scene_plan_hash": "5325cc308ee19ce69df7d282ad5b3e29a14afbc92783a20075e61351f59481d7",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "5d41352c6f5fcdf9d33584b0b1116120a627b138083298e36d34026c6e05a924"
+    },
+    "stage": "writer",
+    "round": 0,
+    "previous_render_hash": null,
+    "blocks": [
+      {
+        "block_id": "block_scene_pacing_ferry_redundant_001",
+        "ordinal": 1,
+        "text": "雾把渡口外的航道遮住了。沈舟坐在候船棚边，鞋底还沾着沿岸小路的泥。棚顶积水从缺口滴下来，他把行李移到干燥的一侧，让视线能越过栏杆看向船来的方向。回程的路很远，他不愿在消息尚未确定时就放弃这趟船。长椅旁贴着一张旧航线图，纸角已经卷起，他用指尖压平它，确认等候的位置没有弄错。他把行李带绕在手腕上，留出起身的余地。除了远处模糊的水声，这里听不见别的动静；他决定留意广播和航道，等到有确实消息再作打算。沈舟在渡口等末班船。售票窗已经关闭，时刻牌写着九点发船。他核对手里的票，票面也是九点。牌面和票面的时间相同，都是九点。也就是说，牌上写九点，票上也写九点，两处时间并没有不同，写的是同一个时间。远处响起一声船笛，他抬头望向航道，雾里却还看不见船影。他把票收回口袋，留在原处等候，没有把那声笛响当成船已经靠岸。"
+      }
+    ],
+    "character_count": 351,
+    "selection_reason": null
+  },
+  "semantic_consensus_a": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_pacing_ferry_redundant",
+    "round": 0,
+    "checklist_hash": "ecc731191a4a1a6b8ef328d48c277eaa8cb5b09953771dfe72d56c2d08f9135a",
+    "render_hash": "78d0648e722aa0a7e3d369309ea1cc20e9a5ce248297dbfb65103143312b7be9",
+    "council_policy_hash": "e7b57454cc7cbaf244c4a89793fc1913282d51eb371b9c3957d13772e0744133",
+    "judge_report_hashes": [
+      "00daf5c1f3d7ffd37d74cf1b2a4f8a3dbc019d72c52f9c51a2dc3cdbf3e09812"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "00daf5c1f3d7ffd37d74cf1b2a4f8a3dbc019d72c52f9c51a2dc3cdbf3e09812",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "00daf5c1f3d7ffd37d74cf1b2a4f8a3dbc019d72c52f9c51a2dc3cdbf3e09812",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "00daf5c1f3d7ffd37d74cf1b2a4f8a3dbc019d72c52f9c51a2dc3cdbf3e09812",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "00daf5c1f3d7ffd37d74cf1b2a4f8a3dbc019d72c52f9c51a2dc3cdbf3e09812",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "render_b": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_pacing_ferry_redundant",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "ecc731191a4a1a6b8ef328d48c277eaa8cb5b09953771dfe72d56c2d08f9135a",
+      "profile_hash": "6cc4afde4a831f48746665ddfe29b9e9ebd12c88b6fa51a0546e4f8863aa507e",
+      "scene_plan_hash": "5325cc308ee19ce69df7d282ad5b3e29a14afbc92783a20075e61351f59481d7",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "ab9fbf4bc038a4ad7ac55dade36732b9f5c89e3d5e3633ab63b3caab3cc924e7"
+    },
+    "stage": "polished",
+    "round": 0,
+    "previous_render_hash": "78d0648e722aa0a7e3d369309ea1cc20e9a5ce248297dbfb65103143312b7be9",
+    "blocks": [
+      {
+        "block_id": "block_scene_pacing_ferry_redundant_001",
+        "ordinal": 1,
+        "text": "雾把渡口外的航道遮住了。沈舟坐在候船棚边，鞋底还沾着沿岸小路的泥。棚顶积水从缺口滴下来，他把行李移到干燥的一侧，让视线能越过栏杆看向船来的方向。回程的路很远，他不愿在消息尚未确定时就放弃这趟船。长椅旁贴着一张旧航线图，纸角已经卷起，他用指尖压平它，确认等候的位置没有弄错。他把行李带绕在手腕上，留出起身的余地。除了远处模糊的水声，这里听不见别的动静；他决定留意广播和航道，等到有确实消息再作打算。沈舟在渡口等末班船。售票窗已经关闭，时刻牌写着九点发船。他核对手里的票，票面也是九点。牌面和票面的时间相同，都是九点。远处响起一声船笛，他抬头望向航道，雾里却还看不见船影。他把票收回口袋，留在原处等候，没有把那声笛响当成船已经靠岸。"
+      }
+    ],
+    "character_count": 314,
+    "selection_reason": null
+  },
+  "semantic_consensus_b": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_pacing_ferry_redundant",
+    "round": 0,
+    "checklist_hash": "ecc731191a4a1a6b8ef328d48c277eaa8cb5b09953771dfe72d56c2d08f9135a",
+    "render_hash": "a7c60e9da9dc4afe03a14ce7515da19fd87fdb0055b002941c39a4c67119a2be",
+    "council_policy_hash": "e7b57454cc7cbaf244c4a89793fc1913282d51eb371b9c3957d13772e0744133",
+    "judge_report_hashes": [
+      "eb03b0ddde0aa4f3e22ef7c393c3512385752acab184670540d6c53f2e09b6b0"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "eb03b0ddde0aa4f3e22ef7c393c3512385752acab184670540d6c53f2e09b6b0",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "eb03b0ddde0aa4f3e22ef7c393c3512385752acab184670540d6c53f2e09b6b0",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "eb03b0ddde0aa4f3e22ef7c393c3512385752acab184670540d6c53f2e09b6b0",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_pacing_ferry_redundant_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "eb03b0ddde0aa4f3e22ef7c393c3512385752acab184670540d6c53f2e09b6b0",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "pass",
+    "failed_check_ids": [],
+    "unresolved_check_ids": []
+  },
+  "gold": {
+    "overall_preference": "b",
+    "dimension_preferences": [
+      {
+        "dimension": "pov_voice_consistency",
+        "preference": "tie"
+      },
+      {
+        "dimension": "scene_specificity",
+        "preference": "tie"
+      },
+      {
+        "dimension": "dialogue_narration_naturalness",
+        "preference": "tie"
+      },
+      {
+        "dimension": "dramatic_progression_pacing",
+        "preference": "b"
+      },
+      {
+        "dimension": "readability_editability",
+        "preference": "b"
+      }
+    ]
+  },
+  "review": {
+    "reviewer": "Codex",
+    "reviewer_independence": false,
+    "semantic_origin": "reviewed_synthetic_fixture_not_live_council",
+    "quality_rationale": "A 多次改述两处时间相同，没有制造时间流逝或主观焦虑；B 保留完全相同的核对结果，较少无效复述。将较短优稿放在 B，避免只学习位置。",
+    "minimal_difference": "same prefix and suffix; only middle expression changes",
+    "qualification_eligible": false
+  },
+  "content_hash": "24ba90df98e8de90d09871fc9340926bbac1ccb71d89387a9c51539c2b905b11"
+}

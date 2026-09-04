@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_quality_pairwise",
+  "version": "prose-quality-pairwise-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "0d3c29bed5f1aa0245cc17bc8069761002e3b525e620e1af7c758d8b54fb7f26",
+  "previous_version": "prose-quality-pairwise-v3",
+  "change_summary": "基于活动 v1 仅补充节奏维度的无效重复与功能性重复判别，限公开开发对照。"
+}
