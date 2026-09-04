@@ -50,7 +50,6 @@ from casefile.benchmark.prose_quality_eval import (
     canonical_hash,
     load_prose_quality_qualification_suite,
 )
-from casefile.benchmark.prose_quality_source import quality_source_identity
 
 REPORT_VERSION: Final = "casefile.prose-quality-qualification-report.v1"
 EXECUTOR_VERSION: Final = "prose-quality-qualification-executor-v1"
@@ -663,8 +662,18 @@ def _validate_source_state(source: dict[str, Any]) -> None:
 
 
 def _git_source_state(repo_root: Path) -> dict[str, Any]:
+    root = repo_root.resolve()
+    return {
+        "revision": _git(root, "rev-parse", "HEAD").strip(),
+        "branch": _git(root, "branch", "--show-current").strip(),
+        "clean": not bool(_git(root, "status", "--porcelain", "--untracked-files=normal").strip()),
+        "tracked_source_hash": canonical_hash(_git(root, "ls-files", "-s", "--", ".").splitlines()),
+    }
+
+
+def _git(root: Path, *args: str) -> str:
     try:
-        return quality_source_identity(repo_root.resolve())
+        return subprocess.check_output(["git", *args], cwd=root, text=True, encoding="utf-8")
     except (OSError, subprocess.CalledProcessError) as error:
         raise ProseQualityQualificationError("prose_quality_git_probe_failed") from error
 

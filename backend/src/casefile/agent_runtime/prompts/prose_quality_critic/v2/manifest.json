@@ -1,8 +1,0 @@
-{
-  "agent_id": "prose_quality_critic",
-  "version": "prose-quality-critic-v2",
-  "system_prompt_file": "system.md",
-  "system_prompt_sha256": "5a351ccbabff97d9e4cecb6794ecef7dcae2261497f24403a82ee39948eb44b8",
-  "previous_version": "prose-quality-critic-v1",
-  "change_summary": "增加仅供开发诊断的独立单稿五维评估协议，活动版本保持 v1。"
-}

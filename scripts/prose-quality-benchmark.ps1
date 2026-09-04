@@ -1,9 +1,7 @@
 param(
-    [ValidateSet("Fake", "DiagnosticFake", "DiagnosticLive", "QualificationCheck", "QualificationLive")]
+    [ValidateSet("Fake", "QualificationCheck", "QualificationLive")]
     [string]$Mode = "Fake",
     [string]$AttemptId = "local",
-    [ValidateSet("independent-v1", "pacing-v1")]
-    [string]$DiagnosticExperiment = "independent-v1",
     [string]$QualificationSuite = "",
     [string]$LiveConfirmation = ""
 )
@@ -20,13 +18,6 @@ try {
     if ($Mode -eq "Fake") {
         $outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\n4.5-b3-development\$AttemptId"
         & $python -m casefile.benchmark.prose_quality_eval --mode fake --output-dir $outputDir
-    } elseif ($Mode -in @("DiagnosticFake", "DiagnosticLive")) {
-        if ($AttemptId -eq "local") {
-            throw "Diagnostics require an explicit unique -AttemptId."
-        }
-        $diagnosticMode = if ($Mode -eq "DiagnosticLive") { "live" } else { "fake" }
-        & $python -m casefile.benchmark.prose_quality_diagnostic `
-            --mode $diagnosticMode --attempt-id $AttemptId --experiment $DiagnosticExperiment
     } elseif ($Mode -eq "QualificationCheck") {
         $arguments = @("-m", "casefile.benchmark.prose_quality_eval", "--mode", "qualification-check")
         if ($QualificationSuite) {

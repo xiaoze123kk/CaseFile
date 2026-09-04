@@ -1,8 +1,0 @@
-{
-  "agent_id": "prose_quality_pairwise",
-  "version": "prose-quality-pairwise-v3",
-  "system_prompt_file": "system.md",
-  "system_prompt_sha256": "efc5d38b3d46efc23d916b735cd15f2374f0ca6ac69ca1cd1c3fb1f2a9e851bf",
-  "previous_version": "prose-quality-pairwise-v2",
-  "change_summary": "增加仅供开发诊断的独立评估辅助双位置比较，活动版本保持 v1。"
-}

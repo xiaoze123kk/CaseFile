@@ -262,21 +262,3 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 - 版本与审计：`draft_snapshots`、`canon_versions`、`audit_events`。
 
 新增或删除表必须同步更新 ORM、迁移、两份数据库说明、元数据测试和本文。
-
-## B3 公开评审对照实验
-
-- `backend/src/casefile/agent_runtime/prose_quality_diagnostic.py`：显式开发候选，两次独立单稿五维评估与两次位置互换比较；使用匿名 Evidence、严格内部类型和完整绑定，不进入生产默认路径。
-- `backend/src/casefile/agent_runtime/prose_quality_critic.py`：通过公开的 `execute_quality_request` 与 `quality_pairwise_report_from_candidate` 复用响应绑定和领域报告校验；内部 Request 支持显式候选 Schema，原基线的 Prompt、请求指纹与行为不变。
-- `backend/src/casefile/agent_runtime/prompts/prose_quality_critic/v2/` 与 `prompts/prose_quality_pairwise/v3/`：仅由实验显式选择的单稿评估/辅助比较 Prompt；registry 的活动 v1 指针不变。
-- `backend/src/casefile/benchmark/prose_quality_diagnostic.py`：公开 8×3 配对实验描述校验、Fake/Live、交替顺序、144 次预算、一次性消费与不可覆盖逐行结果；不导入正式资格执行器。
-- `backend/src/casefile/benchmark/prose_quality_diagnostic_report.py`：双位置整体/五维准确率、镜像一致、Gold 分层、逐题稳定性、旧开发门槛、固定失败分母和可读报告；只有 Live 可以产生开发改进建议，始终 qualified=false。
-- `backend/src/casefile/benchmark/prose_quality_source.py`：开发对照和正式 Quality 资格共用的只读 Git revision/clean/index 身份探针；资格入口保留原错误转换。
-- `backend/tests/unit/test_prose_quality_diagnostic.py`：单侧隔离、互换、Evidence/绑定失败、固定预算/分母、偏好位置与 tie、回归判定、干净源码预检和一次性消费测试。
-
-## B3 节奏维度开发实验
-
-- `backend/src/casefile/benchmark/prose_quality_pacing.py`：显式 pacing-v1 实验的 8 旧题 + 4 合成新题 loader、逐事实审阅 Evidence 与哈希校验、节奏 Prompt 绑定、144 次冻结设计及分组/逐维不退步条件。新合成 Consensus 是人工审阅的测试凭证，不是 Live Council 结果。
-- `backend/src/casefile/agent_runtime/prose_quality_critic.py`：增加显式 `PairwiseQualityPolicy` 以复用双位置执行与同一输出契约；默认 None 保持原请求指纹，实验版本和组件哈希进入独立绑定。
-- `backend/src/casefile/agent_runtime/prompts/prose_quality_pairwise/v4/`：以活动 v1 全文为基础只补充节奏中的无效重复/功能性重复标准，不包含题目或 Gold；registry 仍指向 v1。
-- `backend/src/casefile/benchmark/prose_quality_diagnostic.py` 与 `prose_quality_diagnostic_report.py`：在原四调用实验之外显式选择 pacing-v1；按冻结题数保留分母、旧题门槛和新分组节奏指标，并复用失败关闭与一次性消费。
-- `backend/tests/unit/test_prose_quality_pacing.py`：新场景重建、长短/位置反例、原请求指纹锁定、双调用、12×3 分母、Gold 复核、功能性重复误伤和旧题逐维退步的验收测试。
