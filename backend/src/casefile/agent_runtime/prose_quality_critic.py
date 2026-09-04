@@ -262,7 +262,7 @@ class DeepSeekProseQualityCriticProvider:
             max(0, round((perf_counter() - attempt_started) * 1000)),
             None,
             True,
-            usage,
+            usage if response.usage is not None else None,
         )
         raw = ""
         candidate: dict[str, Any] | None = None

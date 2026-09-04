@@ -79,6 +79,13 @@ class TaskFinalizer:
                 return False
             if task.leased_by != self.worker_id or attempt.status != "running":
                 return False
+            if task.input_jsonb.get("prose_renderer_shadow"):
+                from casefile.worker.executors.prose_store import ProseLeaseLost, assert_prose_owner
+
+                try:
+                    assert_prose_owner(task, attempt, self.worker_id, allow_cancel=True)
+                except ProseLeaseLost:
+                    return False
             usage = _terminal_attempt_usage(session, attempt.id, usage)
             now = datetime.now(UTC)
             finalize_task_cancellation(
@@ -129,6 +136,13 @@ class TaskFinalizer:
                 or attempt.status != "running"
             ):
                 return
+            if task.input_jsonb.get("prose_renderer_shadow"):
+                from casefile.worker.executors.prose_store import ProseLeaseLost, assert_prose_owner
+
+                try:
+                    assert_prose_owner(task, attempt, self.worker_id, allow_cancel=True)
+                except ProseLeaseLost:
+                    return
             usage = _terminal_attempt_usage(session, attempt.id, usage)
             safe_message = _safe_error_message(error, sensitive_values)
             underlying_error_code = error_code

@@ -487,6 +487,8 @@
         },
         "rewrite_count": {"type": "integer", "minimum": 0, "maximum": 2},
         "call_count": {"type": "integer", "minimum": 0, "maximum": 23},
+        "physical_request_count": {"type": "integer", "minimum": 0},
+        "unknown_usage_count": {"type": "integer", "minimum": 0},
         "usage": {"$ref": "#/$defs/UsageSummary"},
         "latency_ms": {"type": "integer", "minimum": 0},
         "recovered_call_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
@@ -534,7 +536,9 @@
             "polisher_component_hash": {"$ref": "#/$defs/Sha256Hex"}
           }
         },
-        "scenes": {"type": "array", "items": {"$ref": "#/$defs/SceneManifest"}, "minItems": 1},
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/SceneManifest"}},
+        "runtime": {"type": "object"},
+        "not_run_scene_ids": {"type": "array", "items": {"$ref": "#/$defs/SceneId"}, "uniqueItems": true},
         "shadow_status": {
           "enum": ["blocked_precondition", "inconclusive_infrastructure", "semantic_rejected", "succeeded"]
         },

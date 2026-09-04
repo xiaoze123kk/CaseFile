@@ -190,7 +190,7 @@ class DeepSeekProseRewriterProvider:
             latency_ms=max(0, round((perf_counter() - attempt_started) * 1000)),
             error_code=None,
             response_observed=True,
-            usage=usage,
+            usage=usage if response.usage is not None else None,
         )
         raw = ""
         candidate: dict[str, Any] | None = None

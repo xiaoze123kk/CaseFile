@@ -70,3 +70,7 @@
 | `fixtures/novel_plan_benchmark/v3/constraint_first_diagnostic_v1.json` | Constraint-First 实验的六 Task × 三 Trial 定向诊断集合及 `ea0bc...` 基线失败分布；只用于开发诊断，不构成正式晋级证据。 |
 | `fixtures/scene_plan_benchmark/v1/` | N4.4 Narrative Execution Benchmark 历史审计源：冻结 8 能力×basic/decoy/dense 的 NovelPlan/NarrativeIR 输入、人工审阅 Reference、每能力一个合法 Alternative、11 个面向 v2 SemanticFill/State Engine 的确定性 Safety Mutation，以及早期 contract-only G3 rubric。 |
 | `fixtures/scene_plan_benchmark/v2/` | 当前 N4.4 G3/G4 资格套件：复用并 hash 绑定 v1 审计输入，为 24 Task 冻结由正式 v2 State Engine 生成的 runtime reference；G3 固定 `deepseek-v4-flash` 盲位 pairwise 协议，正常单调用、仅空响应额外重试一次，并冻结五维 rubric、同源偏差声明与 Task-cluster bootstrap 阈值；G4 固定 v2 语义签名。前瞻门槛以既有 71/72 完整基线冻结，但必须由全新 24×3 Pro 生成 + Flash Judge 报告计算资格。 |
+
+## N4.5-07 兼容扩展
+
+CompileInputManifest 增加可选 `prose_renderer_shadow`（缺省 false）和冻结的 `prose_runtime`。历史原始 JSON 按原形校验 hash，不通过补默认值迁移历史身份。CompileManifest 保留既有组件报告，增加 runtime、not_run_scene_ids，允许前置阻断时 scenes 为空；SceneManifest 增加 physical_request_count、unknown_usage_count，call_count 继续表示逻辑调用。新字段兼容旧 Fixture/资格报告；Schema、Python/TS 与 OpenAPI 由统一入口同步。

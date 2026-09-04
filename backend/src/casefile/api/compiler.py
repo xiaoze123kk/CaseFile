@@ -88,6 +88,7 @@ def compiler_router() -> APIRouter:
             exposure_plan_revision_id=payload.exposure_plan_revision_id,
             compiler_profile_version_id=payload.compiler_profile_version_id,
             planner_provider=payload.planner_provider,
+            prose_renderer_shadow=payload.prose_renderer_shadow,
         )
 
     @router.get("/projects/{project_id}/compile-runs")

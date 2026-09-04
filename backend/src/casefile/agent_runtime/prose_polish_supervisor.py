@@ -26,6 +26,7 @@ from casefile.agent_runtime.prose_quality_critic import (
     execute_mirrored_pairwise_quality,
     execute_quality_findings,
 )
+from casefile.agent_runtime.prose_runtime import ComponentObserver, ignore_component
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
@@ -39,9 +40,7 @@ PROSE_POLISH_SUPERVISOR_VERSION = "prose-polish-supervisor-v1"
 
 @dataclass(frozen=True, slots=True)
 class ProsePolishSupervisorExecution:
-    status: Literal[
-        "finalized_original", "finalized_polished", "protocol_failed", "inconclusive"
-    ]
+    status: Literal["finalized_original", "finalized_polished", "protocol_failed", "inconclusive"]
     original_render: dict[str, Any] | None
     findings: ProseQualityExecution | None
     polish: ProsePolisherExecution | None
@@ -64,6 +63,7 @@ def execute_prose_polish_supervisor(
     quality_model_id: str,
     generation_model_id: str,
     api_key: str,
+    observe: ComponentObserver = ignore_component,
 ) -> ProsePolishSupervisorExecution:
     """Run the bounded B3 path and never expose model-owned acceptance control."""
 
@@ -93,9 +93,7 @@ def execute_prose_polish_supervisor(
             profile=profile,
         )
     except CompilerContractError as error:
-        return _terminal(
-            "protocol_failed", None, None, None, None, None, None, str(error)
-        )
+        return _terminal("protocol_failed", None, None, None, None, None, None, str(error))
     findings = execute_quality_findings(
         quality_provider,
         checklist=checklist,
@@ -105,6 +103,7 @@ def execute_prose_polish_supervisor(
         model_id=quality_model_id,
         api_key=api_key,
     )
+    observe("findings", findings)
     if findings.status != "completed" or findings.report is None:
         return _terminal(
             findings.status,
@@ -126,6 +125,7 @@ def execute_prose_polish_supervisor(
         model_id=generation_model_id,
         api_key=api_key,
     )
+    observe("polish", polish)
     if polish.status != "completed" or polish.render is None:
         return _terminal(
             polish.status,
@@ -146,6 +146,7 @@ def execute_prose_polish_supervisor(
         model_id=generation_model_id,
         api_key=api_key,
     )
+    observe("preservation", preservation)
     if preservation.status != "completed" or preservation.consensus is None:
         return _terminal(
             preservation.status,
@@ -193,6 +194,7 @@ def execute_prose_polish_supervisor(
         model_id=quality_model_id,
         api_key=api_key,
     )
+    observe("pairwise", pairwise)
     if pairwise.status != "completed" or pairwise.decision is None:
         return _terminal(
             pairwise.status,

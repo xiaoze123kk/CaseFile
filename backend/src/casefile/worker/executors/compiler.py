@@ -33,6 +33,7 @@ from casefile.application.compiler.constants import (
 from casefile.application.task_events import append_task_event
 from casefile.data_postgres.compiler_repository import CompilerRepository
 from casefile.data_postgres.models import (
+    AgentModelCall,
     AgentStepRun,
     CanonVersion,
     CompileArtifact,
@@ -51,6 +52,7 @@ from casefile.domain.narrative_compiler import (
     validate_compile_input_manifest,
 )
 from casefile.worker.executors.completion import CompletionExecutor
+from casefile.worker.executors.prose_store import ProseLeaseLost, assert_prose_owner
 from casefile.worker.failures import TaskCancellationRequested
 from casefile.worker.provider_resolution import ProviderFactory
 
@@ -74,6 +76,7 @@ def _normalize_compiler_error(error: Exception, *, fallback_code: str) -> Compil
 @dataclass(frozen=True, slots=True)
 class _CompilerRuntimeConfig:
     worker_id: str
+    lease_seconds: int = 600
 
 
 class CompilerExecutor:
@@ -86,11 +89,14 @@ class CompilerExecutor:
         worker_id: str,
         provider_factory: ProviderFactory,
         completion: CompletionExecutor,
+        prose_providers: Any = None,
+        lease_seconds: int = 600,
     ) -> None:
         self.session_factory = session_factory
-        self.config = _CompilerRuntimeConfig(worker_id=worker_id)
+        self.config = _CompilerRuntimeConfig(worker_id=worker_id, lease_seconds=lease_seconds)
         self.provider_factory = provider_factory
         self._completion = completion
+        self.prose_providers = prose_providers
 
     def execute(self, task_run_id: int, attempt_id: int) -> None:
         self._execute_novel_compile(task_run_id, attempt_id)
@@ -135,7 +141,7 @@ class CompilerExecutor:
             manifest_artifact_id, manifest_reused = self._materialize_input_manifest(
                 task_run_id, attempt_id, run, manifest_json
             )
-        except TaskCancellationRequested:
+        except (TaskCancellationRequested, ProseLeaseLost):
             raise
         except Exception as error:
             normalized = _normalize_compiler_error(
@@ -182,7 +188,7 @@ class CompilerExecutor:
                 event_prefix="compiler.narrative_ir",
                 parent_component_id=INPUT_FREEZE_COMPONENT_ID,
             )
-        except TaskCancellationRequested:
+        except (TaskCancellationRequested, ProseLeaseLost):
             raise
         except Exception as error:
             normalized = _normalize_compiler_error(
@@ -213,14 +219,10 @@ class CompilerExecutor:
         scene_plan_reused = False
         with self.session_factory() as session:
             task_identity = session.execute(
-                select(TaskRun.provider, TaskRun.agent_version).where(
-                    TaskRun.id == task_run_id
-                )
+                select(TaskRun.provider, TaskRun.agent_version).where(TaskRun.id == task_run_id)
             ).one()
             planner_enabled = task_identity.provider is not None
-            shadow_scene_compiler = (
-                task_identity.agent_version == SCENE_COMPILER_PIPELINE_VERSION
-            )
+            shadow_scene_compiler = task_identity.agent_version == SCENE_COMPILER_PIPELINE_VERSION
         if planner_enabled:
             from casefile.worker.executors.story_planner import (
                 execute_story_planner_component,
@@ -239,7 +241,7 @@ class CompilerExecutor:
                         narrative_ir_hash=narrative_ir_hash,
                     )
                 )
-            except TaskCancellationRequested:
+            except (TaskCancellationRequested, ProseLeaseLost):
                 raise
             except Exception as error:
                 normalized = _normalize_compiler_error(
@@ -306,7 +308,7 @@ class CompilerExecutor:
                             parent_component_id=STORY_PLANNER_COMPONENT_ID,
                         )
                     )
-            except TaskCancellationRequested:
+            except (TaskCancellationRequested, ProseLeaseLost):
                 raise
             except Exception as error:
                 normalized = _normalize_compiler_error(
@@ -335,9 +337,7 @@ class CompilerExecutor:
                         else SCENE_PLAN_COMPONENT_VERSION
                     ),
                     schema_id=(
-                        SCENE_PLAN_V2_SCHEMA_ID
-                        if shadow_scene_compiler
-                        else SCENE_PLAN_SCHEMA_ID
+                        SCENE_PLAN_V2_SCHEMA_ID if shadow_scene_compiler else SCENE_PLAN_SCHEMA_ID
                     ),
                     input_hash=scene_component_input_hash,
                     upstream_hashes=scene_upstream_hashes,
@@ -347,6 +347,28 @@ class CompilerExecutor:
                 if normalized is error:
                     raise
                 raise normalized from error
+
+        prose_manifest_id: int | None = None
+        if run.prose_renderer_shadow:
+            from casefile.agent_runtime.prose_runtime import prose_runtime_binding
+            from casefile.worker.executors.prose_providers import ProseProviders
+            from casefile.worker.executors.prose_shadow import ProseShadowExecutor
+            from casefile.worker.executors.prose_store import ProseStore
+
+            store = ProseStore(
+                self.session_factory,
+                run,
+                attempt_id,
+                self.config.worker_id,
+                manifest_json.get("prose_runtime") or prose_runtime_binding(),
+                lease_seconds=self.config.lease_seconds,
+            )
+            shadow = ProseShadowExecutor(store, self.prose_providers or ProseProviders.deepseek())
+            try:
+                prose_manifest_id = shadow.execute(manifest_json).id
+            except TaskCancellationRequested:
+                shadow.cancel()
+                raise
 
         with self.session_factory() as session, session.begin():
             task, attempt = self._locked_completion_rows(
@@ -368,6 +390,8 @@ class CompilerExecutor:
                 "reused": manifest_reused,
                 "component_reuse": component_reuse,
             }
+            if prose_manifest_id is not None:
+                result["prose_manifest_artifact_id"] = prose_manifest_id
             if novel_plan_artifact_id is not None:
                 result["novel_plan_artifact_id"] = novel_plan_artifact_id
                 result["novel_plan_hash"] = novel_plan_hash
@@ -376,12 +400,29 @@ class CompilerExecutor:
                 result["scene_plan_artifact_id"] = scene_plan_artifact_id
                 result["scene_plan_hash"] = scene_plan_hash
                 component_reuse["scene_plan"] = scene_plan_reused
+            usage: dict[str, Any] = {}
+            if run.prose_renderer_shadow:
+                calls = list(
+                    session.scalars(
+                        select(AgentModelCall).where(AgentModelCall.task_run_id == task.id)
+                    )
+                )
+                usage = {
+                    key: sum(int(call.usage_jsonb.get(key, 0)) for call in calls)
+                    for key in ("input_tokens", "output_tokens", "total_tokens")
+                }
+                usage["requests"] = len(calls)
+                usage["unknown_usage_count"] = sum(
+                    call.request_fingerprint is not None
+                    and not call.usage_jsonb.get("usage_known", False)
+                    for call in calls
+                )
             self._finish_auxiliary_success(
                 session,
                 task,
                 attempt,
                 candidate=result,
-                usage={},
+                usage=usage,
                 message="编译输入、故事规划与场景执行计划已形成不可变构建产物。",
             )
 
@@ -405,7 +446,9 @@ class CompilerExecutor:
                 validate_compile_input_manifest(manifest)
             except (ValidationError, CompilerContractError) as error:
                 raise CompilerExecutionError("compiler_manifest_invalid") from error
-            manifest_json = manifest.model_dump(mode="json")
+            manifest_json = dict(task.input_jsonb)
+            if bool(manifest_json.get("prose_renderer_shadow", False)) != run.prose_renderer_shadow:
+                raise CompilerExecutionError("compiler_prose_frozen_flag_mismatch")
             if canonical_json_sha256(manifest_json) != task.input_hash:
                 raise CompilerExecutionError("compiler_input_hash_mismatch")
 
@@ -541,6 +584,8 @@ class CompilerExecutor:
             attempt = session.scalar(
                 select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
             )
+            if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
+                assert_prose_owner(task, attempt, self.config.worker_id)
             if task is None or attempt is None:
                 raise CompilerExecutionError("compiler_run_task_mismatch")
             if task.status == "cancelling" and task.leased_by == self.config.worker_id:
@@ -672,6 +717,11 @@ class CompilerExecutor:
             attempt = session.scalar(
                 select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
             )
+            if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
+                try:
+                    assert_prose_owner(task, attempt, self.config.worker_id)
+                except (TaskCancellationRequested, ProseLeaseLost):
+                    return
             if (
                 task is None
                 or attempt is None

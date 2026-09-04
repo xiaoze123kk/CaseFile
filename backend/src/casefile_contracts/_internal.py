@@ -1831,6 +1831,8 @@ class CompileInputManifest(BaseModel):
             max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
         ),
     ]
+    prose_renderer_shadow: bool = False
+    prose_runtime: dict[str, Any] | None = None
 
 
 class Severity1(StrEnum):
@@ -3894,6 +3896,8 @@ class SceneManifest(BaseModel):
     accepted_render_hash: Sha256Hex | None
     rewrite_count: Annotated[int, Field(ge=0, le=2)]
     call_count: Annotated[int, Field(ge=0, le=23)]
+    physical_request_count: Annotated[int | None, Field(ge=0)] = None
+    unknown_usage_count: Annotated[int | None, Field(ge=0)] = None
     usage: UsageSummary
     latency_ms: Annotated[int, Field(ge=0)]
     recovered_call_hashes: list[Sha256Hex]
@@ -3946,7 +3950,9 @@ class CompileManifest(BaseModel):
     schema_id: Literal['compiler.compile-manifest.v1']
     source: Source2
     components: Components
-    scenes: Annotated[list[SceneManifest], Field(min_length=1)]
+    scenes: list[SceneManifest]
+    runtime: dict[str, Any] | None = None
+    not_run_scene_ids: list[SceneId] | None = None
     shadow_status: ShadowStatus
     incomplete_reason: IncompleteReason | None
     novel_candidate_hash: Sha256Hex | None

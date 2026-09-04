@@ -392,3 +392,17 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
 集成测试执行空库 `base → head → base → head`、携带旧 Brief/Snapshot/Canon/TaskAttempt 数据的 `V20260728084832 → head → V20260728084832 → head`，以及 `alembic check`。破坏性降级只允许显式 `_test` 数据库；不得把开发库或生产库赋给 `CASEFILE_TEST_DATABASE_URL`。
+
+
+## V20260904220930：N4.5 可审计正文 Shadow
+
+- `compile_runs.prose_renderer_shadow`：非空、默认 false、随 Build 身份不可变。历史 Run 自动保持关闭，不修改其 input JSON/hash。
+- `compile_artifacts`：保留原 N4.4 identity，扩展 scene_context、scene_render、validation_report、novel_candidate、compile_manifest；检查 key/schema/payload identity，继续禁止更新/删除，Run 内 key 唯一。各报告绑定产生它的 Step。
+- `agent_model_calls.request_fingerprint`、`latency_ms`、`response_jsonb`、`parse_status`：旧行允许 NULL；N4.5 保存每次物理请求，包括显式网络重试。response_jsonb 是已有 Call 的 Provider 恢复 envelope，不是另一个产物系统；不包含凭据。先保存 raw response，再完成解析终态，终态仍不可变。
+- `agent_step_runs`：每个组件执行独立 Step，确定性组件无 Call；恢复追加有来源的 reused Step，保留原物理 Call 与真实用量，聚合不重复计数。
+- 运行时写入方为 Compiler Worker 的 ProseStore。所有写事务校验 TaskRun/Attempt/worker/lease；旧 Worker 不得保存 Call、Step、Artifact 或终态。响应未知窗口不自动重发，失去数据库连接不虚报终态。
+- 两份 Pairwise key 固定为 `compiler.validation_report.{scene_id}.quality.pairwise.original_first` / `polished_first`；保真 Judge/Arbiter 使用 `.preservation.{role}`，保真 Consensus 使用 `.preservation.consensus`。
+- N4.5 默认关闭，只允许 preview、DeepSeek、Profile v2，并隐式选择既有 ScenePlan v2 路径。N4.4 成功产物与 Draft 不受 Shadow 成败影响；取消保留 TaskRun cancelled 语义。
+- downgrade 只有数据仍能满足上一版 identity 才允许执行；存在正文 Artifact 时明确失败，不删除审计数据。生产优先向前修复。
+
+`backend/src/casefile/application/compiler/prose_projection.py` 统一从持久化 Artifact/Call 投影 Scene/CompileManifest，并在既有取消事务中收敛租约过期后的 Shadow；不调用 Provider。

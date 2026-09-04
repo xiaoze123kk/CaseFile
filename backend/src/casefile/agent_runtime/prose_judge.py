@@ -261,9 +261,13 @@ class DeepSeekProseJudgeProvider:
         *,
         base_url: str = "https://api.deepseek.com",
         retry_wait: Callable[[float], None] = sleep,
+        before_transport: Callable[[Any, int], None] | None = None,
+        failed_transport: Callable[[Any], None] | None = None,
     ) -> None:
         self.base_url = base_url
         self._retry_wait = retry_wait
+        self.before_transport = before_transport
+        self.failed_transport = failed_transport
 
     def judge_scene(self, request: ProseJudgeRequest) -> ProseJudgeProviderResult:
         return self._invoke(request)
@@ -278,6 +282,8 @@ class DeepSeekProseJudgeProvider:
         attempts: list[ProseJudgeTransportAttempt] = []
         response: Any | None = None
         for attempt_index in range(1, request.network_retries + 2):
+            if self.before_transport is not None:
+                self.before_transport(request, attempt_index)
             attempt_started = perf_counter()
             try:
                 response = self._create_completion(request)
@@ -293,6 +299,8 @@ class DeepSeekProseJudgeProvider:
                         usage=None,
                     )
                 )
+                if self.failed_transport is not None:
+                    self.failed_transport(attempts[-1])
                 retryable = isinstance(error, (APIConnectionError, APITimeoutError))
                 if retryable and attempt_index <= request.network_retries:
                     self._retry_wait(PROSE_COUNCIL_RETRY_DELAY_SECONDS)
@@ -320,8 +328,8 @@ class DeepSeekProseJudgeProvider:
                 status="completed",
                 latency_ms=max(0, round((perf_counter() - attempt_started) * 1000)),
                 error_code=None,
-                response_observed=True,
-                usage=usage,
+            response_observed=True,
+            usage=usage if response.usage is not None else None,
             )
         )
         latency_ms = max(0, round((perf_counter() - started) * 1000))

@@ -40,8 +40,7 @@ def validate_source_ref(source_ref: CompilerSourceRef) -> CompilerSourceRef:
     if source_ref.field_path:
         encoded_segments = source_ref.field_path[1:].split("/")
         segments = tuple(
-            segment.replace("~1", "/").replace("~0", "~")
-            for segment in encoded_segments
+            segment.replace("~1", "/").replace("~0", "~") for segment in encoded_segments
         )
         if any(segment.isdecimal() for segment in segments):
             raise CompilerContractError("compiler_source_ref_array_index_forbidden")
@@ -65,6 +64,13 @@ def validate_compile_input_manifest(
     elif canon is not None:
         raise CompilerContractError("compiler_manifest_preview_canon_forbidden")
 
+    if manifest.prose_renderer_shadow and (
+        manifest.mode.value != "preview"
+        or manifest.prose_runtime is None
+        or manifest.profile.profile_schema_id != "compiler.novel-profile.v2"
+        or manifest.profile.frozen_payload.get("schema_id") != "compiler.novel-profile.v2"
+    ):
+        raise CompilerContractError("compiler_manifest_prose_binding_invalid")
     profile = manifest.profile
     if canonical_json_sha256(profile.frozen_payload) != profile.content_hash:
         raise CompilerContractError("compiler_manifest_profile_hash_mismatch")

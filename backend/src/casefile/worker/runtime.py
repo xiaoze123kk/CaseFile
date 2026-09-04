@@ -106,6 +106,7 @@ class Worker:
         config: WorkerConfig,
         provider_factory: ProviderFactory | None = None,
         goal_safe_point_observer: GoalSafePointObserver | None = None,
+        prose_providers: Any = None,
     ) -> None:
         self.session_factory = session_factory
         self.config = config
@@ -146,6 +147,8 @@ class Worker:
             worker_id=config.worker_id,
             provider_factory=self.provider_factory,
             completion=self._completion,
+            prose_providers=prose_providers,
+            lease_seconds=config.lease_seconds,
         )
         self._provider_resolver = ProviderResolver(session_factory, self.provider_factory)
         self._dispatcher = TaskDispatcher(
@@ -172,9 +175,7 @@ class Worker:
         """Run one claim, optionally restricted to an already known TaskRun."""
 
         claimed = (
-            self._claim_next()
-            if task_run_id is None
-            else self._queue._claim_specific(task_run_id)
+            self._claim_next() if task_run_id is None else self._queue._claim_specific(task_run_id)
         )
         if claimed is None:
             return False

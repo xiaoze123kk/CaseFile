@@ -562,7 +562,10 @@ def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(
     ):
         value = load_json(compiler_root / name)
         validators["compiler_manifest"].validate(value)
-        assert CompileInputManifest.model_validate(value).model_dump(mode="json") == value
+        assert (
+            CompileInputManifest.model_validate(value).model_dump(mode="json", exclude_unset=True)
+            == value
+        )
 
     source_ref = load_json(compiler_root / "source_ref.json")
     artifact_ref = load_json(compiler_root / "artifact_ref.json")
@@ -720,7 +723,7 @@ def test_prose_rendering_contracts_roundtrip_in_schema_and_python(
             {"$ref": schema_ref}, registry=registry, format_checker=FormatChecker()
         )
         validator.validate(value)
-        assert model.model_validate(value).model_dump(mode="json") == value
+        assert model.model_validate(value).model_dump(mode="json", exclude_unset=True) == value
 
     invalid_cases = load_json(fixture_root / "invalid_cases.json")["cases"]
     for invalid in invalid_cases:
@@ -728,9 +731,7 @@ def test_prose_rendering_contracts_roundtrip_in_schema_and_python(
             continue
         value = apply_manifest(load_json(fixture_root / invalid["base_fixture"]), invalid)
         schema_ref = (
-            profile_schema_id
-            if invalid["base_fixture"] == "profile_v2.json"
-            else prose_schema_id
+            profile_schema_id if invalid["base_fixture"] == "profile_v2.json" else prose_schema_id
         )
         assert not Draft202012Validator(
             {"$ref": schema_ref}, registry=registry, format_checker=FormatChecker()

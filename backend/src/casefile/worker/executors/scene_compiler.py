@@ -68,9 +68,7 @@ def execute_scene_compiler_component(
     required_turns = 2 + len(model_view["batches"])
     if int(task.budget_jsonb.get("max_turns", 0)) < required_turns:
         raise CompilerExecutionError("compiler_scene_fill_budget_insufficient")
-    prompt = load_prompt(
-        "scene_compiler_semantic_fill", SCENE_SEMANTIC_FILL_PROMPT_VERSION
-    )
+    prompt = load_prompt("scene_compiler_semantic_fill", SCENE_SEMANTIC_FILL_PROMPT_VERSION)
     fingerprint = {
         "pipeline_version": SCENE_COMPILER_PIPELINE_VERSION,
         "scene_compiler_input_hash": bundle["source"]["input_hash"],
@@ -104,28 +102,22 @@ def execute_scene_compiler_component(
         recover_stage=lambda batch_id, input_hash: _recover_stage(
             worker, task_run_id, batch_id, input_hash
         ),
-        before_stage=lambda batch_id, ordinal, input_hash, prompt_version, schema_id: (
-            _start_call(
-                worker,
-                task,
-                attempt_id,
-                step_id,
-                batch_id,
-                ordinal,
-                input_hash,
-                prompt_version,
-                prompt.system_prompt_sha256,
-                schema_id,
-            )
+        before_stage=lambda batch_id, ordinal, input_hash, prompt_version, schema_id: _start_call(
+            worker,
+            task,
+            attempt_id,
+            step_id,
+            batch_id,
+            ordinal,
+            input_hash,
+            prompt_version,
+            prompt.system_prompt_sha256,
+            schema_id,
         ),
-        after_stage=lambda stage: (
-            None if stage.recovered else _finish_call(worker, step_id, stage)
-        ),
+        after_stage=lambda stage: None if stage.recovered else _finish_call(worker, step_id, stage),
     )
     proposals = list(execution.proposals)
-    scene_plan = compile_scene_plan_v2(
-        scene_compiler_input=bundle, semantic_fills=proposals
-    )
+    scene_plan = compile_scene_plan_v2(scene_compiler_input=bundle, semantic_fills=proposals)
     scene_plan_hash = canonical_json_sha256(scene_plan)
     _finish_step(worker, step_id, execution.stages, proposals)
     artifact_id, reused = worker._materialize_json_artifact_component(
@@ -156,6 +148,9 @@ def fail_scene_compiler_component(
     worker: Any, task_run_id: int, attempt_id: int, error_code: str
 ) -> None:
     with worker.session_factory() as session, session.begin():
+        current_task = session.get(TaskRun, task_run_id)
+        if current_task is not None and current_task.input_jsonb.get("prose_renderer_shadow"):
+            _lock_active(session, worker, task_run_id, attempt_id)
         steps = list(
             session.scalars(
                 select(AgentStepRun)
@@ -306,9 +301,7 @@ def _start_call(
                 status="running",
                 provider=str(task.provider),
                 model_id=str(task.model_id),
-                output_protocol=(
-                    "json_object" if task.provider == "deepseek" else "strict_schema"
-                ),
+                output_protocol=("json_object" if task.provider == "deepseek" else "strict_schema"),
                 prompt_version=prompt_version,
                 prompt_component_id=f"scene_semantic_fill.batch.{ordinal:03d}",
                 prompt_sha256=prompt_hash,
@@ -320,12 +313,13 @@ def _start_call(
 
 
 def _finish_call(worker: Any, step_id: int, stage: SceneFillStage) -> None:
-    raw = stage.raw_output or json.dumps(
-        stage.output, ensure_ascii=False, separators=(",", ":")
-    )
+    raw = stage.raw_output or json.dumps(stage.output, ensure_ascii=False, separators=(",", ":"))
     encoded = raw.encode("utf-8")
     bounded = encoded[:262_144].decode("utf-8", errors="ignore")
     with worker.session_factory() as session, session.begin():
+        from casefile.worker.executors.prose_store import fence_prose_step
+
+        fence_prose_step(session, worker.config.worker_id, step_id)
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -381,10 +375,11 @@ def _finish_step(
             if isinstance(value, (int, float)):
                 usage[key] = usage.get(key, 0.0) + float(value)
     with worker.session_factory() as session, session.begin():
+        from casefile.worker.executors.prose_store import fence_prose_step
+
+        fence_prose_step(session, worker.config.worker_id, step_id)
         step = session.scalar(
-            select(AgentStepRun)
-            .where(AgentStepRun.id == step_id)
-            .with_for_update(of=AgentStepRun)
+            select(AgentStepRun).where(AgentStepRun.id == step_id).with_for_update(of=AgentStepRun)
         )
         if step is None or step.status != "running":
             raise CompilerExecutionError("compiler_scene_fill_step_missing")
@@ -414,6 +409,10 @@ def _lock_active(
     attempt = session.scalar(
         select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
     )
+    if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
+        from casefile.worker.executors.prose_store import assert_prose_owner
+
+        assert_prose_owner(task, attempt, worker.config.worker_id)
     if (
         task is not None
         and task.status == "cancelling"

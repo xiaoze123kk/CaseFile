@@ -19,6 +19,7 @@ from casefile.agent_runtime.prose_rewriter import (
     ProseRewriterProvider,
     execute_prose_rewriter,
 )
+from casefile.agent_runtime.prose_runtime import ComponentObserver, ignore_component
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     validate_prose_judge_checklist,
@@ -38,9 +39,7 @@ class ProseRewriteRoundExecution:
 
 @dataclass(frozen=True, slots=True)
 class ProseRewriteSupervisorExecution:
-    status: Literal[
-        "semantic_accepted", "semantic_rejected", "protocol_failed", "inconclusive"
-    ]
+    status: Literal["semantic_accepted", "semantic_rejected", "protocol_failed", "inconclusive"]
     rounds: tuple[ProseRewriteRoundExecution, ...]
     final_render: dict[str, Any] | None
     rewrite_count: int
@@ -62,6 +61,7 @@ def execute_bounded_prose_rewrite(
     model_id: str,
     api_key: str,
     remaining_scene_call_budget: int,
+    observe: ComponentObserver = ignore_component,
 ) -> ProseRewriteSupervisorExecution:
     """Review an initial Writer render and allow at most two complete rewrites."""
 
@@ -73,9 +73,11 @@ def execute_bounded_prose_rewrite(
             remaining_scene_call_budget,
             "prose_rewrite_supervisor_model_id_not_frozen",
         )
-    if not isinstance(remaining_scene_call_budget, int) or isinstance(
-        remaining_scene_call_budget, bool
-    ) or not (1 <= remaining_scene_call_budget <= 23):
+    if (
+        not isinstance(remaining_scene_call_budget, int)
+        or isinstance(remaining_scene_call_budget, bool)
+        or not (1 <= remaining_scene_call_budget <= 23)
+    ):
         return _terminal(
             "protocol_failed",
             (),
@@ -95,9 +97,7 @@ def execute_bounded_prose_rewrite(
             initial_render, checklist=checklist_json, profile=profile
         ).model_dump(mode="json")
     except CompilerContractError as error:
-        return _terminal(
-            "protocol_failed", (), None, remaining_scene_call_budget, str(error)
-        )
+        return _terminal("protocol_failed", (), None, remaining_scene_call_budget, str(error))
     if initial["stage"] != "writer" or initial["round"] != 0:
         return _terminal(
             "protocol_failed",
@@ -129,10 +129,9 @@ def execute_bounded_prose_rewrite(
             model_id=model_id,
             api_key=api_key,
         )
+        observe("semantic", council)
         remaining -= _council_call_count(council)
-        rounds.append(
-            ProseRewriteRoundExecution(round_index, current, council, rewrite_execution)
-        )
+        rounds.append(ProseRewriteRoundExecution(round_index, current, council, rewrite_execution))
         if council.status != "completed":
             return _terminal(
                 council.status,
@@ -175,6 +174,7 @@ def execute_bounded_prose_rewrite(
             api_key=api_key,
             remaining_scene_call_budget=remaining,
         )
+        observe("rewrite", rewrite_execution)
         remaining -= _rewrite_call_count(rewrite_execution)
         if rewrite_execution.status != "completed" or rewrite_execution.render is None:
             terminal = _terminal(
@@ -212,9 +212,7 @@ def _terminal(
     rounds_tuple = tuple(rounds)
     rewrite_count = sum(item.rewrite is not None for item in rounds_tuple)
     model_call_count = sum(_council_call_count(item.council) for item in rounds_tuple) + sum(
-        _rewrite_call_count(item.rewrite)
-        for item in rounds_tuple
-        if item.rewrite is not None
+        _rewrite_call_count(item.rewrite) for item in rounds_tuple if item.rewrite is not None
     )
     return ProseRewriteSupervisorExecution(
         status=status,  # type: ignore[arg-type]

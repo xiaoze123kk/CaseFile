@@ -2534,10 +2534,11 @@ export interface CompileManifest {
     quality_critic_component_hash: string;
     polisher_component_hash: string;
   };
-  /**
-   * @minItems 1
-   */
-  scenes: [SceneManifest, ...SceneManifest[]];
+  scenes: SceneManifest[];
+  runtime?: {
+    [k: string]: unknown;
+  };
+  not_run_scene_ids?: string[];
   shadow_status: "blocked_precondition" | "inconclusive_infrastructure" | "semantic_rejected" | "succeeded";
   incomplete_reason: string | null;
   novel_candidate_hash: string | null;
@@ -2560,6 +2561,8 @@ export interface SceneManifest {
   accepted_render_hash: string | null;
   rewrite_count: number;
   call_count: number;
+  physical_request_count?: number;
+  unknown_usage_count?: number;
   usage: UsageSummary;
   latency_ms: number;
   recovered_call_hashes: string[];

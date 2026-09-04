@@ -262,3 +262,16 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 - 版本与审计：`draft_snapshots`、`canon_versions`、`audit_events`。
 
 新增或删除表必须同步更新 ORM、迁移、两份数据库说明、元数据测试和本文。
+
+## N4.5-07 Shadow 运行时
+
+- `backend/src/casefile/agent_runtime/prose_runtime.py`：冻结正文运行时版本、双 Council policy、活动 Prompt/Schema/model 指纹、Scene 数与结构性调用上限；提供无数据库组件观察端口。
+- `backend/src/casefile/agent_runtime/prose_rewrite_supervisor.py`、`prose_polish_supervisor.py`：保留既有评审/接受规则，在组件完成边界调用默认无操作的 observer。
+- `backend/src/casefile/worker/executors/prose_providers.py`：组合现有五类 Provider 端口，逐物理请求审计，按完整 fingerprint 恢复 Provider 响应；Fake 仅由 Worker 构造参数注入，不开放 HTTP Fake 选项。
+- `backend/src/casefile/worker/executors/prose_store.py`：同 CompileRun 的不可变 Artifact、Step/Call、原始响应与解析状态事务；当前 Attempt/Worker/有效 lease fencing、续租、恢复来源和不重复聚合的用量。
+- `backend/src/casefile/worker/executors/prose_shadow.py`：N4.4 精确输入前置、串行 Scene、两轮 Rewrite、润色/保真/双位置 Quality、accepted/NovelCandidate/CompileManifest；取消和 Shadow 失败隔离。
+- `backend/tests/integration/test_prose_shadow_runtime.py`：真实可丢弃 PostgreSQL 上的公共 API、零网络串行主链、语义/协议失败、精确回滚、调用重试、崩溃恢复、取消、同 Worker 新旧 Attempt fencing 与不可变身份验证。
+
+CompileRun 开关在创建时冻结并不可变；主编译成功由已提交的 N4.4 ScenePlan v2 产物投影，TaskRun 仍拥有执行/取消终态，正文 Shadow 单独投影。所有正文原始请求响应保存在内部 Call 审计，不进入 TaskEvent 或作者状态摘要。B3 资格仍未通过。
+
+`backend/src/casefile/application/compiler/prose_projection.py` 统一从持久化 Artifact/Call 投影 Scene/CompileManifest，并在既有取消事务中收敛租约过期后的 Shadow；不调用 Provider。
