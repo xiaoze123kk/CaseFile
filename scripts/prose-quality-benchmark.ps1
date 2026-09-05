@@ -1,9 +1,17 @@
 param(
-    [ValidateSet("Fake", "QualificationCheck", "QualificationLive")]
+    [ValidateSet("Fake", "DevelopmentLive", "ProRescoreLive", "QualificationCheck", "QualificationLive")]
     [string]$Mode = "Fake",
     [string]$AttemptId = "local",
     [string]$QualificationSuite = "",
-    [string]$LiveConfirmation = ""
+    [string]$SourceAttempt = "",
+    [string]$LiveConfirmation = "",
+    [string]$DiagnosticSuite = "fixtures/prose_quality_benchmark/diagnostic_v1/suite.json",
+    [ValidateSet("both", "v2-flash", "diagnostic-pro-pairwise-v1")]
+    [string]$Candidates = "both",
+    [ValidateSet(3)]
+    [int]$Repeats = 3,
+    [ValidateRange(1, 4)]
+    [int]$Workers = 4
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +26,13 @@ try {
     if ($Mode -eq "Fake") {
         $outputDir = Join-Path $repoRoot "backend\var\benchmark\prose-quality\n4.5-b3-development\$AttemptId"
         & $python -m casefile.benchmark.prose_quality_eval --mode fake --output-dir $outputDir
+    } elseif ($Mode -eq "DevelopmentLive") {
+        & $python -m casefile.benchmark.prose_quality_diagnostic --suite $DiagnosticSuite --attempt-id $AttemptId --candidates $Candidates --repeats $Repeats --workers $Workers
+    } elseif ($Mode -eq "ProRescoreLive") {
+        if ([string]::IsNullOrWhiteSpace($SourceAttempt)) {
+            throw "ProRescoreLive requires -SourceAttempt pointing to a completed public diagnostic attempt."
+        }
+        & $python -m casefile.benchmark.prose_quality_rescore --source-attempt $SourceAttempt --attempt-id $AttemptId --workers $Workers
     } elseif ($Mode -eq "QualificationCheck") {
         $arguments = @("-m", "casefile.benchmark.prose_quality_eval", "--mode", "qualification-check")
         if ($QualificationSuite) {

@@ -18,6 +18,11 @@ from casefile.agent_runtime.prose_polisher import (
     ProsePolisherProvider,
     execute_prose_polisher,
 )
+from casefile.agent_runtime.prose_quality_config import (
+    QUALITY_V2,
+    ProseQualityConfig,
+    validate_quality_config,
+)
 from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_MODEL_ID,
     MirroredQualityExecution,
@@ -31,6 +36,7 @@ from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
     finalize_scene_render,
+    validate_quality_findings_report,
     validate_scene_render,
     validate_semantic_acceptance,
 )
@@ -64,9 +70,16 @@ def execute_prose_polish_supervisor(
     generation_model_id: str,
     api_key: str,
     observe: ComponentObserver = ignore_component,
+    quality_config: ProseQualityConfig = QUALITY_V2,
+    frozen_findings: dict[str, Any] | None = None,
+    reverse_first: bool = False,
 ) -> ProsePolishSupervisorExecution:
     """Run the bounded B3 path and never expose model-owned acceptance control."""
 
+    try:
+        validate_quality_config(quality_config)
+    except ValueError as error:
+        return _terminal("protocol_failed", None, None, None, None, None, None, str(error))
     if (
         quality_model_id != PROSE_QUALITY_MODEL_ID
         or generation_model_id != PROSE_POLISHER_MODEL_ID
@@ -94,15 +107,28 @@ def execute_prose_polish_supervisor(
         )
     except CompilerContractError as error:
         return _terminal("protocol_failed", None, None, None, None, None, None, str(error))
-    findings = execute_quality_findings(
-        quality_provider,
-        checklist=checklist,
-        render=original,
-        profile=profile,
-        semantic_consensus=semantic_consensus,
-        model_id=quality_model_id,
-        api_key=api_key,
-    )
+    if frozen_findings is None:
+        findings = execute_quality_findings(
+            quality_provider,
+            checklist=checklist,
+            render=original,
+            profile=profile,
+            semantic_consensus=semantic_consensus,
+            model_id=quality_model_id,
+            api_key=api_key,
+        )
+    else:
+        try:
+            report = validate_quality_findings_report(
+                frozen_findings,
+                checklist=checklist,
+                render=original,
+                profile=profile,
+                semantic_consensus=semantic_consensus,
+            ).model_dump(mode="json")
+        except CompilerContractError as error:
+            return _terminal("protocol_failed", original, None, None, None, None, None, str(error))
+        findings = ProseQualityExecution("completed", report, None)
     observe("findings", findings)
     if findings.status != "completed" or findings.report is None:
         return _terminal(
@@ -191,7 +217,9 @@ def execute_prose_polish_supervisor(
         polished_render=polish.render,
         profile=profile,
         preservation_consensus=preservation.consensus,
-        model_id=quality_model_id,
+        model_id=quality_config.pairwise_model,
+        config=quality_config,
+        reverse_first=reverse_first,
         api_key=api_key,
     )
     observe("pairwise", pairwise)

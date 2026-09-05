@@ -275,3 +275,13 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 CompileRun 开关在创建时冻结并不可变；主编译成功由已提交的 N4.4 ScenePlan v2 产物投影，TaskRun 仍拥有执行/取消终态，正文 Shadow 单独投影。所有正文原始请求响应保存在内部 Call 审计，不进入 TaskEvent 或作者状态摘要。B3 资格仍未通过。
 
 `backend/src/casefile/application/compiler/prose_projection.py` 统一从持久化 Artifact/Call 投影 Scene/CompileManifest，并在既有取消事务中收敛租约过期后的 Shadow；不调用 Provider。
+
+## B3 公开诊断扩展
+
+- `agent_runtime/prose_quality_config.py`：不可变 v2 Flash 与开发 Pro Pairwise 配置；findings 保持 Flash，默认运行时身份不变。
+- `benchmark/prose_quality_diagnostic_suite.py`：公开24对/24场诊断套件、Gold/分布/哈希/语义绑定校验。
+- `benchmark/prose_quality_diagnostic.py`：显式 DevelopmentLive、三次双位置模型对照、原稿完整 Council 与冻结 findings 的润色诊断；逐调用审计不序列化凭据，不重放未知请求。
+- `benchmark/prose_quality_diagnostic_report.py`：固定分母、最差轮次晋级、原稿/润色失败归因与明确包含回滚的 non-loss。所有开发报告 qualified=false。
+- `prose_polish_supervisor` 允许内部传入精确校验的冻结 findings 与显式 Quality 配置；不新增公共 API 或独立生产编排。
+
+- `benchmark/prose_quality_rescore.py`：只读加载完整公开诊断的72份已通过Preservation候选，验证哈希、完整Council、原稿绑定及旧Flash判断；在任何Live调用前比较新旧匿名输入/Prompt/Schema，复用审计执行144次Pro Pairwise并报告逐轮采用、镜像和决策迁移。不重新生成正文或改写来源产物，不赋予资格。

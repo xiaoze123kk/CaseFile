@@ -74,3 +74,7 @@
 ## N4.5-07 兼容扩展
 
 CompileInputManifest 增加可选 `prose_renderer_shadow`（缺省 false）和冻结的 `prose_runtime`。历史原始 JSON 按原形校验 hash，不通过补默认值迁移历史身份。CompileManifest 保留既有组件报告，增加 runtime、not_run_scene_ids，允许前置阻断时 scenes 为空；SceneManifest 增加 physical_request_count、unknown_usage_count，call_count 继续表示逻辑调用。新字段兼容旧 Fixture/资格报告；Schema、Python/TS 与 OpenAPI 由统一入口同步。
+
+## B3 公开诊断套件
+
+`fixtures/prose_quality_benchmark/diagnostic_v1/` 保存新写的公开24组偏好对与24个润色场景及确定性生成脚本，八类 focus 各三题、每类 A/B/tie 各一。上下文为明确标注的合成诊断事实，不冒充 N4.4 编译产物；语义接受对象是非独立 Codex 审阅 Gold，不冒充真实 Council 输出。新的完整 Council 结果只写本地运行目录。旧公开集和私有资格包保持不变。
