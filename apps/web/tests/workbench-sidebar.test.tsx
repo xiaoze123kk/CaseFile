@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { WorkbenchSidebar } from "@/features/analyst-workbench/workbench-sidebar";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function props() {
   return {
@@ -20,7 +20,7 @@ function props() {
   };
 }
 
-it("uses labelled icon-only tabs without exposing Agent as visible copy", () => {
+it("shows text labels so sidebar destinations are recognizable", () => {
   const input = props();
   const { rerender } = render(<WorkbenchSidebar {...input} />);
   const object = screen.getByRole("tab", { name: "对象详情" });
@@ -29,8 +29,8 @@ it("uses labelled icon-only tabs without exposing Agent as visible copy", () => 
   expect(companion).toHaveAttribute("title", "协作者");
   expect(object).toHaveAttribute("aria-selected", "true");
   expect(companion).toHaveAttribute("aria-selected", "false");
-  expect(object.textContent).toBe("");
-  expect(companion.textContent).toBe("");
+  expect(object).toHaveTextContent("对象详情");
+  expect(companion).toHaveTextContent("协作者");
   expect(object.firstElementChild).toHaveAttribute("aria-hidden", "true");
   fireEvent.click(companion);
   expect(input.onBaseChange).toHaveBeenCalledWith("agent");
@@ -45,15 +45,33 @@ it("also presents the icon switcher in compile mode", () => {
   expect(screen.getByRole("tab", { name: "协作者" })).toBeInTheDocument();
 });
 
+it("animates object changes without remounting content and respects reduced motion", () => {
+  const input = { ...props(), objectContent: <input aria-label="编辑中的内容" defaultValue="原内容" /> };
+  const { rerender } = render(<WorkbenchSidebar {...input} objectKey="first" />);
+  const editor = screen.getByRole("textbox", { name: "编辑中的内容" });
+  fireEvent.change(editor, { target: { value: "未保存的内容" } });
+  const cancel = vi.fn();
+  const animate = vi.fn(() => ({ cancel }) as unknown as Animation);
+  editor.parentElement!.animate = animate;
+  rerender(<WorkbenchSidebar {...input} objectKey="second" />);
+  expect(animate).toHaveBeenCalledOnce();
+  expect(screen.getByRole("textbox", { name: "编辑中的内容" })).toBe(editor);
+  expect(editor).toHaveValue("未保存的内容");
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+  rerender(<WorkbenchSidebar {...input} objectKey="third" />);
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(animate).toHaveBeenCalledOnce();
+});
+
 it("uses the dossier icon for the workbench heading and preserves navigation", () => {
   const input = props();
   render(<WorkbenchSidebar {...input} mode="workbench" />);
   expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   const headingIcon = screen.getByRole("img", { name: "对象详情" });
   expect(headingIcon).toHaveAttribute("title", "对象详情");
-  expect(headingIcon.textContent).toBe("");
+  expect(headingIcon).toHaveTextContent("对象详情");
   expect(headingIcon.firstElementChild).toHaveAttribute("data-page", "object");
-  expect(screen.queryByText("对象详情")).not.toBeInTheDocument();
+  expect(screen.getByText("对象详情")).toBeInTheDocument();
   expect(screen.getByText("档案正文")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起对象上下文" }));
   expect(input.onClose).toHaveBeenCalledOnce();

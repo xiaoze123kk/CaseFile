@@ -41,17 +41,17 @@ const graphReferenceLabels: Record<string, string> = {
 const relationshipNodeAccents: Record<string, string> = {
   casefile: "#5eead4",
   resolution_spec: "#fbbf24",
-  entity: "#818cf8",
-  person: "#6675ff",
+  entity: "#647b9b",
+  person: "#647b9b",
   information: "#d946ef",
   information_unit: "#c084fc",
   evidence: "#fb923c",
-  event: "#fb7185",
-  location: "#20c997",
-  hypothesis: "#a78bfa",
-  relationship: "#38bdf8",
+  event: "#b96d70",
+  location: "#4b8d7d",
+  hypothesis: "#8c77a3",
+  relationship: "#438994",
   claim: "#22d3ee",
-  reasoning_path: "#60a5fa",
+  reasoning_path: "#4b7a9c",
   constraint: "#f472b6",
   structure_lock: "#94a3b8",
   source_fragment: "#2dd4bf",
@@ -61,12 +61,12 @@ const relationshipNodeAccents: Record<string, string> = {
 const relationshipNodeKinds = new Set(["entity", "person", "location"]);
 
 const relationshipEdgePalette = [
-  "#60a5fa",
-  "#38bdf8",
-  "#34d399",
-  "#f59e0b",
-  "#fb7185",
-  "#a78bfa",
+  "#4b7a9c",
+  "#438994",
+  "#488c70",
+  "#aa7b3e",
+  "#b96d70",
+  "#8c77a3",
 ] as const;
 
 function relationshipNodeAccent(kind: string) {
@@ -76,19 +76,19 @@ function relationshipNodeAccent(kind: string) {
 function relationshipEdgeAppearance(label: string) {
   const normalized = label.trim().toLocaleLowerCase();
   if (/敌|冲突|竞争|加害|杀|操控|rival|enemy|conflict|harm|control/u.test(normalized)) {
-    return { accent: "#fb7185", strokeDasharray: "2 5" };
+    return { accent: "#b96d70", strokeDasharray: "2 5" };
   }
   if (/亲|家|父|母|兄|姐|弟|妹|family|parent|sibling/u.test(normalized)) {
-    return { accent: "#a78bfa", strokeDasharray: "2 5" };
+    return { accent: "#8c77a3", strokeDasharray: "2 5" };
   }
   if (/成员|雇佣|隶属|member|employ/u.test(normalized)) {
-    return { accent: "#f59e0b" };
+    return { accent: "#aa7b3e" };
   }
   if (/盟|友|支持|协作|ally|friend|support|cooperat/u.test(normalized)) {
-    return { accent: "#34d399", strokeDasharray: "7 5" };
+    return { accent: "#488c70", strokeDasharray: "7 5" };
   }
   if (/知|联系|调查|目击|know|contact|investigat|witness/u.test(normalized)) {
-    return { accent: "#60a5fa" };
+    return { accent: "#4b7a9c" };
   }
   const paletteIndex = [...normalized].reduce(
     (value, character) => value + (character.codePointAt(0) ?? 0),
@@ -168,7 +168,7 @@ export function RelationshipGraph({
             : object
               ? objectKindLabels[object.kind]
               : (graphReferenceLabels[String(kind)] ?? "引用");
-        const size = Math.min(66, 44 + (degreeByNodeId.get(node.objectId) ?? 0) * 4);
+        const size = Math.min(80, 62 + (degreeByNodeId.get(node.objectId) ?? 0) * 3);
         return {
           id: node.objectId,
           variant: "relationship",
@@ -231,9 +231,6 @@ export function RelationshipGraph({
     }),
     [layoutScope, seed.caseMeta.revision],
   );
-  const graphNodeById = new Map(
-    sceneNodes.map((node) => [node.id, node.label]),
-  );
   function activateRelation(edgeId: string) {
     const index = sceneEdges.findIndex((item) => item.id === edgeId);
     const edge = entityGraphEdges[index] as WorkbenchGraphEdge | undefined;
@@ -261,7 +258,6 @@ export function RelationshipGraph({
           ariaLabel="实体关系图"
           direction="LR"
           edges={sceneEdges}
-          elasticConnectedDrag
           externalSelectedNodeIds={externalSelectedNodeIds}
           focusDirectRelationsOnClick
           identity={identity}
@@ -289,34 +285,10 @@ export function RelationshipGraph({
           nodes={sceneNodes}
           onActivateNode={onSelectObject}
           onActivateEdge={onOpenRelation ? activateRelation : undefined}
-          requireModifierForNodeSelection
         />
       ) : (
         <p className={styles.viewNote}>当前工作稿没有可展示的人物、实体或地点。</p>
       )}
-      <details className={styles.graphAlternative}>
-        <summary>查看关系表与文字摘要</summary>
-        <div className={styles.graphTableWrap}>
-          <table>
-            <thead>
-              <tr>
-                <th>来源</th>
-                <th>关系</th>
-                <th>目标</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entityGraphEdges.map((edge, edgeIndex) => (
-                <tr key={`table-${edge.from}-${edge.to}-${edgeIndex}`}>
-                  <td>{graphNodeById.get(edge.from)}</td>
-                  <td>{onOpenRelation ? <button type="button" onClick={() => activateRelation(sceneEdges[edgeIndex].id)}>查看关系 {edge.label}</button> : edge.label}</td>
-                  <td>{graphNodeById.get(edge.to)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
       <span className={styles.srOnly}>
         {visibleNodeIds.size} 个可访问节点
       </span>

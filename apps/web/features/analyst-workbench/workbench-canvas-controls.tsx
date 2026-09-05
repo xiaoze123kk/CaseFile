@@ -6,16 +6,18 @@ export type CanvasTool = "select" | "pan";
 export function CanvasTools({
   tool,
   onToolChange,
+  selectionHint = "点击切换多选；框选一组节点",
 }: {
   tool: CanvasTool;
   onToolChange: (tool: CanvasTool) => void;
+  selectionHint?: string;
 }) {
   return (
     <div aria-label="画布工具" className={styles.canvasTools}>
       <button
         aria-label="选择工具"
         aria-pressed={tool === "select"}
-        data-tooltip="点击切换多选；框选一组节点"
+        data-tooltip={selectionHint}
         onClick={() => onToolChange("select")}
         type="button"
       >
@@ -88,6 +90,8 @@ export function CanvasKernelControls({
   onRelayout,
   onUndo,
   onRedo,
+  selectionHint,
+  hideTools = false,
 }: {
   tool: CanvasTool;
   zoom: number;
@@ -103,10 +107,12 @@ export function CanvasKernelControls({
   onRelayout: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  selectionHint?: string;
+  hideTools?: boolean;
 }) {
   return (
     <>
-      <CanvasTools onToolChange={onToolChange} tool={tool} />
+      {!hideTools ? <CanvasTools onToolChange={onToolChange} tool={tool} selectionHint={selectionHint} /> : null}
       <div aria-label="画布视口" className={styles.canvasActionTools}>
         <button
           aria-label="适配全部"

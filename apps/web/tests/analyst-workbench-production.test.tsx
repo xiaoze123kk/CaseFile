@@ -615,7 +615,7 @@ describe("production analyst workbench", () => {
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     expect(
-      await screen.findByRole("heading", { name: "从故事未解之处继续" }),
+      await screen.findByRole("heading", { name: "从全貌，进入细节。" }),
     ).toBeInTheDocument();
     const threadEntry = screen.getByRole("region", { name: "对话线程入口" });
     expect(threadEntry.closest("header")).toBeInTheDocument();
@@ -737,7 +737,7 @@ describe("production analyst workbench", () => {
     expect(mocks.loadProject).toHaveBeenCalledWith(42);
     expect(mocks.fetchCaseDraft).toHaveBeenCalledWith(42);
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledWith(1, 42);
-    expect(screen.getByText("已通过")).toBeInTheDocument();
+    expect(screen.getAllByText("已通过")[0]).toBeInTheDocument();
   });
 
   it("keeps project switching available when the project has no materialized Draft", async () => {
@@ -858,7 +858,7 @@ describe("production analyst workbench", () => {
 
     const validationEntry = await screen.findByRole("button", { name: "验证 1 个问题" });
     expect(validationEntry).toBeEnabled();
-    expect(screen.queryByText("引用的对象不存在")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "对象上下文" })).queryByText("引用的对象不存在")).not.toBeInTheDocument();
     expect(
       screen.queryByText("missing_reference · /events/0/location_ref"),
     ).not.toBeInTheDocument();
@@ -1171,7 +1171,7 @@ describe("production analyst workbench", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "从故事未解之处继续" }),
+      screen.getByRole("heading", { name: "从全貌，进入细节。" }),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole("complementary", { name: "对象上下文" }))
@@ -1192,7 +1192,7 @@ describe("production analyst workbench", () => {
       }),
     );
     expect(
-      screen.getByRole("heading", { name: "从故事未解之处继续" }),
+      screen.getByRole("heading", { name: "从全貌，进入细节。" }),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole("complementary", { name: "对象上下文" }))
@@ -1580,7 +1580,7 @@ describe("production analyst workbench", () => {
 
     await openCompileMode();
     for (const [label, view] of [
-      ["编译中心", "compile"],
+      ["编译作品", "compile"],
     ] as const) {
       fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
       expect(canvas).toHaveAttribute("data-workbench-view", view);
@@ -1828,6 +1828,9 @@ describe("production analyst workbench", () => {
     await beginQuickEdit();
     const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
+    fireEvent.click(within(screen.getByRole("complementary", { name: "当前模式导航" })).getByRole("button", { name: /待处理问题/ }));
+    expect(container.querySelector("#analyst-canvas")).toHaveAttribute("data-workbench-view", "timeline");
+    expect(name).toHaveValue("未保存的调查员名称");
     fireEvent.click(screen.getByRole("tab", { name: /^分析$/u }));
 
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
@@ -1985,13 +1988,11 @@ describe("production analyst workbench", () => {
       name: /值班员/,
     });
     fireEvent.click(operatorNode);
-    expect(
-      screen.queryByRole("heading", { name: "值班员" }),
-    ).not.toBeInTheDocument();
-    expect(operatorNode).toHaveAttribute("aria-pressed", "false");
-
-    fireEvent.click(operatorNode, { ctrlKey: true });
     expect(screen.getByRole("heading", { name: "值班员" })).toBeInTheDocument();
+    expect(operatorNode).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getAllByRole("button", { name: "收起对象上下文" })[0]);
+    fireEvent.click(operatorNode);
+    expect(screen.getByRole("complementary", { name: "对象上下文" }).closest('[data-inspector-open="true"]')).toBeInTheDocument();
     await openDossierMode();
     expect(
       screen.getByRole("button", { name: "实体，2 个匹配" }),

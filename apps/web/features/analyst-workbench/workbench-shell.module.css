@@ -1,0 +1,46 @@
+/* Desktop workbench tokens. Other product surfaces keep their own visual system. */
+.shell[data-workbench-seed] {
+  --chrome: #f5f7f8;
+  --chrome-raised: #edf2f4;
+  --chrome-soft: #e3ebef;
+  --paper: #f5f7f8;
+  --paper-high: #ffffff;
+  --paper-low: #edf2f4;
+  --paper-mid: #f0f4f6;
+  --ink: #263b47;
+  --ink-muted: #5c707c;
+  --ink-faint: #687d89;
+  --rule: #dbe3e7;
+  --rule-dark: #dbe3e7;
+  --primary: #315c73;
+  --primary-hover: #426e85;
+  --primary-strong: #234b61;
+  --primary-soft: #e7eff3;
+  --red-soft: #e7eff3;
+  --red-line: #c4d7e0;
+  --workspace-backdrop: #f5f7f8;
+  --success: #477e73;
+  --issue: #b76350;
+  min-width: 1080px;
+  min-height: 680px;
+  font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", sans-serif;
+  font-size: 13px;
+}
+.shell .layout { grid-template-columns: var(--rail-width, 244px) minmax(460px, 1fr) var(--inspector-width, 0px); }
+.layout[data-navigator-open="false"] > aside[aria-label="当前模式导航"] { visibility: hidden; pointer-events: none; }
+.shell .toolbar { background: #fff; backdrop-filter: none; box-shadow: none; }
+.toolbar > div:first-child > div { display: flex; align-items: baseline; gap: 12px; }
+.toolbar > div:first-child > div > span { font: 11px/1.5 "Microsoft YaHei UI", sans-serif; letter-spacing: 0; color: var(--ink-faint); }
+.toolbar > div:first-child > div > strong { font: 650 15px/1.5 "Microsoft YaHei UI", sans-serif; }
+.toolbar button { border-radius: 5px; }
+.shell .content::before, .shell .content::after { display: none; }
+.shell .content { background: #f5f7f8; }
+.shell aside[aria-label="对象上下文"] { background: #fff; box-shadow: none; }
+.shell aside[aria-label="对象上下文"] > header { padding: 0 12px; background: #fff; box-shadow: none; }
+.shell aside[aria-label="对象上下文"] > header button[role="tab"] { display: flex; align-items: center; gap: 5px; width: auto; height: 34px; padding: 4px 7px; border-radius: 5px; font-size: 11px; }
+.shell aside[aria-label="对象上下文"] > header button[role="tab"] > span:first-child { width: 19px; height: 19px; }
+.shell aside[aria-label="对象上下文"] > header [role="img"] { display: flex; gap: 8px; width: auto; font-size: 12px; }
+.shell aside[aria-label="对象上下文"] > header [role="img"] > span:first-child { width: 22px; height: 22px; }
+.shell section[aria-label="CaseFile Agent 聊天框"][data-surface="dock"] { padding: 12px 30px 14px 76px; background: #fff; box-shadow: none; }
+.shell section[aria-label="CaseFile Agent 聊天框"][data-surface="dock"] > img { width: 54px; height: 54px; left: 14px; bottom: 16px; filter: none; }
+.shell [role="status"][aria-live="polite"] { max-width: 440px; font-size: 11px; }

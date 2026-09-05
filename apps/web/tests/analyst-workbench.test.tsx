@@ -71,6 +71,46 @@ function CandidateSeedHarness() {
 }
 
 describe("analyst workbench", () => {
+  it("keeps analysis destinations available in every mode and restores the last analysis", () => {
+    const { container } = renderWorkbench();
+    const canvas = container.querySelector("#analyst-canvas")!;
+    fireEvent.click(screen.getByRole("tab", { name: "关系图" }));
+    const selectedObject = canvas.getAttribute("data-selected-object-id");
+    fireEvent.click(screen.getByRole("tab", { name: "编译作品" }));
+    expect(within(screen.getByRole("tablist", { name: "分析工具" })).getAllByRole("tab")).toHaveLength(5);
+    fireEvent.click(screen.getByRole("tab", { name: "分析" }));
+    expect(canvas).toHaveAttribute("data-workbench-view", "relations");
+    expect(canvas).toHaveAttribute("data-selected-object-id", selectedObject);
+    fireEvent.click(screen.getByRole("tab", { name: "工作台" }));
+    fireEvent.click(screen.getByRole("tab", { name: "推理分析" }));
+    expect(canvas).toHaveAttribute("data-workbench-view", "reasoning");
+  });
+
+  it("opens validation directly and returns to the matrix from the evidence destination", () => {
+    renderWorkbench();
+    const navigation = screen.getByRole("complementary", { name: "当前模式导航" });
+    fireEvent.click(within(navigation).getByRole("button", { name: /待处理问题/ }));
+    expect(screen.getByRole("tab", { name: "待处理问题" })).toHaveAttribute("aria-selected", "true");
+    expect(within(navigation).getByRole("tab", { name: "证据对比" })).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(within(navigation).getByRole("tab", { name: "证据对比" }));
+    expect(screen.getByRole("tab", { name: "线索对比" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens a directory category from the overview and searches objects without leaving the analysis", () => {
+    const { container } = renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: "工作台" }));
+    fireEvent.click(screen.getByRole("button", { name: "浏览事件" }));
+    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    expect(within(directory).getByRole("button", { name: /^事件，/ })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "关系图" }));
+    fireEvent.click(screen.getByRole("button", { name: /全部对象，/ }));
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索对象名称或编号" }), { target: { value: "门禁" } });
+    const matches = screen.getByRole("group", { name: "搜索匹配对象" });
+    fireEvent.click(within(matches).getAllByRole("button")[0]);
+    expect(container.querySelector("#analyst-canvas")).toHaveAttribute("data-workbench-view", "relations");
+    expect(screen.getByRole("complementary", { name: "对象上下文" })).toHaveTextContent("门禁");
+  });
+
   it("merges the workbench and dossier into one mode with the object index in its rail", () => {
     renderWorkbench();
     expect(
@@ -122,7 +162,7 @@ describe("analyst workbench", () => {
     ).toHaveLength(1);
     const compileTools = screen.getByRole("tablist", { name: "编译工具" });
     expect(screen.queryByRole("tab", { name: /导出预览/ })).not.toBeInTheDocument();
-    expect(within(compileTools).getByRole("tab", { name: /编译中心/ }).querySelector('[data-view="compile"]')).toBeInTheDocument();
+    expect(within(compileTools).getByRole("tab", { name: "编译作品" }).querySelector('[data-view="compile"]')).toBeInTheDocument();
   });
 
   it("renders the evidence comparison matrix with per-cell assessments", () => {
@@ -225,11 +265,12 @@ describe("analyst workbench", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("provides a text alternative for the graph without the removed source drawer", () => {
+  it("removes the relation table while retaining accessible graph nodes", () => {
     renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
-    expect(screen.getByText("查看关系表与文字摘要")).toBeInTheDocument();
+    expect(screen.queryByText("查看关系表与文字摘要")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("application", { name: "实体关系图" })).getAllByRole("button").length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", { name: /来源抽屉/ }),
     ).not.toBeInTheDocument();
@@ -237,9 +278,10 @@ describe("analyst workbench", () => {
 
   it("keeps top navigation compact and places reset in a dismissible more menu", () => {
     renderWorkbench();
-    const header = screen.getByRole("tablist", { name: "主要工作模式" }).closest("header")!;
-    const modes = within(header).getByRole("tablist", { name: "主要工作模式" });
-    expect(within(modes).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["工作台", "分析", "编译作品"]);
+    const header = screen.getByRole("link", { name: "返回建案中心" }).closest("header")!;
+    const modes = screen.getByRole("tablist", { name: "主要工作模式" });
+    expect(within(modes).getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["工作台", "分析"]);
+    expect(within(header).queryByRole("tablist")).not.toBeInTheDocument();
     expect(within(header).getByRole("link", { name: "返回建案中心" })).toHaveAttribute("href", "/");
     const more = within(header).getByLabelText("更多工作台操作");
     const details = more.closest("details")!;
@@ -560,25 +602,15 @@ describe("analyst workbench", () => {
     expect(screen.getByRole("heading", { name: "选择作品形式" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "CaseFile Agent 聊天框" })).not.toBeInTheDocument();
   });
-  it("switches the relation canvas into pan mode without activating nodes", () => {
-    const { container } = renderWorkbench();
-
+  it("uses direct interaction without separate select and pan tools", () => {
+    renderWorkbench();
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
-    fireEvent.click(screen.getByRole("button", { name: "平移工具" }));
-    const board = container.querySelector(
-      '[aria-label="实体关系图"]',
-    ) as HTMLElement;
-
-    expect(board).toHaveAttribute("data-tool", "pan");
-    expect(
-      screen.getByRole("button", { name: "平移工具" }),
-    ).toHaveAttribute("aria-pressed", "true");
-
-    // 平移模式下点击节点不触发对象联动
-    const node = within(board).getByRole("button", { name: /唐默/ });
-    expect(node.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(node);
-    expect(node.getAttribute("aria-pressed")).toBe("false");
+    const board = screen.getByRole("application", { name: "实体关系图" });
+    expect(board).toHaveAttribute("data-tool", "direct");
+    expect(screen.queryByRole("button", { name: "选择工具" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "平移工具" })).not.toBeInTheDocument();
+    fireEvent.click(within(board).getByRole("button", { name: /唐默/ }));
+    expect(screen.getByRole("complementary", { name: "对象上下文" })).toHaveTextContent("唐默");
   });
 
   it("zooms the relation graph canvas with the zoom controls", () => {
@@ -611,8 +643,6 @@ describe("analyst workbench", () => {
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
 
     const expectedTooltips = [
-      ["选择工具", "点击切换多选；框选一组节点"],
-      ["平移工具", "拖动画布"],
       ["适配全部", "适配全部节点"],
       ["全屏查看画布", "全屏查看画布"],
       ["重新整理", "重新整理布局"],
@@ -900,9 +930,9 @@ describe("analyst workbench", () => {
 
     const dock = screen.getByRole("region", { name: "CaseFile Agent 聊天框" });
     const homeHeading = screen.getByRole("heading", {
-      name: "从故事未解之处继续",
+      name: "从全貌，进入细节。",
     });
-    const homeAction = screen.getByRole("button", { name: /继续上次分析/ });
+    const homeAction = screen.getByRole("button", { name: /进入结构分析/ });
     expect(dock.querySelector('[data-surface="dock"]')).toBeInTheDocument();
     expect(within(dock).getByTestId("agent-mascot")).toHaveAttribute(
       "src",
@@ -1098,13 +1128,13 @@ describe("analyst workbench", () => {
       '[data-testid="rail-resize-handle"]',
     ) as HTMLElement;
     const body = handle.parentElement as HTMLElement;
-    expect(body.style.getPropertyValue("--rail-width")).toBe("224px");
+    expect(body.style.getPropertyValue("--rail-width")).toBe("244px");
 
     fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientX: 220, pointerId: 1 });
     fireEvent.pointerUp(handle, { pointerId: 1 });
 
-    expect(body.style.getPropertyValue("--rail-width")).toBe("344px");
+    expect(body.style.getPropertyValue("--rail-width")).toBe("364px");
 
     fireEvent.pointerDown(handle, { clientX: 100, pointerId: 2 });
     fireEvent.pointerMove(handle, { clientX: 500, pointerId: 2 });
@@ -1113,7 +1143,7 @@ describe("analyst workbench", () => {
     expect(body.style.getPropertyValue("--rail-width")).toBe("640px");
   });
 
-  it("enables relation-node dragging only while the select tool is active", () => {
+  it("keeps relation nodes draggable without switching tools", () => {
     const { container } = renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
@@ -1126,8 +1156,7 @@ describe("analyst workbench", () => {
     const wrapper = node.closest(".react-flow__node") as HTMLElement;
 
     expect(wrapper).toHaveClass("draggable");
-    fireEvent.click(screen.getByRole("button", { name: "平移工具" }));
-    expect(wrapper).not.toHaveClass("draggable");
+    expect(screen.queryByRole("button", { name: "平移工具" })).not.toBeInTheDocument();
   });
 
   it("keeps reasoning nodes and edges read-only at the domain level", () => {
