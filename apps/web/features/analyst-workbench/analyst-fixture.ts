@@ -420,6 +420,7 @@ export const graphNodes: GraphNode[] = [
 ];
 
 export const graphEdges: GraphEdge[] = [
+  { from: "PER-001", to: "PER-009", label: "调查" },
   { from: "PER-001", to: "EV-1825", label: "目击" },
   { from: "PER-009", to: "EV-1825", label: "证词" },
   { from: "EVD-071", to: "EV-1825", label: "记录" },
@@ -963,6 +964,7 @@ function buildCandidateSeed(
     { objectId: "HYP-002", x: 87, y: 49 },
   ];
   const candidateGraphEdges: GraphEdge[] = [
+    { from: "PER-001", to: "PER-009", label: "调查" },
     { from: "PER-001", to: "EV-1825", label: "发现" }, { from: "PER-009", to: "EV-1825", label: "证词" },
     { from: "EVD-071", to: "EV-1825", label: "记录" }, { from: "EVD-113", to: "EV-1825", label: "后知" },
     { from: "LOC-007", to: "EV-1825", label: "发生于" }, { from: "HYP-002", to: "EV-1825", label: "解释" },

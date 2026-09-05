@@ -1640,6 +1640,40 @@ describe("intake center", () => {
     ).toBeInTheDocument();
   });
 
+  it.each(["source refresh", "additional questions"])(
+    "keeps unanswered required questions reachable after an empty %s batch",
+    async (entry) => {
+      renderIntake();
+      fireEvent.change(screen.getByLabelText("写下最初想法"), {
+        target: { value: "一名档案员发现三份矛盾的记录。" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+      await flush();
+      fake.backend.setQuestionBatch([]);
+
+      if (entry === "source refresh") {
+        fireEvent.click(screen.getByRole("button", { name: "01 输入 最初想法" }));
+        fireEvent.change(screen.getByLabelText("写下最初想法"), {
+          target: { value: "档案员发现第四份记录，决定重新调查。" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: /重新研查关键追问/u }));
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "再生成一些问题" }));
+      }
+      await flush();
+
+      expect(screen.queryByText(/无需追问；可以直接形成创作简报/u)).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "作品最终要回答哪一个核心问题？" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /下一题/u })).toBeDisabled();
+      fireEvent.click(screen.getByRole("radio", { name: "找出是谁伪造了那段不存在的时间。" }));
+      fireEvent.click(screen.getByRole("button", { name: /下一题/u }));
+      expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: /形成创作简报/u }));
+      await flush();
+      expect(screen.getByRole("heading", { name: "让故事的方向落定，再向深处落笔。" })).toBeInTheDocument();
+    },
+  );
+
   it("treats an all-optional question set as answerable", async () => {
     fake.backend.setQuestionBatch([
       {
@@ -1918,7 +1952,7 @@ describe("intake center", () => {
     expect(
       screen.getByText("作品最终要回答哪一个核心问题？"),
     ).toBeInTheDocument();
-    // 必答问题未回答时仍应阻断成案；本测试验证 provider 回退与追问补充。
+    // Provider 回退后，追加批次也必须保留尚未回答的必答题。
     expect(screen.getByRole("button", { name: /下一题/u })).toBeDisabled();
 
     fireEvent.click(
@@ -1929,6 +1963,13 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     await flush();
 
+    expect(screen.getByRole("heading", { name: "作品最终要回答哪一个核心问题？" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "前往第 4 题" }));
+    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "前往第 1 题" }));
+    fireEvent.click(screen.getByRole("radio", { name: "找出是谁伪造了那段不存在的时间。" }));
+    fireEvent.click(screen.getByRole("button", { name: /下一题/u }));
+    fireEvent.click(screen.getByRole("button", { name: /下一题/u }));
     expect(
       screen.getByRole("heading", {
         name: "还需要多少组相互矛盾的记录，才能支撑核心推理？",

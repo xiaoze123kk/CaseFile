@@ -126,6 +126,7 @@ expected_tables = {
     "users", "user_provider_settings", "projects", "casefiles", "drafts", "briefs",
     "brief_versions", "source_records", "brief_intakes", "brief_intake_questions",
     "brief_intake_candidates", "agent_threads", "agent_messages",
+    "agent_message_contexts", "agent_message_context_refs",
     "agent_patch_sets", "agent_patch_operations", "casefile_objects", "casefile_refs",
     "casefile_contract_refs", "draft_operations", "narrative_phases", "entities",
     "people", "locations", "events", "information_units", "evidence_items",

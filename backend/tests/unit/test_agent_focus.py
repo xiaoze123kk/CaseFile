@@ -119,11 +119,26 @@ def test_focused_patch_targets_are_object_and_event_ids_when_an_issue_is_selecte
 
 
 def test_no_issue_focus_means_no_patch_target_restriction() -> None:
-    assert focused_patch_target_ids(
-        {"object_ids": ["object:person_1"], "validation_issue_ids": []}
-    ) is None
+    assert (
+        focused_patch_target_ids({"object_ids": ["object:person_1"], "validation_issue_ids": []})
+        is None
+    )
     assert focused_patch_target_ids(None) is None
 
 
 def test_issue_focus_without_surviving_bound_objects_forbids_suggestions() -> None:
     assert focused_patch_target_ids({"validation_issue_ids": ["validator:issue-1"]}) == set()
+
+
+def test_issue_only_context_resolves_only_its_frozen_validation_target() -> None:
+    focus = {"validation_issue_ids": ["validator:issue-1"]}
+    assert focused_patch_target_ids(
+        focus,
+        {
+            "issues": [
+                {"issue_id": "validator:issue-1", "target": {"object_id": "target"}},
+                {"issue_id": "validator:other", "target": {"object_id": "unrelated"}},
+            ]
+        },
+    ) == {"target"}
+    assert "object_ids" not in focus

@@ -1,0 +1,46 @@
+.timeline { display: grid; min-width: 0; gap: 24px; }
+.sheet { container: knowledge / inline-size; min-width: 0; padding: clamp(12px, 3cqi, 24px); border: 1px solid #e4d9cb; border-radius: 10px; background: #fffdfa; box-shadow: 0 3px 8px #54422f09; }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 20px; }
+.heading h4 { display: flex; align-items: center; gap: 12px; margin: 0; color: #292c2c; font: 600 clamp(20px, 4cqi, 28px)/1.4 "Noto Serif SC", "STSong", SimSun, serif; }
+.titleIcon { display: grid; flex: none; width: 42px; height: 42px; place-items: center; border: 1px solid #e9e2d8; border-radius: 50%; color: #695a46; background: #f5f1e9; }
+.titleIcon svg { width: 23px; height: 23px; }
+.asOf { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: 8px; color: #77746e; font-size: 14px; }
+.sheet .asOf button { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 7px 10px; border: 1px solid #e2d7c8; border-radius: 4px; color: #66523a; background: #faf7f1; font: inherit; text-align: left; overflow-wrap: anywhere; }
+.asOf small { flex: none; font-size: 12px; }
+.asOf svg { flex: none; width: 14px; height: 14px; }
+.sheet .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0 0 20px; padding: 14px 0; border: 1px solid #e8e0d6; border-radius: 6px; list-style: none; }
+.stats li { display: grid; grid-template-columns: auto auto; align-items: center; justify-content: center; gap: 5px; padding: 0 6px; color: var(--tone); font-size: clamp(13px, 3cqi, 18px); }
+.stats li + li { border-left: 1px solid #e7ded2; }
+.stats svg { grid-column: 1 / -1; justify-self: center; width: 20px; height: 20px; }
+.stats b { color: #7b7a75; font: 400 22px/1.2 "Segoe UI", sans-serif; }
+.sheet [data-tone="known"] { --tone: #29774f; --tint: #f4f9f5; --edge: #d4e4d8; }
+.sheet [data-tone="believes"] { --tone: #b76a0a; --tint: #fff9ef; --edge: #efddc1; }
+.sheet [data-tone="falseBeliefs"] { --tone: #b72e20; --tint: #fff6f3; --edge: #f0dbd4; }
+.groups { display: grid; gap: 16px; }
+.group { min-width: 0; overflow: hidden; border: 1px solid var(--edge); border-radius: 7px; }
+.group > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; padding: 12px 14px; border-bottom: 1px solid var(--edge); background: var(--tint); }
+.group h5 { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--tone); font-size: 17px; font-weight: 500; }
+.group h5 svg { width: 23px; height: 23px; }
+.group p { margin: 0; color: #77746e; font-size: 12px; }
+.group > ul { margin: 0; padding: 0 12px; list-style: none; }
+.item { min-width: 0; }
+.item + .item { border-top: 1px solid #e9e5de; }
+.sheet .item > button,
+.staticItem { display: grid; width: 100%; min-width: 0; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; min-height: 48px; margin: 0; padding: 10px 2px; border: 0; color: #292c2c; background: transparent; font: 16px/1.65 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif; text-align: left; }
+.itemLabel { min-width: 0; overflow-wrap: anywhere; }
+.dot { display: block; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--tone, #999); opacity: .85; }
+.item small { color: #85817a; font-size: 12px; }
+.item svg { width: 16px; height: 16px; color: #8e887d; }
+.sheet .item > button:hover { color: var(--tone); background: var(--tint); }
+.sheet button:focus-visible { outline: 2px solid #a92609; outline-offset: -2px; }
+.empty { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 2px; color: #8a8780; font-size: 15px; }
+.empty > span:last-child { margin-left: auto; }
+.empty .dot { background: #999; }
+.sheet [data-missing="true"] { color: #9a5348; }
+@container knowledge (min-width: 440px) {
+  .stats li { display: flex; gap: 10px; }
+  .stats svg { width: 24px; height: 24px; }
+  .stats b { font-size: 26px; }
+  .sheet .item > button, .staticItem { font-size: 18px; min-height: 54px; }
+  .group p { font-size: 14px; }
+}

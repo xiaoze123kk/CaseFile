@@ -1,18 +1,18 @@
 "use client";
 
 import type { CaseFileDocument } from "@/lib/api-client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   buildObjectDetailModel,
   findWorkbenchDetailObject,
   type DetailField,
-  type DetailKnowledgeState,
   type DetailObject,
-  type DetailReference,
   type ObjectDetailModel,
 } from "./workbench-object-detail-model";
 import type { ContextFieldCitation } from "./workbench-provenance-model";
+import { WorkbenchIcon } from "./workbench-icon";
+import { KnowledgeStateList } from "./workbench-knowledge-state";
 import {
   classificationLabel,
   objectSubtypeLabel,
@@ -207,160 +207,32 @@ function defaultConclusionForResolution(
   };
 }
 
-function KnowledgeItem({
-  reference,
-  onSelectObject,
-}: {
-  reference: DetailReference;
-  onSelectObject: (objectId: string) => void;
-}) {
-  if (reference.selectable && !reference.missing) {
-    return (
-      <button
-        aria-label={`查看${reference.kindLabel}“${reference.label}”`}
-        className={styles.knowledgeItem}
-        onClick={() => onSelectObject(reference.id)}
-        title={`查看${reference.kindLabel}“${reference.label}”`}
-        type="button"
-      >
-        {reference.label}
-        <small>{reference.kindLabel}</small>
-      </button>
-    );
-  }
-  return (
-    <span className={styles.knowledgeItem} data-missing={reference.missing}>
-      {reference.label}
-      <small>{reference.kindLabel}</small>
-    </span>
-  );
-}
-
-function KnowledgeCognitionLine({
-  label,
-  references,
-  tone,
-  onSelectObject,
-}: {
-  label: string;
-  references: DetailReference[];
-  tone: "known" | "believed" | "false";
-  onSelectObject: (objectId: string) => void;
-}) {
-  return (
-    <div className={styles.cognitionLine}>
-      <span className={styles.cognitionLabel} data-tone={tone}>
-        {label}
-      </span>
-      <div className={styles.cognitionValues}>
-        {references.length
-          ? references.map((reference) => (
-              <KnowledgeItem
-                key={reference.id}
-                onSelectObject={onSelectObject}
-                reference={reference}
-              />
-            ))
-          : <span className={styles.cognitionEmpty}>—（无）</span>}
-      </div>
-    </div>
-  );
-}
-
-function KnowledgeMilestone({
-  state,
-  onSelectObject,
-}: {
-  state: DetailKnowledgeState;
-  onSelectObject: (objectId: string) => void;
-}) {
-  const eventContent = (
-    <>
-      <span className={styles.milestoneEventName}>{state.asOf.label}</span>
-      <span className={styles.milestoneEventTag}>事件</span>
-    </>
-  );
-  return (
-    <li className={styles.knowledgeMilestone}>
-      <span aria-hidden="true" className={styles.milestoneNode} />
-      <div className={styles.milestoneBody}>
-        <div className={styles.milestoneHeading}>
-          <span className={styles.milestoneAsOf}>截至</span>
-          {state.asOf.selectable && !state.asOf.missing ? (
-            <button
-              aria-label={`跳转查看截至事件“${state.asOf.label}”`}
-              className={styles.milestoneEvent}
-              onClick={() => onSelectObject(state.asOf.id)}
-              type="button"
-            >
-              {eventContent}
-            </button>
-          ) : (
-            <span
-              className={styles.milestoneEvent}
-              data-missing={state.asOf.missing}
-            >
-              {eventContent}
-            </span>
-          )}
-        </div>
-        <div className={styles.cognitionLines}>
-          <KnowledgeCognitionLine
-            label="已知"
-            onSelectObject={onSelectObject}
-            references={state.known}
-            tone="known"
-          />
-          <KnowledgeCognitionLine
-            label="相信"
-            onSelectObject={onSelectObject}
-            references={state.believes}
-            tone="believed"
-          />
-          <KnowledgeCognitionLine
-            label="错误认知"
-            onSelectObject={onSelectObject}
-            references={state.falseBeliefs}
-            tone="false"
-          />
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function KnowledgeStateList({
-  states,
-  onSelectObject,
-}: {
-  states: DetailKnowledgeState[];
-  onSelectObject: (objectId: string) => void;
-}) {
-  return (
-    <ol className={styles.knowledgeTimeline}>
-      {states.map((state, index) => (
-        <KnowledgeMilestone
-          key={`${state.asOf.id || "story-start"}-${index}`}
-          onSelectObject={onSelectObject}
-          state={state}
-        />
-      ))}
-    </ol>
-  );
-}
-
 function renderField(
   field: DetailField,
   onSelectObject: (objectId: string) => void,
   fieldCitations: ContextFieldCitation[],
+  portrait = false,
 ) {
+  const label = portrait
+    ? ({ 特征: "性格特征", 目标: "核心动机" } as Record<string, string>)[field.label] ?? field.label
+    : field.label;
+  const fieldIcons = {
+    目标: "focus", 特征: "entity", 参与者: "entity", 观察者: "entity", 知识状态: "lightbulb", 秘密: "lock", 能力: "entity", 标签: "tag",
+    卷宗时间: "clock", 时间精度: "clock", 发生地点: "location", 上级地点: "location", 空间方式: "location",
+    状态: "validate", 事实状态: "validate", 可靠度: "validate", 裁决状态: "validate",
+  } as const;
+  const icon = fieldIcons[field.label as keyof typeof fieldIcons] ?? "document";
+  const fieldLabel = <>
+    <span aria-hidden="true" className={styles.fieldIcon}><WorkbenchIcon name={icon} /></span>
+    <span>{label}</span>
+  </>;
   if (field.kind === "text") {
     const citations = fieldCitations.filter((citation) =>
       citation.fieldLabel === field.label && citation.fieldValue === field.value,
     );
     return (
-      <div key={field.label}>
-        <dt>{field.label}</dt>
+      <div data-wide={field.value.length > 48} key={field.label}>
+        <dt>{fieldLabel}</dt>
         <dd>
           {field.value}
           {citations.length ? (
@@ -383,16 +255,16 @@ function renderField(
   }
   if (field.kind === "list") {
     return (
-      <div key={field.label}>
-        <dt>{field.label}</dt>
-        <dd><ul className={styles.valueList}>{field.values.map((value, index) => <li key={`${value}:${index}`}>{value}</li>)}</ul></dd>
+      <div data-wide="true" key={field.label}>
+        <dt>{fieldLabel}</dt>
+        <dd><ul className={styles.valueList} data-chips={["特征", "别名", "标签"].includes(field.label)}>{field.values.map((value, index) => <li key={`${value}:${index}`}>{value}</li>)}</ul></dd>
       </div>
     );
   }
   if (field.kind === "knowledge_states") {
     return (
       <div className={styles.knowledgeStateField} key={field.label}>
-        <dt>{field.label}</dt>
+        <dt className={styles.srOnly}>{label}</dt>
         <dd>
           <KnowledgeStateList
             onSelectObject={onSelectObject}
@@ -403,11 +275,11 @@ function renderField(
     );
   }
   return (
-    <div key={field.label}>
-      <dt>{field.label}</dt>
-      <dd className={styles.referenceList}>
+    <div data-wide={field.references.length > 1} key={field.label}>
+      <dt>{fieldLabel}{field.references.length > 1 ? <span className={styles.referenceCount}>{field.references.length}</span> : null}</dt>
+      <dd className={styles.referenceList} data-uniform={field.references.length > 1 && field.references.every((reference) => reference.kindLabel === field.references[0].kindLabel)}>
         {field.references.map((reference) => reference.selectable ? (
-          <button key={reference.id} onClick={() => onSelectObject(reference.id)} type="button">
+          <button aria-label={`查看${reference.kindLabel}“${reference.label}”`} key={reference.id} onClick={() => onSelectObject(reference.id)} type="button">
             <strong>{reference.label}</strong><small>{reference.kindLabel}</small>
           </button>
         ) : <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}
@@ -420,11 +292,12 @@ function renderSections(
   sections: ObjectDetailModel["coreSections"],
   onSelectObject: (objectId: string) => void,
   fieldCitations: ContextFieldCitation[],
+  portrait = false,
 ) {
   return sections.map((section) => (
     <section className={styles.detailSection} key={section.title}>
-      <h3>{section.title}</h3>
-      <dl>{section.fields.map((field) => renderField(field, onSelectObject, fieldCitations))}</dl>
+      <h3>{portrait && section.title === "核心信息" ? "人物画像" : section.title}</h3>
+      <dl>{section.fields.map((field) => renderField(field, onSelectObject, fieldCitations, portrait))}</dl>
     </section>
   ));
 }
@@ -432,16 +305,17 @@ function renderSections(
 export function WorkbenchObjectEditor({
   document,
   selectedObjectId,
-  revision,
-  revisionLabel,
   saving,
   navigationNotice,
   fieldCitations = [],
   onDirtyChange,
+  onEditingChange,
   onSelectObject,
   onSave,
   readOnly = false,
   readOnlyReason,
+  relatedContent,
+  relationCount,
 }: {
   document: CaseFileDocument;
   selectedObjectId: string | null;
@@ -451,10 +325,13 @@ export function WorkbenchObjectEditor({
   navigationNotice: string | null;
   fieldCitations?: ContextFieldCitation[];
   onDirtyChange: (dirty: boolean) => void;
+  onEditingChange?: (editing: boolean) => void;
   onSelectObject: (objectId: string) => void;
   onSave?: (objectId: string, changes: Record<string, unknown>) => Promise<SaveResult>;
   readOnly?: boolean;
   readOnlyReason?: string;
+  relatedContent?: ReactNode;
+  relationCount?: number;
 }) {
   const selected = useMemo(
     () => findWorkbenchDetailObject(document, selectedObjectId),
@@ -481,6 +358,16 @@ export function WorkbenchObjectEditor({
   }
   const currentSelected: SelectedDetail = selected;
   const currentDetail: ObjectDetailModel = detail;
+  const portrait = selected.collection === "entities" &&
+    (selected.object as Record<string, unknown>).entity_type === "person";
+  const objectIcon = ({
+    entities: "entity", events: "event", locations: "location", information_units: "document",
+    hypotheses: "hypothesis", resolution_specs: "focus",
+  } as const)[selected.collection];
+  const summaryLabel = ({
+    entities: "实体类型", events: "事实属性", locations: "空间方式",
+    information_units: "信息类型", hypotheses: "假设状态", resolution_specs: "结论状态",
+  } as const)[selected.collection];
 
   function change(name: string, value: string) {
     if (readOnly) return;
@@ -497,6 +384,7 @@ export function WorkbenchObjectEditor({
     setDirty(false);
     setEditing(false);
     onDirtyChange(false);
+    onEditingChange?.(false);
     setNotice("已取消未保存修改。");
   }
 
@@ -666,6 +554,7 @@ export function WorkbenchObjectEditor({
       setDirty(false);
       setEditing(false);
       onDirtyChange(false);
+      onEditingChange?.(false);
       setNotice("修改已写入当前工作稿。");
     } else if (result === "conflict") {
       setNotice("工作稿已更新。你的输入已保留，请核对最新版后再次保存。");
@@ -723,37 +612,29 @@ export function WorkbenchObjectEditor({
     </>;
   }
 
-  const associationCount = currentDetail.sourceReferences.length + currentDetail.references.length + currentDetail.relationships.length;
-
   return (
     <section aria-label={readOnly ? "对象详情（只读）" : "对象详情与编辑"} className={styles.objectEditor} data-editing={editing}>
       <header className={styles.detailHeader}>
-        <span className={styles.objectIndex}>{currentDetail.kindLabel.slice(0, 1)}</span>
+        <span aria-hidden="true" className={styles.objectIndex}>{currentDetail.kindLabel.slice(0, 1)}</span>
         <div className={styles.detailIdentity}>
           <p>{currentDetail.kindLabel} · {currentDetail.subtypeLabel}</p>
           <h2>{currentDetail.title}</h2>
-          {currentDetail.description ? <span>{currentDetail.description}</span> : null}
         </div>
-        <div className={styles.headerActions}>
-          <span className={styles.statusBadge}>{currentDetail.confirmationLabel}</span>
-          {currentDetail.confidence !== null ? (
-            <span className={styles.confidenceBadge}>{currentDetail.confidenceLabel}</span>
-          ) : null}
-          {!readOnly && !editing ? <button onClick={() => { setEditing(true); setNotice(null); }} type="button">编辑</button> : null}
-        </div>
+        {!readOnly && !editing ? <button className={styles.editButton} onClick={() => { setEditing(true); onEditingChange?.(true); setNotice(null); }} type="button">编辑<span aria-hidden="true"> ↗</span></button> : null}
+        {currentDetail.description ? <p className={styles.detailDescription}>{currentDetail.description}</p> : null}
       </header>
 
-      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject, fieldCitations)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject, fieldCitations)}</details> : null}</>}
+      <dl aria-label="对象摘要" className={styles.summaryStrip}>
+        <div><WorkbenchIcon name={objectIcon} /><dt>{summaryLabel}</dt><dd>{currentDetail.subtypeLabel}</dd></div>
+        {relationCount !== undefined ? <div><WorkbenchIcon name="event" /><dt>关联</dt><dd>{relationCount} 项</dd></div> : null}
+      </dl>
 
-      {associationCount ? (
-        <p className={styles.associationHint}>
-          {associationCount} 项关联依据已转入下方「关系上下文」按语义与动词展示。
-        </p>
-      ) : null}
+      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : renderSections(currentDetail.coreSections, onSelectObject, fieldCitations, portrait)}
 
       {currentDetail.structureLocks.length ? <section aria-label="结构约束" className={styles.structureLocks}><h3>结构约束</h3>{currentDetail.structureLocks.map((lock) => <article key={lock.title}><strong>{lock.title}</strong><p>{lock.reason}</p><span>{lock.fields.join("、")}</span></article>)}</section> : null}
 
-      <details className={styles.technicalDetails}><summary>技术信息</summary><dl><div><dt>当前工作稿</dt><dd>{revisionLabel ?? `工作稿 R${revision}`}</dd></div>{currentDetail.technicalDetails.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></details>
+      {relatedContent}
+      {!editing && currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary><WorkbenchIcon name="chevron" /><span>更多创作信息</span></summary>{renderSections(currentDetail.moreSections, onSelectObject, fieldCitations)}</details> : null}
 
       {navigationNotice || notice || readOnlyReason ? <p className={styles.objectEditorNotice} role="status">{navigationNotice ?? notice ?? readOnlyReason}</p> : null}
       {!readOnly && editing ? (

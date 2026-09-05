@@ -1,92 +1,93 @@
 .objectEditor {
+  container: dossier / inline-size;
   display: grid;
   min-width: 0;
-  gap: 16px;
-  padding: 16px;
+  gap: 0;
+  padding: 0;
   color: #292c2c;
-  background: #f3f1eb;
+  background: transparent;
   font: 13px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
 }
 
 .detailHeader {
+  position: relative;
   display: grid;
   min-width: 0;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 10px;
-  padding-bottom: 14px;
-  border-bottom: 2px solid #c78b3c;
+  grid-template-columns: clamp(48px, 12cqi, 96px) minmax(0, 1fr);
+  align-items: start;
+  gap: 22px clamp(14px, 4cqi, 30px);
+  padding: 12px 0 26px;
 }
 
 .objectIndex {
   display: grid;
-  width: 38px;
-  height: 38px;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  margin-top: 3px;
   place-items: center;
-  color: #fbfaf6;
-  background: #292c2c;
-  font: 600 17px/1 "Noto Serif SC", "STSong", SimSun, serif;
+  border: 4px double #a92609;
+  border-radius: 5px;
+  color: #a92609;
+  background: transparent;
+  font: 500 clamp(30px, 8cqi, 66px)/1 "Noto Serif SC", "STSong", SimSun, serif;
 }
+.objectIndex::before,
+.objectIndex::after { position: absolute; pointer-events: none; content: ""; opacity: 0.22; }
+.objectIndex::before { inset: 0 50%; border-left: 1px dashed #a92609; }
+.objectIndex::after { inset: 50% 0; border-top: 1px dashed #a92609; }
 
 .detailIdentity { min-width: 0; }
 .detailIdentity p {
-  margin: 0 0 3px;
-  color: #87561f;
-  font-size: 11px;
+  margin: 0 0 9px;
+  padding-right: 56px;
+  color: #a92609;
+  font-size: clamp(12px, 2.5cqi, 16px);
   font-weight: 650;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
 }
 .detailIdentity h2 {
   margin: 0;
   overflow-wrap: anywhere;
-  font: 600 20px/1.25 "Noto Serif SC", "STSong", SimSun, serif;
+  font: 600 clamp(30px, 7.4cqi, 58px)/1.3 "Noto Serif SC", "STSong", SimSun, serif;
+  letter-spacing: 0.02em;
 }
-.detailIdentity > span {
-  display: block;
-  margin-top: 5px;
-  color: #636763;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.headerActions {
-  display: flex;
+.detailDescription {
   grid-column: 1 / -1;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  margin: 0;
+  color: #505650;
+  font-size: clamp(13px, 2.3cqi, 16px);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
 }
 
-.statusBadge,
-.confidenceBadge {
-  display: inline-flex;
-  min-height: 26px;
-  align-items: center;
-  padding: 2px 8px;
-  border: 1px solid #d6d1c5;
-  background: #fbfaf6;
+.editButton {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 8px;
   color: #636763;
-  font-size: 11px;
+  border: 1px solid #d6d1c5;
+  border-radius: 3px;
+  background: transparent;
+  font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
   white-space: nowrap;
 }
-.statusBadge { color: #256f4b; border-color: rgba(53, 164, 111, 0.4); }
-.confidenceBadge { color: #87561f; border-color: rgba(199, 139, 60, 0.5); }
-.headerActions > button {
-  min-height: 44px;
-  margin-left: auto;
-  padding: 0 14px;
-  color: #fbfaf6;
-  border: 1px solid #292c2c;
-  background: #292c2c;
-  font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
-}
-.headerActions > button:hover,
+.editButton:hover { color: #a92609; border-color: #a92609; }
 .footerActions button:not(:disabled):hover { background: #c78b3c; border-color: #c78b3c; }
 
-.detailSection,
+.detailSection {
+  padding: 24px 0 8px;
+  background: transparent;
+}
+
 .quickEdit {
+  margin-top: 18px;
   padding: 13px;
   border: 1px solid #d6d1c5;
-  background: #fbfaf6;
+  background: #f3f1eb;
 }
 
 .detailSection h3,
@@ -99,7 +100,23 @@
 }
 .detailSection dl,
 .technicalDetails dl { display: grid; gap: 0; margin: 0; }
-.detailSection dl > div,
+.detailSection h3 { margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #a92609; color: #292c2c; font: 600 clamp(18px, 3cqi, 22px)/1.2 "Noto Serif SC", "STSong", SimSun, serif; letter-spacing: 0.04em; }
+.detailSection dl { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.detailSection dl > div { display: grid; min-width: 0; grid-template-columns: minmax(100px, 0.3fr) minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 16px 0; border-bottom: 1px solid #e5e1d8; }
+.detailSection dl > div:last-child { border-bottom: 0; }
+.detailSection dt { display: flex; align-items: center; align-self: stretch; gap: 8px; padding-right: 10px; border-right: 1px solid #e5ded2; }
+.fieldIcon { display: grid; flex: none; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: #f1ede3; color: #655c4d; }
+.fieldIcon svg { width: 15px; height: 15px; }
+.detailSection dl > .knowledgeStateField { grid-template-columns: minmax(0, 1fr); }
+.knowledgeStateField dt { border-right: 0; }
+.summaryStrip { display: flex; flex-wrap: wrap; margin: 0; padding: 13px 0; border: 1px solid #dacdbd; border-radius: 4px; }
+.summaryStrip > div { display: grid; flex: 1 1 0; min-width: 0; grid-template-columns: 24px minmax(0, 1fr); gap: 3px 10px; padding: 0 14px; }
+.summaryStrip > div + div { border-left: 1px solid #e1d6c7; }
+.summaryStrip svg { grid-row: 1 / 3; align-self: center; width: 23px; height: 23px; color: #a92609; }
+.summaryStrip dt { margin: 0; color: #777a75; font-size: 11px; }
+.summaryStrip dd { margin: 0; overflow-wrap: anywhere; font-size: 14px; }
+.detailSection dl > div[data-wide="true"],
+.detailSection dl > .knowledgeStateField { grid-column: 1 / -1; }
 .technicalDetails dl > div {
   display: grid;
   grid-template-columns: minmax(72px, 0.38fr) minmax(0, 1fr);
@@ -107,13 +124,12 @@
   padding: 9px 0;
   border-top: 1px solid #e5e1d8;
 }
-.detailSection dl > div:first-child,
 .technicalDetails dl > div:first-child { border-top: 0; }
 .detailSection :is(dt, dd),
 .technicalDetails :is(dt, dd) { margin: 0; min-width: 0; }
 .detailSection dt,
 .technicalDetails dt { color: #777a75; font-size: 12px; }
-.detailSection dd { overflow-wrap: anywhere; color: #292c2c; }
+.detailSection dd { overflow-wrap: anywhere; color: #292c2c; font-size: 14px; line-height: 1.8; }
 
 .citationChips {
   display: flex;
@@ -132,130 +148,27 @@
 }
 
 .valueList { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.valueList li::before { margin-right: 6px; color: #c78b3c; content: "·"; font-weight: 700; }
+.valueList[data-chips="true"] { display: flex; flex-wrap: wrap; gap: 6px; }
+.valueList[data-chips="true"] li { padding: 3px 10px; border: 1px solid #e5d9cb; border-radius: 3px; background: #f6f3ed; }
 
-.knowledgeStateField dd { display: grid; gap: 2px; }
-.knowledgeTimeline { display: grid; margin: 0; padding: 0; list-style: none; }
-.knowledgeMilestone {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: 8px;
-  padding-bottom: 12px;
-}
-.knowledgeMilestone:last-child { padding-bottom: 0; }
-.knowledgeMilestone:not(:last-child)::before {
-  position: absolute;
-  bottom: 0;
-  left: 6px;
-  top: 16px;
-  width: 1px;
-  background: #ded8cc;
-  content: "";
-}
-.milestoneNode {
-  position: relative;
-  z-index: 1;
-  width: 13px;
-  height: 13px;
-  margin-top: 4px;
-  border: 2px solid #c78b3c;
-  border-radius: 50%;
-  background: #fbfaf6;
-}
-.milestoneBody { display: grid; min-width: 0; gap: 4px; padding-top: 1px; }
-.milestoneHeading {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
-  margin: 0;
-}
-.milestoneAsOf {
-  color: #777a75;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.milestoneEvent {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  min-height: 28px;
-  align-items: center;
-  gap: 7px;
-  padding: 2px 8px;
-  color: #292c2c;
-  border: 1px solid #d6d1c5;
-  background: #fbfaf6;
-  font: 600 12px/1.5 "Noto Serif SC", "STSong", SimSun, serif;
-  text-align: left;
-}
-button.milestoneEvent { cursor: pointer; }
-button.milestoneEvent:hover { border-color: #c78b3c; }
-.milestoneEvent[data-missing="true"] { border-style: dashed; }
-.milestoneEventName { min-width: 0; overflow-wrap: anywhere; }
-.milestoneEventTag {
-  padding: 1px 5px;
-  color: #87561f;
-  border: 1px solid rgba(199, 139, 60, 0.55);
-  background: rgba(199, 139, 60, 0.06);
-  font: 700 10px/1.4 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
-.cognitionLines { display: grid; gap: 3px; }
-.cognitionLine {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 56px minmax(0, 1fr);
-  align-items: baseline;
-  gap: 8px;
-}
-.cognitionLabel { font-size: 11px; font-weight: 700; white-space: nowrap; }
-.cognitionLabel[data-tone="known"] { color: #256f4b; }
-.cognitionLabel[data-tone="believed"] { color: #2c5d8a; }
-.cognitionLabel[data-tone="false"] { color: #8d3b39; }
-.cognitionValues {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-}
-.knowledgeItem {
+.referenceList { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.referenceCount { margin-left: 7px; color: #777a75; font: 11px/1 "Cascadia Mono", Consolas, monospace; }
+.referenceList[data-uniform="true"] small { display: none; }
+.referenceList[data-uniform="true"] > :is(button, span) { min-width: 62px; justify-content: center; }
+.referenceList > :is(button, span) {
   display: inline-flex;
   min-width: 0;
   max-width: 100%;
   align-items: baseline;
-  gap: 4px;
-  padding: 0;
+  gap: 8px;
+  padding: 3px 7px;
+  border: 1px solid #e5e1d8;
+  border-radius: 3px;
+  background: #f3f3ed;
   color: #292c2c;
-  border: 0;
-  background: none;
-  font: 12px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+  font: inherit;
   text-align: left;
 }
-button.knowledgeItem {
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: rgba(199, 139, 60, 0.55);
-  text-underline-offset: 3px;
-}
-button.knowledgeItem:hover { color: #87561f; text-decoration-color: #c78b3c; }
-.knowledgeItem > small { color: #777a75; font-size: 10px; white-space: nowrap; }
-.knowledgeItem > small::before { content: "（"; }
-.knowledgeItem > small::after { content: "）"; }
-span.knowledgeItem[data-missing="true"] {
-  color: #8d5452;
-  text-decoration: underline dashed rgba(168, 75, 50, 0.5);
-  text-underline-offset: 3px;
-}
-.cognitionEmpty { color: #9a9d96; font-size: 11px; }
-.referenceList { display: grid; gap: 5px; }
-.referenceList :is(button, span),
 .associationList :is(button, span) {
   display: grid;
   min-width: 0;
@@ -272,7 +185,7 @@ span.knowledgeItem[data-missing="true"] {
 .associationList button { cursor: pointer; }
 .referenceList button:hover,
 .associationList button:hover { border-color: #c78b3c; background: #fbfaf6; }
-.referenceList strong,
+.referenceList strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
 .associationList strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
 .referenceList small,
 .associationList small { color: #777a75; font-size: 10px; white-space: nowrap; }
@@ -281,20 +194,44 @@ span.knowledgeItem[data-missing="true"] {
 
 .moreDetails,
 .technicalDetails {
-  border: 1px solid #d6d1c5;
-  background: #fbfaf6;
+  border: 0;
+  border-bottom: 1px solid #d6d1c5;
+  background: transparent;
 }
 .moreDetails > summary,
 .technicalDetails > summary {
   min-height: 44px;
-  padding: 12px 13px;
+  padding: 13px 0;
   cursor: pointer;
-  color: #292c2c;
-  font-weight: 650;
+  color: #636763;
+  font-size: 12px;
+  font-weight: 500;
 }
+.moreDetails { margin-top: 24px; border: 1px solid #e1d6c7; border-radius: 10px; background: #fffdfa; box-shadow: 0 2px 6px #54422f07; }
+.moreDetails > summary { display: flex; align-items: center; gap: 14px; min-height: 70px; padding: 18px clamp(16px, 4cqi, 30px); color: #353936; font-size: 20px; list-style: none; }
+.moreDetails > summary::-webkit-details-marker { display: none; }
+.moreDetails > summary > svg { flex: none; width: 22px; height: 22px; color: #777a75; transform: rotate(-90deg); }
+.moreDetails[open] > summary > svg { transform: rotate(0); }
+.moreDetails > summary:focus-visible { outline: 2px solid #a92609; outline-offset: 3px; }
 .moreDetails[open] > summary,
-.technicalDetails[open] > summary { border-bottom: 1px solid #d6d1c5; }
-.moreDetails > .detailSection { margin: 12px; }
+.technicalDetails[open] > summary { border-bottom: 1px solid #e5e1d8; }
+.moreDetails > .detailSection { margin: 0; padding: 26px clamp(16px, 3.5cqi, 28px); }
+.moreDetails > .detailSection + .detailSection { padding-top: 10px; }
+.moreDetails > .detailSection h3 { margin-bottom: 24px; padding-left: 16px; border-left-width: 4px; font-size: clamp(24px, 4cqi, 30px); }
+.moreDetails > .detailSection dl { gap: 16px; }
+.moreDetails > .detailSection dl > div:not(.knowledgeStateField) { grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; padding: 18px 16px; border: 1px solid #e8e0d6; border-radius: 7px; background: #fdfbf7; }
+.moreDetails > .detailSection dt { padding-right: 0; border-right: 0; color: #45483f; font-size: clamp(15px, 2.8cqi, 19px); gap: 12px; }
+.moreDetails > .detailSection dd { align-self: center; font-size: clamp(16px, 3cqi, 20px); }
+.moreDetails .fieldIcon { width: 38px; height: 38px; border: 1px solid #e8e0d6; }
+.moreDetails .fieldIcon svg { width: 21px; height: 21px; }
+.moreDetails .valueList { gap: 8px; }
+.moreDetails .valueList[data-chips="true"] li { padding: 5px 14px; border-radius: 5px; }
+.moreDetails > .detailSection dl > .knowledgeStateField { display: block; padding: 0; border: 0; }
+.srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@container dossier (min-width: 480px) {
+  .moreDetails > .detailSection dl > div:not(.knowledgeStateField) { grid-template-columns: minmax(140px, .32fr) minmax(0, 1fr); gap: 24px; }
+  .moreDetails > .detailSection dt:not(.srOnly) { padding-right: 16px; border-right: 1px solid #e5ded2; }
+}
 .technicalDetails dl { padding: 0 13px 13px; }
 .technicalDetails dd { color: #636763; font: 11px/1.5 "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
 
@@ -319,12 +256,11 @@ span.knowledgeItem[data-missing="true"] {
 }
 .objectEditorFields textarea { min-height: 106px; resize: vertical; }
 .objectEditorFields :is(input, textarea, select):focus-visible,
-.headerActions > button:focus-visible,
+.editButton:focus-visible,
 .footerActions button:focus-visible,
 .referenceList button:focus-visible,
 .associationList button:focus-visible,
-.milestoneEvent:focus-visible,
-.knowledgeItem:focus-visible { outline: 2px solid #c78b3c; }
+.moreDetails > summary:focus-visible { outline: 2px solid #c78b3c; }
 .objectEditorWide { grid-column: 1 / -1; }
 .conclusionEditNote {
   grid-column: 1 / -1;
@@ -374,16 +310,6 @@ span.knowledgeItem[data-missing="true"] {
 .associations time { color: #87561f; font-size: 11px; }
 .associations ol strong { overflow-wrap: anywhere; font-size: 12px; }
 
-.associationHint {
-  margin: 0;
-  padding: 9px 11px;
-  color: #87561f;
-  border-left: 2px solid #c78b3c;
-  background: rgba(199, 139, 60, 0.08);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
 .structureLocks { display: grid; gap: 7px; padding: 13px; border: 1px solid rgba(217, 92, 89, 0.45); background: #fbfaf6; }
 .structureLocks h3 { margin-bottom: 2px; }
 .structureLocks article { padding: 9px; border-left: 2px solid #d95c59; background: #f3f1eb; }
@@ -416,12 +342,27 @@ span.knowledgeItem[data-missing="true"] {
 .emptyState strong { color: #292c2c; font: 600 17px/1.3 "Noto Serif SC", "STSong", SimSun, serif; }
 .emptyState p { max-width: 32ch; margin: 0; font-size: 12px; line-height: 1.7; }
 
+/* Expanded desktop dossier; the same component remains usable in a side panel. */
+@container dossier (min-width: 540px) {
+  .detailHeader { padding: 18px 0 30px; gap: 26px 30px; }
+  .editButton { top: 18px; min-height: 38px; padding: 0 14px; }
+  .detailSection dl > div { grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr); gap: 24px; padding: 20px 0; }
+  .detailSection dl > .knowledgeStateField { grid-template-columns: minmax(0, 1fr); }
+  .detailSection dt { font-size: 14px; gap: 12px; }
+  .detailSection dd { font-size: 15px; }
+  .fieldIcon { width: 30px; height: 30px; }
+  .fieldIcon svg { width: 18px; height: 18px; }
+  .summaryStrip { padding: 16px 0; }
+  .summaryStrip > div { padding: 0 24px; }
+  .summaryStrip dt { font-size: 12px; }
+  .summaryStrip dd { font-size: 16px; }
+}
+
 @media (max-width: 420px) {
   .objectEditor { gap: 13px; padding: 13px; }
   .detailHeader { grid-template-columns: 34px minmax(0, 1fr); }
   .objectIndex { width: 34px; height: 34px; font-size: 15px; }
   .detailIdentity h2 { font-size: 18px; }
-  .headerActions > button { width: 100%; margin-left: 0; }
   .detailSection dl > div,
   .technicalDetails dl > div { grid-template-columns: 1fr; gap: 2px; }
   .cognitionLine { grid-template-columns: 1fr; gap: 1px; }

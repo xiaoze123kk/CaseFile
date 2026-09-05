@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
+import { NovelWorkspace } from "@/features/novel-workspace/novel-workspace";
 import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -48,19 +49,25 @@ import {
   previewCaseDraftEventTime,
 } from "@/features/case-session/case-session-api";
 import styles from "./analyst-workbench.module.css";
+import headerStyles from "./workbench-header.module.css";
 import gateStyles from "./workbench-gate.module.css";
 import { AgentLivePanel } from "./workbench-agent-live-panel";
+import { AgentAttentionSurface } from "./workbench-agent-attention";
 import { AgentPanel } from "./workbench-agent-panel";
+import { WorkbenchSidebar } from "./workbench-sidebar";
+import { WorkbenchAgentPortal } from "./workbench-agent-portal";
 import {
   WorkbenchAgentSurface,
-  type AgentSurface,
 } from "./workbench-agent-surface";
+import {
+  initialCollaborationState,
+  type AgentSurface,
+  type CollaborationDetail,
+} from "./workbench-collaboration-state";
+import { useWorkbenchCollaboration } from "./use-workbench-collaboration";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
-import {
-  DraftSwitcher,
-  ProjectSwitcher,
-} from "./workbench-scope-switcher";
+import { ProjectSwitcher } from "./workbench-scope-switcher";
 import {
   type DirectoryObjectKind,
   directoryObjectKind,
@@ -89,12 +96,11 @@ import { RelationshipGraph } from "./workbench-relationship-graph";
 import { EvidenceComparisonView } from "./workbench-evidence-comparison";
 import { ValidationIssuePanel } from "./workbench-validation-issues";
 import { TimelineOverview } from "./timeline/timeline-overview";
-import {
-  CompileCenterView,
-  ExportView,
-} from "./workbench-secondary-views";
+
+import { CompileCenterView } from "./compile-center-view";
 import {
   workbenchViewOptions,
+  type WorkspaceMode,
   type WorkbenchView,
 } from "./workbench-views";
 import {
@@ -122,15 +128,6 @@ const SpatialMapView = dynamic(
 );
 
 type MobileRegion = "objects" | "canvas" | "inspector";
-type WorkspaceMode = "workbench" | "dossier" | "analysis" | "compile";
-
-interface AuditEntry {
-  id: string;
-  time: string;
-  actor: string;
-  action: string;
-  detail: string;
-}
 
 function createIssueStatuses(seed: WorkbenchSeed) {
   return Object.fromEntries(
@@ -149,7 +146,7 @@ const analysisViewOptions = workbenchViewOptions.filter((option) =>
 );
 
 const compileViewOptions = workbenchViewOptions.filter((option) =>
-  ["compile", "export"].includes(option.id),
+  option.id === "compile",
 );
 
 const workspaceModeCopy: Record<
@@ -177,14 +174,6 @@ const workspaceModeCopy: Record<
     description: "把已确认的卷宗转成作品",
   },
 };
-
-function currentClock() {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date());
-}
 
 function workbenchErrorMessage(error: unknown) {
   const message = errorMessage(error);
@@ -256,7 +245,11 @@ function FocusTrapDialog({
 }
 
 const DEFAULT_RAIL_WIDTH = 224;
+const MIN_RAIL_WIDTH = 196;
+const MAX_RAIL_WIDTH = 640;
 const DEFAULT_INSPECTOR_WIDTH = 344;
+const MIN_INSPECTOR_WIDTH = 300;
+const MAX_INSPECTOR_WIDTH = 840;
 const WORKBENCH_HANDOFF_MIN_MS = 1200;
 
 function waitForWorkbenchHandoff(startedAt: number) {
@@ -668,9 +661,8 @@ export function AnalystWorkbench({
       adoptCandidate={adoptCandidate}
       currentDraft={draft}
       draftRevision={draft.revision}
-      key={`project-${projectId}-draft-${draft.draft_id}`}
+      key={`project-${projectId}`}
       onCurrentDraftChanged={handleCurrentDraftChanged}
-      onDraftActivated={handleDraftActivated}
       onPreviewEventTime={previewEventTime}
       onReloadSpatialLocation={reloadSpatialLocation}
       onSaveObject={saveObject}
@@ -679,7 +671,6 @@ export function AnalystWorkbench({
       projectId={projectId}
       realDocument={loadedDocument}
       realContextState={realContextState}
-      onReloadContext={refreshContext}
       savingObject={savingObject}
       seed={seed}
     />
@@ -802,9 +793,7 @@ function AnalystWorkbenchSurface({
   currentDraft = null,
   draftRevision = null,
   savingObject = false,
-  onReloadContext,
   onCurrentDraftChanged,
-  onDraftActivated,
   onPreviewEventTime,
   onReloadSpatialLocation,
   onSaveObject,
@@ -824,9 +813,7 @@ function AnalystWorkbenchSurface({
   currentDraft?: DraftView | null;
   draftRevision?: number | null;
   savingObject?: boolean;
-  onReloadContext?: () => void;
   onCurrentDraftChanged?: () => Promise<void>;
-  onDraftActivated?: (draft: DraftView) => Promise<void> | void;
   onPreviewEventTime?: (
     eventId: string,
     proposedTime: TimelineTemporalPosition,
@@ -848,6 +835,7 @@ function AnalystWorkbenchSurface({
   ) => Promise<SpatialPositionSaveResult>;
 }) {
   const realData = realDocument !== null;
+  const [novelOpen, setNovelOpen] = useState(false);
   const writeLocked = readOnlyPreview;
   const canvasLayoutScope =
     projectId === null
@@ -860,21 +848,28 @@ function AnalystWorkbenchSurface({
     error: null,
     loading: false,
   };
-  const [view, setView] = useState<WorkbenchView>("timeline");
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(
-    realData ? "workbench" : "analysis",
-  );
+  const { state: collaboration, dispatch: dispatchCollaboration, compositionStart, compositionEnd } = useWorkbenchCollaboration({
+    ...initialCollaborationState, mode: realData ? "workbench" : "analysis",
+    objectId: seed.defaultObjectId, eventId: seed.defaultEventId, issueId: seed.defaultIssueId,
+    directContext: seed.defaultObjectId ? { kind: getObject(seed, seed.defaultObjectId)?.kind === "event" ? "event" : "object", id: seed.defaultObjectId } : null,
+    inspectorOpen: realData,
+  });
+  const { view, mode: workspaceMode, objectId: selectedObjectId, eventId: selectedEventId, issueId: selectedIssueId, inspectorOpen } = collaboration;
+  const compileLanding = workspaceMode === "compile" && view === "compile";
+  const setView = (view: WorkbenchView) => dispatchCollaboration({ type: "selection", selection: { view } });
+  const setWorkspaceMode = (mode: WorkspaceMode) => dispatchCollaboration({ type: "mode_changed", mode });
+  const setSelectedObjectId = (objectId: string | null) => dispatchCollaboration({ type: "selection", selection: { objectId } });
+  const setSelectedEventId = (eventId: string | null) => dispatchCollaboration({ type: "selection", selection: { eventId } });
+  const setSelectedIssueId = (issueId: string | null) => dispatchCollaboration({ type: "selection", selection: { issueId } });
+  const setInspectorOpen = (open: boolean) => dispatchCollaboration({ type: "inspector", open });
   const [navigatorOpen, setNavigatorOpen] = useState(true);
   const [evidenceTab, setEvidenceTab] = useState<"matrix" | "issues">("matrix");
-  const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
-  const [selectedObjectId, setSelectedObjectId] = useState(seed.defaultObjectId);
   const [objectHistory, setObjectHistory] = useState(() =>
     createObjectNavigationHistory({
       objectId: seed.defaultObjectId,
       view: "timeline",
     }),
   );
-  const [selectedIssueId, setSelectedIssueId] = useState(seed.defaultIssueId);
   const [issueStatuses, setIssueStatuses] = useState<Record<string, IssueStatus>>(
     () => createIssueStatuses(seed),
   );
@@ -898,36 +893,40 @@ function AnalystWorkbenchSurface({
   const [manualValue, setManualValue] = useState(
     seed.validationIssues[0]?.patchAfter ?? "",
   );
-  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([
-    ...seed.initialAuditEntries,
-  ]);
   const [railWidth, setRailWidth] = useState<number | null>(null);
   const railResizeRef = useRef<{
     startX: number;
     startWidth: number;
   } | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState<number | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(realData);
   const inspectorResizeRef = useRef<{
     startX: number;
     startWidth: number;
   } | null>(null);
-  const [agentSurface, setAgentSurface] = useState<AgentSurface>("dock");
+  const agentSurface = collaboration.agentSurface;
   const [agentFocusRequest, setAgentFocusRequest] = useState(0);
+  const [agentAttention, setAgentAttention] = useState<string[]>([]);
   const [agentKickoff, setAgentKickoff] = useState<{
     id: number;
     prompt: string;
     routingHint?: AgentChatRoutingHint;
   } | null>(null);
-  const [agentInspectorHost, setAgentInspectorHost] = useState<HTMLElement | null>(null);
+  const [centerDetailHost, setCenterDetailHost] = useState<HTMLElement | null>(null);
+  const [sideDetailHost, setSideDetailHost] = useState<HTMLElement | null>(null);
   const [agentThreadHost, setAgentThreadHost] = useState<HTMLElement | null>(null);
-  const [agentFocusPatchSetId, setAgentFocusPatchSetId] = useState<number | null>(null);
-  const [agentFocusFindingId, setAgentFocusFindingId] = useState<string | null>(null);
+  const [agentCenterHost, setAgentCenterHost] = useState<HTMLElement | null>(null);
+  const [agentSideHost, setAgentSideHost] = useState<HTMLElement | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
+  const centerDetail = collaboration.centerStack.at(-1) ?? null;
+  const sideDetail = collaboration.sideStack.at(-1) ?? null;
+  function openCollaborationDetail(detail: CollaborationDetail) {
+    if (blockDirtyObjectNavigation()) return;
+    dispatchCollaboration({ type: "push_detail", mode: workspaceMode, detail });
+  }
 
 
   function startRailResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -941,7 +940,11 @@ function AnalystWorkbenchSurface({
   function moveRailResize(event: ReactPointerEvent<HTMLDivElement>) {
     const resize = railResizeRef.current;
     if (!resize) return;
-    const width = clamp(resize.startWidth + (event.clientX - resize.startX), 196, 320);
+    const width = clamp(
+      resize.startWidth + (event.clientX - resize.startX),
+      MIN_RAIL_WIDTH,
+      MAX_RAIL_WIDTH,
+    );
     setRailWidth(width);
   }
 
@@ -962,8 +965,8 @@ function AnalystWorkbenchSurface({
     if (!resize) return;
     const width = clamp(
       resize.startWidth + resize.startX - event.clientX,
-      300,
-      420,
+      MIN_INSPECTOR_WIDTH,
+      MAX_INSPECTOR_WIDTH,
     );
     setInspectorWidth(width);
   }
@@ -1041,6 +1044,16 @@ function AnalystWorkbenchSurface({
   }
 
   useEffect(() => () => timersRef.current.forEach((timer) => window.clearTimeout(timer)), []);
+  useEffect(() => {
+    function escapeDetails(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || paletteOpen) return;
+      if (agentSurface === "dock" && !centerDetail && !sideDetail) return;
+      event.preventDefault();
+      dispatchCollaboration({ type: "escape" });
+    }
+    window.addEventListener("keydown", escapeDetails);
+    return () => window.removeEventListener("keydown", escapeDetails);
+  }, [agentSurface, centerDetail, dispatchCollaboration, paletteOpen, sideDetail]);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -1051,7 +1064,7 @@ function AnalystWorkbenchSurface({
       ) {
         event.preventDefault();
         if (!writeLocked) {
-          setAgentSurface("dock");
+          dispatchCollaboration({ type: "open_agent", mode: workspaceMode });
           setAgentFocusRequest((version) => version + 1);
         }
         return;
@@ -1063,7 +1076,7 @@ function AnalystWorkbenchSurface({
     }
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [writeLocked]);
+  }, [dispatchCollaboration, workspaceMode, writeLocked]);
 
   useEffect(() => {
     if (!paletteOpen) return;
@@ -1143,12 +1156,14 @@ function AnalystWorkbenchSurface({
       if (blockDirtyObjectNavigation(null)) return false;
       setSelectedEventId(null);
       setSelectedObjectId(null);
+      dispatchCollaboration({ type: "selection", selection: { directContext: null } });
       setObjectEditorNavigationNotice(null);
     } else {
       const object = getObject(seed, frame.objectId);
       if (!object) return false;
       if (blockDirtyObjectNavigation(object.id)) return false;
       setSelectedObjectId(object.id);
+      dispatchCollaboration({ type: "selection", selection: { directContext: { kind: object.kind === "event" ? "event" : "object", id: object.id } } });
       const conclusionEventId = seed.conclusions?.find(
         (conclusion) => conclusion.resolutionSpecId === object.id,
       )?.relatedEventIds[0];
@@ -1160,9 +1175,8 @@ function AnalystWorkbenchSurface({
     }
     if (frame.view !== view) setView(frame.view);
     setWorkspaceMode(
-      frame.view === "compile" || frame.view === "export" ? "compile" : "analysis",
+      frame.view === "compile" ? "compile" : "analysis",
     );
-    setAgentSurface("dock");
     return true;
   }
 
@@ -1193,19 +1207,14 @@ function AnalystWorkbenchSurface({
   function switchWorkspaceMode(nextMode: WorkspaceMode) {
     if (nextMode !== workspaceMode && blockDirtyObjectNavigation()) return;
     setWorkspaceMode(nextMode);
+    dispatchCollaboration({ type: "mode_changed", mode: nextMode });
     if (nextMode === "workbench") {
       setInspectorOpen(true);
     }
-    if (nextMode === "compile") {
-      setInspectorOpen(false);
-    }
-    if (nextMode === "analysis" || nextMode === "compile") {
-      setAgentSurface("dock");
-    }
-    if (nextMode === "analysis" && (view === "compile" || view === "export")) {
+    if (nextMode === "analysis" && view === "compile") {
       setView("timeline");
     }
-    if (nextMode === "compile" && view !== "compile" && view !== "export") {
+    if (nextMode === "compile" && view !== "compile") {
       setView("compile");
     }
     setMobileRegion("canvas");
@@ -1215,22 +1224,11 @@ function AnalystWorkbenchSurface({
   function switchWorkbenchView(nextView: WorkbenchView, label: string) {
     if (nextView !== view && blockDirtyObjectNavigation()) return;
     setView(nextView);
-    if (nextView === "compile" || nextView === "export") {
-      setInspectorOpen(false);
-    }
-    setWorkspaceMode(
-      nextView === "compile" || nextView === "export" ? "compile" : "analysis",
-    );
-    setAgentSurface("dock");
+    const nextMode = nextView === "compile" ? "compile" : "analysis";
+    setWorkspaceMode(nextMode);
+    dispatchCollaboration({ type: "mode_changed", mode: nextMode });
     setMobileRegion("canvas");
     announce(`主画布已切换到${label}。`);
-  }
-
-  function appendAudit(actor: string, action: string, detail: string) {
-    setAuditEntries((entries) => [
-      { id: `AUD-${Date.now()}`, time: currentClock(), actor, action, detail },
-      ...entries,
-    ]);
   }
 
   function selectEvent(
@@ -1241,6 +1239,7 @@ function AnalystWorkbenchSurface({
     if (!event || blockDirtyObjectNavigation(event.id)) return false;
     setSelectedEventId(event.id);
     setSelectedObjectId(event.id);
+    dispatchCollaboration({ type: "selection", selection: { directContext: { kind: "event", id: event.id } } });
     setObjectEditorNavigationNotice(null);
     const issueId = event.issueIds[0];
     if (issueId) setSelectedIssueId(issueId);
@@ -1249,7 +1248,6 @@ function AnalystWorkbenchSurface({
     setSubtypeFilter("all");
     if (!options.preserveView) setView("timeline");
     setWorkspaceMode("analysis");
-    if (!options.preserveView) setAgentSurface("dock");
     setInspectorOpen(true);
     setMobileRegion("canvas");
     commitObjectFocus({
@@ -1272,6 +1270,7 @@ function AnalystWorkbenchSurface({
     const object = getObject(seed, objectId);
     if (!object || blockDirtyObjectNavigation(object.id)) return false;
     setSelectedObjectId(object.id);
+    dispatchCollaboration({ type: "selection", selection: { directContext: { kind: object.kind === "event" ? "event" : "object", id: object.id } } });
     const conclusionEventId = seed.conclusions?.find(
       (conclusion) => conclusion.resolutionSpecId === object.id,
     )?.relatedEventIds[0];
@@ -1296,10 +1295,13 @@ function AnalystWorkbenchSurface({
 
   function openObjectInConversation(objectId: string, revealInDirectory = false) {
     if (!selectObject(objectId, revealInDirectory, true)) return false;
-    setWorkspaceMode("dossier");
-    setAgentSurface("desk");
     setInspectorOpen(true);
-    announce("已将当前对象加入对话上下文。");
+    if (workspaceMode === "analysis" || workspaceMode === "compile") {
+      dispatchCollaboration({ type: "switch_side_base", base: "object" });
+    } else {
+      dispatchCollaboration({ type: "clear_details", host: "side" });
+    }
+    announce("已在对象详情中打开引用对象。");
     return true;
   }
 
@@ -1308,6 +1310,7 @@ function AnalystWorkbenchSurface({
     setSelectedEventId(null);
     setSelectedObjectId(null);
     setSelectedIssueId(null);
+    dispatchCollaboration({ type: "selection", selection: { directContext: null } });
     setObjectEditorNavigationNotice(null);
     commitObjectFocus({ objectId: null, view });
     announce("已清除空间卷宗选择。");
@@ -1318,35 +1321,40 @@ function AnalystWorkbenchSurface({
     const issue = seed.validationIssues.find((item) => item.id === issueId);
     if (!issue || (issue.eventId && blockDirtyObjectNavigation(issue.eventId))) return;
     setSelectedIssueId(issue.id);
+    dispatchCollaboration({ type: "selection", selection: { directContext: { kind: "validation_issue", id: issue.id } } });
     if (issue.eventId) setSelectedEventId(issue.eventId);
     const focusObjectId = issue.targetObjectId ?? issue.eventId ?? null;
     setSelectedObjectId(focusObjectId);
     setObjectQuery("");
     setKindFilter("event");
     setSubtypeFilter("all");
-    setView("evidence");
-    setWorkspaceMode("analysis");
-    setAgentSurface("dock");
-    setEvidenceTab("issues");
+    if (realData) openCollaborationDetail({ kind: "validation", findingId: issue.id });
+    else {
+      // The legacy fixture has illustrative patch actions, not persisted findings.
+      setView("evidence");
+      setWorkspaceMode("analysis");
+      setEvidenceTab("issues");
+    }
     setMobileRegion("canvas");
     setManualEditing(false);
     setManualValue(issue.patchAfter);
-    commitObjectFocus({ objectId: focusObjectId, view: "evidence" });
-    announce(`已打开${issue.severity}问题“${issue.title}”，主画布切换到证据与知识状态对照。`);
+    commitObjectFocus({ objectId: focusObjectId, view });
+    announce(`已打开${issue.severity}问题“${issue.title}”的验证详情。`);
   }
 
   function sendIssueToAgent(issueId: string) {
     const issue = seed.validationIssues.find((item) => item.id === issueId);
     if (!issue) return;
     openIssue(issue.id);
-    setAgentKickoff({
-      id: Date.now(),
+    setAgentKickoff((previous) => ({
+      id: (previous?.id ?? 0) + 1,
       prompt:
         `请处理当前焦点中的验证问题“${issue.title}”：先解释规则失败原因，` +
         "再针对该问题绑定的对象给出可逐项审阅的字段修改建议。",
       routingHint: { entrypoint: "issue_action" },
-    });
-    setAgentSurface("desk");
+    }));
+    dispatchCollaboration({ type: "open_agent", mode: workspaceMode });
+    setInspectorOpen(true);
     announce(`已把验证问题“${issue.title}”交给 Agent 处理。`);
   }
 
@@ -1360,7 +1368,8 @@ function AnalystWorkbenchSurface({
         currentDraft.revision,
       );
       setAgentKickoff(null);
-      setAgentSurface("desk");
+      dispatchCollaboration({ type: "open_agent", mode: workspaceMode });
+      setInspectorOpen(true);
       setAgentFocusRequest((version) => version + 1);
       announce("验证复查已进入队列；Agent 面板将显示真实进度和结果。");
     } catch (caught) {
@@ -1372,14 +1381,12 @@ function AnalystWorkbenchSurface({
     if (!selectedIssue) return;
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: "patch-ready" }));
     setView("evidence");
-    appendAudit("Agent", "生成建议补丁", `${selectedIssue.id} · 等待人工批准`);
     announce("Agent 补丁已生成，仅作为建议展示，等待人工批准。");
   }
 
   function rejectPatch() {
     if (!selectedIssue) return;
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: "open" }));
-    appendAudit(seed.caseMeta.protagonist, "拒绝 Agent 补丁", selectedIssue.id);
     announce("补丁已拒绝，验证问题保持待处理。");
   }
 
@@ -1389,7 +1396,6 @@ function AnalystWorkbenchSurface({
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: nextStatus }));
     setManualEditing(false);
     const actionLabel = action === "approve" ? "批准 Agent 补丁" : action === "manual" ? "保存人工修正" : "标记已知例外";
-    appendAudit(seed.caseMeta.protagonist, actionLabel, `${selectedIssue.id} · 局部重算`);
     announce(`${actionLabel}已记录，正在执行局部重算。`);
     schedule(() => {
       setLiveMessage(`${actionLabel}已完成。当前仍有 ${Math.max(0, unresolvedCount - 1)} 个待处理问题。`);
@@ -1413,8 +1419,7 @@ function AnalystWorkbenchSurface({
     setObjectQuery("");
     setManualEditing(false);
     setManualValue(seed.validationIssues[0]?.patchAfter ?? "");
-    setAuditEntries([...seed.initialAuditEntries]);
-    setAgentSurface("dock");
+    dispatchCollaboration({ type: "close_agent" });
     commitObjectFocus({ objectId: seed.defaultObjectId, view: "timeline" });
     announce(`工作台数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
   }
@@ -1463,8 +1468,7 @@ function AnalystWorkbenchSurface({
   }
 
   function closeAgent() {
-    setAgentSurface("dock");
-    if (workspaceMode === "dossier") setWorkspaceMode("workbench");
+    dispatchCollaboration({ type: "close_agent" });
     setAgentKickoff(null);
     setAgentFocusRequest((version) => version + 1);
   }
@@ -1477,7 +1481,7 @@ function AnalystWorkbenchSurface({
         "请基于当前工作稿梳理下一步创作计划：指出最值得推进的情节、仍需补足的关键线索，并按优先级给出具体行动建议。",
       routingHint: { entrypoint: "free_text" },
     });
-    setAgentSurface("desk");
+    dispatchCollaboration({ type: "open_agent", mode: "workbench" });
     announce("已请 Agent 基于当前工作稿规划下一步。");
   }
 
@@ -1488,35 +1492,58 @@ function AnalystWorkbenchSurface({
           draftRevision: draftRevision ?? currentDraft.revision,
           disabled: writeLocked,
           focus: {
-            object_ids: selectedObjectId ? [selectedObjectId] : [],
-            event_ids: selectedEventId ? [selectedEventId] : [],
-            validation_issue_ids: selectedIssueId ? [selectedIssueId] : [],
-            view,
+            object_ids:
+              collaboration.directContext?.kind === "object"
+                ? [collaboration.directContext.id]
+                : [],
+            event_ids:
+              collaboration.directContext?.kind === "event"
+                ? [collaboration.directContext.id]
+                : [],
+            validation_issue_ids:
+              collaboration.directContext?.kind === "validation_issue" ? [collaboration.directContext.id] : [],
+            view: workspaceMode === "analysis" || workspaceMode === "compile" ? view : null,
           },
           focusRequest: agentFocusRequest,
           kickoff: agentKickoff,
           onClose: closeAgent,
-          onContinueInDesk: () => setAgentSurface("desk"),
+          onContinueInDesk: () => {
+            dispatchCollaboration({ type: "open_agent", mode: workspaceMode });
+            if (workspaceMode === "analysis" || workspaceMode === "compile") {
+              setInspectorOpen(true);
+            }
+          },
           onLocateEvent: (eventId: string) => selectEvent(eventId, { preserveView: true }),
           onLocateObject: (objectId: string) => openObjectInConversation(objectId, true),
           onFocusPatch: (patchSetId: number) => {
-            setAgentFocusPatchSetId(patchSetId);
-            setAgentFocusFindingId(null);
-            setMobileRegion("inspector");
-            setInspectorOpen(true);
-            announce("已将修改建议聚焦到对象上下文。");
+            dispatchCollaboration({
+              type: "push_detail",
+              mode: workspaceMode,
+              detail: { kind: "patch", patchId: patchSetId },
+            });
+            if (workspaceMode === "analysis" || workspaceMode === "compile") {
+              setInspectorOpen(true);
+            }
+            announce("已打开修改建议审阅。");
           },
           onFocusFinding: (findingId: string) => {
-            setAgentFocusFindingId(findingId);
-            setAgentFocusPatchSetId(null);
-            setMobileRegion("inspector");
+            dispatchCollaboration({
+              type: "push_detail",
+              mode: workspaceMode,
+              detail: { kind: "validation", findingId },
+            });
             setInspectorOpen(true);
-            announce("已将验证发现聚焦到对象上下文。");
+            announce("已打开验证发现详情。");
           },
-          focusPatchSetId: agentFocusPatchSetId,
-          focusFindingId: agentFocusFindingId,
-          inspectorHost: agentInspectorHost,
+          details: {
+            center: centerDetail, side: sideDetail, centerHost: centerDetailHost, sideHost: sideDetailHost,
+            data: { document: realDocument, context: contextState.data, issues: seed.validationIssues },
+            onBack: (host: "center" | "side") => dispatchCollaboration({ type: "pop_detail", host }),
+            onOpen: openCollaborationDetail,
+          },
           threadHost: agentThreadHost,
+          presentationHost:
+            agentSurface === "side" ? agentSideHost : agentCenterHost,
           onDraftChanged: onCurrentDraftChanged ?? (async () => {}),
           projectId,
           referenceLabels: {
@@ -1527,42 +1554,52 @@ function AnalystWorkbenchSurface({
         }
       : null;
 
-  const agentSurfaceContent = (
-    <WorkbenchAgentSurface surface={agentSurface}>
-      {agentLiveProps ? (
-        <AgentLivePanel {...agentLiveProps} surface={agentSurface} />
-      ) : (
+  const visibleAgentSurface: AgentSurface = agentSurface;
+  const agentPresentationHost =
+    visibleAgentSurface === "side" ? agentSideHost : agentCenterHost;
+  const agentControllerContent = agentLiveProps ? (
+    agentPresentationHost ? (
+      <AgentLivePanel {...agentLiveProps} surface={visibleAgentSurface} onAgentFocus={setAgentAttention} />
+    ) : null
+  ) : agentPresentationHost ? (
+    <WorkbenchAgentPortal host={agentPresentationHost}>
+      <WorkbenchAgentSurface surface={visibleAgentSurface}>
         <AgentPanel
-          contextChips={[
-            selectedObject?.label,
-            selectedEvent?.label,
-            selectedIssue?.title,
-            workbenchViewOptions.find((option) => option.id === view)?.label,
-          ].filter((value): value is string => Boolean(value))}
           disabled={writeLocked}
           focusRequest={agentFocusRequest}
           onClose={closeAgent}
-          onContinueInDesk={() => setAgentSurface("desk")}
+          onContinueInDesk={() =>
+            dispatchCollaboration({ type: "open_agent", mode: workspaceMode })
+          }
           seed={seed}
-          surface={agentSurface}
+          surface={visibleAgentSurface}
           unresolvedCount={unresolvedCount}
         />
-      )}
-    </WorkbenchAgentSurface>
-  );
+      </WorkbenchAgentSurface>
+    </WorkbenchAgentPortal>
+  ) : null;
+
+  if (novelOpen) {
+    return <NovelWorkspace key={canvasLayoutScope} scopeKey={canvasLayoutScope} seed={seed} onBack={() => setNovelOpen(false)} />;
+  }
 
   return (
+    <AgentAttentionSurface ids={agentAttention}>
     <div
-      className={styles.workbench}
+      className={`${styles.workbench} ${headerStyles.workbench}`}
+      onCompositionStartCapture={(event) => {
+        if (event.target instanceof HTMLTextAreaElement && event.target.getAttribute("aria-label") === "给卷宗统筹 Agent 的指令") compositionStart();
+      }}
+      onCompositionEndCapture={compositionEnd}
       data-mobile-region={mobileRegion}
       data-read-only-preview={writeLocked}
       data-workbench-seed={seed.id}
     >
       <a className={styles.skipLink} href="#analyst-canvas">跳到主画布</a>
-      <header className={styles.topbar}>
-        <div className={styles.brandBlock}>
+      <header className={headerStyles.header}>
+        <Link aria-label="返回建案中心" className={headerStyles.brand} href="/" title="CaseFile · 返回建案中心">
           <span className={styles.brandMark} aria-hidden="true" />
-        </div>
+        </Link>
         {projectId === null ? (
           <div className={styles.caseIdentity}>
             <span>本地项目预览</span>
@@ -1597,78 +1634,67 @@ function AnalystWorkbenchSurface({
             </div>
             <small>{seed.caseMeta.revision}</small>
           </div>
-        ) : (
-          <ProjectSwitcher
-            currentProjectId={projectId}
-            fallbackTitle={seed.caseMeta.title}
-            onBeforeSwitch={() => !blockDirtyObjectNavigation()}
-          />
-        )}
+        ) : null}
         <nav
           aria-label="主要工作模式"
-          className={styles.workspaceModes}
+          className={headerStyles.modes}
           role="tablist"
         >
           <button
             aria-selected={workspaceMode === "workbench" || workspaceMode === "dossier"}
-            className={styles.mergedWorkbenchMode}
             onClick={() => switchWorkspaceMode("workbench")}
             role="tab"
             type="button"
           >
-            <WorkbenchIcon name="archive" />
-            <span>
-              <strong>工作台</strong>
-              <small>当前工作 · 对象档案</small>
-            </span>
+            <span className={headerStyles.modeIcon}><WorkbenchIcon name="archive" /></span>
+            <span>工作台</span>
           </button>
           <button
             aria-selected={workspaceMode === "analysis"}
-            className={styles.iconWorkspaceMode}
             onClick={() => switchWorkspaceMode("analysis")}
             role="tab"
             type="button"
           >
-            <WorkbenchIcon name="command" />
-            <span>
-              <strong>{workspaceModeCopy.analysis.label}</strong>
-              <small>{workspaceModeCopy.analysis.eyebrow}</small>
-            </span>
+            <span className={headerStyles.modeIcon}><WorkbenchIcon name="command" /></span>
+            <span>{workspaceModeCopy.analysis.label}</span>
           </button>
           <button
             aria-selected={workspaceMode === "compile"}
-            className={styles.compileMode}
             disabled={writeLocked}
             onClick={() => switchWorkspaceMode("compile")}
             role="tab"
             type="button"
           >
-            <strong>编译作品</strong>
-            <WorkbenchIcon name="export" />
+            <span className={headerStyles.modeIcon}><WorkbenchIcon name="export" /></span>
+            <span>编译作品</span>
           </button>
         </nav>
-        <div className={styles.topStatus} aria-label="卷宗状态">
-          <button
-            data-tone={writeLocked ? "success" : realData ? contextState.error || unresolvedCount > 0 ? "danger" : contextState.data?.validation.status === "passed" ? "success" : "muted" : unresolvedCount > 0 ? "danger" : "success"}
-            disabled={realData || writeLocked}
-            onClick={() => {
-              if (realData || writeLocked) return;
-              if (seed.defaultIssueId) openIssue(seed.defaultIssueId);
-            }}
-            title={realData ? "确定性验证详情将在质量中心提供" : writeLocked ? "候选预览只读" : "打开验证问题对照"}
-            type="button"
-          >
-            <WorkbenchIcon name="validate" />
-            <span><small>验证</small><strong>{realData ? realValidationLabel : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
-          </button>
-        </div>
-        <button className={styles.globalSearch} onClick={() => setPaletteOpen(true)} ref={commandTriggerRef} type="button">
+        <button className={headerStyles.search} onClick={() => setPaletteOpen(true)} ref={commandTriggerRef} type="button">
           <WorkbenchIcon name="search" />
           <span>搜索对象或命令</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div className={styles.topActions}>
-          <button aria-label={writeLocked ? "候选预览不可重置" : "重置工作台数据"} disabled={writeLocked} onClick={resetWorkbench} type="button"><WorkbenchIcon name="reset" /></button>
+        <div className={headerStyles.status} aria-label="卷宗状态">
+          <button
+            aria-label={`验证 ${realData ? realValidationLabel : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}`}
+            data-tone={writeLocked ? "success" : realData ? contextState.error || unresolvedCount > 0 ? "danger" : contextState.data?.validation.status === "passed" ? "success" : "muted" : unresolvedCount > 0 ? "danger" : "success"}
+            disabled={writeLocked}
+            onClick={() => {
+              if (writeLocked) return;
+              if (realData) {
+                if (blockDirtyObjectNavigation()) return;
+                switchWorkbenchView("evidence", "待处理问题");
+                setEvidenceTab("issues");
+              } else if (seed.defaultIssueId) openIssue(seed.defaultIssueId);
+            }}
+            title={writeLocked ? "候选预览只读" : "查看验证问题"}
+            type="button"
+          >
+            <WorkbenchIcon name="validate" />
+            <span>{realData ? realValidationLabel.replace(/ 个问题$/u, "") : unresolvedCount > 0 ? unresolvedCount : "已通过"}</span>
+          </button>
+        </div>
+        <div className={headerStyles.actions}>
           <button
             aria-label="打开模型服务设置"
             onClick={() => window.dispatchEvent(new Event("casefile:open-settings"))}
@@ -1677,7 +1703,26 @@ function AnalystWorkbenchSurface({
           >
             <WorkbenchIcon name="settings" />
           </button>
-          <Link href="/">返回建案中心</Link>
+          <details className={headerStyles.more}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) event.currentTarget.open = false;
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }}
+          >
+            <summary aria-label="更多工作台操作" title="更多操作"><svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18" fill="currentColor"><circle cx="4" cy="10" r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="16" cy="10" r="1.5" /></svg></summary>
+            <div className={headerStyles.morePanel}>
+              <button aria-label={writeLocked ? "候选预览不可重置" : "重置工作台数据"} disabled={writeLocked} onClick={(event) => {
+                const details = event.currentTarget.closest("details");
+                if (details) { details.open = false; details.querySelector("summary")?.focus(); }
+                resetWorkbench();
+              }} type="button"><WorkbenchIcon name="reset" />重置工作台数据</button>
+            </div>
+          </details>
         </div>
       </header>
 
@@ -1718,14 +1763,15 @@ function AnalystWorkbenchSurface({
 
       <div
         className={styles.workspaceBody}
-        data-inspector-open={inspectorOpen}
+        data-inspector-open={inspectorOpen && !compileLanding}
+        data-compile-landing={compileLanding}
         data-navigator-open={navigatorOpen}
         style={
           {
             "--rail-width": navigatorOpen
               ? `${railWidth ?? DEFAULT_RAIL_WIDTH}px`
               : "0px",
-            "--inspector-width": inspectorOpen
+            "--inspector-width": inspectorOpen && !compileLanding
               ? `${inspectorWidth ?? DEFAULT_INSPECTOR_WIDTH}px`
               : "0px",
           } as CSSProperties
@@ -1768,7 +1814,7 @@ function AnalystWorkbenchSurface({
               onClick={() => setNavigatorOpen(false)}
               type="button"
             >
-              <WorkbenchIcon name="chevron" />
+              <WorkbenchIcon name="panel-collapse-left" />
             </button>
           </header>
 
@@ -1781,7 +1827,7 @@ function AnalystWorkbenchSurface({
               onKindFilterChange={setKindFilter}
               onQueryChange={setObjectQuery}
               onSelectObject={(objectId) => {
-                openObjectInConversation(objectId);
+                    selectObject(objectId);
               }}
               onSubtypeFilterChange={setSubtypeFilter}
               query={objectQuery}
@@ -1806,7 +1852,7 @@ function AnalystWorkbenchSurface({
                   role="tab"
                   type="button"
                 >
-                  <span>{option.shortLabel}</span>
+                  <span aria-hidden="true" className={styles.analysisNavigationIcon} data-view={option.id} />
                   <strong>{option.label}</strong>
                   <small>
                     {option.id === "timeline"
@@ -1839,9 +1885,13 @@ function AnalystWorkbenchSurface({
                   role="tab"
                   type="button"
                 >
-                  <span>{option.shortLabel}</span>
+                  <span
+                    aria-hidden="true"
+                    className={styles.compileNavigationIcon}
+                    data-view={option.id}
+                  />
                   <strong>{option.label}</strong>
-                  <small>{option.id === "compile" ? "结构与产物" : "发布前检查"}</small>
+                  <small>结构与产物</small>
                 </button>
               ))}
             </nav>
@@ -1851,7 +1901,7 @@ function AnalystWorkbenchSurface({
 
         <main
           className={styles.canvas}
-          data-agent-surface={agentSurface}
+          data-agent-surface={visibleAgentSurface}
           data-draft-revision={seed.caseMeta.revision}
           data-selected-object-id={selectedObjectId ?? ""}
           data-workbench-view={view}
@@ -1868,7 +1918,13 @@ function AnalystWorkbenchSurface({
                 onClick={() => setNavigatorOpen((open) => !open)}
                 type="button"
               >
-                <WorkbenchIcon name="command" />
+                <WorkbenchIcon
+                  name={
+                    navigatorOpen
+                      ? "panel-collapse-left"
+                      : "panel-expand-right"
+                  }
+                />
               </button>
               <div>
                 <span>{workspaceModeCopy[workspaceMode].eyebrow}</span>
@@ -1879,7 +1935,7 @@ function AnalystWorkbenchSurface({
                 </strong>
               </div>
             </div>
-            <div className={styles.canvasToolbarActions}>
+            <div className={styles.canvasToolbarActions} hidden={compileLanding}>
               {realData ? (
                 <div
                   aria-label="对话线程入口"
@@ -1888,16 +1944,7 @@ function AnalystWorkbenchSurface({
                   role="region"
                 />
               ) : null}
-              {projectId !== null && currentDraft && onDraftActivated && !writeLocked ? (
-                <DraftSwitcher
-                  currentDraft={currentDraft}
-                  onActivated={onDraftActivated}
-                  onBeforeSwitch={() => !blockDirtyObjectNavigation()}
-                  onCurrentDraftChanged={onCurrentDraftChanged}
-                  projectId={projectId}
-                />
-              ) : null}
-              {agentSurface === "desk" ? (
+              {visibleAgentSurface === "center" ? (
                 <button
                   aria-label="收起 Agent 对话"
                   className={styles.canvasPanelToggle}
@@ -1911,22 +1958,28 @@ function AnalystWorkbenchSurface({
                 aria-expanded={inspectorOpen}
                 aria-label={inspectorOpen ? "收起对象上下文" : "展开对象上下文"}
                 className={styles.canvasPanelToggle}
-                onClick={() => setInspectorOpen((open) => !open)}
+                onClick={() => { if (!blockDirtyObjectNavigation()) setInspectorOpen(!inspectorOpen); }}
                 type="button"
               >
-                <WorkbenchIcon name="chevron" />
+                <WorkbenchIcon
+                  name={
+                    inspectorOpen
+                      ? "panel-collapse-right"
+                      : "panel-expand-left"
+                  }
+                />
               </button>
             </div>
           </header>
           <div
             className={styles.canvasContent}
-            data-conversation-active={agentSurface === "desk"}
-            data-mode={agentSurface === "desk" ? "workbench" : workspaceMode}
+            data-conversation-active={!compileLanding && visibleAgentSurface === "center"}
+            data-mode={!compileLanding && visibleAgentSurface === "center" ? "workbench" : workspaceMode}
             data-view={view}
           >
             <div
               className={styles.canvasWorkspaceContent}
-              hidden={agentSurface === "desk"}
+              hidden={!compileLanding && visibleAgentSurface === "center"}
             >
             {workspaceMode === "workbench" ? (
               <section className={styles.workbenchHome}>
@@ -1969,14 +2022,6 @@ function AnalystWorkbenchSurface({
                         onPreviewEventTime &&
                         onSaveObject,
                     )}
-                    draftId={
-                      realData && !writeLocked && currentDraft
-                        ? currentDraft.draft_id
-                        : undefined
-                    }
-                    exposurePlanEditable={Boolean(
-                      realData && !writeLocked && currentDraft,
-                    )}
                     issueStatuses={visibleIssueStatuses}
                     onConfirmTime={async (eventId, time) => {
                       const result = await (
@@ -1986,11 +2031,6 @@ function AnalystWorkbenchSurface({
                     }}
                     onPreviewTime={onPreviewEventTime}
                     onSelectEvent={selectEvent}
-                    projectId={
-                      realData && !writeLocked && currentDraft && projectId !== null
-                        ? projectId
-                        : undefined
-                    }
                     saving={savingObject}
                     seed={seed}
                     selectedEventId={selectedEventId}
@@ -2005,7 +2045,8 @@ function AnalystWorkbenchSurface({
               )
             ) : null}
             {workspaceMode === "analysis" && view === "relations" ? (
-              <RelationshipGraph layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
+              <RelationshipGraph layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId}
+                onOpenRelation={(relationId, objectId) => openCollaborationDetail({ kind: "relation", relationId, objectId })} />
             ) : null}
             {workspaceMode === "analysis" && view === "reasoning" ? (
               <ReasoningGraphView
@@ -2077,9 +2118,9 @@ function AnalystWorkbenchSurface({
                 title={seed.caseMeta.mapTitle}
               />
             ) : null}
-            {workspaceMode === "compile" && view === "export" ? <ExportView seed={seed} unresolvedCount={unresolvedCount} /> : null}
+
             {workspaceMode === "compile" && view === "compile" ? (
-              <CompileCenterView seed={seed} unresolvedCount={unresolvedCount} />
+              <CompileCenterView title={seed.caseMeta.title} onOpenNovel={() => setNovelOpen(true)} />
             ) : null}
             {workspaceMode === "analysis" && view === "evidence" ? (
               <div className={styles.evidenceView}>
@@ -2094,7 +2135,7 @@ function AnalystWorkbenchSurface({
                     role="tab"
                     type="button"
                   >
-                    证据矩阵
+                    线索对比
                   </button>
                   <button
                     aria-selected={evidenceTab === "issues"}
@@ -2102,7 +2143,7 @@ function AnalystWorkbenchSurface({
                     role="tab"
                     type="button"
                   >
-                    验证问题
+                    待处理问题
                   </button>
                 </div>
                 {evidenceTab === "matrix" ? (
@@ -2151,7 +2192,8 @@ function AnalystWorkbenchSurface({
           <section
             aria-label="CaseFile Agent 聊天框"
             className={styles.agentDock}
-            data-surface={agentSurface}
+            hidden={compileLanding}
+            data-surface={visibleAgentSurface}
           >
             <Image
               alt=""
@@ -2162,57 +2204,33 @@ function AnalystWorkbenchSurface({
               src="/casefile-agent-mascot-3d.png"
               width={72}
             />
-            {agentSurfaceContent}
+            <div className={styles.agentPresentationHost} hidden={Boolean(centerDetail)} ref={setAgentCenterHost} />
           </section>
+          <div className={styles.centerDetailHost} hidden={compileLanding || !centerDetail} ref={setCenterDetailHost} />
         </main>
 
-        <aside aria-label="对象上下文" className={styles.inspector}>
-          <header className={styles.inspectorHeader}>
-            <div>
-              <span>{workspaceMode === "workbench" ? "工作台状态" : "对象上下文"}</span>
-              <strong>{workspaceMode === "workbench" ? seed.caseMeta.title : getObject(seed, selectedObjectId)?.label ?? selectedEvent?.label ?? "尚未选择对象"}</strong>
-            </div>
-            <div className={styles.inspectorHeaderActions}>
-              {workspaceMode !== "workbench" ? <div aria-label="对象上下文导航历史" className={styles.historyControls} role="group">
-                <button
-                  aria-label="后退到上一个对象"
-                  className={styles.historyButton}
-                  data-direction="back"
-                  disabled={!objectHistoryBackFrame}
-                  onClick={() => navigateObjectHistory("back")}
-                  title={objectHistoryBackFrame ? `后退：${objectFocusLabel(objectHistoryBackFrame)}` : undefined}
-                  type="button"
-                >
-                  <WorkbenchIcon name="chevron" />
-                </button>
-                <button
-                  aria-label="前进到下一个对象"
-                  className={styles.historyButton}
-                  data-direction="forward"
-                  disabled={!objectHistoryForwardFrame}
-                  onClick={() => navigateObjectHistory("forward")}
-                  title={objectHistoryForwardFrame ? `前进：${objectFocusLabel(objectHistoryForwardFrame)}` : undefined}
-                  type="button"
-                >
-                  <WorkbenchIcon name="chevron" />
-                </button>
-              </div> : null}
-              <button
-                aria-label="收起对象上下文"
-                aria-expanded={inspectorOpen}
-                className={styles.inspectorToggle}
-                onClick={() => {
-                  setInspectorOpen(false);
-                  announce("对象上下文已收起。主画布已扩展。");
-                }}
-                type="button"
-              >
-                <WorkbenchIcon name="chevron" />
-              </button>
-            </div>
-          </header>
-          <div className={styles.inspectorContent}>
-            {workspaceMode === "workbench" ? (
+        <WorkbenchSidebar
+          hidden={compileLanding}
+          mode={workspaceMode} base={collaboration.sideBase} open={inspectorOpen}
+          agentVisible={visibleAgentSurface === "side"} hasDetail={Boolean(sideDetail)}
+          agentHostRef={setAgentSideHost} detailHostRef={setSideDetailHost}
+          onBaseChange={(base) => {
+            if (blockDirtyObjectNavigation()) return;
+            dispatchCollaboration({ type: "switch_side_base", base });
+            setInspectorOpen(true);
+          }}
+          onClose={() => {
+            if (blockDirtyObjectNavigation()) return;
+            setInspectorOpen(false);
+            announce("对象上下文已收起。主画布已扩展。");
+          }}
+          history={{
+            backLabel: objectFocusLabel(objectHistoryBackFrame), forwardLabel: objectFocusLabel(objectHistoryForwardFrame),
+            canBack: Boolean(objectHistoryBackFrame), canForward: Boolean(objectHistoryForwardFrame),
+            back: () => navigateObjectHistory("back"), forward: () => navigateObjectHistory("forward"),
+          }}
+          objectContent={<>
+            {!selectedObjectId ? (
               <section aria-label="工作台状态" className={styles.workbenchCaseSummary}>
                 <header>
                   <span>CASE</span>
@@ -2236,15 +2254,14 @@ function AnalystWorkbenchSurface({
               </section>
             ) : (
               <WorkbenchContextInspector
-                auditEntries={auditEntries}
                 contextState={contextState}
                 document={realDocument}
                 navigationNotice={objectEditorNavigationNotice}
                 onDirtyChange={updateObjectEditorDirty}
-                onReloadContext={onReloadContext}
                 onSave={onSaveObject}
                 onSelectObject={selectObject}
                 onSelectRelatedEvent={selectEvent}
+                onOpenRelation={(relationId) => selectedObjectId && openCollaborationDetail({ kind: "relation", relationId, objectId: selectedObjectId })}
                 readOnly={writeLocked || !onSaveObject || spatialEditActive}
                 readOnlyReason={
                   spatialEditActive
@@ -2264,9 +2281,10 @@ function AnalystWorkbenchSurface({
                 writeLocked={writeLocked}
               />
             )}
-            <div ref={setAgentInspectorHost} />
-          </div>
-        </aside>
+
+          </>}
+        />
+        {agentControllerContent}
       </div>
 
       <div aria-atomic="true" aria-live="polite" className={styles.liveStatus} role="status"><span>STATUS</span>{liveMessage}</div>
@@ -2277,5 +2295,6 @@ function AnalystWorkbenchSurface({
       </FocusTrapDialog>
 
     </div>
+    </AgentAttentionSurface>
   );
 }

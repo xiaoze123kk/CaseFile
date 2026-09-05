@@ -49,6 +49,14 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     ResolutionGovernanceIRV2,
     TemporalPlannerInputV3,
 )
+from casefile.agent_runtime.brief_to_draft_v16.contracts import (
+    DomainDraftInputV6,
+    EvidenceRepairInputV2,
+    GovernanceDraftInputV6,
+    MatrixEvaluationInputV2,
+    PlannerInputV6,
+    TemporalPlannerInputV4,
+)
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
@@ -165,6 +173,12 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "brief-to-draft-governance-input-v5": GovernanceDraftInputV5,
         "brief-to-draft-evidence-repair-input-v1": EvidenceRepairInputV1,
         "brief-to-draft-matrix-evaluation-input-v1": MatrixEvaluationInputV1,
+        "brief-to-draft-planner-input-v6": PlannerInputV6,
+        "brief-to-draft-temporal-input-v4": TemporalPlannerInputV4,
+        "brief-to-draft-domain-input-v6": DomainDraftInputV6,
+        "brief-to-draft-governance-input-v6": GovernanceDraftInputV6,
+        "brief-to-draft-evidence-repair-input-v2": EvidenceRepairInputV2,
+        "brief-to-draft-matrix-evaluation-input-v2": MatrixEvaluationInputV2,
         "casefile-chat-intent-input-v1": ChatIntentRouterInputV1,
         "casefile-chat-rewrite-input-v1": ChatRewriteInputV1,
         "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
@@ -303,6 +317,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("brief-to-draft-pipeline-v13", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v14", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v15", TOOLSET_VERSION),
+        ("brief-to-draft-pipeline-v16", TOOLSET_VERSION),
         ("casefile-single-agent-v2", TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V3_VERSION),

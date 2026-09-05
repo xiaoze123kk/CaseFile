@@ -1,11 +1,18 @@
 .contextInspector {
   display: grid;
   min-width: 0;
-  gap: 14px;
-  padding: 16px;
+  align-content: start;
   color: #292c2c;
   background: #f3f1eb;
   font: 13px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+}
+
+.contextPanel {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+  padding: 24px 26px 30px;
+  background: #fbfaf6;
 }
 
 .contextEmptyState {
@@ -18,6 +25,62 @@
   color: #636763;
   text-align: center;
 }
+
+.overviewRelations {
+  position: relative;
+  min-width: 0;
+  margin-top: 22px;
+  padding: 28px 0 0;
+  border-top: 1px solid #d6cabb;
+}
+.sectionOrnament { position: absolute; top: -12px; left: calc(50% - 13px); width: 26px; color: #a92609; background: #fbfaf6; text-align: center; font-size: 18px; }
+
+.overviewRelations > header {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.overviewRelations > header h3 {
+  margin: 0;
+  color: #292c2c;
+  padding-left: 10px;
+  border-left: 3px solid #a92609;
+  font: 600 clamp(18px, 3cqi, 22px)/1.2 "Noto Serif SC", "STSong", SimSun, serif;
+  letter-spacing: 0.04em;
+}
+.overviewRelations > header small {
+  flex: none;
+  color: #777a75;
+  font-size: 11px;
+}
+
+.overviewRelationList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overviewFixtureEvent:focus-visible { outline: 2px solid #c78b3c; outline-offset: 2px; }
+
+.overviewFixtureEvent {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 8px 10px;
+  color: #292c2c;
+  border: 1px solid #e0dbd1;
+  background: #f3f1eb;
+  text-align: left;
+}
+.overviewFixtureEvent strong { font-size: 12px; }
+.overviewFixtureEvent small { color: #777a75; font-size: 11px; }
 
 .contextEmptyState > span {
   display: grid;
@@ -39,24 +102,6 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.7;
-}
-
-.previewBoundary {
-  padding: 13px;
-  border: 1px solid rgba(53, 164, 111, 0.4);
-  background: #fbfaf6;
-}
-
-.previewBoundary strong {
-  color: #256f4b;
-  font-size: 13px;
-}
-
-.previewBoundary p {
-  margin: 6px 0 0;
-  color: #636763;
-  font-size: 12px;
-  line-height: 1.6;
 }
 
 .fixtureContext {
@@ -166,122 +211,11 @@
   font-size: 11px;
 }
 
-.sectionToggle,
-.groupToggle {
-  display: grid;
-  flex: none;
-  place-items: center;
-  color: #777a75;
-  border: 1px solid #d6d1c5;
-  background: #fbfaf6;
-}
-
-.sectionToggle {
-  width: 28px;
-  height: 28px;
-}
-
-.groupToggle {
-  width: 22px;
-  height: 22px;
-}
-
-.sectionToggle:hover,
-.groupToggle:hover {
-  color: #87561f;
-  border-color: rgba(199, 139, 60, 0.5);
-  background: rgba(199, 139, 60, 0.1);
-}
-
-.sectionToggle svg,
-.groupToggle svg {
-  width: 14px;
-  height: 14px;
-  transform: rotate(180deg);
-  transition: transform 140ms ease;
-}
-
-.sectionToggle[data-collapsed="true"] svg,
-.groupToggle[data-collapsed="true"] svg {
-  transform: rotate(90deg);
-}
-
 .contextEmpty {
   margin: 0;
   color: #777a75;
   font-size: 12px;
   line-height: 1.6;
-}
-
-.retryButton,
-.expandButton {
-  min-height: 44px;
-  padding: 0 12px;
-  color: #292c2c;
-  border: 1px solid #bdb8ad;
-  background: #fbfaf6;
-  font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
-}
-
-.retryButton:hover,
-.expandButton:hover {
-  border-color: #c78b3c;
-  background: #f3f1eb;
-}
-
-.retryButton,
-.expandButton {
-  margin-top: 10px;
-}
-
-.changeList {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.changeList li {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px 0;
-  border-top: 1px solid #e5e1d8;
-}
-
-.changeList li:first-child {
-  border-top: 0;
-}
-
-.changeList time {
-  color: #87561f;
-  font: 11px/1.5 "Cascadia Mono", Consolas, monospace;
-}
-
-.changeList li > div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.changeList li span {
-  color: #777a75;
-  font-size: 11px;
-}
-
-.changeList strong {
-  overflow-wrap: anywhere;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.changeList small {
-  overflow-wrap: anywhere;
-  color: #777a75;
-  font-size: 11px;
-  line-height: 1.5;
 }
 
 .fixtureFacts {
@@ -385,6 +319,52 @@
   list-style: none;
 }
 
+.relationCluster {
+  min-width: 0;
+  border: 1px solid #e0dbd1;
+  background: #f3f1eb;
+}
+.relationCluster > summary {
+  display: grid;
+  min-height: 50px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  cursor: pointer;
+  list-style: none;
+}
+.relationCluster > summary::-webkit-details-marker { display: none; }
+.relationCluster > summary::after {
+  color: #87561f;
+  content: "+";
+  font: 700 15px/1 "Cascadia Mono", Consolas, monospace;
+}
+.relationCluster[open] > summary::after { content: "−"; }
+.relationCluster > summary > span { display: grid; min-width: 0; gap: 1px; }
+.relationCluster > summary strong { overflow-wrap: anywhere; font-size: 12px; }
+.relationCluster > summary small { color: #777a75; font-size: 10px; }
+.relationCluster > summary em {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+  color: #87561f;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 650;
+}
+.relationCluster > summary:focus-visible { outline: 2px solid #c78b3c; outline-offset: -2px; }
+.relationCluster > ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 8px;
+  border-top: 1px solid #e0dbd1;
+  background: #fbfaf6;
+  list-style: none;
+}
+.relationCluster > ol .relationItem,
+.relationCluster > ol .incomingItem { background: #f3f1eb; }
+
 .relationList li,
 .incomingList li {
   min-width: 0;
@@ -392,24 +372,31 @@
 
 .relationItem {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   min-height: 44px;
   align-content: center;
-  gap: 4px;
-  padding: 8px 10px;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0;
   color: #292c2c;
-  border: 1px solid #e0dbd1;
-  background: #f3f1eb;
+  border: 0;
+  border-bottom: 1px solid #e5e1d8;
+  background: transparent;
   text-align: left;
 }
+
+.overviewRelationList li:first-child .relationItem { border-top: 0; }
+.overviewRelationList li { min-width: 0; }
+button.relationItem:focus-visible { outline: 2px solid #a92609; outline-offset: 3px; }
 
 button.relationItem {
   cursor: pointer;
 }
 
 button.relationItem:hover {
-  border-color: #c78b3c;
-  background: #fbfaf6;
+  color: #87561f;
+  background: rgba(199, 139, 60, 0.05);
 }
 
 .relationItem[data-missing="true"] {
@@ -417,37 +404,26 @@ button.relationItem:hover {
 }
 
 .relationSentence {
-  display: flex;
+  display: grid;
   min-width: 0;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 3px 6px;
+  gap: 4px;
 }
 
 .relationSentence strong {
   overflow-wrap: anywhere;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: clamp(14px, 2.7cqi, 18px);
+  font-weight: 600;
   line-height: 1.5;
 }
 
-.relationSentence [data-current="true"] {
-  color: #87561f;
-}
+.relationIdentity { display: grid; min-width: 0; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 12px; }
 
-.relationSentence em {
-  flex: none;
-  color: #87561f;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 650;
-}
+/* Desktop inspector expansion; independent of viewport/mobile breakpoints. */
+@container dossier (min-width: 540px) {
+  .relationItem { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.45fr); gap: 24px; padding: 20px 0; }
+  .relationIdentity { grid-template-columns: 52px minmax(0, 1fr); }
+  .relationItem { --relation-mark-size: 52px; --relation-mark-font: 26px; --relation-flow-font: 14px; }
 
-.relationSentence b {
-  flex: none;
-  color: #777a75;
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .relationItem small {
@@ -513,11 +489,6 @@ button.incomingItem:hover {
 }
 
 @media (max-width: 420px) {
-  .contextInspector {
-    gap: 12px;
-    padding: 13px;
-  }
-
   .contextSection {
     padding: 11px;
   }

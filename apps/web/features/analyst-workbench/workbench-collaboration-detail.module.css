@@ -1,0 +1,15 @@
+.detail { height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--paper, #faf9f6); color: var(--ink, #2d3034); }
+.detail > header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line, #ddd); }
+.detail h2 { font-size: 15px; margin: 0; }
+.detail h3 { font-size: 14px; }
+.detail > div { overflow: auto; padding: 16px; font-size: 13px; line-height: 1.7; }
+.detail button { cursor: pointer; border: 1px solid var(--line, #ddd); background: transparent; color: inherit; padding: 5px 9px; border-radius: 3px; margin: 3px; }
+.detail button:disabled { cursor: default; opacity: .45; }
+.detail dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+.detail blockquote { margin: 8px 0; padding: 10px; border-left: 2px solid var(--line, #ddd); }
+.detail footer { font-size: 11px; opacity: .7; }
+.detail[data-kind="relation"] > header { padding: 10px 18px; background: #fbfaf6; border-color: #e5e1d8; }
+.detail[data-kind="relation"] > header h2 { color: #777a75; font: 12px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif; letter-spacing: .08em; }
+.detail[data-kind="relation"] > header button { margin: 0; padding: 4px 8px; font-size: 12px; border-color: #d6cabb; }
+.detail[data-kind="relation"] > div { padding: 20px 24px 28px; background: #fbfaf6; }

@@ -11,7 +11,6 @@ describe("WorkbenchAgentComposer", () => {
     render(
       <WorkbenchAgentComposer
         busy={false}
-        contextChips={["EVT-012", "时间线"]}
         disabled={false}
         draft="检查时间冲突"
         onDraftChange={vi.fn()}
@@ -29,14 +28,14 @@ describe("WorkbenchAgentComposer", () => {
 
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("EVT-012")).toBeInTheDocument();
+    expect(screen.queryByLabelText("当前上下文")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加上下文" })).not.toBeInTheDocument();
   });
 
   it("renders the compact dock composer without extra controls", () => {
     render(
       <WorkbenchAgentComposer
         busy={false}
-        contextChips={[]}
         disabled={false}
         draft=""
         onDraftChange={vi.fn()}
@@ -48,14 +47,15 @@ describe("WorkbenchAgentComposer", () => {
     expect(
       screen.getByPlaceholderText("写下你的疑问，让卷宗循着线索回答……"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("当前上下文")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("当前上下文")).not.toBeInTheDocument();
+    expect(screen.queryByText("下条消息")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加上下文" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
   });
 
   it("refocuses the dock composer when its shortcut is activated again", () => {
     const props = {
       busy: false,
-      contextChips: [],
       disabled: false,
       draft: "",
       onDraftChange: vi.fn(),

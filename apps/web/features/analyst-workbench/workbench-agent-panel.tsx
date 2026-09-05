@@ -74,10 +74,8 @@ function composeAgentReply(
 export function AgentPanel({
   seed,
   unresolvedCount,
-  onClose,
   surface,
   onContinueInDesk,
-  contextChips,
   disabled = false,
   focusRequest = 0,
 }: {
@@ -86,7 +84,6 @@ export function AgentPanel({
   onClose: () => void;
   surface: AgentSurface;
   onContinueInDesk: () => void;
-  contextChips: string[];
   disabled?: boolean;
   focusRequest?: number;
 }) {
@@ -106,13 +103,6 @@ export function AgentPanel({
     [],
   );
 
-  useEffect(() => {
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && surface === "desk") onClose();
-    }
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose, surface]);
 
   function send(prompt: string) {
     const normalized = prompt.trim();
@@ -137,37 +127,17 @@ export function AgentPanel({
     timersRef.current.push(timer);
   }
 
-  if (surface === "dock") {
-    return (
-      <WorkbenchAgentComposer
-        busy={thinking}
-        contextChips={contextChips}
-        disabled={disabled || thinking}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSend={() => {
-          if (!draft.trim() || disabled || thinking) return;
-          send(draft);
-          onContinueInDesk();
-        }}
-        focusRequest={focusRequest}
-        surface="dock"
-      />
-    );
-  }
-
   return (
     <WorkbenchAgentDesk
       composer={
         <WorkbenchAgentComposer
           busy={thinking}
-          contextChips={contextChips}
           disabled={disabled || thinking}
           draft={draft}
           onDraftChange={setDraft}
-          onSend={() => send(draft)}
+          onSend={() => { if (!draft.trim() || disabled || thinking) return; send(draft); onContinueInDesk(); }}
           focusRequest={focusRequest}
-          surface="dock"
+          surface={surface === "dock" || surface === "side" ? "dock" : "desk"}
         />
       }
       conversation={<div aria-live="polite" className={styles.agentMessages}>
@@ -185,7 +155,7 @@ export function AgentPanel({
         ) : null}
       </div>}
       prompts={null}
-      surface="desk"
+      surface={surface}
       taskStrip={null}
     />
   );

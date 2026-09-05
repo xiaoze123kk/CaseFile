@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
@@ -141,6 +142,7 @@ async def call_deepseek_strict_tool(
     input_text: str,
     output_type: type[BaseModel],
     temperature: float | None = None,
+    on_delta: Callable[[str], None] | None = None,
 ) -> StructuredCallResult:
     """Call DeepSeek Beta with one forced strict tool and validate its arguments."""
 
@@ -183,6 +185,8 @@ async def call_deepseek_strict_tool(
     if temperature is not None:
         request_kwargs["temperature"] = temperature
     try:
+        if on_delta is not None:
+            return await _stream_strict_answer(client, request_kwargs, on_delta)
         response = await client.chat.completions.create(**request_kwargs)
     finally:
         await client.close()
@@ -211,6 +215,48 @@ async def call_deepseek_strict_tool(
     usage = response.usage
     return StructuredCallResult(
         raw_output=tool_call.function.arguments,
+        usage={
+            "requests": 1,
+            "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+            "cached_tokens": int(getattr(usage, "prompt_cache_hit_tokens", 0) or 0),
+            "reasoning_tokens": 0,
+        },
+    )
+
+
+async def _stream_strict_answer(
+    client: AsyncOpenAI, request: dict[str, Any], on_delta: Callable[[str], None]
+) -> StructuredCallResult:
+    stream = await client.chat.completions.create(
+        **request, stream=True, stream_options={"include_usage": True}
+    )
+    arguments = ""
+    name = ""
+    usage: Any = None
+    async for chunk in stream:
+        if chunk.usage is not None:
+            usage = chunk.usage
+        for choice in chunk.choices:
+            if choice.index != 0:
+                raise StrictOutputProtocolError("strict_choice_count_invalid", "Unexpected choice")
+            for call in choice.delta.tool_calls or []:
+                if call.index != 0:
+                    raise StrictOutputProtocolError(
+                        "strict_tool_call_count_invalid", "Unexpected tool"
+                    )
+                if call.function is not None:
+                    name += call.function.name or ""
+                    delta = call.function.arguments or ""
+                    arguments += delta
+                    # Only the forced output tool is eligible for public extraction.
+                    if name == STRICT_OUTPUT_TOOL_NAME:
+                        on_delta(delta)
+    if name != STRICT_OUTPUT_TOOL_NAME or not arguments:
+        raise StrictOutputProtocolError("strict_tool_name_invalid", "Missing structured output")
+    return StructuredCallResult(
+        raw_output=arguments,
         usage={
             "requests": 1,
             "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
@@ -287,11 +333,7 @@ def validate_model_json(
     try:
         return output_type.model_validate(payload)
     except ValidationError as error:
-        removed = (
-            _discard_forbidden_fields(payload, error)
-            if discard_forbidden_fields
-            else []
-        )
+        removed = _discard_forbidden_fields(payload, error) if discard_forbidden_fields else []
         normalized = _normalize_planned_object_ref_types(
             payload,
             error,

@@ -109,13 +109,12 @@ export function EvidenceComparisonView({
         aria-labelledby="evidence-matrix-heading"
         className={styles.realEmptyState}
       >
-        <span>证据对比</span>
+        <span>线索对比</span>
         <strong id="evidence-matrix-heading">
           当前工作稿还没有可比较的假设。
         </strong>
         <p>
-          采用包含假设与证据评估的工作稿后，这里会按核心问题展示「信息 /
-          证据 × 假设」的对照矩阵。
+          采用包含不同解释与线索判断的工作稿后，这里会展示每条线索更支持哪一种解释。
         </p>
       </section>
     );
@@ -167,7 +166,7 @@ export function EvidenceComparisonView({
     >
       <header className={styles.sectionHeader}>
         <div>
-          <span>证据 × 假设</span>
+          <span>线索如何支持不同解释</span>
           <h2 id="evidence-matrix-heading">{group.question}</h2>
         </div>
         <div className={styles.evidenceMatrixControls}>
@@ -225,10 +224,10 @@ export function EvidenceComparisonView({
             <thead>
               <tr>
                 <th className={styles.evidenceMatrixCorner} scope="col">
-                  信息 / 证据
+                  线索
                 </th>
                 {group.hypotheses.map((hypothesis) => (
-                  <th key={hypothesis.id} scope="col">
+                  <th key={hypothesis.id} scope="col" data-agent-object-id={hypothesis.id}>
                     <button
                       aria-label={`假设：${hypothesis.title}`}
                       aria-pressed={hypothesis.id === selectedObjectId}
@@ -245,7 +244,7 @@ export function EvidenceComparisonView({
             </thead>
             <tbody>
               {group.information.map((information) => (
-                <tr key={information.id}>
+                <tr key={information.id} data-agent-object-id={information.id}>
                   <th scope="row">
                     <button
                       aria-label={`信息：${information.title}`}
@@ -306,7 +305,7 @@ export function EvidenceComparisonView({
         >
           <header>
             <div>
-              <span>证据判定 · {selected.hypothesis.title}</span>
+              <span>判断依据 · {selected.hypothesis.title}</span>
               <strong>{selected.information.title}</strong>
             </div>
             <button
@@ -323,7 +322,7 @@ export function EvidenceComparisonView({
               <dd>{reliabilityLabel(selected.information.reliability)}</dd>
             </div>
             <div>
-              <dt>叙事分类</dt>
+              <dt>故事作用</dt>
               <dd>
                 {selectedInformationFacts?.classification
                   ? classificationLabel(selectedInformationFacts.classification)
@@ -331,7 +330,7 @@ export function EvidenceComparisonView({
               </dd>
             </div>
             <div>
-              <dt>信息类型</dt>
+              <dt>线索类型</dt>
               <dd>
                 {selectedInformationFacts?.informationType
                   ? objectSubtypeLabel(selectedInformationFacts.informationType)
@@ -339,7 +338,7 @@ export function EvidenceComparisonView({
               </dd>
             </div>
             <div>
-              <dt>假设状态</dt>
+              <dt>解释状态</dt>
               <dd>{reasoningOutcomeLabels[selected.hypothesis.outcome]}</dd>
             </div>
           </dl>

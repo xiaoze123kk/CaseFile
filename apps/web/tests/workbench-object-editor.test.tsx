@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import restartLoopFixture from "../../../fixtures/casefiles/restart_loop.casefile.json";
 import { WorkbenchObjectEditor } from "@/features/analyst-workbench/workbench-object-editor";
+import { WorkbenchContextInspector } from "@/features/analyst-workbench/workbench-context-inspector";
 
 const document = restartLoopFixture as unknown as CaseFile;
 
@@ -34,6 +35,34 @@ function renderEditor(
 }
 
 describe("workbench object editor", () => {
+  it("shows only key relations before supplementary settings and opens a relation by its stable ID", () => {
+    const onOpenRelation = vi.fn();
+    render(<WorkbenchContextInspector
+      document={document}
+      selectedObjectId="ent_researcher"
+      selectedObject={null}
+      relatedEvents={[]}
+      contextState={{ data: null, error: null, loading: false }}
+      writeLocked={false}
+      revision={7}
+      saving={false}
+      navigationNotice={null}
+      readOnly={false}
+      onDirtyChange={vi.fn()}
+      onSelectObject={vi.fn()}
+      onSelectRelatedEvent={vi.fn()}
+      onOpenRelation={onOpenRelation}
+    />);
+    const relations = screen.getByRole("region", { name: "关键关联" });
+    const supplementary = screen.getByText("更多创作信息").closest("details")!;
+    expect(relations.compareDocumentPosition(supplementary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(supplementary).not.toContainElement(screen.getByText("核心动机"));
+    expect(within(relations).queryByText(/查看其余.*条关联/)).not.toBeInTheDocument();
+    expect(relations.querySelector("details")).toBeNull();
+    fireEvent.click(within(relations).getByRole("button", { name: /对象关系.*备用控制系统/ }));
+    expect(onOpenRelation).toHaveBeenCalledWith("relationship:rel_researcher_controls_backup");
+  });
+
   it("renders six object kinds as readable browse details before showing edit controls", () => {
     const selections = [
       ["res_root_cause", "重启根因"],
@@ -47,10 +76,23 @@ describe("workbench object editor", () => {
     for (const [selectedObjectId, title] of selections) {
       const view = renderEditor(selectedObjectId);
       expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+      expect(screen.getByLabelText("对象摘要")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "编辑" })).toBeInTheDocument();
       expect(screen.queryByRole("textbox", { name: "名称" })).not.toBeInTheDocument();
       view.unmount();
     }
+  });
+
+  it("uses a portrait for people and retains neutral labels for non-person entities", () => {
+    const person = renderEditor("ent_researcher");
+    expect(screen.getByRole("heading", { name: "人物画像" })).toBeInTheDocument();
+    expect(screen.getByText("性格特征")).toBeInTheDocument();
+    expect(screen.getByText("核心动机")).toBeInTheDocument();
+    person.unmount();
+    renderEditor("ent_backup_system");
+    expect(screen.queryByRole("heading", { name: "人物画像" })).not.toBeInTheDocument();
+    expect(screen.getByText("特征")).toBeInTheDocument();
+    expect(screen.getByText("目标")).toBeInTheDocument();
   });
 
   it("shows Chinese choices but submits the original information enum value", async () => {
@@ -88,6 +130,22 @@ describe("workbench object editor", () => {
       "evt_restart_seven",
       expect.not.objectContaining({ time: expect.anything() }),
     );
+  });
+
+  it("prioritizes event time, place and participants while retaining fact annotations in the disclosure", () => {
+    const { container, onSelectObject } = renderEditor("evt_restart_seven");
+    const disclosure = screen.getByText("更多创作信息").closest("details");
+
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(disclosure).toContainElement(screen.getByText("时间精度"));
+    expect(disclosure).toContainElement(screen.getByText("事实状态"));
+    expect(disclosure).not.toContainElement(screen.getByText("卷宗时间"));
+    expect(disclosure).not.toContainElement(screen.getByText("发生地点"));
+    expect(disclosure).not.toContainElement(screen.getByText("参与者"));
+    expect(container.querySelector("header")).toHaveTextContent("既定事实");
+
+    fireEvent.click(screen.getByRole("button", { name: "查看地点“主实验室”" }));
+    expect(onSelectObject).toHaveBeenCalledWith("loc_lab");
   });
 
   it("renders a candidate as readable, no-form preview", () => {

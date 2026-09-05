@@ -1,5 +1,15 @@
 # 跨语言契约与 Fixture
 
+## Chat 增强反馈协议
+
+Run `/events` 和 `/stream` 接受 `feedback_version=1|2`，默认 1；新工作台显式请求 2。v1 仍只收到既有事件。v2 在同一 `PublicAgentEvent` 源 Schema 定义 `run.activity_detail`、`message.preview_started`、`message.preview_delta` 和 `message.preview_invalidated`。
+
+活动身份来自开始事件 sequence，对象引用仅投影已确认检索事实，并绑定 TaskRun 冻结 Draft/revision。预览开始 sequence 区分重试；delta 的 offset 按 Unicode 码点计数，final 表示预览已生成但不代表正式校验/提交成功。正式结论仍从 Message API 读取。预览不进入 Thread Memory、Goal Observation 或 Patch Apply。
+
+`GET /projects/{project_id}/agent/goals/{goal_id}/deliveries` 返回现有 `PublicGoalDelivery[]`，拥有与 Goal 相同的所有者门禁；后继目标来自关系型事实。不新增业务状态表或数据库迁移。
+
+`can_follow_up` 只在目标 completed 且 revision 至少为 1 时为 true，与写入接口的终态及修订门禁一致；尚未冻结有效修订的回退回复可发起普通新请求，不发送无效 revision=0 的 follow_up。
+
 本文涵盖 `contracts/` 和 `fixtures/` 下所有受 Git 跟踪的文件职责。新增或删除 Schema 或 Fixture 时必须同步更新本文。
 
 ## 契约 Schema
@@ -31,6 +41,8 @@
 根目录 `contracts/schemas/` 是当前 CaseFile v2、Brief、Task 和编辑契约的唯一人工维护事实源。`scripts/generate-contracts.ps1` 同步生成跨语言包、后端 Pydantic 模型和 `backend/src/casefile/contracts/schemas/v2/` 当前运行时镜像；`backend/src/casefile/contracts/schemas/v1/` 作为历史只读镜像保留，生成器不得删除或覆盖。生成物禁止手改，`check:contracts` 必须拒绝漂移。
 
 ## M3.8 Chat Public 契约
+
+`PublicAgentMessage.context_snapshot` 为兼容新增的可空字段，包含 `draft_id`、`draft_revision`、`object_ids`、`event_ids`、`validation_issue_ids`、`view`。只有已记录或能可靠回填的用户消息提供快照，旧消息保持 null；不得根据当前工作区选择猜测历史上下文。与普通消息及 Goal delivery 对应 TaskRun 的 `context_snapshot` 使用同一事实，不新增 HTTP 路由。
 
 `docs/m3.8-goal-session-runtime.md` 是冻结协议说明。M3.8-02 已在 `contracts/schemas/chat/chat-public.schema.json` 落地 `PublicGoalSession`、`PublicGoalDelivery`、`PublicGoalEvent`，并为现有 Receipt/Run/PatchSet 增加可选 Goal 关联；Python/TypeScript 生成物、后端运行时镜像与 OpenAPI snapshot 均由事实源重新生成，不得手改生成物。
 

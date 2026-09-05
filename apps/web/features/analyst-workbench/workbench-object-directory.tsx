@@ -192,6 +192,7 @@ export function WorkbenchObjectDirectory({
       <button
         aria-pressed={selected}
         data-related={related}
+        data-agent-object-id={object.id}
         key={object.id}
         onClick={() => onSelectObject(object.id)}
         type="button"
@@ -205,7 +206,6 @@ export function WorkbenchObjectDirectory({
           <strong>{object.label}</strong>
           <small>
             <span>{objectSubtypeLabel(objectSubtype(object))}</span>
-            <code>{object.id}</code>
           </small>
         </span>
         {related ? <span className={styles.srOnly}>与当前事件相关</span> : null}
@@ -218,24 +218,6 @@ export function WorkbenchObjectDirectory({
 
   return (
     <section className={styles.objectCatalog}>
-      <div className={styles.catalogHeading}>
-        <div>
-          <span>对象目录</span>
-          <small>
-            {filtered ? `${queryMatches.length} / ` : ""}
-            {objects.length} 个对象
-          </small>
-        </div>
-        <button
-          aria-label="清除对象筛选"
-          disabled={!filtered}
-          onClick={clearFilters}
-          type="button"
-        >
-          清
-        </button>
-      </div>
-
       <label className={styles.objectSearch}>
         <WorkbenchIcon name="search" />
         <span className={styles.srOnly}>搜索对象名称或编号</span>
@@ -259,7 +241,6 @@ export function WorkbenchObjectDirectory({
               <WorkbenchIcon name="archive" />
             </span>
             <span className={styles.kindLabel}>
-              <small>范围</small>
               <span>全部对象</span>
             </span>
           </span>

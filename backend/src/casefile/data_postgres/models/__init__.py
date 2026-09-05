@@ -16,6 +16,8 @@ from casefile.data_postgres.models.casefile import (
 )
 from casefile.data_postgres.models.collaboration import (
     AgentMessage,
+    AgentMessageContext,
+    AgentMessageContextRef,
     AgentPatchOperation,
     AgentPatchSet,
     AgentThread,
@@ -101,6 +103,8 @@ __all__ = [
     "AgentGoalTaskRun",
     "AgentGoalTransition",
     "AgentMessage",
+    "AgentMessageContext",
+    "AgentMessageContextRef",
     "AgentPatchOperation",
     "AgentPatchSet",
     "AgentThread",

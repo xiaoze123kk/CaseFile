@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.api.schemas import AgentPatchApplyRequest, AgentPatchSimulateRequest
 from casefile.application.chat_public_contracts import (
     public_patch_review_view,
@@ -16,7 +18,6 @@ from casefile.application.chat_public_patches import (
     resolve_public_warning_ids,
 )
 from casefile.application.errors import ApplicationError
-from pydantic import ValidationError
 
 
 def _patch(*, review_mode: str = "atomic") -> dict:
@@ -199,7 +200,10 @@ def test_change_group_builder_supports_all_persisted_operation_types() -> None:
         "update",
     ]
     assert changes[-1]["relationship"] == "consistency_support"
-    assert changes[-1]["explanation"] == "为保持卷宗前后一致，需要同步调整这项内容。"
+    assert (
+        changes[-1]["explanation"]
+        == "这项修改未记录具体原因，请让 Agent 补充依据后再决定是否应用。"
+    )
     assert changes[2]["field_label"] == "卷宗内容"
     assert changes[0]["after"] == {
         "kind": "text",
@@ -220,6 +224,74 @@ def test_change_group_builder_supports_all_persisted_operation_types() -> None:
     serialized = json.dumps(projected, ensure_ascii=False)
     assert "field_path" not in serialized
     assert "operation_type" not in serialized
+
+
+def test_patch_changes_preserve_specific_persisted_reasons_for_all_operation_kinds() -> None:
+    patch = _patch()
+    reasons = [
+        "目击者在九点才到场，因此把这段事件推迟一小时，避免提前目击。",
+        "现场记录提到了钟楼，但卷宗缺少对应地点；补充后可明确线索发生位置。",
+        "这名证人已被作者弃用，保留会使人物列表与当前设定不一致。",
+        "原主张与最新证词冲突，因此收窄为证词能够支持的内容。",
+        "现场记录确认林澈在场，补充参与者以对应记录。",
+        "原描述与已经确认的时间安排矛盾，先移除该段不成立的描述。",
+    ]
+    for operation, reason in zip(patch["operations"], reasons, strict=True):
+        operation["reason"] = reason
+    changes = public_patch_set_view(patch).model_dump(mode="json")["changes"]
+    assert {change["change_id"]: change["explanation"] for change in changes} == {
+        operation["operation_id"]: operation["reason"] for operation in patch["operations"]
+    }
+
+
+@pytest.mark.parametrize("reason", [None, "", "  ", "这是你要求调整的卷宗内容。"])
+def test_missing_or_generic_reasons_are_not_presented_as_specific_basis(reason: str | None) -> None:
+    patch = _patch()
+    patch["operations"][0]["reason"] = reason
+    explanation = public_patch_set_view(patch).model_dump(mode="json")["changes"][-1]["explanation"]
+    assert "未记录具体原因" in explanation
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "internal reason",
+        "修改 /time/start 以通过校验。",
+        "因为 Worker 检查结果。",
+        "修改 ent_lincheng 对应的字段。",
+        "修改旧信息 info_unavailable 对应的字段。",
+        "依据 opaque-delete-confirmation-token 进行修改。",
+        "依据自定义编号 z9opaque 修改。",
+        '原始结果 {"object_id": "evt_current"}',
+        "因为" + "时间冲突" * 300 + "，内部字段 field_path。",
+    ],
+)
+def test_internal_reasons_fail_closed_before_truncation(reason: str) -> None:
+    patch = _patch()
+    patch["operations"][0]["reason"] = reason
+    patch["operations"][0]["operation_key"] = "z9opaque"
+    explanation = public_patch_set_view(patch).model_dump(mode="json")["changes"][-1]["explanation"]
+    assert explanation == "这项修改的具体原因暂无法展示，请让 Agent 补充可供审阅的依据。"
+
+
+def test_long_public_reason_is_bounded_and_direction_values_are_readable() -> None:
+    patch = _patch()
+    patch["operations"][0]["reason"] = "对应现场记录中的时间冲突。" * 100
+    explanation = public_patch_set_view(patch).model_dump(mode="json")["changes"][-1]["explanation"]
+    assert len(explanation) == 1000
+    assert explanation.endswith("…")
+    formatter = ValueFormatter(ObjectLabelResolver(patch))
+    assert formatter.format("directed")["text"] == "单向关系"
+    assert formatter.format("bidirectional")["text"] == "双向关系"
+
+
+def test_legacy_reason_translates_registered_terms_without_inventing_basis() -> None:
+    patch = _patch()
+    patch["operations"][0]["reason"] = (
+        "信息 title 提到回避，但 content 缺少具体表现；补充后与 CaseFile 的设定一致。"
+    )
+    explanation = public_patch_set_view(patch).model_dump(mode="json")["changes"][-1]["explanation"]
+    assert explanation == "信息 标题 提到回避，但 内容 缺少具体表现；补充后与 卷宗 的设定一致。"
 
 
 def test_review_uses_simulation_authority_and_stable_opaque_warning_ids() -> None:
@@ -299,9 +371,7 @@ def test_non_delete_hash_is_not_exposed_and_hard_failure_gets_public_blocker() -
         "can_apply": True,
         "simulation": {**value["simulation"], "can_apply": True},
     }
-    authoritative_review = public_patch_review_view(authoritative_true).model_dump(
-        mode="json"
-    )
+    authoritative_review = public_patch_review_view(authoritative_true).model_dump(mode="json")
     assert authoritative_review["can_apply"] is True
     assert authoritative_review["blockers"] == []
 

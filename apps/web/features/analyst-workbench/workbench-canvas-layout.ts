@@ -49,7 +49,7 @@ export interface RestoredWorkbenchCanvasLayout {
   warning: string | null;
 }
 
-const STORAGE_PREFIX = "casefile.canvas-layout.v2";
+const STORAGE_PREFIX = "casefile.canvas-layout.v3";
 
 function finitePoint(value: unknown): value is WorkbenchCanvasPoint {
   if (!value || typeof value !== "object") return false;
@@ -166,6 +166,160 @@ export function layoutWorkbenchCanvas(
       ];
     }),
   );
+}
+
+/**
+ * 关系图使用的确定性力导向布局。它保留可复现与本地布局持久化，
+ * 同时让人物、组织等实体与地点节点呈现为可自由拖拽的“调查星图”。
+ */
+export function layoutWorkbenchConstellationCanvas(
+  nodes: WorkbenchCanvasLayoutNode[],
+  edges: WorkbenchCanvasLayoutEdge[],
+): Record<string, WorkbenchCanvasPoint> {
+  if (!nodes.length) return {};
+
+  const orderedNodes = [...nodes].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+  const radius = Math.max(180, Math.sqrt(nodes.length) * 92);
+  const center = { x: radius + 90, y: radius + 90 };
+  const points = new Map<
+    string,
+    { x: number; y: number; vx: number; vy: number }
+  >();
+  orderedNodes.forEach((node, index) => {
+    const angle = index * Math.PI * (3 - Math.sqrt(5));
+    const ring =
+      radius * (0.34 + 0.66 * Math.sqrt((index + 1) / orderedNodes.length));
+    points.set(node.id, {
+      x: center.x + Math.cos(angle) * ring,
+      y: center.y + Math.sin(angle) * ring,
+      vx: 0,
+      vy: 0,
+    });
+  });
+  const usableEdges = [...edges]
+    .filter((edge) => points.has(edge.source) && points.has(edge.target))
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  for (let iteration = 0; iteration < 180; iteration += 1) {
+    for (let leftIndex = 0; leftIndex < orderedNodes.length; leftIndex += 1) {
+      const left = points.get(orderedNodes[leftIndex].id)!;
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < orderedNodes.length;
+        rightIndex += 1
+      ) {
+        const right = points.get(orderedNodes[rightIndex].id)!;
+        const dx = right.x - left.x || 0.01;
+        const dy = right.y - left.y || 0.01;
+        const distanceSquared = Math.max(900, dx * dx + dy * dy);
+        const force = 16500 / distanceSquared;
+        const distance = Math.sqrt(distanceSquared);
+        const fx = (dx / distance) * force;
+        const fy = (dy / distance) * force;
+        left.vx -= fx;
+        left.vy -= fy;
+        right.vx += fx;
+        right.vy += fy;
+      }
+    }
+
+    usableEdges.forEach((edge) => {
+      const source = points.get(edge.source)!;
+      const target = points.get(edge.target)!;
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const force = (distance - 290) * 0.018;
+      const fx = (dx / distance) * force;
+      const fy = (dy / distance) * force;
+      source.vx += fx;
+      source.vy += fy;
+      target.vx -= fx;
+      target.vy -= fy;
+    });
+
+    points.forEach((point) => {
+      point.vx += (center.x - point.x) * 0.0025;
+      point.vy += (center.y - point.y) * 0.0025;
+      point.vx *= 0.82;
+      point.vy *= 0.82;
+      point.x += point.vx;
+      point.y += point.vy;
+    });
+  }
+
+  const minX = Math.min(
+    ...orderedNodes.map((node) => points.get(node.id)!.x),
+  );
+  const minY = Math.min(
+    ...orderedNodes.map((node) => points.get(node.id)!.y),
+  );
+  return Object.fromEntries(
+    orderedNodes.map((node) => {
+      const point = points.get(node.id)!;
+      return [node.id, { x: point.x - minX + 72, y: point.y - minY + 72 }];
+    }),
+  );
+}
+
+/**
+ * 拖动关系节点时按图距离传播位移：一跳明显跟随，越远影响越弱；
+ * 不在同一连通分量的地点或实体保持原位。
+ */
+export function elasticRelationshipDragPositions(
+  initialPositions: Record<string, WorkbenchCanvasPoint>,
+  currentPositions: Record<string, WorkbenchCanvasPoint>,
+  edges: WorkbenchCanvasLayoutEdge[],
+  draggedNodeId: string,
+  draggedPosition: WorkbenchCanvasPoint,
+  excludedNodeIds: ReadonlySet<string> = new Set(),
+): Record<string, WorkbenchCanvasPoint> {
+  const initialDraggedPosition = initialPositions[draggedNodeId];
+  if (!initialDraggedPosition) return currentPositions;
+
+  const adjacency = new Map<string, Set<string>>();
+  edges.forEach((edge) => {
+    if (!initialPositions[edge.source] || !initialPositions[edge.target]) return;
+    const sourceNeighbors = adjacency.get(edge.source) ?? new Set<string>();
+    sourceNeighbors.add(edge.target);
+    adjacency.set(edge.source, sourceNeighbors);
+    const targetNeighbors = adjacency.get(edge.target) ?? new Set<string>();
+    targetNeighbors.add(edge.source);
+    adjacency.set(edge.target, targetNeighbors);
+  });
+
+  const distances = new Map([[draggedNodeId, 0]]);
+  const queue = [draggedNodeId];
+  for (let index = 0; index < queue.length; index += 1) {
+    const nodeId = queue[index];
+    const distance = distances.get(nodeId) ?? 0;
+    adjacency.get(nodeId)?.forEach((neighborId) => {
+      if (distances.has(neighborId)) return;
+      distances.set(neighborId, distance + 1);
+      queue.push(neighborId);
+    });
+  }
+
+  const deltaX = draggedPosition.x - initialDraggedPosition.x;
+  const deltaY = draggedPosition.y - initialDraggedPosition.y;
+  const nextPositions = { ...currentPositions, [draggedNodeId]: draggedPosition };
+  distances.forEach((distance, nodeId) => {
+    if (
+      distance === 0 ||
+      excludedNodeIds.has(nodeId) ||
+      !initialPositions[nodeId]
+    ) {
+      return;
+    }
+    const influence = Math.max(0.06, 0.5 ** distance);
+    nextPositions[nodeId] = {
+      x: initialPositions[nodeId].x + deltaX * influence,
+      y: initialPositions[nodeId].y + deltaY * influence,
+    };
+  });
+  return nextPositions;
 }
 
 /**

@@ -1,42 +1,27 @@
 .objectCatalog {
   display: grid;
   min-height: 0;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   padding-top: 12px;
   overflow: hidden;
 }
 
-.catalogHeading {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-}
-
-.catalogHeading > div { display: flex; flex-direction: column; }
-.catalogHeading span { color: #ece7dd; font-weight: 650; }
-.catalogHeading small { margin-top: 2px; color: #7e817c; font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
-.catalogHeading button { width: 28px; height: 28px; color: #aaa69c; border: 1px solid var(--rule-dark); background: transparent; font-size: 10px; }
-.catalogHeading button:hover:not(:disabled) { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.5); }
-.catalogHeading button:disabled { cursor: default; opacity: 0.35; }
-
 .objectSearch {
   display: grid;
-  min-height: 36px;
-  grid-template-columns: 15px minmax(0, 1fr);
+  min-height: 46px;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  margin: 4px 14px 10px;
-  padding: 0 9px;
+  gap: 10px;
+  margin: 10px 14px 14px;
+  padding: 0 12px;
   color: #858983;
   border: 1px solid var(--rule-dark);
   background: rgba(0, 0, 0, 0.12);
 }
 
 .objectSearch:focus-within { border-color: var(--primary-hover); box-shadow: inset 2px 0 var(--primary); }
-.objectSearch svg { width: 14px; height: 14px; }
-.objectSearch input { width: 100%; min-width: 0; color: #e0dbd2; border: 0; outline: 0; background: transparent; font-size: 11px; }
+.objectSearch svg { width: 18px; height: 18px; }
+.objectSearch input { width: 100%; min-width: 0; color: #e0dbd2; border: 0; outline: 0; background: transparent; font-size: 16px; line-height: 1.5; }
 .objectSearch input::placeholder { color: #737772; }
 
 .kindFilters {
@@ -109,7 +94,7 @@
 .subtypeHeading small { color: #666b67; font-family: "Cascadia Mono", Consolas, monospace; font-size: 7px; letter-spacing: 0.1em; }
 
 .subtypeOptions { display: flex; flex-wrap: wrap; gap: 5px; }
-.subtypeOptions button {
+.subtypeOptions .subtypeBranch > button {
   min-height: 26px;
   padding: 0 7px;
   color: #858984;
@@ -117,9 +102,9 @@
   background: rgba(0, 0, 0, 0.12);
   font-size: 8.5px;
 }
-.subtypeOptions button:hover { color: #eee8dd; border-color: #666b66; }
-.subtypeOptions button[aria-pressed="true"] { color: #f0dfc7; border-color: rgba(224, 173, 101, 0.5); background: var(--primary-soft); }
-.subtypeOptions b { margin-left: 4px; color: inherit; }
+.subtypeOptions .subtypeBranch > button:hover { color: #eee8dd; border-color: #666b66; }
+.subtypeOptions .subtypeBranch > button[aria-pressed="true"] { color: #f0dfc7; border-color: rgba(224, 173, 101, 0.5); background: var(--primary-soft); }
+.subtypeOptions .subtypeBranch > button > b { margin-left: 4px; color: inherit; }
 
 .objectList {
   min-height: 0;
@@ -166,8 +151,6 @@
 .objectCopy { display: flex; min-width: 0; flex-direction: column; }
 .objectCopy strong { overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .objectCopy small { display: flex; min-width: 0; gap: 6px; margin-top: 4px; color: #7c807b; font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
-.objectCopy code { overflow: hidden; color: #70746f; font: inherit; text-overflow: ellipsis; white-space: nowrap; }
-.objectCopy code::before { margin-right: 6px; color: #515651; content: "·"; }
 .objectCopy small span { overflow: hidden; flex: 0 0 auto; color: #a8aaa4; text-overflow: ellipsis; white-space: nowrap; }
 
 .objectKindMark {
@@ -217,10 +200,6 @@
 
 /* Light dossier index used by the mode-aware workspace rail. */
 .objectCatalog { padding-top: 10px; }
-.catalogHeading span { color: var(--ink, #1a1c19); }
-.catalogHeading small { color: var(--ink-faint, #70706a); }
-.catalogHeading button { color: var(--ink-muted, #5d5d58); border-color: var(--rule, #ded8cf); }
-.catalogHeading button:hover:not(:disabled) { color: var(--primary, #c52b0d); border-color: #d9afa6; background: #fff0ec; }
 
 .objectSearch {
   color: var(--ink-faint, #70706a);
@@ -254,17 +233,15 @@
 .subtypePanel { background: rgba(255, 255, 255, 0.48); box-shadow: none; }
 .subtypeHeading { color: var(--ink-muted, #5d5d58); }
 .subtypeHeading small { color: var(--ink-faint, #70706a); }
-.subtypeOptions button { color: var(--ink-muted, #5d5d58); border-color: var(--rule, #ded8cf); background: #fffefb; }
-.subtypeOptions button:hover { color: var(--ink, #1a1c19); border-color: #d9afa6; }
-.subtypeOptions button[aria-pressed="true"] { color: var(--primary-strong, #9d230c); border-color: #d9afa6; background: #fff0ec; }
+.subtypeOptions .subtypeBranch > button { color: var(--ink-muted, #5d5d58); border-color: var(--rule, #ded8cf); background: #fffefb; }
+.subtypeOptions .subtypeBranch > button:hover { color: var(--ink, #1a1c19); border-color: #d9afa6; }
+.subtypeOptions .subtypeBranch > button[aria-pressed="true"] { color: var(--primary-strong, #9d230c); border-color: #d9afa6; background: #fff0ec; }
 
 .objectList { scrollbar-color: #b8b0a5 transparent; }
 .objectList > button { color: var(--ink-muted, #5d5d58); border-bottom-color: rgba(26, 28, 25, 0.09); }
 .objectList > button:hover { color: var(--ink, #1a1c19); background: rgba(255, 255, 255, 0.62); }
 .objectList > button[aria-pressed="true"] { color: var(--ink, #1a1c19); background: #fff0ec; box-shadow: inset 2px 0 var(--primary, #c52b0d); }
-.objectCopy small,
-.objectCopy code { color: var(--ink-faint, #70706a); }
-.objectCopy code::before { color: #b0aaa0; }
+.objectCopy small { color: var(--ink-faint, #70706a); }
 .objectCopy small span { color: var(--ink-muted, #5d5d58); }
 
 .objectKindMark[data-kind="entity"],
@@ -374,7 +351,7 @@
   margin: 0;
   color: var(--ink-faint, #70706a);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 0.12em;
 }
@@ -419,7 +396,7 @@
 .kindButton > b,
 .allKindButton > b {
   color: #8b877f;
-  font-size: 9px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -438,7 +415,7 @@
 .subtypeHeading { padding-right: 4px; }
 .subtypeHeading span { font-size: 8px; }
 .subtypeOptions { gap: 4px; }
-.subtypeOptions button { min-height: 24px; padding: 0 7px; border-radius: 12px; }
+.subtypeOptions .subtypeBranch > button { min-height: 24px; padding: 0 7px; border-radius: 12px; }
 
 .objectList {
   margin-top: 2px;
@@ -469,10 +446,6 @@
 }
 
 /* The rail is a true hierarchy: primary kind, secondary subtype menu, objects. */
-.objectCatalog {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
 .kindFilters {
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
@@ -506,7 +479,7 @@
   gap: 1px;
 }
 
-.subtypeOptions button {
+.subtypeOptions .subtypeBranch > button {
   display: flex;
   width: 100%;
   min-height: 25px;
@@ -520,7 +493,7 @@
   text-align: left;
 }
 
-.subtypeOptions button::before {
+.subtypeOptions .subtypeBranch > button::before {
   width: 6px;
   height: 6px;
   flex: 0 0 auto;
@@ -531,14 +504,14 @@
   transform: rotate(45deg) translateY(-1px);
 }
 
-.subtypeOptions button > span { flex: 1; }
-.subtypeOptions button > b { color: #8b877f; font-variant-numeric: tabular-nums; }
-.subtypeOptions button:hover { color: var(--ink, #1a1c19); background: rgba(255, 255, 255, 0.65); }
-.subtypeOptions button[aria-pressed="true"] {
+.subtypeOptions .subtypeBranch > button > span { flex: 1; }
+.subtypeOptions .subtypeBranch > button > b { color: #8b877f; font-size: 16px; font-variant-numeric: tabular-nums; }
+.subtypeOptions .subtypeBranch > button:hover { color: var(--ink, #1a1c19); background: rgba(255, 255, 255, 0.65); }
+.subtypeOptions .subtypeBranch > button[aria-pressed="true"] {
   color: var(--primary-strong, #9d230c);
   background: #fff0ec;
 }
-.subtypeOptions button[aria-pressed="true"]::before {
+.subtypeOptions .subtypeBranch > button[aria-pressed="true"]::before {
   border-color: var(--primary, #c52b0d);
 }
 
@@ -583,15 +556,22 @@
   margin: 2px 6px 7px 20px;
 }
 
-/* Reference-style contents list: the hit area stays generous, but visible
-   emphasis is confined to the glyph and label instead of a full-width card. */
-.allKindButton,
+/* Contents headings stay quiet; object selection uses a full-row marker. */
+.kindFilters .allKindButton,
 .primaryKindIndex .kindButton {
-  min-height: 36px;
+  min-height: 52px;
   padding: 3px 5px 3px 2px;
   border: 0;
   background: transparent;
   box-shadow: none;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.allKindButton .kindLabel {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
 }
 
 .allKindButton:hover,
@@ -653,22 +633,28 @@
 }
 
 .primaryKindIndex .objectList[data-nested="true"] > button {
-  min-height: 37px;
+  min-height: 56px;
   padding: 3px 5px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   box-shadow: none;
 }
 
 .primaryKindIndex .objectList[data-nested="true"] > button:hover {
   color: var(--ink, #1a1c19);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .primaryKindIndex .objectList[data-nested="true"] > button[aria-pressed="true"] {
-  color: var(--ink, #1a1c19);
-  background: transparent;
-  box-shadow: none;
+  color: var(--primary-strong, #9d230c);
+  background: #f5dfd7;
+  box-shadow: inset 3px 0 var(--primary, #c52b0d), inset 0 0 0 1px #dfafa0;
+}
+
+.primaryKindIndex .objectList[data-nested="true"] > button:focus-visible {
+  outline: 2px solid var(--primary, #c52b0d);
+  outline-offset: -2px;
 }
 
 .objectList[data-nested="true"] > button[aria-pressed="true"] .objectKindMark {
@@ -681,8 +667,8 @@
   border-radius: 6px;
 }
 
-.objectList[data-nested="true"] .objectCopy strong { font-size: 10px; }
-.objectList[data-nested="true"] .objectCopy small { margin-top: 2px; font-size: 7.5px; }
+.objectList[data-nested="true"] .objectCopy strong { font-size: 20px; }
+.objectList[data-nested="true"] .objectCopy small { margin-top: 4px; font-size: 15px; }
 
 /* Object instances belong to an opened secondary branch, never directly to
    the primary kind. This keeps the rail legible as a three-level tree. */
@@ -697,8 +683,16 @@
 
 .subtypeOptions .subtypeBranch > button {
   display: grid;
-  grid-template-columns: 11px minmax(0, 1fr) auto;
+  width: fit-content;
+  max-width: 100%;
+  grid-template-columns: 11px minmax(0, auto) auto;
+  justify-self: start;
+  justify-content: start;
+  justify-items: start;
   gap: 6px;
+  min-height: 38px;
+  font-size: 17px;
+  line-height: 1.5;
 }
 
 .subtypeChevron {

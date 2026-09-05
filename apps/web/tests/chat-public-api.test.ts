@@ -154,13 +154,13 @@ describe("chat public API client", () => {
     );
   });
 
-  it("resumes SSE with Last-Event-ID and drops unknown events", async () => {
+  it("resumes enhanced SSE with Last-Event-ID and deduplicates replay", async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
           encoder.encode(
-            'id: 5\nevent: internal.debug\ndata: {"sequence":5,"event":"internal.debug","payload":{"secret":"canary"}}\n\n',
+            'id: 4\nevent: run.activity\ndata: {"sequence":4,"event":"run.activity","activity":"reading"}\n\n',
           ),
         );
         controller.enqueue(
@@ -196,6 +196,13 @@ describe("chat public API client", () => {
     ]);
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
     expect(headers["Last-Event-ID"]).toBe("4");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("feedback_version=2");
     expect(JSON.stringify(events)).not.toContain("canary");
+  });
+  it("fails closed on unknown SSE events", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('data: {"sequence":5,"event":"internal.debug"}\n\n')));
+    const onEvent = vi.fn();
+    await expect(streamAgentRunEvents(1, 2, 8, onEvent, new AbortController().signal)).rejects.toThrow("无法识别");
+    expect(onEvent).not.toHaveBeenCalled();
   });
 });

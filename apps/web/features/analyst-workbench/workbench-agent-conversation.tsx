@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
 import type {
   PublicAgentMessage,
   PublicAgentRun,
@@ -7,21 +9,14 @@ import type {
 } from "@casefile/contracts";
 
 import styles from "./workbench-agent.module.css";
+import { AgentProgress } from "./workbench-agent-progress";
+import type { RunFeedback } from "./workbench-agent-feedback";
+import { AgentPatchCard } from "./workbench-agent-patch-card";
 
 export function agentAuditFindingsFor(
   message: PublicAgentMessage,
 ): PublicFinding[] {
   return message.findings;
-}
-
-function formatRecordTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "记录时间未知";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
 }
 
 export function WorkbenchAgentConversation({
@@ -35,6 +30,14 @@ export function WorkbenchAgentConversation({
   onReconnect,
   onReloadMessages,
   onRetryMessage,
+  onFocusPatch,
+  onFocusFinding,
+  feedback = {},
+  sendingText = null,
+  sendError = null,
+  taskControls = null,
+  renderPatch,
+  patchError = null,
 }: {
   threadsLoading: boolean;
   threadsError: string | null;
@@ -46,9 +49,30 @@ export function WorkbenchAgentConversation({
   onReconnect: () => void;
   onReloadMessages: () => void;
   onRetryMessage: (message: PublicAgentMessage) => void;
+  onFocusPatch?: (id: number) => void;
+  onFocusFinding?: (id: string) => void;
+  feedback?: Record<number, RunFeedback>;
+  sendingText?: string | null;
+  sendError?: string | null;
+  taskControls?: ReactNode;
+  renderPatch?: (message: PublicAgentMessage) => ReactNode;
+  patchError?: string | null;
 }) {
+  const latestAssistantId = messages.filter((message) => message.role === "assistant").at(-1)?.message_id;
+  const scroller = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
+  useEffect(() => {
+    const element = scroller.current;
+    if (element && follow.current) element.scrollTop = element.scrollHeight;
+  }, [messages, feedback, sendingText]);
   return (
-    <div aria-live="polite" className={styles.agentMessages}>
+    <div className={styles.agentMessages} ref={scroller} onScroll={() => {
+      const element = scroller.current;
+      if (!element) return;
+      follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
+      setShowLatest(!follow.current);
+    }}>
       {threadsLoading ? (
         <p className={styles.agentThinking}>正在读取 Agent 对话…</p>
       ) : null}
@@ -66,24 +90,33 @@ export function WorkbenchAgentConversation({
           message.run === null
             ? null
             : (liveRuns[message.run.run_id] ?? message.run);
+        const progress = run ? feedback[run.run_id] : undefined;
+        const preview = progress?.preview;
+        const previewText = preview && !preview.discarded && !progress?.gap ? preview.text : "";
+        const unfinished = preview?.invalidated || (run && ["cancelled", "failed"].includes(run.status));
         return (
           <article
             className={styles.agentTurn}
             data-role={message.role}
+            data-has-patch={message.patch ? true : undefined}
             key={message.message_id}
           >
-            <header className={styles.agentTurnMeta}>
-              <span>{message.role === "assistant" ? "卷宗统筹" : "你"}</span>
-              <time dateTime={message.created_at}>
-                {formatRecordTime(message.created_at)}
-              </time>
-            </header>
-            {message.body !== null ? (
+            {message.role === "assistant" ? <AgentProgress run={run} feedback={progress}
+              controls={message.message_id === latestAssistantId ? taskControls : null} /> : null}
+            {message.body !== null && !(run?.status === "failed" && message.body === run.failure?.message) ? (
               <div className={styles.agentTurnContent}>
                 <p>{message.body}</p>
               </div>
             ) : null}
-            {message.role === "assistant" && message.status === "failed" ? (
+            {message.body === null && previewText ? unfinished ? <details className={styles.agentPreview}>
+              <summary>未形成正式结论 · 查看未完成预览</summary><p>{previewText}</p>
+            </details> : <div className={styles.agentPreview} aria-live="off">
+              <small>{run?.status === "succeeded" ? "正在同步结果" : preview?.ready ? "正在确认结果，尚未完成校验" : "生成中，尚未完成校验"}</small><p>{previewText}</p>
+            </div> : null}
+            {message.patch ? renderPatch ? renderPatch(message) : <AgentPatchCard patchSet={message.patch}
+              onDetails={onFocusPatch ? () => onFocusPatch(message.patch!.patch_id) : undefined} /> : null}
+            {onFocusFinding ? message.findings.map((finding) => <button type="button" key={finding.finding_id} onClick={() => onFocusFinding(finding.finding_id)}>查看验证：{finding.title}</button>) : null}
+            {message.role === "assistant" && (message.status === "failed" || run?.status === "failed") ? (
               <div className={styles.agentFailure} role="status">
                 <strong>回复未完成</strong>
                 <span>
@@ -97,6 +130,14 @@ export function WorkbenchAgentConversation({
           </article>
         );
       })}
+      {latestAssistantId === undefined && taskControls ? <section className={styles.agentProgress} aria-label="工作记录">{taskControls}</section> : null}
+      {sendingText ? <article className={styles.agentTurn} data-role="user"><p>{sendingText}</p><small role="status">正在发送…</small></article> : null}
+      {sendError ? <div className={styles.agentFailure} role="status"><strong>发送失败</strong><span>{sendError}</span><small>输入内容已保留，可修改后重新发送。</small></div> : null}
+      {patchError ? <div className={styles.agentFailure} role="alert"><strong>修改操作未完成</strong><span>{patchError}</span><small>请按当前卷宗重新审阅后再试。</small></div> : null}
+      {showLatest ? <button type="button" className={styles.agentBackLatest} onClick={() => {
+        follow.current = true; setShowLatest(false);
+        if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+      }}>回到最新</button> : null}
       {!threadsLoading && !threadsError && !messagesLoading && messagesError ? (
         <div className={styles.agentFailure} role="status">
           <strong>读取失败</strong>

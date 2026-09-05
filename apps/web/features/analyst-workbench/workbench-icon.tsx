@@ -4,6 +4,12 @@ type WorkbenchIconName =
   | "validate"
   | "export"
   | "chevron"
+  | "chevron-left"
+  | "chevron-right"
+  | "panel-collapse-right"
+  | "panel-expand-left"
+  | "panel-collapse-left"
+  | "panel-expand-right"
   | "clock"
   | "play"
   | "pause"
@@ -20,7 +26,13 @@ type WorkbenchIconName =
   | "location"
   | "hypothesis"
   | "cursor"
-  | "hand";
+  | "hand"
+  | "lock"
+  | "tag"
+  | "lightbulb"
+  | "check-circle"
+  | "question-circle"
+  | "x-circle";
 
 export function WorkbenchIcon({
   name,
@@ -30,6 +42,12 @@ export function WorkbenchIcon({
   className?: string;
 }) {
   const paths = {
+    lock: <><rect x="3.5" y="7" width="9" height="7" rx="1" /><path d="M5.5 7V4a2.5 2.5 0 0 1 5 0v3M8 10v1.5" /></>,
+    tag: <><path d="M2 2h5l7 7-5 5-7-7Z" /><circle cx="5" cy="5" r=".7" /></>,
+    lightbulb: <><path d="M5.5 11c0-2-2-2.5-2-5a4.5 4.5 0 0 1 9 0c0 2.5-2 3-2 5ZM6 13h4M7 15h2" /></>,
+    "check-circle": <><circle cx="8" cy="8" r="6" /><path d="m4.5 8 2.3 2.3 4.7-4.6" /></>,
+    "question-circle": <><circle cx="8" cy="8" r="6" /><path d="M6 5.5a2 2 0 1 1 3.5 1.3C8.5 7.5 8 8 8 9M8 11.5h.01" /></>,
+    "x-circle": <><circle cx="8" cy="8" r="6" /><path d="m5.5 5.5 5 5m0-5-5 5" /></>,
     search: (
       <>
         <circle cx="7" cy="7" r="4.5" />
@@ -56,6 +74,32 @@ export function WorkbenchIcon({
       </>
     ),
     chevron: <path d="m5 6 3 3 3-3" />,
+    "chevron-left": <path d="m10 4-4 4 4 4" />,
+    "chevron-right": <path d="m6 4 4 4-4 4" />,
+    "panel-collapse-right": (
+      <>
+        <path d="M13 2v12" />
+        <path d="m6 5 3 3-3 3" />
+      </>
+    ),
+    "panel-expand-left": (
+      <>
+        <path d="M13 2v12" />
+        <path d="m10 5-3 3 3 3" />
+      </>
+    ),
+    "panel-collapse-left": (
+      <>
+        <path d="M3 2v12" />
+        <path d="m10 5-3 3 3 3" />
+      </>
+    ),
+    "panel-expand-right": (
+      <>
+        <path d="M3 2v12" />
+        <path d="m6 5 3 3-3 3" />
+      </>
+    ),
     clock: (
       <>
         <circle cx="8" cy="8" r="5.25" />
@@ -153,6 +197,7 @@ export function WorkbenchIcon({
     <svg
       aria-hidden="true"
       className={className}
+      data-icon={name}
       fill="none"
       viewBox="0 0 16 16"
     >

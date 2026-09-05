@@ -558,6 +558,7 @@ class CaseFileChatRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
+    feedback: Callable[[str, dict[str, Any]], None] | None = field(default=None, repr=False)
     validation_issues: tuple[dict[str, Any], ...] = ()
     validation: dict[str, Any] = field(default_factory=dict)
     focus: dict[str, Any] = field(default_factory=dict)

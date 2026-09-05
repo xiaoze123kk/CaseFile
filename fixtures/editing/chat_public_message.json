@@ -5,6 +5,7 @@
   "status": "completed",
   "response_kind": "patch_proposal",
   "body": "我建议调整发现现场的时间，并同步修正相关线索。",
+  "context_snapshot": null,
   "interpretation": "change_request",
   "references": [
     {

@@ -152,6 +152,94 @@ class AgentMessage(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     )
 
 
+class AgentMessageContext(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
+    """Immutable Draft and Workbench focus captured with one user message."""
+
+    __tablename__ = "agent_message_contexts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "thread_id", "message_id"],
+            [
+                "agent_messages.project_id",
+                "agent_messages.thread_id",
+                "agent_messages.id",
+            ],
+            name="fk_agent_message_contexts_message_agent_messages",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "casefile_id", "draft_id"],
+            ["drafts.project_id", "drafts.casefile_id", "drafts.id"],
+            name="fk_agent_message_contexts_project_casefile_draft_drafts",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "id",
+            name="uq_agent_message_contexts_project_id_id",
+        ),
+        UniqueConstraint(
+            "message_id",
+            name="uq_agent_message_contexts_message_id",
+        ),
+        CheckConstraint("draft_revision >= 1", name="draft_revision_positive"),
+        CheckConstraint(
+            "view IS NULL OR length(btrim(view)) > 0",
+            name="view_not_blank",
+        ),
+    )
+
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    thread_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draft_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    view: Mapped[str | None] = mapped_column(String(64))
+
+
+class AgentMessageContextRef(BigIntIdentityPrimaryKeyMixin, Base):
+    """One ordered heterogeneous reference in a frozen message context."""
+
+    __tablename__ = "agent_message_context_refs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "context_id"],
+            ["agent_message_contexts.project_id", "agent_message_contexts.id"],
+            name="fk_agent_message_context_refs_context_agent_message_contexts",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "context_id",
+            "ordinal",
+            name="uq_agent_message_context_refs_context_ordinal",
+        ),
+        UniqueConstraint(
+            "context_id",
+            "ref_kind",
+            "ref_id",
+            name="uq_agent_message_context_refs_context_kind_ref",
+        ),
+        CheckConstraint("ordinal >= 1", name="ordinal_positive"),
+        CheckConstraint(
+            "ref_kind IN ('object', 'event', 'validation_issue')",
+            name="ref_kind_allowed",
+        ),
+        CheckConstraint("length(btrim(ref_id)) > 0", name="ref_id_not_blank"),
+        Index(
+            "ix_agent_message_context_refs_context_ordinal",
+            "context_id",
+            "ordinal",
+        ),
+    )
+
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    context_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    ref_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    ref_id: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
 class AgentPatchSet(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     """One assistant-produced suggestion batch reviewed and applied atomically."""
 
@@ -459,6 +547,8 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
 
 __all__ = [
     "AgentMessage",
+    "AgentMessageContext",
+    "AgentMessageContextRef",
     "AgentPatchOperation",
     "AgentPatchSet",
     "AgentThread",

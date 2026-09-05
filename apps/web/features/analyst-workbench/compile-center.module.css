@@ -1,0 +1,130 @@
+.center {
+  min-height: 100%;
+  padding: clamp(50px, 9vh, 108px) 34px 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--paper, #faf9f5);
+}
+.heading {
+  text-align: center;
+}
+.project {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+.heading h1 {
+  margin: 17px 0 14px;
+  font-family: "STSong", "SimSun", serif;
+  font-size: clamp(28px, 2.3vw, 40px);
+  font-weight: 500;
+  letter-spacing: 3px;
+}
+.heading p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.entries {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: clamp(8px, 1.3vw, 25px);
+  width: 100%;
+  max-width: 1260px;
+  margin-top: clamp(42px, 7vh, 76px);
+}
+.entry {
+  --entry-ink: #99523b;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 9px 27px;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  background: transparent;
+  color: var(--ink);
+  text-align: center;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease;
+}
+.entry[data-target="script"] {
+  --entry-ink: #8d7757;
+}
+.entry[data-target="interactive"] {
+  --entry-ink: #657d71;
+}
+.entry[data-target="dossier"] {
+  --entry-ink: #a08158;
+}
+.entry[data-target="test"] {
+  --entry-ink: #7b8165;
+}
+.illustration {
+  width: clamp(115px, 10vw, 172px);
+  max-width: 100%;
+  color: var(--entry-ink);
+  transition: transform 180ms ease;
+}
+.illustration svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.entry strong {
+  margin-top: 24px;
+  font-family: "STSong", "SimSun", serif;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: 2px;
+}
+.description {
+  max-width: 16em;
+  min-height: 44px;
+  margin-top: 13px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--ink-muted);
+  text-wrap: balance;
+}
+.action {
+  margin-top: 23px;
+  color: var(--entry-ink);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.action > span {
+  font-size: 18px;
+  line-height: 1;
+}
+.entry[data-target]:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.entry:disabled .action {
+  color: #8b8980;
+  font-size: 11px;
+}
+.entry:not(:disabled):hover {
+  background: #fffdf8;
+  border-color: #e5d7c7;
+}
+.entry:not(:disabled):hover .illustration {
+  transform: translateY(-6px) rotate(-2deg);
+}
+.entry:focus-visible {
+  outline: 2px solid var(--entry-ink);
+  outline-offset: 5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .entry,
+  .illustration {
+    transition: none;
+  }
+}

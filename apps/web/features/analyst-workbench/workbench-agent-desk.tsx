@@ -15,7 +15,7 @@ export function WorkbenchAgentDesk({
   prompts,
   composer,
 }: {
-  surface: Exclude<AgentSurface, "closed">;
+  surface: AgentSurface;
   taskStrip?: ReactNode;
   conversation: ReactNode;
   prompts: ReactNode;
@@ -23,11 +23,11 @@ export function WorkbenchAgentDesk({
 }) {
   return (
     <section
-      aria-label="卷宗统筹 Agent 对话"
+      aria-label={surface === "dock" ? undefined : "卷宗统筹 Agent 对话"}
       className={`${styles.agentPanel} ${styles.agentPanelLive}`}
       data-surface={surface}
     >
-      {conversation}
+      <div className={styles.agentConversationSlot} hidden={surface === "dock"}>{conversation}</div>
       {taskStrip}
       {prompts}
       {composer}

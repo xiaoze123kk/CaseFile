@@ -155,3 +155,114 @@ def _run_snapshot(
 
 
 __all__ = ["public_agent_event_view"]
+
+
+def public_feedback_events(
+    events: list[dict[str, Any]],
+    run: PublicAgentRun,
+    *,
+    draft_id: int | None,
+    draft_revision: int | None,
+) -> list[PublicAgentEvent]:
+    """Replay presentation state from authoritative events, without exposing payloads."""
+    activities: dict[str, int] = {}
+    result: list[PublicAgentEvent] = []
+    discard_before = max(
+        (
+            int(event["sequence_no"])
+            for event in events
+            if event["event_type"] == "message.preview_invalidated"
+            and event["payload"].get("discard") is True
+        ),
+        default=0,
+    )
+    for event in events:
+        sequence = int(event["sequence_no"])
+        kind = event["event_type"]
+        payload = event.get("payload", {})
+        if kind.startswith("message.preview_"):
+            if kind == "message.preview_started":
+                value = {"sequence": sequence, "event": kind}
+            elif kind == "message.preview_delta":
+                if sequence < discard_before:
+                    continue
+                value = {
+                    "sequence": sequence,
+                    "event": kind,
+                    "preview_sequence": payload["preview_sequence"],
+                    "offset": payload["offset"],
+                    "final": payload.get("final") is True,
+                    "text": payload["text"],
+                }
+            elif kind == "message.preview_invalidated":
+                value = {"sequence": sequence, "event": kind, "discard": payload["discard"]}
+            else:
+                continue
+            result.append(PublicAgentEvent.model_validate(value))
+            continue
+        stage = str(event.get("stage", ""))
+        activity = (
+            "finalizing"
+            if stage in {"finalizing", "goal_finalizing"}
+            else "preparing_changes"
+            if stage in {"general_mutation", "mutation"}
+            else "understanding"
+            if stage in {"goal_understanding", "goal_deciding", "routing"}
+            else _ACTIVITY_EVENTS.get(kind)
+        )
+        if (
+            kind
+            in {
+                "tool.started",
+                "tool.completed",
+                "agent.model_call.started",
+                "agent.model_call.completed",
+                "agent.model_call.failed",
+            }
+            and activity
+        ):
+            key = str(payload.get("tool") or payload.get("component_id") or stage)
+            status = (
+                "started"
+                if kind.endswith("started")
+                else (
+                    "failed"
+                    if kind.endswith("failed") or payload.get("valid") is False
+                    else "completed"
+                )
+            )
+            if status == "started":
+                activities[key] = sequence
+            activity_id = activities.get(key, sequence)
+            refs = (
+                payload.get("object_ids", [])
+                if kind == "tool.completed" and payload.get("valid") is True
+                else []
+            )
+            if (
+                kind == "tool.completed"
+                and payload.get("valid") is True
+                and isinstance(payload.get("object_id"), str)
+            ):
+                refs = [*refs, payload["object_id"]]
+            result.append(
+                PublicAgentEvent.model_validate(
+                    {
+                        "sequence": sequence,
+                        "event": "run.activity_detail",
+                        "activity_id": activity_id,
+                        "activity": activity,
+                        "status": status,
+                        "object_ids": list(
+                            dict.fromkeys(ref for ref in refs if isinstance(ref, str))
+                        )[:50],
+                        "draft_id": draft_id,
+                        "draft_revision": draft_revision,
+                    }
+                )
+            )
+        else:
+            public = public_agent_event_view(event, run)
+            if public is not None:
+                result.append(public)
+    return result

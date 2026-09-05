@@ -795,7 +795,6 @@
 .inspectorRestore svg { width: 13px; height: 13px; transform: rotate(90deg); }
 
 .timelinePanel,
-.exportView,
 .evidenceCompare {
   min-width: 0;
   min-height: 0;
@@ -902,41 +901,9 @@
 .graphTableWrap th,
 .graphTableWrap td { padding: 7px 10px; border-bottom: 1px solid var(--rule); text-align: left; }
 .graphTableWrap th { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; }
-
-.exportView,
 .evidenceCompare { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr); }
 
 .viewNote { margin: 0; padding: 10px 14px; color: var(--ink-muted); border-top: 1px solid var(--rule); background: var(--paper-high); font-size: 10px; line-height: 1.6; }
-
-.exportSheet {
-  display: grid;
-  width: 100%;
-  min-height: 0;
-  height: 100%;
-  grid-template-columns: 1.05fr 0.95fr;
-  align-self: stretch;
-  justify-self: stretch;
-  margin: 0;
-  border: 0;
-  border-top: 1px solid rgba(41, 44, 44, 0.28);
-  background: var(--paper-high);
-  box-shadow: none;
-}
-.exportCover { display: flex; flex-direction: column; padding: 48px 52px; color: #f5f0e6; background: var(--chrome-soft); }
-.exportCover span { color: var(--primary-hover); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.12em; }
-.exportCover h3 { max-width: 340px; margin: 72px 0 0; font-family: "STSong", "SimSun", serif; font-size: 44px; line-height: 1.18; }
-.exportCover p { margin-top: 14px; color: #bbb5aa; font-size: 11px; }
-.exportCover strong { margin-top: auto; color: var(--primary-hover); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
-.exportChecks { padding: 42px 36px; }
-.exportChecks h3 { margin: 0; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 16px; }
-.exportChecks ul { margin: 24px 0; padding: 0; border-top: 1px solid var(--rule); list-style: none; }
-.exportChecks li { display: flex; min-height: 52px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); font-size: 12px; }
-.exportChecks li b { padding: 4px 6px; color: var(--success); border: 1px solid currentColor; font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; }
-.exportChecks li[data-state="blocked"] b { color: var(--issue-strong); }
-.exportChecks li[data-state="pending"] b { color: #946013; }
-.exportChecks button { width: 100%; min-height: 44px; color: #f5f0e6; border: 0; background: var(--chrome); font-weight: 650; }
-.exportChecks button:hover:not(:disabled) { color: var(--chrome); background: var(--primary); }
-.exportChecks p { color: var(--issue-strong); font-size: 10px; line-height: 1.55; }
 
 .evidenceCompare { grid-template-rows: auto auto auto auto; }
 .knowledgeSequence { display: grid; grid-template-columns: 1fr 25px 1fr 25px 1fr; align-items: stretch; padding: 18px; border-bottom: 1px solid var(--rule); }
@@ -964,47 +931,44 @@
 .manualEditor textarea { width: 100%; padding: 10px; color: var(--ink); border: 1px solid var(--rule); background: var(--paper-high); font-size: 11px; line-height: 1.65; resize: vertical; }
 .manualEditor button { min-height: 42px; justify-self: end; padding: 0 14px; color: var(--chrome); border: 0; background: var(--primary); font-size: 11px; font-weight: 650; }
 
-.evidenceIssueBar {
+.evidenceIssueIndex {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  padding: 10px;
+  gap: 10px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--rule);
-  background: var(--rule);
+  background: #f7f5f0;
 }
+.evidenceIssueIndex > header { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.evidenceIssueIndex > header > div { display: grid; gap: 2px; }
+.evidenceIssueIndex > header span { color: var(--ink-faint); font-size: 10px; }
+.evidenceIssueIndex > header strong { color: var(--ink); font: 600 14px/1.35 "Noto Serif SC", "STSong", SimSun, serif; }
+.evidenceIssueIndex > header small { color: var(--ink-faint); font-size: 10px; }
 
+.evidenceIssueBar { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
 .evidenceIssueBar button {
+  position: relative;
   display: grid;
-  min-width: 0;
-  min-height: 56px;
-  grid-template-columns: 27px minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-  padding: 9px;
+  min-width: min(280px, 78%);
+  min-height: 60px;
+  grid-template-columns: 4px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 11px;
+  padding: 10px 13px 10px 9px;
   color: var(--ink);
-  border: 0;
+  border: 1px solid #ddd8cf;
   background: var(--paper-high);
   text-align: left;
 }
-
-.evidenceIssueBar button:hover { background: #fffdf8; }
-.evidenceIssueBar button[aria-pressed="true"] { box-shadow: inset 0 -2px var(--primary); }
-
-.evidenceIssueBar button > span:first-child {
-  display: grid;
-  width: 27px;
-  height: 23px;
-  place-items: center;
-  color: white;
-  background: var(--issue-strong);
-  font: 650 11px/1 "Cascadia Mono", Consolas, monospace;
-}
-
-.evidenceIssueBar button > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
-.evidenceIssueBar strong { overflow: hidden; font-size: 11px; font-weight: 650; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
-.evidenceIssueBar small { margin-top: 4px; color: var(--ink-faint); font-size: 10px; }
-.evidenceIssueBar button[data-status="resolved"] > span:first-child { background: var(--success); }
-.evidenceIssueBar button[data-status="exception"] > span:first-child { background: var(--warning); }
+.evidenceIssueBar button:hover { border-color: #baada0; background: #fff; }
+.evidenceIssueBar button[aria-pressed="true"] { border-color: rgba(182, 72, 69, 0.48); box-shadow: 0 5px 16px rgba(68, 46, 35, 0.08); }
+.evidenceIssueBar button > i { width: 4px; height: 100%; border-radius: 4px; background: #b64845; }
+.evidenceIssueBar button[data-severity="S2"] > i { background: #b9782b; }
+.evidenceIssueBar button[data-severity="S3"] > i { background: #66818a; }
+.evidenceIssueBar button[data-status="resolved"] > i { background: #2f7d68; }
+.evidenceIssueBar button[data-status="exception"] > i { background: #8c755d; }
+.evidenceIssueBar button > span { display: flex; min-width: 0; flex-direction: column; }
+.evidenceIssueBar strong { overflow: hidden; font-size: 12px; font-weight: 650; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.evidenceIssueBar small { margin-top: 5px; color: var(--ink-faint); font-size: 10px; }
 
 .evidenceActions {
   display: grid;
@@ -1034,7 +998,6 @@
 .evidenceActions button:hover { border-color: var(--ink); }
 
 @media (max-width: 720px) {
-  .evidenceIssueBar { grid-template-columns: 1fr; }
   .evidenceActions { grid-template-columns: 1fr; }
 }
 
@@ -1079,8 +1042,6 @@
 }
 .historyButton:disabled { color: rgba(99, 103, 99, 0.45); cursor: default; }
 .historyButton svg { width: 16px; height: 16px; }
-.historyButton[data-direction="back"] svg { transform: rotate(-90deg); }
-.historyButton[data-direction="forward"] svg { transform: rotate(90deg); }
 .inspectorToggle {
   display: grid;
   width: 28px;
@@ -1091,7 +1052,7 @@
   background: transparent;
 }
 .inspectorToggle:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); background: var(--primary-soft); }
-.inspectorToggle svg { width: 14px; height: 14px; transform: rotate(-90deg); }
+.inspectorToggle svg { width: 14px; height: 14px; }
 
 .inspectorContent { min-height: 0; overflow: auto; scrollbar-color: #b0aca3 transparent; scrollbar-width: thin; }
 
@@ -1156,9 +1117,6 @@
   .knowledgeSequence { grid-template-columns: 1fr; gap: 8px; }
   .knowledgeSequence > i { width: 1px; height: 14px; justify-self: center; }
   .knowledgeSequence > i::after { top: 8px; right: -2px; transform: rotate(135deg); }
-  .compileTargets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .compileWorkspace { grid-template-columns: 1fr; }
-  .compilePanel { border-left: 0; border-top: 1px solid var(--rule); }
 }
 
 @media (max-width: 780px) {
@@ -1225,12 +1183,7 @@
   .viewTabs button span { display: none; }
   .canvasContent { padding: 9px; }
   .timelinePanel,
-  .exportView,
   .evidenceCompare { min-height: 100%; }
-  .exportSheet { width: calc(100% - 18px); margin: 9px; }
-  .exportSheet { grid-template-columns: 1fr; }
-  .exportCover { min-height: 240px; padding: 28px; }
-  .exportCover h3 { margin-top: 38px; }
   .knowledgeSequence { padding: 9px; }
   .diffPanel { margin: 0 9px 9px; }
 
@@ -1315,57 +1268,8 @@
 .panStage { width: 100%; height: 100%; min-height: 100%; }
 .sectionTrailing { display: flex; min-width: 0; align-items: center; gap: 12px; }
 
-/* 编译中心 */
-.compileView { display: grid; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr); }
-.compileTargets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
-.compileTargets button {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-  padding: 12px 13px;
-  color: var(--ink);
-  text-align: left;
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-}
-.compileTargets button:hover { border-color: var(--primary); }
-.compileTargets button[data-selected="true"] { border-color: var(--primary); box-shadow: inset 3px 0 var(--primary); background: var(--paper); }
-.compileTargets button span { color: var(--primary-strong); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5px; letter-spacing: 0.08em; }
-.compileTargets button strong { margin-top: 3px; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; }
-.compileTargets button small { margin-top: 3px; color: var(--ink-muted); font-size: 9px; line-height: 1.5; }
-.compileWorkspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) 240px; }
-.compilePreview { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
-.compilePreview header { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
-.compilePreview header span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
-.compilePreview header strong { font-size: 12px; }
-.compilePreview pre {
-  margin: 0;
-  padding: 22px 26px;
-  overflow: auto;
-  color: var(--ink);
-  font-family: "STSong", "SimSun", serif;
-  font-size: 12.5px;
-  line-height: 1.85;
-  white-space: pre-wrap;
-  background: var(--paper);
-}
-.compileDone { margin: 0; padding: 9px 16px; color: var(--success); border-top: 1px solid var(--rule); background: var(--paper-high); font-size: 10px; }
-.compilePanel { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 16px 14px; border-left: 1px solid var(--rule); background: var(--paper-low); overflow-y: auto; }
-.compilePanel > span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
-.compilePanel label { display: flex; flex-direction: column; gap: 5px; color: var(--ink-muted); font-size: 9.5px; }
-.compilePanel input { padding: 8px 9px; color: var(--ink); border: 1px solid var(--rule); background: var(--paper-high); font-size: 10.5px; }
-.compileGate ul { margin: 8px 0 0; padding: 0; border-top: 1px solid var(--rule); list-style: none; }
-.compileGate li { display: flex; min-height: 34px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); font-size: 10px; }
-.compileGate li b { color: var(--success); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5px; }
-.compileGate li[data-state="blocked"] b { color: var(--issue-strong); }
-.compilePanel > button { min-height: 40px; color: #f5f0e6; border: 0; background: var(--chrome); font-size: 10.5px; font-weight: 650; }
-.compilePanel > button:hover:not(:disabled) { color: var(--chrome); background: var(--primary); }
-.compilePanel > button:disabled { opacity: 0.55; cursor: default; }
-.compilePanel > p { margin: 0; color: var(--issue-strong); font-size: 9.5px; line-height: 1.55; }
-
 /* 推理过程图与关系图：共享 React Flow 视口，节点仍保持档案卡片语义。 */
-.reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
+.reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr); }
 /* 画布壳独占 1fr 行铺满页面；核心问题与结论改为悬浮卡片叠加在画布上。 */
 .reasoningCanvasHost { position: relative; display: grid; min-width: 0; min-height: 0; }
 .reasoningCanvasEmpty { display: grid; max-width: 460px; gap: 8px; margin: 0; color: var(--ink-muted); font-size: 10px; line-height: 1.65; }
@@ -1417,17 +1321,17 @@
 .conclusionAction:hover { background: #8f3e2b; }
 .conclusionAction:disabled { opacity: 0.52; cursor: wait; }
 .conclusionAction:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.relationsView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
-.reasoningTables { max-height: 150px; overflow: auto; border-top: 1px solid var(--rule); }
-.reasoningAlternative { background: var(--paper-high); }
-.reasoningAlternative summary { min-height: 38px; padding: 9px 14px; color: var(--ink-muted); cursor: pointer; font-size: 10px; }
-.reasoningAlternative summary:hover { color: var(--primary-strong); }
-.reasoningTableWrap { padding: 0 14px 14px; overflow-x: auto; }
-.reasoningTableWrap table { width: 100%; border-collapse: collapse; font-size: 10px; }
-.reasoningTableWrap th,
-.reasoningTableWrap td { padding: 7px 9px; text-align: left; vertical-align: top; border: 1px solid var(--rule); }
-.reasoningTableWrap th { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5px; font-weight: 600; letter-spacing: 0.07em; }
-.reasoningTableWrap td { color: var(--ink-muted); line-height: 1.55; }
+.relationsView { display: grid; min-height: 100%; color: #e7edf5; grid-template-rows: auto minmax(0, 1fr) auto; background: #090b0f; }
+.relationsView .sectionHeader { color: #e7edf5; border-bottom-color: rgba(148, 163, 184, 0.14); background: #0c0f14; }
+.relationsView .sectionHeader span { color: #818cf8; }
+.relationsView .sectionHeader h2 { color: #f4f7fb; }
+.relationsView .sectionHeader small { color: #7f8a9b; }
+.relationsView .graphAlternative { color: #9ba7b8; border-top-color: rgba(148, 163, 184, 0.14); background: #0c0f14; }
+.relationsView .graphAlternative summary { color: #8e99aa; }
+.relationsView .graphAlternative summary:hover { color: #d8e0ea; }
+.relationsView .graphTableWrap table { color: #c8d1dd; }
+.relationsView .graphTableWrap th,
+.relationsView .graphTableWrap td { border-color: rgba(148, 163, 184, 0.14); }
 
 /* 推理分析：过程图与竞争矩阵共享 Current Draft 的只读选择状态。 */
 .reasoningModeSwitch {
@@ -1519,33 +1423,32 @@
   min-width: 0;
   min-height: 100%;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
+  background: #fbfaf6;
 }
 
 .evidenceTabs {
   display: flex;
   flex: 0 0 auto;
-  align-self: flex-start;
-  overflow: hidden;
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
+  align-self: stretch;
+  gap: 20px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--rule);
+  background: #fffefb;
 }
 
 .evidenceTabs button {
-  min-height: 32px;
-  padding: 0 14px;
+  min-height: 42px;
+  padding: 0 2px;
   color: var(--ink-muted);
   border: 0;
-  border-right: 1px solid var(--rule);
   background: transparent;
   font-size: 11px;
 }
 
-.evidenceTabs button:last-child { border-right: 0; }
 .evidenceTabs button[aria-selected="true"] {
   color: var(--ink);
-  background: var(--paper);
-  box-shadow: inset 0 -2px var(--primary);
+  box-shadow: inset 0 -3px #b9782b;
   font-weight: 650;
 }
 
@@ -1856,21 +1759,71 @@
 }
 
 /* 确定性验证问题卡片（真实数据） */
-.validatorIssueBody {
+.evidenceIssueHero {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 22px 24px 20px;
+  border-top: 4px solid #b64845;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-high);
 }
+.evidenceIssueHero[data-severity="S2"] { border-top-color: #b9782b; }
+.evidenceIssueHero[data-severity="S3"] { border-top-color: #66818a; }
+.evidenceIssueHero > div:first-child { min-width: 0; }
+.evidenceIssueHero span { color: #9d230c; font-size: 10px; font-weight: 650; letter-spacing: 0.08em; }
+.evidenceIssueHero h2 { margin: 6px 0 0; color: var(--ink); font: 600 21px/1.35 "Noto Serif SC", "STSong", SimSun, serif; }
+.evidenceIssueHero p { max-width: 66ch; margin: 9px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.7; }
+.evidenceIssueHeroActions { display: flex; flex: 0 0 auto; align-items: flex-end; flex-direction: column; gap: 9px; }
+.evidenceIssueHeroActions strong { padding: 4px 8px; color: #a33f3d; border: 1px solid rgba(182, 72, 69, 0.34); background: rgba(182, 72, 69, 0.06); font-size: 10px; }
+.evidenceIssueHeroActions button { min-height: 34px; padding: 0 12px; color: var(--ink); border: 1px solid #d5cfc5; background: transparent; font-size: 10px; }
+.evidenceIssueHeroActions button:hover { border-color: var(--primary); background: var(--primary-soft); }
+
+.validatorIssueBody {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+  padding: 20px 24px 26px;
+  background: #fbfaf6;
+}
+
+.validatorIssueSection,
+.validatorIssueAdvice { display: grid; gap: 10px; }
+.validatorIssueSection h3,
+.validatorIssueAdvice h3 { margin: 0; color: var(--ink); font: 600 15px/1.35 "Noto Serif SC", "STSong", SimSun, serif; }
+.validatorIssueConnections { display: flex; flex-wrap: wrap; gap: 8px; }
+.validatorIssueConnections > button {
+  display: grid;
+  min-width: 150px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  border: 1px solid #ddd8cf;
+  background: var(--paper-high);
+  text-align: left;
+}
+.validatorIssueConnections > button:hover { border-color: #b9782b; background: #fffdf8; }
+.validatorIssueConnections > button span { grid-column: 1 / -1; color: #9d230c; font-size: 9px; }
+.validatorIssueConnections > button strong { font-size: 12px; }
+.validatorIssueConnections > button small { color: var(--ink-faint); font-size: 10px; }
+.validatorIssueConnections > p { margin: 0; color: var(--ink-muted); font-size: 11px; }
+
+.validatorIssueAdvice { padding: 14px 16px; border-left: 3px solid #b9782b; background: #f6f0e5; }
+.validatorIssueAdvice p { margin: 0; color: #5f4d39; font-size: 12px; line-height: 1.7; }
+.validatorTechnicalDetails { border-top: 1px solid var(--rule); }
+.validatorTechnicalDetails summary { padding: 12px 0; color: var(--ink-faint); cursor: pointer; font-size: 10px; }
+.validatorTechnicalDetails summary:hover { color: var(--ink); }
 
 .validatorIssueFacts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
-  padding: 0;
+  padding: 12px;
   border: 1px solid var(--rule);
-  background: var(--paper-high);
+  background: #f3f1ec;
 }
 
 .validatorIssueFacts > div {
@@ -1881,10 +1834,9 @@
   gap: 4px;
   padding: 8px 12px;
   border-right: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
 }
 
-.validatorIssueFacts > div:last-child { border-right: 0; }
+.validatorIssueFacts > div:nth-child(3n) { border-right: 0; }
 .validatorIssueFacts dt {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
@@ -1900,101 +1852,6 @@
   font-size: 10px;
   line-height: 1.5;
 }
-
-.validatorIssueTarget {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-}
-
-.validatorIssueTarget > span {
-  flex: 0 0 auto;
-  color: var(--ink-faint);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-}
-
-.validatorIssueTarget button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  color: var(--primary-strong);
-  border: 1px solid rgba(199, 139, 60, 0.46);
-  background: transparent;
-  font-size: 10px;
-  text-align: left;
-}
-
-.validatorIssueTarget button:hover { border-color: var(--primary-strong); background: var(--primary-soft); }
-.validatorIssueTarget button strong { font-weight: 650; }
-.validatorIssueTarget button small { color: var(--ink-muted); font-size: 9px; }
-.validatorIssueTarget p { margin: 0; color: var(--ink-muted); font-size: 10px; }
-
-.validatorIssueHint {
-  margin: 0;
-  padding: 10px 12px;
-  color: #946013;
-  border: 1px solid rgba(217, 154, 62, 0.4);
-  background: rgba(217, 154, 62, 0.08);
-  font-size: 10px;
-  line-height: 1.6;
-}
-
-.validatorIssueExplanation {
-  margin: 0;
-  padding: 10px 12px;
-  color: var(--ink-muted);
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-  font-size: 10px;
-  line-height: 1.6;
-}
-
-.validatorIssueEvidence {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-}
-
-.validatorIssueEvidence > span {
-  flex: 0 0 auto;
-  padding-top: 3px;
-  color: var(--ink-faint);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 8px;
-  letter-spacing: 0.08em;
-}
-
-.validatorIssueEvidenceList {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.validatorIssueEvidenceList button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
-  color: var(--primary-strong);
-  border: 1px solid rgba(199, 139, 60, 0.46);
-  background: transparent;
-  font-size: 10px;
-  text-align: left;
-}
-
-.validatorIssueEvidenceList button:hover { border-color: var(--primary-strong); background: var(--primary-soft); }
-.validatorIssueEvidenceList button strong { font-weight: 650; }
-.validatorIssueEvidenceList button small { color: var(--ink-muted); font-size: 9px; }
 
 /* 2026 workspace shell — shares the intake center's paper, ink and vermilion grammar. */
 .workbench {
@@ -2265,6 +2122,14 @@
 }
 .topActions a:hover { color: #fff; background: var(--primary); }
 
+/* The active workbench keeps the dossier header focused on the current mode;
+   project recovery remains available from the empty-state header above. */
+@media (min-width: 781px) {
+  .surfaceTopbar {
+    grid-template-columns: 64px minmax(420px, 1.18fr) auto minmax(176px, 0.55fr) auto;
+  }
+}
+
 .previewBanner {
   color: var(--ink);
   border-color: var(--red-line, #d9afa6);
@@ -2338,7 +2203,7 @@
   background: transparent;
 }
 .modeRailHeader > button:hover { color: var(--primary); border-color: var(--rule); background: var(--paper-high); }
-.modeRailHeader svg { width: 14px; height: 14px; transform: rotate(90deg); }
+.modeRailHeader svg { width: 14px; height: 14px; }
 
 .modeNavigation {
   display: grid;
@@ -2389,6 +2254,30 @@
   font: 600 11px/1 "Noto Serif SC", "STSong", SimSun, serif;
 }
 .modeNavigation > button[data-nested="true"] > span { width: 20px; height: 20px; font-size: 9px; }
+.modeNavigation > button > .compileNavigationIcon {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  color: inherit;
+  background: currentColor;
+  mask: var(--compile-icon) center / contain no-repeat;
+}
+.compileNavigationIcon[data-view="compile"] { --compile-icon: url("/casefile-analysis-compile-v1.png"); }
+.modeNavigation > button[data-nested="true"] > .compileNavigationIcon { width: 24px; height: 24px; margin-left: -2px; }
+.modeNavigation > button > .analysisNavigationIcon {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  color: inherit;
+  background: currentColor;
+  mask: var(--analysis-icon) center / contain no-repeat;
+}
+.analysisNavigationIcon[data-view="timeline"] { --analysis-icon: url("/casefile-analysis-timeline-v1.png"); }
+.analysisNavigationIcon[data-view="relations"] { --analysis-icon: url("/casefile-analysis-relations-v1.png"); }
+.analysisNavigationIcon[data-view="reasoning"] { --analysis-icon: url("/casefile-analysis-reasoning-v1.png"); }
+.analysisNavigationIcon[data-view="map"] { --analysis-icon: url("/casefile-analysis-map-v1.png"); }
+.analysisNavigationIcon[data-view="evidence"] { --analysis-icon: url("/casefile-analysis-evidence-v1.png"); }
+.modeNavigation > button[data-nested="true"] > .analysisNavigationIcon { width: 24px; height: 24px; margin-left: -2px; }
 .modeNavigation strong { font-size: 12px; font-weight: 650; }
 .modeNavigation small { color: var(--ink-faint); font-size: 9px; }
 
@@ -2440,7 +2329,6 @@
 .canvasPanelToggle svg { width: 14px; height: 14px; }
 .canvasToolbarActions > .canvasPanelToggle { margin: 0 11px; }
 .canvasToolbarActions > .canvasPanelToggle + .canvasPanelToggle { margin-left: -5px; }
-.canvasToolbarActions > .canvasPanelToggle svg { transform: rotate(-90deg); }
 
 .canvasContent {
   grid-row: 2;
@@ -2692,7 +2580,35 @@
 }
 .liveStatus span { color: var(--primary); }
 
+.canvas { grid-template-rows: 56px minmax(0, 1fr) auto; }
+.canvas[data-agent-surface="center"],
+.canvas[data-agent-surface="side"] { grid-template-rows: 56px minmax(0, 1fr); }
+.agentDock[data-surface="center"] { grid-row: 2; height: 100%; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.agentDock[data-surface="side"] { display: none; }
+.agentDock[data-surface="center"] .agentMascot { display: none; }
+.agentPresentationHost { width: 100%; height: 100%; min-height: 0; }
+.agentSideHost { height: 100%; min-height: 0; }
+.agentSideHost[hidden] { display: none; }
+.inspectorContent:has(.agentSideHost:not([hidden])) { overflow: hidden; }
+.sidePanelTabs { display: flex; flex-direction: row !important; align-items: center; gap: 8px; }
+.sidePanelTabs button { display: grid; place-items: center; width: 44px; height: 42px; padding: 4px; color: var(--ink-muted); border: 1px solid transparent; border-radius: 3px 3px 0 0; background: transparent; }
+.sidePanelTabs button:hover { color: var(--ink); background: var(--paper-mid); }
+.sidePanelTabs button[aria-selected="true"] { color: var(--primary-strong); border-bottom-color: var(--primary); background: var(--red-soft); }
+.sidePanelTabs button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.sidePanelHeading { display: grid; place-items: center; width: 44px; height: 42px; color: var(--ink-muted); }
+.sidePanelTabs .sidePanelIcon,
+.sidePanelHeading .sidePanelIcon { display: block; width: 32px; height: 32px; color: inherit; background: currentColor; mask: var(--sidebar-icon) center / contain no-repeat; }
+.sidePanelIcon[data-page="object"] { --sidebar-icon: url("/casefile-sidebar-dossier-v1.png"); }
+.sidePanelIcon[data-page="agent"] { --sidebar-icon: url("/casefile-sidebar-companion-v1.png"); }
+
 @media (prefers-reduced-motion: reduce) {
   .workspaceBody,
   .workbenchHomeGrid > button { transition: none; }
 }
+.centerDetailHost { grid-column: 1; grid-row: 2; min-height: 0; z-index: 25; overflow: hidden; }
+.sideDetailHost { height: 100%; min-height: 0; overflow: hidden; }
+.centerDetailHost[hidden], .sideDetailHost[hidden], .agentPresentationHost[hidden] { display: none; }
+.workspaceBody[data-compile-landing="true"] .canvas { grid-template-rows: 56px minmax(0, 1fr); }
+.workspaceBody[data-compile-landing="true"] .agentDock,
+.workspaceBody[data-compile-landing="true"] .canvasToolbarActions,
+.workspaceBody[data-compile-landing="true"] .inspector { display: none; }

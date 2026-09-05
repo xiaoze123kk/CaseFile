@@ -593,13 +593,15 @@ export function IntakeCenter() {
     () => candidateHistoryVersions(candidates),
     [candidates],
   );
-  const requiredQuestions = state.questions.filter(
-    (question) => question.required,
-  );
-  const hardQuestionsResolved = requiredQuestions.every((question) => {
+  const firstUnresolvedQuestionIndex = state.questions.findIndex((question) => {
     const answer = answers[question.key];
-    return Boolean(answer?.text.trim() && !answer.pending);
+    return question.required && !(answer?.text.trim() && !answer.pending);
   });
+  const hardQuestionsResolved = firstUnresolvedQuestionIndex === -1;
+  // 新批次不得隐藏仍被成案门禁要求的旧题；保留固定起点，避免作答后题目跳走。
+  const nextQuestionBatchStartIndex = hardQuestionsResolved
+    ? state.questions.length
+    : firstUnresolvedQuestionIndex;
   const questionsPhaseReached = furthestStep >= 1;
   const questionsComplete = !questionsPhaseReached
     ? false
@@ -864,7 +866,7 @@ export function IntakeCenter() {
     setQuestionGenerationFailed(false);
     const isDependencyRefresh = currentDependencyInvalidation.questions;
     const firstRefreshedQuestionIndex = isDependencyRefresh
-      ? state.questions.length
+      ? nextQuestionBatchStartIndex
       : 0;
     setQuestionGenerationMode(isDependencyRefresh ? "additional" : "initial");
     setQuestionPageIndex(0);
@@ -902,15 +904,16 @@ export function IntakeCenter() {
     if (questionsPending) return;
     setError(null);
     setQuestionGenerationMode("additional");
-    const firstNewQuestionIndex = state.questions.length;
+    const firstNewQuestionIndex = nextQuestionBatchStartIndex;
     try {
       await requestMoreQuestions();
-      // 旧题与答案仍留在会话/服务端，供 Agent 避免重复并参与后续简报；
-      // 页面只进入本轮追加批次，不再把作者带回已经回答的问题。
+      // 已回答的旧题只作为上下文；未完成的必答题继续保留在可见批次中。
       setQuestionBatchStartIndex(firstNewQuestionIndex);
       setQuestionPageIndex(0);
       setAnswersDirty(false);
-      announce("补充研查已完成；当前只显示本轮新增问题，已有回答保持不变。");
+      announce(hardQuestionsResolved
+        ? "补充研查已完成；当前只显示本轮新增问题，已有回答保持不变。"
+        : "补充研查已完成；请先完成保留的必答问题，已有回答保持不变。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "补充追问任务未完成。");
     } finally {

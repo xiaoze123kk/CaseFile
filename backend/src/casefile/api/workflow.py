@@ -12,13 +12,14 @@ from casefile_contracts import (
     PublicAgentMessage,
     PublicAgentMessageReceipt,
     PublicAgentRun,
+    PublicGoalDelivery,
     PublicGoalEvent,
     PublicGoalSession,
     PublicPatchResponse,
     PublicPatchReviewResult,
     PublicRoutingFeedbackReceipt,
 )
-from fastapi import APIRouter, Header, Request, Response
+from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
@@ -295,6 +296,18 @@ def workflow_router() -> APIRouter:
             after_sequence=after_sequence,
         )
 
+    @router.get(
+        "/projects/{project_id}/agent/goals/{goal_id}/deliveries",
+        response_model=list[PublicGoalDelivery],
+    )
+    def get_agent_goal_deliveries(
+        project_id: int,
+        goal_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> list[PublicGoalDelivery]:
+        return WorkflowService(session).list_agent_goal_deliveries(actor, project_id, goal_id)
+
     @router.get("/projects/{project_id}/agent/goals/{goal_id}/stream")
     def stream_agent_goal(
         project_id: int,
@@ -404,12 +417,14 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
         after_sequence: int = 0,
+        feedback_version: Annotated[int, Query(ge=1, le=2)] = 1,
     ) -> list[PublicAgentEvent]:
         return WorkflowService(session).list_agent_run_events(
             actor,
             project_id,
             run_id,
             after_sequence=after_sequence,
+            feedback_version=feedback_version,
         )
 
     @router.get("/projects/{project_id}/agent/runs/{run_id}/stream")
@@ -420,6 +435,7 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+        feedback_version: Annotated[int, Query(ge=1, le=2)] = 1,
     ) -> StreamingResponse:
         WorkflowService(session).get_agent_run(actor, project_id, run_id)
         after_sequence = _last_event_sequence(last_event_id)
@@ -436,6 +452,7 @@ def workflow_router() -> APIRouter:
                         project_id,
                         run_id,
                         after_sequence=cursor,
+                        feedback_version=feedback_version,
                     )
                     run = service.get_agent_run(actor, project_id, run_id)
                 if rows:

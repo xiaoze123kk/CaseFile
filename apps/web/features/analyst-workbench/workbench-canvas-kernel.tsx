@@ -2,9 +2,12 @@
 
 import {
   applyNodeChanges,
+  BaseEdge,
   EdgeLabelRenderer,
+  getStraightPath,
   getSmoothStepPath,
   Handle,
+  MarkerType,
   Position,
   ReactFlow,
   SelectionMode,
@@ -33,7 +36,9 @@ import {
   type WorkbenchCanvasDirection,
   type WorkbenchCanvasLayoutIdentity,
   type WorkbenchCanvasPoint,
+  elasticRelationshipDragPositions,
   layoutWorkbenchCanvas,
+  layoutWorkbenchConstellationCanvas,
   layoutWorkbenchMatrixCanvas,
   restoreWorkbenchCanvasLayout,
   saveWorkbenchCanvasLayout,
@@ -71,6 +76,9 @@ export interface WorkbenchCanvasSceneEdge {
   label?: string;
   kind?: string;
   ariaLabel?: string;
+  accent?: string;
+  strokeDasharray?: string;
+  direction?: "directed" | "undirected" | "bidirectional";
 }
 
 interface WorkbenchCanvasNodeData extends Record<string, unknown> {
@@ -84,6 +92,7 @@ interface WorkbenchCanvasNodeData extends Record<string, unknown> {
   outcome?: string;
   direction: WorkbenchCanvasDirection;
   active: boolean;
+  dimmed: boolean;
   selected: boolean;
   related: boolean;
   onActivate: () => void;
@@ -149,6 +158,7 @@ function applyPositions(
 }
 
 function WorkbenchCanvasNode({
+  id,
   data,
   selected,
 }: NodeProps<WorkbenchFlowNode>) {
@@ -172,6 +182,8 @@ function WorkbenchCanvasNode({
           : styles.reasoningNode
       }
       data-active={data.active}
+      data-agent-object-id={data.selectableId ?? undefined}
+      data-dimmed={data.dimmed}
       data-kind={data.kind}
       data-outcome={data.outcome}
       data-related={data.related}
@@ -180,7 +192,10 @@ function WorkbenchCanvasNode({
       onFocus={() => data.onFocusChange(true)}
       onKeyDown={activateWithKeyboard}
       role={interactive ? "button" : "img"}
-      style={{ "--canvas-node-accent": data.accent } as CSSProperties}
+      style={{
+        "--canvas-node-accent": data.accent,
+        "--canvas-breath-delay": `${-([...id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 60) / 10}s`,
+      } as CSSProperties}
       tabIndex={0}
     >
       <Handle
@@ -269,9 +284,47 @@ function WorkbenchInteractiveEdge({
   );
 }
 
-const edgeTypes = { casefileEdge: WorkbenchInteractiveEdge };
+function WorkbenchRelationshipEdge(props: EdgeProps) {
+  const [path] = getStraightPath(props);
+  const fraction = typeof props.data?.labelFraction === "number" ? props.data.labelFraction : 0.5;
+  const labelX = props.sourceX + (props.targetX - props.sourceX) * fraction;
+  const labelY = props.sourceY + (props.targetY - props.sourceY) * fraction;
+  return <>
+    <BaseEdge
+      id={props.id} path={path} labelX={labelX} labelY={labelY}
+      label={props.label} labelStyle={props.labelStyle}
+      labelShowBg={props.labelShowBg} labelBgStyle={props.labelBgStyle}
+      labelBgPadding={props.labelBgPadding} labelBgBorderRadius={props.labelBgBorderRadius}
+      style={props.style} markerStart={props.markerStart} markerEnd={props.markerEnd}
+      interactionWidth={props.interactionWidth}
+    />
+    {props.data?.flowing ? <path
+      aria-hidden="true" className={styles.relationshipFlow}
+      d={path} fill="none" pathLength={100}
+      stroke={props.style?.stroke} strokeWidth={2}
+    /> : null}
+  </>;
+}
 
-function edgeStyle(kind: string | undefined, active: boolean) {
+const edgeTypes = { casefileEdge: WorkbenchInteractiveEdge, relationshipEdge: WorkbenchRelationshipEdge };
+
+function edgeStyle(
+  kind: string | undefined,
+  active: boolean,
+  accent?: string,
+  strokeDasharray?: string,
+) {
+  if (kind === "relationship") {
+    return {
+      stroke: accent ?? "#60a5fa",
+      strokeWidth: active ? 2.4 : 1.45,
+      strokeDasharray,
+      opacity: active ? 1 : 0.7,
+      filter: active
+        ? `drop-shadow(0 0 4px ${accent ?? "#60a5fa"})`
+        : undefined,
+    };
+  }
   if (active) {
     return {
       stroke: "var(--primary)",
@@ -330,6 +383,8 @@ export function WorkbenchCanvasKernel({
   onActivateEdge,
   onActivateNode,
   activeEdgeId = null,
+  elasticConnectedDrag = false,
+  focusDirectRelationsOnClick = false,
   requireModifierForNodeSelection = false,
 }: {
   ariaLabel: string;
@@ -337,7 +392,7 @@ export function WorkbenchCanvasKernel({
   emptyHint?: ReactNode;
   externalSelectedNodeIds: string[];
   identity: WorkbenchCanvasLayoutIdentity;
-  layout?: "dagre" | "matrix";
+  layout?: "dagre" | "matrix" | "constellation";
   legend?: ReactNode;
   nodeLegend?: WorkbenchCanvasLegendItem[];
   nodes: WorkbenchCanvasSceneNode[];
@@ -345,6 +400,8 @@ export function WorkbenchCanvasKernel({
   onActivateEdge?: (edgeId: string) => void;
   onActivateNode: (selectableId: string) => void;
   activeEdgeId?: string | null;
+  elasticConnectedDrag?: boolean;
+  focusDirectRelationsOnClick?: boolean;
   requireModifierForNodeSelection?: boolean;
 }) {
   const automaticPositions = useMemo(
@@ -358,20 +415,26 @@ export function WorkbenchCanvasKernel({
               kind,
             })),
           )
-        : layoutWorkbenchCanvas(
-            sceneNodes.map(({ id, width, height }) => ({ id, width, height })),
-            sceneEdges,
-            direction,
-          ),
+        : layout === "constellation"
+          ? layoutWorkbenchConstellationCanvas(
+              sceneNodes.map(({ id, width, height }) => ({ id, width, height })),
+              sceneEdges,
+            )
+          : layoutWorkbenchCanvas(
+              sceneNodes.map(({ id, width, height }) => ({ id, width, height })),
+              sceneEdges,
+              direction,
+            ),
     [direction, layout, sceneEdges, sceneNodes],
   );
+  const interactiveEdges = Boolean(onActivateEdge);
   const automaticNodes = useMemo<WorkbenchFlowNode[]>(
     () => {
       const horizontal = direction === "LR";
       // 交互边场景（竞争矩阵）需要边在首帧即渲染：显式声明与节点 DOM
       // 手柄一致的 handles，保证没有 ResizeObserver 测量的测试环境也能
       // 立即渲染边；其余场景沿用测量后的真实手柄边界。
-      const interactive = Boolean(onActivateEdge);
+      const interactive = interactiveEdges;
       return sceneNodes.map((node) => {
         const automaticNode: WorkbenchFlowNode = {
           id: node.id,
@@ -392,6 +455,7 @@ export function WorkbenchCanvasKernel({
             outcome: node.outcome,
             direction,
             active: false,
+            dimmed: false,
             selected: false,
             related: false,
             onActivate: () => undefined,
@@ -421,16 +485,20 @@ export function WorkbenchCanvasKernel({
         };
       });
     },
-    [automaticPositions, direction, onActivateEdge, requireModifierForNodeSelection, sceneNodes],
+    [automaticPositions, direction, interactiveEdges, requireModifierForNodeSelection, sceneNodes],
   );
   const [nodes, setNodes] = useState(automaticNodes);
   const nodesRef = useRef(nodes);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [relationshipFocusNodeId, setRelationshipFocusNodeId] = useState<
+    string | null
+  >(null);
   const [hasCanvasSelectionIntent, setHasCanvasSelectionIntent] =
     useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [motionEnabled, setMotionEnabled] = useState(true);
   const [warning, setWarning] = useState<string | null>(null);
   const [liveMessage, setLiveMessage] = useState("");
   const [viewport, setViewportState] = useState<Viewport>({
@@ -445,6 +513,7 @@ export function WorkbenchCanvasKernel({
   const [storageReady, setStorageReady] = useState(false);
   const pendingViewportRef = useRef<Viewport | null | undefined>(undefined);
   const dragStartFrameRef = useRef<CanvasHistoryFrame | null>(null);
+  const elasticFollowerCountRef = useRef(0);
   const selectedNodeIdsRef = useRef(new Set<string>());
   const selectionBoxActiveRef = useRef(false);
   const canvasActivationPendingRef = useRef(false);
@@ -596,6 +665,7 @@ export function WorkbenchCanvasKernel({
     setNodes(next);
     setHasCanvasSelectionIntent(true);
     setFocusedNodeId(null);
+    setRelationshipFocusNodeId(null);
     setLiveMessage("已清除画布节点选择。");
   }, []);
 
@@ -616,12 +686,53 @@ export function WorkbenchCanvasKernel({
     setHasCanvasSelectionIntent(false);
   }, [externalSelectionKey]);
 
-  const startLayoutDrag = useCallback(() => {
+  const startLayoutDrag: OnNodeDrag<WorkbenchFlowNode> = useCallback(() => {
     dragStartFrameRef.current = frameFromNodes(
       nodesRef.current,
       viewportRef.current,
     );
   }, []);
+
+  const moveConnectedNodes: OnNodeDrag<WorkbenchFlowNode> = useCallback(
+    (_event, draggedNode, movedNodes) => {
+      if (!elasticConnectedDrag || !dragStartFrameRef.current) return;
+      const excludedNodeIds = new Set(
+        [
+          ...movedNodes.map((node) => node.id),
+          ...selectedNodeIdsRef.current,
+        ].filter((nodeId) => nodeId !== draggedNode.id),
+      );
+      const positions = elasticRelationshipDragPositions(
+        dragStartFrameRef.current.positions,
+        positionsFromNodes(nodesRef.current),
+        sceneEdges,
+        draggedNode.id,
+        draggedNode.position,
+        excludedNodeIds,
+      );
+      const next = nodesRef.current.map((node) => ({
+        ...node,
+        position: positions[node.id] ?? node.position,
+      }));
+      elasticFollowerCountRef.current = Object.keys(positions).filter(
+        (nodeId) => {
+          const initialPosition = dragStartFrameRef.current?.positions[nodeId];
+          const nextPosition = positions[nodeId];
+          return Boolean(
+            nodeId !== draggedNode.id &&
+              !excludedNodeIds.has(nodeId) &&
+              initialPosition &&
+              nextPosition &&
+              (nextPosition.x !== initialPosition.x ||
+                nextPosition.y !== initialPosition.y),
+          );
+        },
+      ).length;
+      nodesRef.current = next;
+      setNodes(next);
+    },
+    [elasticConnectedDrag, sceneEdges],
+  );
 
   const stopLayoutDrag: OnNodeDrag<WorkbenchFlowNode> = useCallback(
     (_event, _node, movedNodes) => {
@@ -640,10 +751,14 @@ export function WorkbenchCanvasKernel({
         );
       }
       persist(finalNodes);
+      const followerCount = elasticFollowerCountRef.current;
+      elasticFollowerCountRef.current = 0;
       setLiveMessage(
-        movedNodes.length > 1
-          ? `已移动 ${movedNodes.length} 个画布节点。`
-          : "已移动画布节点。",
+        followerCount
+          ? `已移动节点，并带动 ${followerCount} 个关联节点。`
+          : movedNodes.length > 1
+            ? `已移动 ${movedNodes.length} 个画布节点。`
+            : "已移动画布节点。",
       );
     },
     [commitFrame, persist],
@@ -656,6 +771,14 @@ export function WorkbenchCanvasKernel({
     [stopLayoutDrag],
   );
 
+  const startSelectionDrag = useCallback(() => {
+    elasticFollowerCountRef.current = 0;
+    dragStartFrameRef.current = frameFromNodes(
+      nodesRef.current,
+      viewportRef.current,
+    );
+  }, []);
+
   const anchorNodeIds = useMemo(() => {
     const ids = new Set(
       hasCanvasSelectionIntent ? [] : externalSelectedNodeIds,
@@ -665,13 +788,18 @@ export function WorkbenchCanvasKernel({
     });
     if (hoveredNodeId) ids.add(hoveredNodeId);
     if (focusedNodeId) ids.add(focusedNodeId);
+    if (focusDirectRelationsOnClick && relationshipFocusNodeId) {
+      ids.add(relationshipFocusNodeId);
+    }
     return ids;
   }, [
     externalSelectedNodeIds,
     focusedNodeId,
     hasCanvasSelectionIntent,
     hoveredNodeId,
+    focusDirectRelationsOnClick,
     nodes,
+    relationshipFocusNodeId,
   ]);
 
   const relatedNodeIds = useMemo(() => {
@@ -683,6 +811,19 @@ export function WorkbenchCanvasKernel({
     return ids;
   }, [anchorNodeIds, sceneEdges]);
 
+  const relationshipFocusNodeIds = useMemo(() => {
+    if (!focusDirectRelationsOnClick || !relationshipFocusNodeId) {
+      return new Set<string>();
+    }
+    const ids = new Set([relationshipFocusNodeId]);
+    sceneEdges.forEach((edge) => {
+      if (edge.source === relationshipFocusNodeId) ids.add(edge.target);
+      if (edge.target === relationshipFocusNodeId) ids.add(edge.source);
+    });
+    return ids;
+  }, [focusDirectRelationsOnClick, relationshipFocusNodeId, sceneEdges]);
+  const hasRelationshipFocus = relationshipFocusNodeIds.size > 0;
+
   const renderedNodes = useMemo(
     () =>
       nodes.map((node) => ({
@@ -690,6 +831,8 @@ export function WorkbenchCanvasKernel({
         data: {
           ...node.data,
           active: anchorNodeIds.has(node.id),
+          dimmed:
+            hasRelationshipFocus && !relationshipFocusNodeIds.has(node.id),
           selected:
             Boolean(node.selected) ||
             (!hasCanvasSelectionIntent &&
@@ -715,9 +858,11 @@ export function WorkbenchCanvasKernel({
       anchorNodeIds,
       externalSelectedNodeIds,
       hasCanvasSelectionIntent,
+      hasRelationshipFocus,
       nodes,
       onActivateNode,
       relatedNodeIds,
+      relationshipFocusNodeIds,
       toggleNodeSelection,
       tool,
     ],
@@ -725,12 +870,19 @@ export function WorkbenchCanvasKernel({
 
   const renderedEdges = useMemo<Edge[]>(
     () =>
-      sceneEdges.map((edge) => {
-        const active =
-          anchorNodeIds.has(edge.source) ||
-          anchorNodeIds.has(edge.target) ||
-          edge.id === activeEdgeId;
-        if (onActivateEdge) {
+      sceneEdges.map((edge, index) => {
+        const relationshipFocusEdge = Boolean(
+          relationshipFocusNodeId &&
+            (edge.source === relationshipFocusNodeId ||
+              edge.target === relationshipFocusNodeId),
+        );
+        const active = hasRelationshipFocus
+          ? relationshipFocusEdge
+          : anchorNodeIds.has(edge.source) ||
+            anchorNodeIds.has(edge.target) ||
+            edge.id === activeEdgeId;
+        const dimmed = hasRelationshipFocus && !relationshipFocusEdge;
+        if (onActivateEdge && identity.view !== "relations") {
           return {
             id: edge.id,
             source: edge.source,
@@ -752,27 +904,80 @@ export function WorkbenchCanvasKernel({
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          type: "default",
           className: active ? styles.canvasEdgeActive : styles.canvasEdge,
           selectable: false,
           focusable: false,
-          label: active ? edge.label : undefined,
+          label:
+            identity.view === "relations" || active ? edge.label : undefined,
           labelShowBg: true,
           labelBgPadding: [6, 3],
           labelBgBorderRadius: 1,
           labelBgStyle: {
-            fill: "rgba(251, 250, 246, 0.96)",
-            stroke: "rgba(199, 139, 60, 0.3)",
+            fill:
+              identity.view === "relations"
+                ? "rgba(9, 11, 15, 0.88)"
+                : "rgba(251, 250, 246, 0.96)",
+            stroke:
+              identity.view === "relations"
+                ? "transparent"
+                : "rgba(199, 139, 60, 0.3)",
           },
           labelStyle: {
-            fill: "var(--ink-muted)",
+            fill:
+              identity.view === "relations"
+                ? edge.accent ?? "#94a3b8"
+                : "var(--ink-muted)",
             fontFamily: '"Cascadia Mono", Consolas, monospace',
-            fontSize: 9,
+            fontSize: identity.view === "relations" ? 12 : 9,
+            opacity: dimmed ? 0.1 : 1,
           },
-          style: edgeStyle(edge.kind, active),
+          markerEnd:
+            identity.view === "relations" &&
+            edge.direction !== "undirected" &&
+            !dimmed
+              ? {
+                  type: MarkerType.ArrowClosed,
+                  color: edge.accent ?? "#60a5fa",
+                  width: 14,
+                  height: 14,
+                }
+              : undefined,
+          markerStart:
+            identity.view === "relations" &&
+            edge.direction === "bidirectional" &&
+            !dimmed
+              ? {
+                  type: MarkerType.ArrowClosed,
+                  color: edge.accent ?? "#60a5fa",
+                  width: 14,
+                  height: 14,
+                }
+              : undefined,
+          style: {
+            ...edgeStyle(
+              edge.kind,
+              active,
+              edge.accent,
+              edge.strokeDasharray,
+            ),
+            ...(dimmed ? { opacity: 0.1, filter: "none" } : {}),
+          },
+          data: {
+            flowing: active && !dimmed && edge.direction === "directed",
+            labelFraction: 0.38 + (index % 5) * 0.06,
+          },
+          type: identity.view === "relations" ? "relationshipEdge" : "default",
         };
       }),
-    [activeEdgeId, anchorNodeIds, onActivateEdge, sceneEdges],
+    [
+      activeEdgeId,
+      anchorNodeIds,
+      hasRelationshipFocus,
+      identity.view,
+      onActivateEdge,
+      relationshipFocusNodeId,
+      sceneEdges,
+    ],
   );
 
   const applyFrame = useCallback(
@@ -885,6 +1090,8 @@ export function WorkbenchCanvasKernel({
     <div
       className={styles.canvasKernelShell}
       data-fullscreen={isFullscreen}
+      data-motion={motionEnabled ? "running" : "paused"}
+      data-scene={identity.view}
       data-layout-key={workbenchCanvasLayoutStorageKey(identity)}
       ref={shellRef}
     >
@@ -910,6 +1117,11 @@ export function WorkbenchCanvasKernel({
         nodesDraggable={tool === "select"}
         nodesFocusable={false}
         onInit={setInstance}
+        onEdgeClick={(event, edge) => {
+          if (identity.view !== "relations" || !onActivateEdge) return;
+          event.stopPropagation();
+          onActivateEdge(edge.id);
+        }}
         onMove={(_event, nextViewport) => {
           viewportRef.current = nextViewport;
           setViewportState(nextViewport);
@@ -921,12 +1133,21 @@ export function WorkbenchCanvasKernel({
         }}
         onNodeClick={(event, node) => {
           if (tool !== "select") return;
+          if (focusDirectRelationsOnClick) {
+            setRelationshipFocusNodeId((current) =>
+              current === node.id ? null : node.id,
+            );
+          }
           if (
             requireModifierForNodeSelection &&
             !event.ctrlKey &&
             !event.metaKey
           ) {
-            setLiveMessage("按住 Ctrl 键并左键点击节点，才会选中对象。");
+            setLiveMessage(
+              focusDirectRelationsOnClick
+                ? `已聚焦“${node.data.label}”及其直接关系；按住 Ctrl 键点击可打开对象。`
+                : "按住 Ctrl 键并左键点击节点，才会选中对象。",
+            );
             return;
           }
           const selected = toggleNodeSelection(node.id);
@@ -939,6 +1160,7 @@ export function WorkbenchCanvasKernel({
           }
         }}
         onNodeDragStart={startLayoutDrag}
+        onNodeDrag={moveConnectedNodes}
         onNodeDragStop={stopLayoutDrag}
         onNodeMouseEnter={(_event, node) => setHoveredNodeId(node.id)}
         onNodeMouseLeave={() => setHoveredNodeId(null)}
@@ -962,7 +1184,7 @@ export function WorkbenchCanvasKernel({
         onSelectionStart={() => {
           selectionBoxActiveRef.current = true;
         }}
-        onSelectionDragStart={startLayoutDrag}
+        onSelectionDragStart={startSelectionDrag}
         onSelectionDragStop={stopSelectionDrag}
         panOnDrag={tool === "pan"}
         panOnScroll={tool === "pan"}
@@ -972,6 +1194,11 @@ export function WorkbenchCanvasKernel({
         selectionOnDrag={tool === "select"}
         zoomOnDoubleClick={false}
       />
+      {identity.view === "relations" ? <button
+        aria-label="关系图动效" aria-pressed={motionEnabled}
+        className={styles.relationshipMotionToggle}
+        onClick={() => setMotionEnabled((enabled) => !enabled)} type="button"
+      ><span aria-hidden="true" />动效{motionEnabled ? "开启" : "暂停"}</button> : null}
       {!sceneNodes.length && emptyHint ? (
         <div className={styles.canvasEmptyHint} role="note">
           {emptyHint}

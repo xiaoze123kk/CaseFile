@@ -6,6 +6,9 @@ import type {
   PublicAgentMessage,
   PublicAgentMessageReceipt,
   PublicAgentRun,
+  PublicGoalSession,
+  PublicGoalDelivery,
+  PublicGoalEvent,
   PublicPatchResponse,
   PublicPatchReviewResult,
   PublicRoutingFeedbackReceipt,
@@ -817,6 +820,10 @@ export async function streamTaskEvents(
 }
 
 const PUBLIC_AGENT_EVENT_NAMES = new Set<PublicAgentEvent["event"]>([
+  "run.activity_detail",
+  "message.preview_started",
+  "message.preview_delta",
+  "message.preview_invalidated",
   "run.accepted",
   "run.activity",
   "run.context",
@@ -847,8 +854,31 @@ export async function streamAgentRunEvents(
   signal: AbortSignal,
   lastEventId = 0,
 ): Promise<number> {
+  return streamPublicEvents(
+    `/projects/${projectId}/agent/runs/${runId}/stream?feedback_version=2`,
+    actorId, onEvent, signal, lastEventId, publicAgentEvent,
+  );
+}
+
+export function streamAgentGoalEvents(
+  actorId: number, projectId: number, goalId: number,
+  onEvent: (event: PublicGoalEvent) => void, signal: AbortSignal, lastEventId = 0,
+) {
+  return streamPublicEvents(`/projects/${projectId}/agent/goals/${goalId}/stream`,
+    actorId, onEvent, signal, lastEventId, (value): PublicGoalEvent | null => {
+      if (typeof value !== "object" || value === null || !("event" in value) ||
+          value.event !== "goal.transition" || !("sequence" in value) ||
+          typeof value.sequence !== "number") return null;
+      return value as PublicGoalEvent;
+    });
+}
+
+async function streamPublicEvents<T extends { sequence: number }>(
+  path: string, actorId: number, onEvent: (event: T) => void,
+  signal: AbortSignal, lastEventId: number, parse: (value: unknown) => T | null,
+): Promise<number> {
   const response = await fetch(
-    `${API_ROOT}/projects/${projectId}/agent/runs/${runId}/stream`,
+    `${API_ROOT}${path}`,
     {
       headers: {
         Accept: "text/event-stream",
@@ -865,6 +895,7 @@ export async function streamAgentRunEvents(
   const decoder = new TextDecoder();
   let cursor = lastEventId;
   let buffer = "";
+  try {
   while (true) {
     const result = await reader.read();
     if (result.done) break;
@@ -879,8 +910,9 @@ export async function streamAgentRunEvents(
         .map((line) => line.slice(6))
         .join("\n");
       if (data) {
-        const event = publicAgentEvent(JSON.parse(data) as unknown);
-        if (event !== null) {
+        const event = parse(JSON.parse(data) as unknown);
+        if (event === null) throw new Error("收到无法识别的 Agent 事件，请重新连接。");
+        if (event.sequence > cursor) {
           cursor = Math.max(cursor, event.sequence);
           onEvent(event);
         }
@@ -889,6 +921,10 @@ export async function streamAgentRunEvents(
     }
   }
   return cursor;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
 }
 
 export async function listProjects(actorId: number) {
@@ -1055,6 +1091,22 @@ export async function listAgentMessages(
   );
 }
 
+export function getAgentGoal(actorId: number, projectId: number, goalId: number) {
+  return apiRequest<PublicGoalSession>(`/projects/${projectId}/agent/goals/${goalId}`, { actorId });
+}
+
+export function listAgentGoalDeliveries(actorId: number, projectId: number, goalId: number) {
+  return apiRequest<PublicGoalDelivery[]>(`/projects/${projectId}/agent/goals/${goalId}/deliveries`, { actorId });
+}
+
+export function cancelAgentGoal(actorId: number, projectId: number, goalId: number) {
+  return apiRequest<PublicGoalSession>(`/projects/${projectId}/agent/goals/${goalId}/cancel`, { actorId, method: "POST" });
+}
+
+export function listAgentRunFeedback(actorId: number, projectId: number, runId: number) {
+  return apiRequest<PublicAgentEvent[]>(`/projects/${projectId}/agent/runs/${runId}/events?feedback_version=2`, { actorId });
+}
+
 export async function sendAgentMessage(
   actorId: number,
   projectId: number,
@@ -1065,6 +1117,7 @@ export async function sendAgentMessage(
   provider: ProviderName = "openai",
   focus?: AgentChatFocus,
   routingHint?: AgentChatRoutingHint,
+  delivery?: { delivery_mode: "steer" | "replace" | "follow_up"; expected_goal_id: number; expected_goal_revision: number },
 ) {
   return apiRequest<PublicAgentMessageReceipt>(
     `/projects/${projectId}/agent/threads/${threadId}/messages`,
@@ -1078,6 +1131,7 @@ export async function sendAgentMessage(
         provider,
         ...(focus === undefined ? {} : { focus }),
         ...(routingHint === undefined ? {} : { routing_hint: routingHint }),
+        ...delivery,
       },
     },
   );

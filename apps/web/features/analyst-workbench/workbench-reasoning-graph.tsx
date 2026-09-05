@@ -989,44 +989,6 @@ export function ReasoningGraphView({
           </>
         )}
       </div>
-      {mode === "graph" ? <div className={styles.reasoningTables}>
-        {seed.reasoningPaths.map((path) => {
-          const summary = path.steps
-            .map((step) => `${step.verb}：${step.claim}`)
-            .join("；");
-          return (
-            <details className={styles.reasoningAlternative} key={path.id}>
-              <summary>
-                推理表 · {path.question}（
-                {reasoningOutcomeLabels[path.outcome]}）
-              </summary>
-              <div className={styles.reasoningTableWrap}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>依据</th>
-                      <th>推理</th>
-                      <th>最终结论</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>
-                        {path.evidenceIds
-                          .map((id) => evidenceById.get(id)?.label)
-                          .filter(Boolean)
-                          .join("、")}
-                      </td>
-                      <td>{summary}</td>
-                      <td>{path.conclusion}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          );
-        })}
-      </div> : null}
     </section>
   );
 }

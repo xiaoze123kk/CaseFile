@@ -46,6 +46,41 @@
         "retryable": {"type": "boolean"}
       }
     },
+    "PublicAgentContextSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draft_id",
+        "draft_revision",
+        "object_ids",
+        "event_ids",
+        "validation_issue_ids",
+        "view"
+      ],
+      "properties": {
+        "draft_id": {"type": "integer", "minimum": 1},
+        "draft_revision": {"type": "integer", "minimum": 1},
+        "object_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 128},
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "event_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 128},
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "validation_issue_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 128},
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "view": {"type": ["string", "null"], "minLength": 1, "maxLength": 64}
+      }
+    },
     "PublicGoalSession": {
       "type": "object",
       "additionalProperties": false,
@@ -469,6 +504,12 @@
           "enum": ["message", "answer", "analysis", "clarification", "findings", "patch_proposal", "failure"]
         },
         "body": {"type": ["string", "null"], "maxLength": 20000},
+        "context_snapshot": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicAgentContextSnapshot"},
+            {"type": "null"}
+          ]
+        },
         "interpretation": {
           "oneOf": [
             {"$ref": "#/$defs/PublicRoutingInterpretation"},
@@ -538,6 +579,49 @@
     },
     "PublicAgentEvent": {
       "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["sequence", "event", "activity_id", "activity", "status", "object_ids"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.activity_detail"},
+            "activity_id": {"type": "integer", "minimum": 1},
+            "activity": {"enum": ["understanding", "reading", "checking", "preparing_changes", "finalizing"], "type": "string"},
+            "status": {"enum": ["started", "completed", "failed"], "type": "string"},
+            "object_ids": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+            "draft_id": {"type": ["integer", "null"], "minimum": 1},
+            "draft_revision": {"type": ["integer", "null"], "minimum": 0}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["sequence", "event"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "message.preview_started"}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["sequence", "event", "preview_sequence", "offset", "text"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "message.preview_delta"},
+            "preview_sequence": {"type": "integer", "minimum": 1},
+            "offset": {"type": "integer", "minimum": 0},
+            "final": {"type": "boolean"},
+            "text": {"type": "string", "minLength": 1, "maxLength": 65536}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["sequence", "event", "discard"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "message.preview_invalidated"},
+            "discard": {"type": "boolean"}
+          }
+        },
         {
           "type": "object",
           "additionalProperties": false,

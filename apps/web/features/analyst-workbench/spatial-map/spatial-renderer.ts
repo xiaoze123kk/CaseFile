@@ -239,6 +239,7 @@ function markerHtml(
 ): HTMLElement {
   const body = document.createElement("span");
   body.className = "casefile-spatial-marker__body";
+  if (location.locationId) body.dataset.agentObjectId = location.locationId;
 
   const stamp = document.createElement("span");
   stamp.className = "casefile-spatial-marker__stamp";
