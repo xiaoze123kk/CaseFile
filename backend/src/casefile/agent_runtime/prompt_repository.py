@@ -100,6 +100,9 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "brief-to-draft-v15": frozenset(
         {"planner", "temporal", "story", "evidence", "matrix", "governance"}
     ),
+    "brief-to-draft-v16": frozenset(
+        {"planner", "temporal", "story", "evidence", "matrix", "governance"}
+    ),
     "casefile-chat-v2": frozenset(
         {"router", "rewrite", "chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
     ),

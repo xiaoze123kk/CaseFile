@@ -18,6 +18,7 @@ from casefile.agent_runtime.prompt import (
     V13_GENERATION_AGENT_VERSION,
     V14_GENERATION_AGENT_VERSION,
     V15_GENERATION_AGENT_VERSION,
+    V16_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -38,7 +39,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v15",
+    "brief_to_draft": "brief-to-draft-v16",
     "casefile_chat": "casefile-chat-v7",
     "casefile_chat_context_compactor": "casefile-chat-context-compactor-v1",
     "reverse_parse": "reverse-parse-v1",
@@ -253,6 +254,18 @@ EXPECTED_RELEASE_HASHES = {
             "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
         ),
         "fragment:story": "66f626183ca34b7f972042fd1de8fcfac681e0f2a1f4d5a76c207052b31fac8a",
+        "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
+        "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
+        "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
+    },
+    ("brief_to_draft", "brief-to-draft-v16"): {
+        "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
+        "fragment:planner": "6574d31180a710d9683a26a5d7f25e4cf7cf298daf63f07137a63f7b7fa929ab",
+        "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",
+        "fragment:domain_common": (
+            "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+        ),
+        "fragment:story": "50fbc92ccff865f3cdea31f23c4c821c20217a722e42cb7920e42e1d0480e913",
         "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
         "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
@@ -718,6 +731,10 @@ def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v15")
         == V15_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v16")
+        == V16_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION

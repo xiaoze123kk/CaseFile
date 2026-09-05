@@ -87,6 +87,7 @@ def public_agent_message_view(value: dict[str, Any]) -> PublicAgentMessage:
                 result=result,
             ),
             "body": value.get("content") if isinstance(value.get("content"), str) else None,
+            "context_snapshot": value.get("context_snapshot"),
             "interpretation": public_routing_interpretation(result.get("routing")),
             "references": _public_references(value),
             "findings": findings,

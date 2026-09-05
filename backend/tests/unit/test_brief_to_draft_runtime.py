@@ -37,9 +37,7 @@ from casefile.agent_runtime.prompt import V12_GENERATION_AGENT_VERSION
 from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
-VERSIONS = {
-    f"brief-to-draft-v{version}" for version in range(8, 16)
-}
+VERSIONS = {f"brief-to-draft-v{version}" for version in range(8, 17)}
 
 
 def test_all_component_versions_have_a_frozen_spec() -> None:
@@ -61,9 +59,8 @@ def test_specs_bind_prompt_component_sets() -> None:
     assert resolve_pipeline_spec("brief-to-draft-v12").prompt_components == temporal
     assert resolve_pipeline_spec("brief-to-draft-v13").prompt_components == temporal
     assert resolve_pipeline_spec("brief-to-draft-v14").prompt_components == temporal
-    assert resolve_pipeline_spec("brief-to-draft-v15").prompt_components == temporal | {
-        "matrix"
-    }
+    assert resolve_pipeline_spec("brief-to-draft-v15").prompt_components == temporal | {"matrix"}
+    assert resolve_pipeline_spec("brief-to-draft-v16").prompt_components == temporal | {"matrix"}
 
 
 def test_specs_bind_ordered_execution_graphs() -> None:
@@ -102,19 +99,16 @@ def test_specs_bind_ordered_execution_graphs() -> None:
     }:
         assert resolve_pipeline_spec(version).stages == temporal
     assert resolve_pipeline_spec("brief-to-draft-v15").stages == v15
+    assert resolve_pipeline_spec("brief-to-draft-v16").stages == v15
 
 
 def test_feature_flags_translate_the_historical_version_branches() -> None:
-    flags = {
-        version: resolve_pipeline_spec(version).features for version in sorted(VERSIONS)
-    }
+    flags = {version: resolve_pipeline_spec(version).features for version in sorted(VERSIONS)}
 
     assert flags["brief-to-draft-v8"] == FeatureFlags()
     assert flags["brief-to-draft-v9"] == FeatureFlags()
     assert flags["brief-to-draft-v10"] == FeatureFlags(competition_matrix=True)
-    assert flags["brief-to-draft-v11"] == FeatureFlags(
-        v2_context=True, competition_matrix=True
-    )
+    assert flags["brief-to-draft-v11"] == FeatureFlags(v2_context=True, competition_matrix=True)
     assert flags["brief-to-draft-v12"] == FeatureFlags(
         v2_context=True, temporal_plan=True, competition_matrix=True
     )
@@ -135,20 +129,24 @@ def test_feature_flags_translate_the_historical_version_branches() -> None:
         explicit_targets=True,
         blueprint_repair_budget=2,
     )
+    assert flags["brief-to-draft-v16"] == FeatureFlags(
+        v2_context=True,
+        temporal_plan=True,
+        competition_matrix=True,
+        governance_v2=True,
+        matrix_evaluation=True,
+        language_gate=True,
+        explicit_targets=True,
+        relationship_coverage=True,
+        blueprint_repair_budget=2,
+    )
 
 
 def test_specs_bind_story_evidence_and_governance_schemas() -> None:
     assert resolve_pipeline_spec("brief-to-draft-v8").story_schema_id == "story-world-ir-v1"
-    assert (
-        resolve_pipeline_spec("brief-to-draft-v11").story_schema_id == "story-world-ir-v2"
-    )
-    assert (
-        resolve_pipeline_spec("brief-to-draft-v12").story_schema_id == "story-world-ir-v3"
-    )
-    assert (
-        resolve_pipeline_spec("brief-to-draft-v10").evidence_schema_id
-        == "evidence-logic-ir-v2"
-    )
+    assert resolve_pipeline_spec("brief-to-draft-v11").story_schema_id == "story-world-ir-v2"
+    assert resolve_pipeline_spec("brief-to-draft-v12").story_schema_id == "story-world-ir-v3"
+    assert resolve_pipeline_spec("brief-to-draft-v10").evidence_schema_id == "evidence-logic-ir-v2"
     assert (
         resolve_pipeline_spec("brief-to-draft-v9").governance_schema_id
         == "resolution-governance-ir-v1"
@@ -163,10 +161,7 @@ def test_schema_id_for_component_uses_spec_bindings() -> None:
     v15 = resolve_pipeline_spec("brief-to-draft-v15")
     assert schema_id_for_component(v15, "story_world") == "story-world-ir-v3"
     assert schema_id_for_component(v15, "evidence_logic") == "evidence-logic-ir-v2"
-    assert (
-        schema_id_for_component(v15, "resolution_governance")
-        == "resolution-governance-ir-v2"
-    )
+    assert schema_id_for_component(v15, "resolution_governance") == "resolution-governance-ir-v2"
     assert schema_id_for_component(v15, "evidence_matrix") == "matrix-evaluation-v1"
     assert schema_id_for_component(v15, "case_blueprint_planner") is None
 
@@ -181,6 +176,7 @@ def test_context_pack_builder_uses_spec_context_types() -> None:
         "brief-to-draft-v13": "draft-context-pack-v3",
         "brief-to-draft-v14": "draft-context-pack-v4",
         "brief-to-draft-v15": "draft-context-pack-v5",
+        "brief-to-draft-v16": "draft-context-pack-v6",
     }
     for version, schema_id in expected_schema_ids.items():
         context = _build_context_pack(
@@ -192,11 +188,14 @@ def test_context_pack_builder_uses_spec_context_types() -> None:
 
 
 def test_repair_input_contract_preserved_for_matrix_versions() -> None:
-    for version in sorted(VERSIONS - {"brief-to-draft-v8", "brief-to-draft-v9"}):
+    for version in sorted(
+        VERSIONS - {"brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v16"}
+    ):
         spec: BriefToDraftSpec = resolve_pipeline_spec(version)
-        assert spec.evidence_repair_input_contract_id == (
-            "brief-to-draft-evidence-repair-input-v1"
-        )
+        assert spec.evidence_repair_input_contract_id == ("brief-to-draft-evidence-repair-input-v1")
+    assert resolve_pipeline_spec("brief-to-draft-v16").evidence_repair_input_contract_id == (
+        "brief-to-draft-evidence-repair-input-v2"
+    )
     assert resolve_pipeline_spec("brief-to-draft-v8").evidence_repair_input_contract_id is None
     assert resolve_pipeline_spec("brief-to-draft-v9").evidence_repair_input_contract_id is None
 
@@ -299,9 +298,7 @@ def test_compiler_plugin_mutates_document_before_validation() -> None:
     blueprint = CaseBlueprintV1.model_validate(_fake_v8_output(CaseBlueprintV1))
     story = StoryWorldIRV1.model_validate(_fake_v8_output(StoryWorldIRV1))
     evidence = EvidenceLogicIRV1.model_validate(_fake_v8_output(EvidenceLogicIRV1))
-    governance = ResolutionGovernanceIRV1.model_validate(
-        _fake_v8_output(ResolutionGovernanceIRV1)
-    )
+    governance = ResolutionGovernanceIRV1.model_validate(_fake_v8_output(ResolutionGovernanceIRV1))
     linked = link_draft(
         blueprint,
         story,
@@ -339,9 +336,7 @@ def test_run_v8_generation_invokes_story_and_compiler_hooks() -> None:
         brief={"conclusion_mode": "unique"},
     )
 
-    result = asyncio.run(
-        run_v8_generation(request, call_component=_fake_call_component, spec=spec)
-    )
+    result = asyncio.run(run_v8_generation(request, call_component=_fake_call_component, spec=spec))
 
     assert story_feature.calls == ["domain_input_fields", "validate_story"]
     assert compiler_plugin.calls == 1
@@ -408,9 +403,7 @@ def test_registered_stage_runs_in_spec_graph_order() -> None:
         brief={"conclusion_mode": "unique"},
     )
 
-    result = asyncio.run(
-        run_v8_generation(request, call_component=_fake_call_component, spec=spec)
-    )
+    result = asyncio.run(run_v8_generation(request, call_component=_fake_call_component, spec=spec))
 
     assert calls == [stage_id]
     assert result.candidate["title"] == "v8 可恢复生成样例"
@@ -427,9 +420,7 @@ def test_unknown_stage_fails_closed() -> None:
     )
 
     with pytest.raises(RuntimeError, match="no brief-to-draft pipeline stage"):
-        asyncio.run(
-            run_v8_generation(request, call_component=_fake_call_component, spec=spec)
-        )
+        asyncio.run(run_v8_generation(request, call_component=_fake_call_component, spec=spec))
 
 
 def test_builtin_stage_registry_is_complete() -> None:

@@ -10,6 +10,8 @@ BUSINESS_TABLES = {
     "agent_goal_task_runs",
     "agent_goal_transitions",
     "agent_model_calls",
+    "agent_message_context_refs",
+    "agent_message_contexts",
     "agent_messages",
     "agent_patch_operations",
     "agent_patch_sets",

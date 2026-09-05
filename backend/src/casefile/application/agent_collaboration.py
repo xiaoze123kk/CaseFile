@@ -108,7 +108,10 @@ def find_frozen_object(casefile: dict[str, Any], object_id: str) -> dict[str, An
     raise RuntimeError(f"Frozen CaseFile object is missing: {object_id}")
 
 
-def focused_patch_target_ids(focus: dict[str, Any] | None) -> set[str] | None:
+def focused_patch_target_ids(
+    focus: dict[str, Any] | None,
+    validation: dict[str, Any] | None = None,
+) -> set[str] | None:
     """Return the allowed suggestion targets when a validation issue is focused.
 
     ``None`` means the message had no issue focus, so no extra restriction
@@ -122,6 +125,14 @@ def focused_patch_target_ids(focus: dict[str, Any] | None) -> set[str] | None:
     if not issue_ids:
         return None
     result: set[str] = set()
+    # A selected finding can authorize its deterministic target without pretending
+    # that the user explicitly attached that related object to the message.
+    for issue in (validation or {}).get("issues", []):
+        if not isinstance(issue, dict) or issue.get("issue_id") not in issue_ids:
+            continue
+        target = issue.get("target")
+        if isinstance(target, dict) and isinstance(target.get("object_id"), str):
+            result.add(target["object_id"])
     for key in ("object_ids", "event_ids"):
         values = focus.get(key, []) or []
         for value in values:
@@ -165,9 +176,7 @@ def nonblocking_validator_issues(
                     "severity": "S1",
                     "title": "关键主张缺少支撑信息",
                     "message": "该关键主张被标记为已支持，但尚未关联任何支撑信息。",
-                    "object_refs": [
-                        {"object_type": "claim", "object_id": claim["id"]}
-                    ],
+                    "object_refs": [{"object_type": "claim", "object_id": claim["id"]}],
                     "field_path": "/support_refs",
                 }
             )

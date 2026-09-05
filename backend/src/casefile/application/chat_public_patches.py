@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
+from casefile.agent_runtime.public_language import public_language_rule_ids
 from casefile.application.errors import ApplicationError
 
 PUBLIC_PATCH_LOCALE: Final = "zh-CN"
@@ -118,6 +119,9 @@ _EXACT_FIELD_LABELS: Final = {
 }
 
 _ENUM_LABELS: Final = {
+    "directed": "单向关系",
+    "bidirectional": "双向关系",
+    "undirected": "无方向关系",
     "true": "真实",
     "false": "不真实",
     "unknown": "尚未确定",
@@ -333,6 +337,7 @@ class ChangeGroupBuilder:
         self._labels = ObjectLabelResolver(patch)
         self._fields = FieldLabelRegistry()
         self._values = ValueFormatter(self._labels)
+        self._private_values = _patch_private_values(patch)
 
     def build(self) -> list[dict[str, Any]]:
         operations = self._patch.get("operations")
@@ -373,7 +378,7 @@ class ChangeGroupBuilder:
                 "type_label": target.type_label,
                 "name": target.name,
             },
-            "explanation": _change_explanation(kind, relationship),
+            "explanation": _change_explanation(operation.get("reason"), self._private_values),
         }
         if kind == "create":
             return {**base, "after": self._values.format(operation.get("new_value"))}
@@ -557,14 +562,69 @@ def _opaque_notice_id(prefix: str, patch_id: int, value: str) -> str:
     return f"{prefix}_{digest}"
 
 
-def _change_explanation(kind: str, relationship: str) -> str:
-    if relationship == "consistency_support":
-        return "为保持卷宗前后一致，需要同步调整这项内容。"
-    if kind == "create":
-        return "这是你要求新增的卷宗内容。"
-    if kind == "delete":
-        return "这是你要求删除的卷宗内容。"
-    return "这是你要求调整的卷宗内容。"
+_GENERIC_CHANGE_REASONS: Final = frozenset(
+    {
+        "这是你要求新增的卷宗内容。",
+        "这是你要求删除的卷宗内容。",
+        "这是你要求调整的卷宗内容。",
+        "为保持卷宗前后一致，需要同步调整这项内容。",
+    }
+)
+
+
+def _change_explanation(reason: Any, private_values: Sequence[str]) -> str:
+    """Expose the persisted operation reason, never manufacture a causal explanation.
+
+    Old operations may contain runtime-only prose. Check the complete reason before
+    bounding it so an unsafe suffix cannot become an apparently safe explanation.
+    """
+    if (
+        not isinstance(reason, str)
+        or not reason.strip()
+        or reason.strip() in _GENERIC_CHANGE_REASONS
+    ):
+        return "这项修改未记录具体原因，请让 Agent 补充依据后再决定是否应用。"
+    candidate = reason.strip()
+    if (
+        not re.search(r"[\u3400-\u9fff]", candidate)
+        or public_language_rule_ids(candidate, sensitive_values=private_values)
+        or any(
+            _INTERNAL_VALUE.fullmatch(token)
+            for token in re.findall(r"[A-Za-z0-9_-]+", candidate)
+        )
+    ):
+        return "这项修改的具体原因暂无法展示，请让 Agent 补充可供审阅的依据。"
+    # Older planners sometimes mixed known field/enum names into otherwise
+    # public prose. Translate only registered terms, without rewriting reasons.
+    labels = {**_FIELD_LABELS, **_ENUM_LABELS, "CaseFile": "卷宗"}
+    candidate = re.sub(
+        r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_])",
+        lambda match: labels.get(match.group(), match.group()),
+        candidate,
+    )
+    return _bounded(candidate, 1000)
+
+
+def _patch_private_values(patch: Mapping[str, Any]) -> tuple[str, ...]:
+    """Reuse public-language checks for opaque values not recognizable by shape."""
+    values = {
+        value
+        for key in ("impact_hash", "plan_hash", "baseline_hash", "candidate_hash")
+        if isinstance(value := patch.get(key), str) and value
+    }
+    labels = patch.get("object_labels")
+    if isinstance(labels, Mapping):
+        values.update(key for key in labels if isinstance(key, str))
+    operations = patch.get("operations")
+    if isinstance(operations, list):
+        for operation in operations:
+            if not isinstance(operation, Mapping):
+                continue
+            for key in ("object_id", "target_object_key", "operation_key"):
+                value = operation.get(key)
+                if isinstance(value, str) and value:
+                    values.add(value)
+    return tuple(sorted(values))
 
 
 def _object_name(value: Any) -> str | None:

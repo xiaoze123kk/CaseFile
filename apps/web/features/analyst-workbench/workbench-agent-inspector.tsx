@@ -1,33 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode, type SetStateAction } from "react";
 import type {
   PublicAgentMessage,
   PublicFinding,
-  PublicPatchChange,
   PublicPatchReviewResult,
   PublicPatchSet,
 } from "@casefile/contracts";
 
 import styles from "./workbench-agent.module.css";
-
-const patchStatusLabels: Record<PublicPatchSet["status"], string> = {
-  pending: "待审阅",
-  stale: "已失效",
-  applied: "已应用",
-  undone: "已撤销",
-  rejected: "已拒绝",
-};
+import { AgentPatchCard, patchStatusLabels } from "./workbench-agent-patch-card";
+import patchStyles from "./workbench-agent-patch-card.module.css";
+import { WorkbenchIcon } from "./workbench-icon";
 
 const findingSeverityLabels: Record<PublicFinding["severity"], string> = {
   blocker: "阻断",
   warning: "提醒",
   note: "记录",
-};
-
-const relationshipLabels: Record<PublicPatchChange["relationship"], string> = {
-  requested: "你要求的修改",
-  consistency_support: "为保持一致性同步调整",
 };
 
 interface PatchConfirmation {
@@ -51,6 +40,7 @@ export function WorkbenchAgentInspector({
   onRetry,
   onLocateObject,
   busyPatchSetId,
+  renderPatch,
 }: {
   patches: Array<{ message: PublicAgentMessage; patchSet: PublicPatchSet }>;
   patchError?: string | null;
@@ -75,6 +65,7 @@ export function WorkbenchAgentInspector({
   onRetry: (message: PublicAgentMessage) => void;
   onLocateObject?: (objectId: string) => void;
   busyPatchSetId: number | null;
+  renderPatch?: (message: PublicAgentMessage) => ReactNode;
 }) {
   const activePatch = useMemo(
     () =>
@@ -113,7 +104,7 @@ export function WorkbenchAgentInspector({
         </nav>
       ) : null}
 
-      {activePatch ? (
+      {activePatch && renderPatch ? renderPatch(activePatch.message) : activePatch ? (
         <AgentPatchReview
           key={`${activePatch.patchSet.patch_id}:${activePatch.patchSet.status}`}
           busy={busyPatchSetId === activePatch.patchSet.patch_id}
@@ -187,6 +178,18 @@ function PublicFindingReview({
   );
 }
 
+export interface PatchReviewState {
+  selectedIds: number[];
+  confirmingApply: boolean;
+  review: PublicPatchReviewResult | null;
+  confirmationNote: string;
+  acceptedWarningIds: string[];
+}
+
+export function initialPatchReview(patch: PublicPatchSet): PatchReviewState {
+  return { selectedIds: patch.review_rule === "selective" ? patch.changes.map((change) => change.change_id) : [], confirmingApply: false, review: null, confirmationNote: "", acceptedWarningIds: [] };
+}
+
 export function AgentPatchReview({
   patchSet,
   busy,
@@ -197,6 +200,11 @@ export function AgentPatchReview({
   onRedo,
   onRetry,
   onLocateObject,
+  reviewState,
+  onReviewStateChange,
+  conversation = false,
+  onDetails,
+  onAdjust,
 }: {
   patchSet: PublicPatchSet;
   busy: boolean;
@@ -211,34 +219,33 @@ export function AgentPatchReview({
   onRedo?: () => void;
   onRetry?: () => void;
   onLocateObject?: (objectId: string) => void;
+  reviewState?: PatchReviewState;
+  onReviewStateChange?: (state: SetStateAction<PatchReviewState>) => void;
+  conversation?: boolean;
+  onDetails?: () => void;
+  onAdjust?: () => void;
 }) {
-  const [selectedIds, setSelectedIds] = useState<number[]>(() =>
-    patchSet.review_rule === "selective"
-      ? patchSet.changes.map((change) => change.change_id)
-      : [],
-  );
-  const [confirmingApply, setConfirmingApply] = useState(false);
-  const [confirmingReject, setConfirmingReject] = useState(false);
-  const [review, setReview] = useState<PublicPatchReviewResult | null>(null);
-  const [confirmationNote, setConfirmationNote] = useState("");
-  const [acceptedWarningIds, setAcceptedWarningIds] = useState<string[]>([]);
+  const [localReviewState, setLocalReviewState] = useState(() => initialPatchReview(patchSet));
+  const state = reviewState ?? localReviewState;
+  const { selectedIds, confirmingApply, review, confirmationNote, acceptedWarningIds } = state;
+  function fieldSetter<K extends keyof PatchReviewState>(key: K) {
+    return (value: SetStateAction<PatchReviewState[K]>) => {
+      const update = (previous: PatchReviewState) => ({ ...previous, [key]: typeof value === "function" ? (value as (previous: PatchReviewState[K]) => PatchReviewState[K])(previous[key]) : value });
+      if (onReviewStateChange) onReviewStateChange(update);
+      else setLocalReviewState(update);
+    };
+  }
+  const setSelectedIds = fieldSetter("selectedIds");
+  const setConfirmingApply = fieldSetter("confirmingApply");
+  const setReview = fieldSetter("review");
+  const setConfirmationNote = fieldSetter("confirmationNote");
+  const setAcceptedWarningIds = fieldSetter("acceptedWarningIds");
   const actionable = patchSet.status === "pending";
   const selective = patchSet.review_rule === "selective";
-  const groupedChanges = useMemo(
-    () => ({
-      requested: patchSet.changes.filter(
-        (change) => change.relationship === "requested",
-      ),
-      consistency_support: patchSet.changes.filter(
-        (change) => change.relationship === "consistency_support",
-      ),
-    }),
-    [patchSet.changes],
-  );
   const selectedChangeIds = selective ? selectedIds : null;
   const warningIds = review?.warnings.map((warning) => warning.notice_id) ?? [];
   const warningsAccepted = warningIds.every((id) => acceptedWarningIds.includes(id));
-  const canApply = review?.can_apply === true && warningsAccepted;
+  const canApply = actionable && review?.patch_id === patchSet.patch_id && review?.can_apply === true && warningsAccepted && (!selective || selectedIds.length > 0);
 
   function toggleChange(changeId: number) {
     if (!selective) return;
@@ -249,17 +256,19 @@ export function AgentPatchReview({
     );
     setReview(null);
     setAcceptedWarningIds([]);
+    setConfirmingApply(false);
   }
 
   async function simulate(
     warningIdsToAccept: string[] = [],
     note?: string,
+    confirmAfterCheck = false,
   ) {
     if (!onSimulate || busy) return;
     const result = await onSimulate(selectedChangeIds, warningIdsToAccept, note);
     setAcceptedWarningIds(warningIdsToAccept);
     setReview(result);
-    setConfirmingApply(false);
+    setConfirmingApply(confirmAfterCheck && result?.can_apply === true && result.warnings.every((warning) => warningIdsToAccept.includes(warning.notice_id)));
   }
 
   async function acceptWarningsAndResimulate() {
@@ -268,7 +277,7 @@ export function AgentPatchReview({
   }
 
   function applyReviewed() {
-    if (!canApply || review === null) return;
+    if (busy || !canApply || review === null) return;
     onApply(selectedChangeIds, {
       ...(review.confirmation_token === null
         ? {}
@@ -281,69 +290,12 @@ export function AgentPatchReview({
     setConfirmingApply(false);
   }
 
-  function rejectAll() {
-    if (confirmingReject) {
-      setConfirmingReject(false);
-      onApply([]);
-      return;
-    }
-    setConfirmingReject(true);
-  }
-
   return (
-    <article
-      className={styles.agentPatchCard}
-      data-status={patchSet.status}
-      data-stale={patchSet.status === "stale" || undefined}
-    >
-      <header className={styles.agentPatchHeader}>
-        <strong>{patchSet.title}</strong>
-        <span>{patchStatusLabels[patchSet.status]}</span>
-      </header>
-      <p className={styles.agentPatchReason}>{patchSet.summary}</p>
-      <p className={styles.agentPatchSimulationNote}>
-        {patchSet.review_rule === "atomic"
-          ? "这些修改必须作为一组审阅，不能拆开应用。"
-          : "这组历史建议允许选择其中的修改项。"}
-      </p>
-      <p className={styles.agentPatchImpact}>{patchSet.impact.summary}</p>
-      {patchSet.status === "stale" ? (
-        <p className={styles.agentPatchBlocker}>
-          当前卷宗已经变化，请重新生成并审阅修改建议。
-        </p>
-      ) : null}
-
-      {(["requested", "consistency_support"] as const).map((relationship) => {
-        const changes = groupedChanges[relationship];
-        if (changes.length === 0) return null;
-        return (
-          <section
-            className={styles.agentPatchGroup}
-            data-relationship={relationship}
-            key={relationship}
-          >
-            <header>
-              <strong>{relationshipLabels[relationship]}</strong>
-              <span>{changes.length} 项</span>
-            </header>
-            <div className={styles.agentPatchOps}>
-              {changes.map((change) => (
-                <PublicPatchChangeRow
-                  busy={busy}
-                  change={change}
-                  checked={selectedIds.includes(change.change_id)}
-                  key={change.change_id}
-                  onLocateObject={onLocateObject}
-                  onToggle={selective ? () => toggleChange(change.change_id) : undefined}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+    <AgentPatchCard patchSet={patchSet} busy={busy} selectedIds={selectedIds}
+      onToggle={selective ? toggleChange : undefined} onLocateObject={onLocateObject}>
 
       {review ? (
-        <div className={styles.agentPatchSimulation} data-can-apply={review.can_apply}>
+        <div className={patchStyles.review} data-can-apply={review.can_apply} role="status">
           <header>
             <strong>应用前审阅</strong>
             <span>{review.can_apply ? "检查通过" : "还不能应用"}</span>
@@ -356,7 +308,7 @@ export function AgentPatchReview({
             </ul>
           ) : null}
           {review.warnings.length > 0 ? (
-            <div className={styles.agentPatchWarnings}>
+            <div className={patchStyles.warnings}>
               <strong>需要你确认的影响</strong>
               <ul>
                 {review.warnings.map((warning) => (
@@ -392,12 +344,14 @@ export function AgentPatchReview({
         </div>
       ) : null}
 
-      <div className={styles.agentPatchActions}>
+      <div className={patchStyles.actions}>
+        {onDetails ? <button className={patchStyles.details} type="button" onClick={onDetails}><WorkbenchIcon name="search" />查看细节</button> : null}
+        {actionable && onAdjust ? <button type="button" disabled={busy} onClick={onAdjust}><WorkbenchIcon name="settings" />调整</button> : null}
         {actionable ? (
           confirmingApply ? (
-            <span className={styles.agentPatchConfirm}>
-              <strong>确认应用这组已经通过检查的修改？</strong>
-              <button disabled={busy || !canApply} onClick={applyReviewed} type="button">
+            <span className={patchStyles.confirm}>
+              <strong>确认应用这组已经通过检查的修改（{selective ? selectedIds.length : patchSet.changes.length} 项）？</strong>
+              <button className={patchStyles.primary} disabled={busy || !canApply} onClick={applyReviewed} type="button">
                 确认应用
               </button>
               <button
@@ -410,7 +364,7 @@ export function AgentPatchReview({
             </span>
           ) : (
             <>
-              {onSimulate && patchSet.actions.can_simulate ? (
+              {onSimulate && patchSet.actions.can_simulate && !conversation ? (
                 <button
                   disabled={busy || (selective && selectedIds.length === 0)}
                   onClick={() => void simulate()}
@@ -420,37 +374,15 @@ export function AgentPatchReview({
                 </button>
               ) : null}
               <button
-                disabled={busy || !canApply}
+                className={patchStyles.primary}
+                disabled={busy || (conversation ? (!canApply && (!onSimulate || !patchSet.actions.can_simulate)) || (selective && selectedIds.length === 0) : !canApply)}
                 onClick={() =>
-                  requireApplyConfirmation ? setConfirmingApply(true) : applyReviewed()
+                  conversation && !canApply ? void simulate([], undefined, true) : requireApplyConfirmation ? setConfirmingApply(true) : applyReviewed()
                 }
                 type="button"
               >
-                应用修改
+                <WorkbenchIcon name="validate" />{conversation ? busy ? "正在检查…" : `应用 ${selective ? selectedIds.length : patchSet.changes.length} 项` : "应用修改"}
               </button>
-              {confirmingReject ? (
-                <>
-                  <button
-                    className={styles.agentPatchDanger}
-                    disabled={busy}
-                    onClick={rejectAll}
-                    type="button"
-                  >
-                    确认拒绝
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() => setConfirmingReject(false)}
-                    type="button"
-                  >
-                    取消
-                  </button>
-                </>
-              ) : (
-                <button disabled={busy} onClick={rejectAll} type="button">
-                  拒绝这组修改
-                </button>
-              )}
             </>
           )
         ) : null}
@@ -470,77 +402,6 @@ export function AgentPatchReview({
           </button>
         ) : null}
       </div>
-    </article>
-  );
-}
-
-function PublicPatchChangeRow({
-  change,
-  checked,
-  busy,
-  onToggle,
-  onLocateObject,
-}: {
-  change: PublicPatchChange;
-  checked: boolean;
-  busy: boolean;
-  onToggle?: () => void;
-  onLocateObject?: (objectId: string) => void;
-}) {
-  const fieldLabel = change.kind === "update" ? change.field_label : null;
-  const actionLabel =
-    change.kind === "create" ? "新增" : change.kind === "delete" ? "删除" : "调整";
-  return (
-    <article
-      className={styles.agentPatchOp}
-      data-selectable={onToggle ? true : undefined}
-    >
-      {onToggle ? (
-        <input
-          aria-label={`选择修改 ${change.target.name}${fieldLabel ? ` ${fieldLabel}` : ""}`}
-          checked={checked}
-          disabled={busy}
-          onChange={onToggle}
-          type="checkbox"
-        />
-      ) : null}
-      <span>
-        <strong>
-          <i>{actionLabel}</i>
-          {change.target.name}
-          <small>{change.target.type_label}</small>
-        </strong>
-        {fieldLabel ? <b>{fieldLabel}</b> : null}
-        {change.kind === "create" ? (
-          <ValueLine label="新增后" value={change.after.text} />
-        ) : change.kind === "delete" ? (
-          <ValueLine label="删除前" value={change.before.text} />
-        ) : (
-          <div className={styles.agentPatchValues}>
-            <ValueLine label="修改前" value={change.before.text} />
-            <ValueLine label="修改后" value={change.after.text} />
-          </div>
-        )}
-        <em>{change.explanation}</em>
-        {change.target.target_id !== null && onLocateObject ? (
-          <button
-            className={styles.agentPatchLocate}
-            onClick={() => onLocateObject(change.target.target_id ?? "")}
-            type="button"
-          >
-            在工作台定位
-          </button>
-        ) : null}
-      </span>
-    </article>
-  );
-}
-
-function ValueLine({ label, value }: { label: string; value: string }) {
-  return (
-    <span className={styles.agentPatchValue}>
-      <small>{label}</small>
-      <span>{value}</span>
-    </span>
+    </AgentPatchCard>
   );
 }

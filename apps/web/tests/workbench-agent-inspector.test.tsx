@@ -218,11 +218,9 @@ describe("workbench agent public inspector", () => {
     expect(screen.queryByText(finding.finding_id)).not.toBeInTheDocument();
   });
 
-  it("keeps an explicit two-step rejection", () => {
+  it("does not invent a rejection operation by applying an empty selection", () => {
     const { onApply } = renderInspector();
-    fireEvent.click(screen.getByRole("button", { name: "拒绝这组修改" }));
+    expect(screen.queryByRole("button", { name: "拒绝这组修改" })).not.toBeInTheDocument();
     expect(onApply).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "确认拒绝" }));
-    expect(onApply).toHaveBeenCalledWith(patchSet, []);
   });
 });

@@ -657,6 +657,36 @@ export interface ChatPublicContracts {
   event:
     | {
         sequence: number;
+        event: "run.activity_detail";
+        activity_id: number;
+        activity: "understanding" | "reading" | "checking" | "preparing_changes" | "finalizing";
+        status: "started" | "completed" | "failed";
+        /**
+         * @maxItems 50
+         */
+        object_ids: string[];
+        draft_id?: number | null;
+        draft_revision?: number | null;
+      }
+    | {
+        sequence: number;
+        event: "message.preview_started";
+      }
+    | {
+        sequence: number;
+        event: "message.preview_delta";
+        preview_sequence: number;
+        offset: number;
+        final?: boolean;
+        text: string;
+      }
+    | {
+        sequence: number;
+        event: "message.preview_invalidated";
+        discard: boolean;
+      }
+    | {
+        sequence: number;
         event: "run.accepted";
         run: PublicAgentRun;
       }
@@ -705,6 +735,7 @@ export interface PublicAgentMessage {
   status: PublicMessageStatus;
   response_kind: PublicResponseKind;
   body: string | null;
+  context_snapshot?: PublicAgentContextSnapshot | null;
   interpretation: ("conversation" | "analysis" | "logic_review" | "change_request" | "clarification") | null;
   /**
    * @maxItems 200
@@ -718,6 +749,23 @@ export interface PublicAgentMessage {
   run: PublicAgentRun | null;
   created_at: string;
   updated_at: string;
+}
+export interface PublicAgentContextSnapshot {
+  draft_id: number;
+  draft_revision: number;
+  /**
+   * @maxItems 50
+   */
+  object_ids: string[];
+  /**
+   * @maxItems 50
+   */
+  event_ids: string[];
+  /**
+   * @maxItems 50
+   */
+  validation_issue_ids: string[];
+  view: string | null;
 }
 export interface PublicReference {
   kind: PublicReferenceKind;

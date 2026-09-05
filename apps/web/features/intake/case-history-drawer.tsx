@@ -27,8 +27,8 @@ export interface CaseHistoryEntry extends ProjectView {
 const STAGE_LABELS: Record<string, [number, string]> = {
   idea: [1, "记录信号"],
   questions: [2, "验证方向"],
-  confirmation: [3, "冻结简报"],
-  brief_review: [4, "简报审阅"],
+  confirmation: [3, "创作简报"],
+  brief_review: [3, "创作简报"],
 };
 
 function formatTouched(iso: string | null): string {
@@ -62,12 +62,25 @@ function toEntry(project: ProjectView, intake: BriefIntakeView | null): CaseHist
   const adopted = intake.adopted_candidate_id !== null;
   return {
     ...project,
-    progress: adopted ? 5 : frozen ? 4 : progress,
-    stageLabel: adopted ? "已采用工作稿" : frozen ? "候选稿已冻结" : stageLabel,
+    progress: frozen ? 4 : progress,
+    stageLabel: adopted ? "已采用工作稿" : frozen ? "创作简报已冻结" : stageLabel,
     frozen,
     adopted,
     touchedLabel: formatTouched(intake.updated_at),
   };
+}
+
+export async function loadCaseHistoryEntries(): Promise<CaseHistoryEntry[]> {
+  const projects = await listProjects(LOCAL_ACTOR_ID);
+  return Promise.all(
+    projects.map(async (project) => {
+      try {
+        return toEntry(project, await fetchCaseIntake(project.id));
+      } catch {
+        return toEntry(project, null);
+      }
+    }),
+  );
 }
 
 export function CaseHistoryDrawer({
@@ -92,16 +105,7 @@ export function CaseHistoryDrawer({
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<CaseHistoryEntry[]> => {
-    const projects = await listProjects(LOCAL_ACTOR_ID);
-    return Promise.all(
-      projects.map(async (project) => {
-        try {
-          return toEntry(project, await fetchCaseIntake(project.id));
-        } catch {
-          return toEntry(project, null);
-        }
-      }),
-    );
+    return loadCaseHistoryEntries();
   }, []);
 
   useEffect(() => {
@@ -387,8 +391,8 @@ function CaseCard({
         <small>{entry.touchedLabel}</small>
         <small>{entry.stageLabel}</small>
       </div>
-      <div aria-label={"建案进度 " + entry.progress + "/5"} className={styles.caseProgress}>
-        {[1, 2, 3, 4, 5].map((step) => (
+      <div aria-label={"建案进度 " + entry.progress + "/4"} className={styles.caseProgress}>
+        {[1, 2, 3, 4].map((step) => (
           <i data-on={step <= entry.progress} key={step} />
         ))}
       </div>

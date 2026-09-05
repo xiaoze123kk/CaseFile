@@ -729,7 +729,7 @@ def _run_acceptance_suite(
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
     scenarios: tuple[AcceptanceScenario, ...]
-    if prompt_version == "brief-to-draft-v15":
+    if prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16"}:
         scenarios = _V15_SCENARIOS
     elif prompt_version in {
         "brief-to-draft-v11",
@@ -984,9 +984,10 @@ def _successful_task_violations(
         "brief-to-draft-v13",
         "brief-to-draft-v14",
         "brief-to-draft-v15",
+        "brief-to-draft-v16",
     }:
         expected_components.add("temporal_structure_planner")
-    if task.get("prompt_version") == "brief-to-draft-v15" and (
+    if task.get("prompt_version") in {"brief-to-draft-v15", "brief-to-draft-v16"} and (
         _evidence_competition_observed(steps)
     ):
         expected_components.add("evidence_matrix")
@@ -1057,6 +1058,7 @@ def _scenario_candidate_violations(
             "brief-to-draft-v13",
             "brief-to-draft-v14",
             "brief-to-draft-v15",
+            "brief-to-draft-v16",
         }:
             required = {"approximate", "relative"}
             return (
@@ -1269,7 +1271,7 @@ def _evidence_quality_for_task(
     denominator.
     """
 
-    is_v15 = prompt_version == "brief-to-draft-v15"
+    is_v15 = prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16"}
     with factory() as session:
         steps = list(
             session.scalars(select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id))
@@ -1735,7 +1737,7 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
         return "failed"
     suite = report.get("suite")
     scenario_ids: tuple[str, ...] = ()
-    if suite == "brief_to_draft_v15":
+    if suite in {"brief_to_draft_v15", "brief_to_draft_v16"}:
         scenario_ids = tuple(item.scenario_id for item in _V15_SCENARIOS)
     elif suite in {
         "brief_to_draft_v11",
@@ -1760,7 +1762,7 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
                 return "failed"
             if passed < attempted - 1:
                 return "failed"
-    if suite == "brief_to_draft_v15" and expected_runs == 30:
+    if suite in {"brief_to_draft_v15", "brief_to_draft_v16"} and expected_runs == 30:
         quality = report.get("evidence_quality") or {}
         initial_rate = quality.get("initial_evidence_semantic_pass_rate")
         after_repairs_rate = quality.get("evidence_semantic_pass_rate_after_repairs")

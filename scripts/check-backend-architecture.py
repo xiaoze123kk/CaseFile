@@ -91,6 +91,8 @@ STABLE_EXPORTS = {
 }
 
 CODE_MAP_PATHS = {
+    "backend/src/casefile/agent_runtime/chat_preview.py",
+    "backend/src/casefile/worker/chat_feedback.py",
     "backend/src/casefile/agent_runtime/chat_preparation.py",
     "backend/src/casefile/agent_runtime/chat_reference_normalization.py",
     "backend/src/casefile/agent_runtime/chat_validation_contracts.py",

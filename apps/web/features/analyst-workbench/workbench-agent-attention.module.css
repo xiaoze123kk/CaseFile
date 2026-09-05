@@ -1,0 +1,3 @@
+.surface { display: contents; }
+.surface :global([data-agent-focus="true"]) { outline: 2px dotted var(--warning, #a27321); outline-offset: 3px; }
+.surface :global(g[data-agent-focus="true"]) { outline: none; filter: drop-shadow(0 0 3px var(--warning, #a27321)); }

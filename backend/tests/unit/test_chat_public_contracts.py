@@ -113,6 +113,22 @@ def test_message_projection_is_allowlist_only_and_uses_public_run() -> None:
         assert forbidden not in serialized
 
 
+def test_user_message_projection_exposes_only_the_frozen_context_snapshot() -> None:
+    message = _legacy_message(role="user", message_id=55, sequence=3)
+    message["context_snapshot"] = {
+        "draft_id": 9,
+        "draft_revision": 4,
+        "object_ids": ["person_lin"],
+        "event_ids": ["evt_discovery"],
+        "validation_issue_ids": [],
+        "view": "relations",
+    }
+
+    projected = public_agent_message_view(message).model_dump(mode="json")
+
+    assert projected["context_snapshot"] == message["context_snapshot"]
+
+
 def test_message_receipt_atomically_drops_thread_and_task_envelopes() -> None:
     projected = public_agent_message_receipt_view(
         {

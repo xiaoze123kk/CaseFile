@@ -9,6 +9,7 @@ import {
 } from "@/features/case-session/case-session-provider";
 import type { TaskView } from "@/lib/api-client";
 
+import { BriefRevisionDialog } from "./brief-confirmation-feedback";
 import styles from "./intake-late-stages.module.css";
 
 const strategyLabels: Record<CandidateSlotStrategy, string> = {
@@ -79,6 +80,7 @@ export function DraftCandidatesStage() {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [adoptingCandidateId, setAdoptingCandidateId] = useState<string | null>(null);
   const [revisionPending, setRevisionPending] = useState(false);
+  const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
   const analysisStartedRef = useRef(false);
   const adoptionInFlightRef = useRef(false);
   const revisionInFlightRef = useRef(false);
@@ -123,14 +125,17 @@ export function DraftCandidatesStage() {
     selectedSlot?.latestTask &&
       ACTIVE_GENERATION_TASK_STATUSES.has(selectedSlot.latestTask.status),
   );
+  const taskCancelled = selectedSlot?.latestTask?.status === "cancelled";
+  const pipelineActive = taskActive || Boolean(generating && !selectedSlot?.latestTask);
   // 运行中的可恢复部件失败仍在重试上限内，属于流水线自动修复，
   // 不弹失败提示；只有重试耗尽、任务真正失败时才展示失败门禁。
   const recovering = Boolean(taskActive && failedComponent?.recoverable);
   const pipeline = pipelineRows(latestComponentSteps);
   const pipelineProgress = pipelineProgressFor(
     pipeline,
-    componentSteps.length === 0,
+    pipelineActive && componentSteps.length === 0,
     recovering,
+    taskCancelled,
   );
   const coordinatorFallback = failedComponent?.component_id === "run_coordinator";
   const failureIssues = coordinatorFallback && taskFailure?.issues.length
@@ -267,6 +272,7 @@ export function DraftCandidatesStage() {
   async function beginRevision() {
     if (revisionInFlightRef.current) return;
     revisionInFlightRef.current = true;
+    setRevisionDialogOpen(false);
     setRevisionPending(true);
     setGenerationError(null);
     try {
@@ -371,8 +377,7 @@ export function DraftCandidatesStage() {
     <section className={styles.candidatesStage} aria-labelledby="candidates-stage-title">
       <header className={styles.stageHeader}>
         <div>
-          <span>第 5 步 / 深稿候选与采用</span>
-          <h1 id="candidates-stage-title">先选定创作策略，再生成一份完整深稿。</h1>
+          <h1 id="candidates-stage-title">择定故事的航向，让它生长成篇。</h1>
         </div>
         <dl>
           <div><dt>冻结版本</dt><dd>V{String(state.frozenBriefVersion ?? state.workingBriefVersion).padStart(2, "0")}</dd></div>
@@ -411,29 +416,33 @@ export function DraftCandidatesStage() {
           <div className={styles.strategyFan} aria-label="三种策略并列比较">
             {analysis.options.map((option, index) => {
               const selected = state.selectedStrategy === option.strategy;
-              const recommended = analysis.recommendedStrategy === option.strategy;
               return (
                 <article
+                  aria-label={`${strategyLabels[option.strategy]}：${presentStrategyText(option.focus)}`}
+                  aria-pressed={selected}
                   className={styles.candidateCard}
                   data-focus={strategyFocus(option.strategy)}
                   data-status={selected ? "current" : "pending"}
                   key={option.strategy}
+                  onClick={() => selectStrategy(option.strategy)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    selectStrategy(option.strategy);
+                  }}
+                  role="button"
                   style={{ "--candidate-order": index } as CSSProperties}
+                  tabIndex={0}
                 >
-                  <button
-                    aria-pressed={selected}
-                    className={styles.candidateSummary}
-                    onClick={() => selectStrategy(option.strategy)}
-                    type="button"
-                  >
+                  <div className={styles.candidateSummary}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
-                      <small>{recommended ? "Agent 建议 · " : ""}{strategyLabels[option.strategy]}</small>
+                      <small>{strategyLabels[option.strategy]}</small>
                       <strong>{presentStrategyText(option.focus)}</strong>
                       <p>{presentStrategyText(option.direction)}</p>
                     </div>
                     <em>{selected ? "已选择" : "选择"}</em>
-                  </button>
+                  </div>
                   <div className={styles.candidateDetail}>
                     <section><span>适配依据</span><p>{presentStrategyText(option.brief_fit)}</p></section>
                     <div className={styles.candidateComparison}>
@@ -446,17 +455,48 @@ export function DraftCandidatesStage() {
             })}
           </div>
         ) : (
-          <div className={styles.candidateEmpty} aria-busy={analysis.status === "analyzing"}>
-            <span>{analysis.status === "failed" ? "策略分析未完成" : "正在读取冻结的创作简报"}</span>
-            <p>{analysis.error ?? "Agent 将给出三个针对本案的方向，不会替你作出选择。"}</p>
+          <div
+            aria-atomic="true"
+            aria-busy={analysis.status === "analyzing"}
+            aria-live="polite"
+            className={`${styles.candidateEmpty} ${
+              analysis.status === "analyzing" ? styles.strategyAnalysisLoading : ""
+            }`}
+            role={analysis.status === "failed" ? "alert" : "status"}
+          >
+            {analysis.status === "analyzing" ? (
+              <div
+                aria-hidden="true"
+                className={styles.strategyLoadingInstrument}
+                data-testid="strategy-analysis-loader"
+              >
+                <div className={styles.strategyLoadingSeal}>
+                  <span>CF</span>
+                  <b>03</b>
+                </div>
+                <ol className={styles.strategyLoadingLedger}>
+                  {[
+                    ["01", "读取简报"],
+                    ["02", "比对方向"],
+                    ["03", "整理依据"],
+                  ].map(([index, label]) => (
+                    <li key={index}>
+                      <b>{index}</b>
+                      <span>{label}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+            <span>
+              {analysis.status === "failed" ? "策略分析未完成" : "正在拆读冻结的创作简报"}
+            </span>
+            <p>
+              {analysis.error ??
+                "Agent 正在比较结构、氛围与推理三个方向，完成后由你选择。"}
+            </p>
           </div>
         )}
-
-        {analysis.recommendationReason ? (
-          <p className={styles.generationCurrentAction}>
-            Agent 建议：{strategyLabels[analysis.recommendedStrategy!]}。{presentStrategyText(analysis.recommendationReason)}
-          </p>
-        ) : null}
 
         <div className={styles.strategyActions}>
           <button
@@ -503,10 +543,26 @@ export function DraftCandidatesStage() {
       {generationError ? <p className={styles.generationError} role="alert">{generationError}</p> : null}
 
       {showPipeline && selectedSlot ? (
-        <section className={styles.agentPipeline} aria-label="深稿生成部件进度">
+        <section
+          aria-label="深稿生成部件进度"
+          className={styles.agentPipeline}
+          data-active={pipelineActive || undefined}
+          data-complete={pipelineProgress.completedCount === pipeline.length || undefined}
+        >
           <header>
             <div><span>{selectedSlot.latestTask?.prompt_version ?? "正在创建任务"}</span><strong>六步生成流水线</strong></div>
-            <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
+            <div className={styles.pipelineAttempt}>
+              <span
+                aria-hidden="true"
+                className={styles.pipelineSignal}
+                data-testid="pipeline-signal"
+              >
+                <i />
+                <i />
+                <i />
+              </span>
+              <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
+            </div>
           </header>
           <div className={styles.pipelineProgressSummary}>
             <div className={styles.pipelineProgressCopy}>
@@ -521,15 +577,26 @@ export function DraftCandidatesStage() {
               aria-valuemax={6}
               aria-valuenow={pipelineProgress.completedCount}
             >
-              <span style={{ width: `${(pipelineProgress.completedCount / 6) * 100}%` }} />
+              <span
+                data-active={pipelineActive || undefined}
+                style={{ width: `${(pipelineProgress.completedCount / 6) * 100}%` }}
+              />
             </div>
           </div>
           <ol>
             {pipeline.map((row, index) => {
               const rowStatus =
-                recovering && row.status === "failed" ? "recovering" : row.status;
+                taskCancelled && row.status === "running"
+                  ? "stopped"
+                  : recovering && row.status === "failed"
+                    ? "recovering"
+                    : row.status;
               return (
-                <li data-status={rowStatus} key={row.id}>
+                <li
+                  data-status={rowStatus}
+                  key={row.id}
+                  style={{ "--pipeline-order": index } as CSSProperties}
+                >
                   <span>{String(index + 1).padStart(2, "0")}</span>
                   <div>
                     <strong>{row.id === "domain_drafters" && row.children
@@ -539,9 +606,11 @@ export function DraftCandidatesStage() {
                     {row.children ? (
                       <ul>{row.children.map((child) => {
                         const childStatus =
-                          recovering && child.status === "failed"
-                            ? "recovering"
-                            : child.status;
+                          taskCancelled && child.status === "running"
+                            ? "stopped"
+                            : recovering && child.status === "failed"
+                              ? "recovering"
+                              : child.status;
                         return (
                           <li data-status={childStatus} key={child.id}>
                             {child.label} · {stepStatusLabel(childStatus)}
@@ -608,12 +677,20 @@ export function DraftCandidatesStage() {
         <p aria-live="polite">{notice}</p>
         <button
           disabled={generating || revisionPending}
-          onClick={() => void beginRevision()}
+          onClick={() => setRevisionDialogOpen(true)}
           type="button"
         >
-          {revisionPending ? "正在建立简报修订…" : "建立简报修订"}
+          {revisionPending ? "正在建立简报修订…" : "修改建案"}
         </button>
       </footer>
+      {revisionDialogOpen ? (
+        <BriefRevisionDialog
+          currentVersion={state.frozenBriefVersion ?? state.workingBriefVersion}
+          onCancel={() => setRevisionDialogOpen(false)}
+          onConfirm={() => void beginRevision()}
+          pending={revisionPending}
+        />
+      ) : null}
     </section>
   );
 }
@@ -663,8 +740,10 @@ function pipelineProgressFor(
   rows: ReturnType<typeof pipelineRows>,
   creatingTask: boolean,
   recovering: boolean,
+  cancelled: boolean,
 ) {
   const completedCount = rows.filter((row) => row.status === "succeeded" || row.status === "reused").length;
+  if (cancelled) return { completedCount, label: "本次生成已停止" };
   if (creatingTask) return { completedCount, label: "正在创建任务" };
   const failedIndex = rows.findIndex((row) => row.status === "failed");
   const runningIndex = rows.findIndex((row) => row.status === "running");
@@ -683,8 +762,8 @@ function pipelineProgressFor(
   return { completedCount, label: "正在创建任务" };
 }
 
-function stepStatusLabel(status: PipelineStatus | "recovering") {
-  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过", recovering: "修复中" }[status];
+function stepStatusLabel(status: PipelineStatus | "recovering" | "stopped") {
+  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过", recovering: "修复中", stopped: "已停止" }[status];
 }
 
 function componentLabel(componentId: string) {

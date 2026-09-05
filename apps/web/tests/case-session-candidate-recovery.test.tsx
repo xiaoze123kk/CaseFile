@@ -169,6 +169,8 @@ function RecoveryProbe() {
   const [adoptionError, setAdoptionError] = useState("none");
   return (
     <section>
+      <output data-testid="visible-step">{state.step}</output>
+      <output data-testid="furthest-step">{state.furthestStep}</output>
       <output data-testid="adopted">{state.adoptedCandidateId ?? "none"}</output>
       <output data-testid="adoption-error">{adoptionError}</output>
       {state.draftCandidates.map((item) => {
@@ -345,6 +347,8 @@ describe("draft candidate project recovery", () => {
     await waitFor(() => {
       expect(screen.getByTestId("adopted")).toHaveTextContent("draft-101");
     });
+    expect(screen.getByTestId("visible-step")).toHaveTextContent("candidates");
+    expect(screen.getByTestId("furthest-step")).toHaveTextContent("3");
     expect(
       screen.getByRole("button", { name: "旧简报 Current Draft · current" }),
     ).toBeEnabled();
@@ -358,6 +362,35 @@ describe("draft candidate project recovery", () => {
     fireEvent.click(stale);
     expect(mocks.adoptDraftCandidateWithReconciliation).not.toHaveBeenCalled();
     expect(mocks.fetchDraftCandidates).toHaveBeenCalledWith(7);
+  });
+
+  it("restores an unfinished hidden brief_review lifecycle to visible step 03", async () => {
+    mocks.fetchCaseIntake.mockResolvedValue({
+      ...intake,
+      brief: {
+        ...intake.brief,
+        current_version_id: null,
+      },
+    });
+    mocks.fetchBrief.mockResolvedValue({
+      ...brief,
+      current_version_id: null,
+      current_version_no: null,
+    });
+    mocks.fetchLatestTask.mockResolvedValue(null);
+    window.history.replaceState({}, "", "/?project=7");
+
+    render(
+      <CaseSessionProvider>
+        <RecoveryProbe />
+      </CaseSessionProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("visible-step")).toHaveTextContent("confirmation");
+    });
+    expect(screen.getByTestId("furthest-step")).toHaveTextContent("2");
+    expect(mocks.fetchDraftCandidates).not.toHaveBeenCalled();
   });
 
   it("keeps adoption successful when the follow-up Brief refresh fails", async () => {

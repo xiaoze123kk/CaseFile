@@ -1,7 +1,7 @@
 """prose_shadow_runtime
 
 Revision ID: 20260904220930
-Revises: 20260829142035
+Revises: 20260903224420
 Create Date: 2026-09-04 22:09:31.466010
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260904220930"
-down_revision: str | None = "20260829142035"
+down_revision: str | None = "20260903224420"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

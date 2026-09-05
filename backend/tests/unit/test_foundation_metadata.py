@@ -1,4 +1,4 @@
-"""Static contracts for the 74-table personal-product database metadata."""
+"""Static contracts for the 76-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ EXPECTED_TABLES = {
     "agent_goal_task_runs",
     "agent_goal_transitions",
     "agent_model_calls",
+    "agent_message_context_refs",
+    "agent_message_contexts",
     "agent_messages",
     "agent_patch_operations",
     "agent_patch_sets",
@@ -88,6 +90,7 @@ EXPECTED_TABLES = {
 
 DEDICATED_CURRENT_TABLES = {
     "agent_goal_sessions",
+    "agent_message_contexts",
     "agent_patch_operations",
     "agent_patch_sets",
     "agent_threads",
@@ -200,6 +203,10 @@ EXPECTED_UNIQUES = {
     "uq_agent_goal_task_runs_session_slice",
     "uq_agent_goal_task_runs_task_run",
     "uq_agent_goal_transitions_session_sequence",
+    "uq_agent_message_context_refs_context_kind_ref",
+    "uq_agent_message_context_refs_context_ordinal",
+    "uq_agent_message_contexts_message_id",
+    "uq_agent_message_contexts_project_id_id",
     "uq_agent_messages_thread_lineage_id",
     "uq_agent_messages_project_id_id",
     "uq_agent_messages_thread_sequence_no",
@@ -260,6 +267,9 @@ EXPECTED_FOREIGN_KEYS = {
     "fk_agent_goal_task_runs_project_session_goal_sessions",
     "fk_agent_goal_task_runs_project_task_run_task_runs",
     "fk_agent_goal_transitions_project_session_goal_sessions",
+    "fk_agent_message_context_refs_context_agent_message_contexts",
+    "fk_agent_message_contexts_message_agent_messages",
+    "fk_agent_message_contexts_project_casefile_draft_drafts",
     "fk_agent_messages_project_thread_agent_threads",
     "fk_agent_patch_operations_project_patch_set_agent_patch_sets",
     "fk_agent_patch_operations_target_object",
@@ -325,10 +335,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_74_personal_tables() -> None:
+def test_metadata_contains_exactly_the_76_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 74
+    assert len(models.__all__) == 76
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

@@ -218,13 +218,12 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
                     expected_draft_id=draft_id,
                     expected_draft_revision=2,
                     content="保留分析结果，接下来优先完成矛盾审计。",
+                    focus={"view": "relations"},
                     delivery_mode="steer",
                     expected_goal_id=goal_id,
                     expected_goal_revision=1,
                 )
-                steer_state["delivery_id"] = int(
-                    steered_during_capability["delivery"].delivery_id
-                )
+                steer_state["delivery_id"] = int(steered_during_capability["delivery"].delivery_id)
 
         def provider_for_task(task: TaskRun) -> FakeProvider:
             if isinstance(task.input_jsonb.get("goal_checkpoint"), dict):
@@ -381,9 +380,9 @@ def test_goal_checkpoint_continuation_is_atomic_and_never_creates_two_active_run
             )
             assert continuation is not None
             assert continuation.status == "queued"
-            checkpoint_observations = continuation.input_jsonb["goal_checkpoint"][
-                "observations"
-            ]
+            assert continuation.input_jsonb["focus"]["view"] == "relations"
+            assert continuation.input_jsonb["context_snapshot"]["view"] == "relations"
+            checkpoint_observations = continuation.input_jsonb["goal_checkpoint"]["observations"]
             assert [row["obligation_ids"] for row in checkpoint_observations] == [["obl_1"]]
             assert continuation.input_jsonb["goal_session"]["goal_revision"] == 2
             assert observation_count == 2
@@ -576,9 +575,7 @@ def test_expired_delivery_claim_is_recovered_by_the_new_task_attempt(
                     task_id,
                     first_attempt_id,
                     frozen_goal=frozen,
-                    checkpoint=GoalExecutionCheckpoint(
-                        obligations_hash=frozen.obligations_hash
-                    ),
+                    checkpoint=GoalExecutionCheckpoint(obligations_hash=frozen.obligations_hash),
                     safe_point="before_controller",
                     usage={},
                     tools={},

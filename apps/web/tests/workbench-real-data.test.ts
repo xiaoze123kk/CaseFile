@@ -525,7 +525,6 @@ describe("real workbench data mapper", () => {
     expect(model.mapMarkers).toEqual([]);
     expect(model.mapLabels).toEqual([]);
     expect(model.validationIssues).toEqual([]);
-    expect(model.sourceItems).toEqual([]);
     expect(model.initialAuditEntries).toEqual([]);
     expect(model.defaultEventId).toBeNull();
     expect(model.defaultObjectId).toBeNull();

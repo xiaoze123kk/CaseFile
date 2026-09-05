@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
 import type {
   PublicAgentMessage,
   PublicAgentRun,
@@ -8,6 +9,9 @@ import type {
 } from "@casefile/contracts";
 
 import styles from "./workbench-agent.module.css";
+import { AgentProgress } from "./workbench-agent-progress";
+import type { RunFeedback } from "./workbench-agent-feedback";
+import { AgentPatchCard } from "./workbench-agent-patch-card";
 
 export function agentAuditFindingsFor(
   message: PublicAgentMessage,
@@ -15,33 +19,7 @@ export function agentAuditFindingsFor(
   return message.findings;
 }
 
-function formatRecordTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "记录时间未知";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-const activityLabels: Record<Exclude<PublicAgentRun["activity"], null>, string> = {
-  understanding: "正在理解你的要求",
-  reading: "正在阅读卷宗",
-  checking: "正在检查前后一致性",
-  preparing_changes: "正在整理修改建议",
-  finalizing: "正在完成回复",
-};
-
-function runActivityLabel(run: PublicAgentRun | null): string {
-  if (run === null || run.status === "queued") return "回复已排队";
-  if (run.status === "cancelling") return "正在停止回复";
-  if (run.activity !== null) return activityLabels[run.activity];
-  return "正在整理回复";
-}
-
 export function WorkbenchAgentConversation({
-  surface,
   threadsLoading,
   threadsError,
   messagesLoading,
@@ -49,17 +27,18 @@ export function WorkbenchAgentConversation({
   messages,
   selectedThreadTitle,
   liveRuns,
-  busy,
   onReconnect,
   onReloadMessages,
   onRetryMessage,
-  onLocateObject,
-  onLocateEvent,
   onFocusPatch,
   onFocusFinding,
-  renderRoutingFeedback,
+  feedback = {},
+  sendingText = null,
+  sendError = null,
+  taskControls = null,
+  renderPatch,
+  patchError = null,
 }: {
-  surface: "quick" | "desk";
   threadsLoading: boolean;
   threadsError: string | null;
   messagesLoading: boolean;
@@ -67,18 +46,33 @@ export function WorkbenchAgentConversation({
   messages: PublicAgentMessage[];
   selectedThreadTitle: string | null;
   liveRuns: Record<number, PublicAgentRun>;
-  busy: boolean;
   onReconnect: () => void;
   onReloadMessages: () => void;
   onRetryMessage: (message: PublicAgentMessage) => void;
-  onLocateObject: (objectId: string) => void;
-  onLocateEvent: (eventId: string) => void;
-  onFocusPatch: (patchId: number) => void;
-  onFocusFinding: (findingId: string) => void;
-  renderRoutingFeedback: (message: PublicAgentMessage) => ReactNode;
+  onFocusPatch?: (id: number) => void;
+  onFocusFinding?: (id: string) => void;
+  feedback?: Record<number, RunFeedback>;
+  sendingText?: string | null;
+  sendError?: string | null;
+  taskControls?: ReactNode;
+  renderPatch?: (message: PublicAgentMessage) => ReactNode;
+  patchError?: string | null;
 }) {
+  const latestAssistantId = messages.filter((message) => message.role === "assistant").at(-1)?.message_id;
+  const scroller = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const [showLatest, setShowLatest] = useState(false);
+  useEffect(() => {
+    const element = scroller.current;
+    if (element && follow.current) element.scrollTop = element.scrollHeight;
+  }, [messages, feedback, sendingText]);
   return (
-    <div aria-live="polite" className={styles.agentMessages}>
+    <div className={styles.agentMessages} ref={scroller} onScroll={() => {
+      const element = scroller.current;
+      if (!element) return;
+      follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 64;
+      setShowLatest(!follow.current);
+    }}>
       {threadsLoading ? (
         <p className={styles.agentThinking}>正在读取 Agent 对话…</p>
       ) : null}
@@ -96,46 +90,33 @@ export function WorkbenchAgentConversation({
           message.run === null
             ? null
             : (liveRuns[message.run.run_id] ?? message.run);
+        const progress = run ? feedback[run.run_id] : undefined;
+        const preview = progress?.preview;
+        const previewText = preview && !preview.discarded && !progress?.gap ? preview.text : "";
+        const unfinished = preview?.invalidated || (run && ["cancelled", "failed"].includes(run.status));
         return (
           <article
             className={styles.agentTurn}
             data-role={message.role}
+            data-has-patch={message.patch ? true : undefined}
             key={message.message_id}
           >
-            <header className={styles.agentTurnMeta}>
-              <span>{message.role === "assistant" ? "卷宗统筹" : "你"}</span>
-              <time dateTime={message.created_at}>
-                {formatRecordTime(message.created_at)}
-              </time>
-            </header>
-            {message.body !== null ? (
+            {message.role === "assistant" ? <AgentProgress run={run} feedback={progress}
+              controls={message.message_id === latestAssistantId ? taskControls : null} /> : null}
+            {message.body !== null && !(run?.status === "failed" && message.body === run.failure?.message) ? (
               <div className={styles.agentTurnContent}>
-                {message.role === "assistant" ? <strong>结论</strong> : null}
                 <p>{message.body}</p>
               </div>
             ) : null}
-            {message.role === "assistant" && message.status === "completed" ? (
-              <AssistantResultSummary
-                message={message}
-                onLocateEvent={onLocateEvent}
-                onLocateObject={onLocateObject}
-                onFocusPatch={onFocusPatch}
-                onFocusFinding={onFocusFinding}
-              />
-            ) : null}
-            {message.role === "assistant" && message.status === "completed"
-              ? renderRoutingFeedback(message)
-              : null}
-            {surface === "quick" &&
-            message.role === "assistant" &&
-            message.status === "pending" ? (
-              <p className={styles.agentThinking} role="status">
-                {busy
-                  ? `卷宗统筹 · ${runActivityLabel(run)}`
-                  : "正在整理回复…"}
-              </p>
-            ) : null}
-            {message.role === "assistant" && message.status === "failed" ? (
+            {message.body === null && previewText ? unfinished ? <details className={styles.agentPreview}>
+              <summary>未形成正式结论 · 查看未完成预览</summary><p>{previewText}</p>
+            </details> : <div className={styles.agentPreview} aria-live="off">
+              <small>{run?.status === "succeeded" ? "正在同步结果" : preview?.ready ? "正在确认结果，尚未完成校验" : "生成中，尚未完成校验"}</small><p>{previewText}</p>
+            </div> : null}
+            {message.patch ? renderPatch ? renderPatch(message) : <AgentPatchCard patchSet={message.patch}
+              onDetails={onFocusPatch ? () => onFocusPatch(message.patch!.patch_id) : undefined} /> : null}
+            {onFocusFinding ? message.findings.map((finding) => <button type="button" key={finding.finding_id} onClick={() => onFocusFinding(finding.finding_id)}>查看验证：{finding.title}</button>) : null}
+            {message.role === "assistant" && (message.status === "failed" || run?.status === "failed") ? (
               <div className={styles.agentFailure} role="status">
                 <strong>回复未完成</strong>
                 <span>
@@ -149,6 +130,14 @@ export function WorkbenchAgentConversation({
           </article>
         );
       })}
+      {latestAssistantId === undefined && taskControls ? <section className={styles.agentProgress} aria-label="工作记录">{taskControls}</section> : null}
+      {sendingText ? <article className={styles.agentTurn} data-role="user"><p>{sendingText}</p><small role="status">正在发送…</small></article> : null}
+      {sendError ? <div className={styles.agentFailure} role="status"><strong>发送失败</strong><span>{sendError}</span><small>输入内容已保留，可修改后重新发送。</small></div> : null}
+      {patchError ? <div className={styles.agentFailure} role="alert"><strong>修改操作未完成</strong><span>{patchError}</span><small>请按当前卷宗重新审阅后再试。</small></div> : null}
+      {showLatest ? <button type="button" className={styles.agentBackLatest} onClick={() => {
+        follow.current = true; setShowLatest(false);
+        if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+      }}>回到最新</button> : null}
       {!threadsLoading && !threadsError && !messagesLoading && messagesError ? (
         <div className={styles.agentFailure} role="status">
           <strong>读取失败</strong>
@@ -166,116 +155,9 @@ export function WorkbenchAgentConversation({
         <p className={styles.agentEmpty}>
           {selectedThreadTitle === null
             ? "先创建一个 Agent 对话。"
-            : "从上方预设指令或输入框开始布置卷宗任务。"}
+            : "从下方输入框开始布置卷宗任务。"}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-function AssistantResultSummary({
-  message,
-  onLocateObject,
-  onLocateEvent,
-  onFocusPatch,
-  onFocusFinding,
-}: {
-  message: PublicAgentMessage;
-  onLocateObject: (objectId: string) => void;
-  onLocateEvent: (eventId: string) => void;
-  onFocusPatch: (patchId: number) => void;
-  onFocusFinding: (findingId: string) => void;
-}) {
-  const [referencesOpen, setReferencesOpen] = useState(false);
-  const patchCount = message.patch?.changes.length ?? 0;
-
-  if (
-    message.references.length === 0 &&
-    message.findings.length === 0 &&
-    patchCount === 0
-  ) {
-    return null;
-  }
-
-  return (
-    <div className={styles.agentResultSummary} aria-label="分析结果摘要">
-      {message.references.length > 0 ? (
-        <button
-          aria-expanded={referencesOpen}
-          onClick={() => setReferencesOpen((open) => !open)}
-          type="button"
-        >
-          引用 {message.references.length}
-        </button>
-      ) : null}
-      {message.findings.length > 0 ? (
-        <button
-          aria-expanded={false}
-          onClick={() => onFocusFinding(message.findings[0]?.finding_id ?? "")}
-          type="button"
-        >
-          验证发现 {message.findings.length}
-        </button>
-      ) : null}
-      {patchCount > 0 && message.patch ? (
-        <button
-          aria-expanded={false}
-          onClick={() => onFocusPatch(message.patch?.patch_id ?? 0)}
-          type="button"
-        >
-          待审修改 {patchCount}
-        </button>
-      ) : null}
-      {referencesOpen ? (
-        <ReferenceList
-          message={message}
-          onLocateEvent={onLocateEvent}
-          onLocateObject={onLocateObject}
-          onFocusFinding={onFocusFinding}
-        />
-      ) : null}
-      {patchCount > 0 && message.patch ? (
-        <p className={styles.agentInspectorHint}>
-          已将这组修改移至右侧对象上下文 Inspector 审阅。
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function ReferenceList({
-  message,
-  onLocateObject,
-  onLocateEvent,
-  onFocusFinding,
-}: {
-  message: PublicAgentMessage;
-  onLocateObject: (objectId: string) => void;
-  onLocateEvent: (eventId: string) => void;
-  onFocusFinding: (findingId: string) => void;
-}) {
-  return (
-    <div className={styles.agentRefs} aria-label="回答引用">
-      {message.references.map((reference, index) => (
-        <button
-          data-ref-kind={reference.kind}
-          key={`${reference.kind}:${index}`}
-          onClick={() => {
-            if (reference.kind === "event") onLocateEvent(reference.target_id);
-            else if (reference.kind === "finding") {
-              onFocusFinding(reference.target_id);
-            } else onLocateObject(reference.target_id);
-          }}
-          type="button"
-        >
-          {reference.kind === "event"
-            ? "事件"
-            : reference.kind === "finding"
-              ? "发现"
-              : "卷宗"}
-          {` · ${reference.label}`}
-        </button>
-      ))}
     </div>
   );
 }

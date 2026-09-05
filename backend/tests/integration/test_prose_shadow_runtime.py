@@ -697,7 +697,7 @@ def test_previous_revision_upgrade_preserves_legacy_run(
         frozen, digest = original.input_jsonb, original.input_hash
     assert "prose_renderer_shadow" not in frozen
     config = _alembic_config(engine.url.render_as_string(hide_password=False))
-    command.downgrade(config, "20260829142035")
+    command.downgrade(config, "20260903224420")
     command.upgrade(config, "head")
     command.check(config)
     with factory() as session:

@@ -927,6 +927,31 @@ class PublicAgentFailure(BaseModel):
     retryable: bool
 
 
+class ObjectId(RootModel[str]):
+    root: Annotated[str, Field(max_length=128, min_length=1)]
+
+
+class EventId(RootModel[str]):
+    root: Annotated[str, Field(max_length=128, min_length=1)]
+
+
+class ValidationIssueId(RootModel[str]):
+    root: Annotated[str, Field(max_length=128, min_length=1)]
+
+
+class PublicAgentContextSnapshot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    draft_id: Annotated[int, Field(ge=1)]
+    draft_revision: Annotated[int, Field(ge=1)]
+    object_ids: Annotated[list[ObjectId], Field(max_length=50)]
+    event_ids: Annotated[list[EventId], Field(max_length=50)]
+    validation_issue_ids: Annotated[list[ValidationIssueId], Field(max_length=50)]
+    view: Annotated[str | None, Field(max_length=64, min_length=1)]
+
+
 class Status2(StrEnum):
     interpreting = 'interpreting'
     running = 'running'
@@ -1293,7 +1318,68 @@ class PublicRoutingFeedbackReceipt(BaseModel):
     interpretation: PublicRoutingInterpretation
 
 
+class Activity1(StrEnum):
+    understanding = 'understanding'
+    reading = 'reading'
+    checking = 'checking'
+    preparing_changes = 'preparing_changes'
+    finalizing = 'finalizing'
+
+
+class Status8(StrEnum):
+    started = 'started'
+    completed = 'completed'
+    failed = 'failed'
+
+
 class PublicAgentEvent1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.activity_detail']
+    activity_id: Annotated[int, Field(ge=1)]
+    activity: Activity1
+    status: Status8
+    object_ids: Annotated[list[str], Field(max_length=50)]
+    draft_id: Annotated[int | None, Field(ge=1)] = None
+    draft_revision: Annotated[int | None, Field(ge=0)] = None
+
+
+class PublicAgentEvent2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['message.preview_started']
+
+
+class PublicAgentEvent3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['message.preview_delta']
+    preview_sequence: Annotated[int, Field(ge=1)]
+    offset: Annotated[int, Field(ge=0)]
+    final: bool | None = None
+    text: Annotated[str, Field(max_length=65536, min_length=1)]
+
+
+class PublicAgentEvent4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['message.preview_invalidated']
+    discard: bool
+
+
+class PublicAgentEvent5(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1303,15 +1389,7 @@ class PublicAgentEvent1(BaseModel):
     run: PublicAgentRun
 
 
-class Activity1(StrEnum):
-    understanding = 'understanding'
-    reading = 'reading'
-    checking = 'checking'
-    preparing_changes = 'preparing_changes'
-    finalizing = 'finalizing'
-
-
-class PublicAgentEvent2(BaseModel):
+class PublicAgentEvent6(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1327,7 +1405,7 @@ class ContextState(StrEnum):
     compacted = 'compacted'
 
 
-class PublicAgentEvent3(BaseModel):
+class PublicAgentEvent7(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1343,7 +1421,7 @@ class VerificationStatus(StrEnum):
     blocked = 'blocked'
 
 
-class PublicAgentEvent4(BaseModel):
+class PublicAgentEvent8(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1356,7 +1434,7 @@ class PublicAgentEvent4(BaseModel):
     summary: Annotated[str, Field(max_length=1000, min_length=1)]
 
 
-class PublicAgentEvent5(BaseModel):
+class PublicAgentEvent9(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1366,7 +1444,7 @@ class PublicAgentEvent5(BaseModel):
     run: PublicAgentRun
 
 
-class PublicAgentEvent6(BaseModel):
+class PublicAgentEvent10(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1376,7 +1454,7 @@ class PublicAgentEvent6(BaseModel):
     failure: PublicAgentFailure
 
 
-class PublicAgentEvent7(BaseModel):
+class PublicAgentEvent11(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1395,9 +1473,13 @@ class PublicAgentEvent(
         | PublicAgentEvent5
         | PublicAgentEvent6
         | PublicAgentEvent7
+        | PublicAgentEvent8
+        | PublicAgentEvent9
+        | PublicAgentEvent10
+        | PublicAgentEvent11
     ]
 ):
-    root: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7
+    root: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7 | PublicAgentEvent8 | PublicAgentEvent9 | PublicAgentEvent10 | PublicAgentEvent11
 
 
 class TaskType(StrEnum):
@@ -1413,7 +1495,7 @@ class TaskType(StrEnum):
     idea_generation = 'idea_generation'
 
 
-class Status8(StrEnum):
+class Status9(StrEnum):
     queued = 'queued'
     running = 'running'
     cancelling = 'cancelling'
@@ -1504,7 +1586,7 @@ class AgentDiagnosticIssue(BaseModel):
     message: Annotated[str, Field(max_length=240, min_length=1)]
 
 
-class Status9(StrEnum):
+class Status10(StrEnum):
     pending = 'pending'
     running = 'running'
     succeeded = 'succeeded'
@@ -1523,7 +1605,7 @@ class AgentComponentStepView(BaseModel):
     component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     parent_component_id: str | None
     execution_no: Annotated[int, Field(ge=1)]
-    status: Status9
+    status: Status10
     schema_id: Annotated[str, Field(min_length=1)]
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
     output_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')]
@@ -1586,7 +1668,7 @@ class TaskRun(BaseModel):
     task_run_id: Annotated[int, Field(ge=1)]
     project_id: Annotated[int, Field(ge=1)]
     task_type: TaskType
-    status: Status8
+    status: Status9
     stage: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     provider: Provider | None
     model_id: ModelId | None
@@ -2279,7 +2361,7 @@ class ChapterExecution(BaseModel):
     scene_ids: Annotated[list[SceneId], Field(min_length=1)]
 
 
-class Status10(Enum):
+class Status11(Enum):
     introduced = 'introduced'
     reinforced = 'reinforced'
     reinterpreted = 'reinterpreted'
@@ -2291,7 +2373,7 @@ class AudienceExposure(BaseModel):
         populate_by_name=True,
     )
     entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-    status: Status10
+    status: Status11
     first_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
     last_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
 
@@ -3985,6 +4067,7 @@ class PublicAgentMessage(BaseModel):
     status: Annotated[Status7, Field(title='PublicMessageStatus')]
     response_kind: Annotated[ResponseKind, Field(title='PublicResponseKind')]
     body: Annotated[str | None, Field(max_length=20000)]
+    context_snapshot: PublicAgentContextSnapshot | None = None
     interpretation: PublicRoutingInterpretation | None
     references: Annotated[list[PublicReference], Field(max_length=200)]
     findings: Annotated[list[PublicFinding], Field(max_length=200)]
@@ -4296,7 +4379,7 @@ class Schema_2(BaseModel):
     message_receipt: PublicAgentMessageReceipt
     routing_feedback: PublicRoutingFeedbackReceipt
     run: PublicAgentRun
-    event: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7
+    event: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7 | PublicAgentEvent8 | PublicAgentEvent9 | PublicAgentEvent10 | PublicAgentEvent11
     goal_session: PublicGoalSession
     goal_delivery: PublicGoalDelivery
     goal_event: PublicGoalEvent

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  elasticRelationshipDragPositions,
   layoutWorkbenchCanvas,
+  layoutWorkbenchConstellationCanvas,
   layoutWorkbenchMatrixCanvas,
   restoreWorkbenchCanvasLayout,
   saveWorkbenchCanvasLayout,
@@ -44,7 +46,7 @@ describe("workbench canvas layout", () => {
         revision: "R7",
         view: "relations",
       }),
-    ).toContain("casefile.canvas-layout.v2");
+    ).toContain("casefile.canvas-layout.v3");
   });
 
   it("creates deterministic semantic layouts for relationship and reasoning scenes", () => {
@@ -66,6 +68,67 @@ describe("workbench canvas layout", () => {
     const reasoning = layoutWorkbenchCanvas(nodes, edges, "BT");
     expect(reasoning.evidence.y).toBeGreaterThan(reasoning.step.y);
     expect(reasoning.step.y).toBeGreaterThan(reasoning.hypothesis.y);
+  });
+
+  it("creates a deterministic non-linear constellation for relationship scenes", () => {
+    const nodes = [
+      { id: "a", width: 44, height: 44 },
+      { id: "b", width: 48, height: 48 },
+      { id: "c", width: 40, height: 40 },
+      { id: "d", width: 36, height: 36 },
+    ];
+    const edges = [
+      { id: "a-b", source: "a", target: "b" },
+      { id: "b-c", source: "b", target: "c" },
+    ];
+    const positions = layoutWorkbenchConstellationCanvas(nodes, edges);
+
+    expect(layoutWorkbenchConstellationCanvas(nodes, edges)).toEqual(positions);
+    expect(
+      new Set(Object.values(positions).map((point) => Math.round(point.y))).size,
+    ).toBeGreaterThan(2);
+    expect(Object.keys(positions).sort()).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("propagates relationship dragging through the connected component", () => {
+    const initial = {
+      a: { x: 0, y: 0 },
+      b: { x: 100, y: 0 },
+      c: { x: 200, y: 0 },
+      place: { x: 400, y: 0 },
+    };
+    const moved = elasticRelationshipDragPositions(
+      initial,
+      initial,
+      [
+        { id: "a-b", source: "a", target: "b" },
+        { id: "b-c", source: "b", target: "c" },
+      ],
+      "a",
+      { x: 100, y: 40 },
+    );
+
+    expect(moved.a).toEqual({ x: 100, y: 40 });
+    expect(moved.b).toEqual({ x: 150, y: 20 });
+    expect(moved.c).toEqual({ x: 225, y: 10 });
+    expect(moved.place).toEqual({ x: 400, y: 0 });
+  });
+
+  it("does not override nodes already moving as part of a multi-selection", () => {
+    const initial = {
+      a: { x: 0, y: 0 },
+      b: { x: 100, y: 0 },
+    };
+    const moved = elasticRelationshipDragPositions(
+      initial,
+      { ...initial, b: { x: 180, y: 30 } },
+      [{ id: "a-b", source: "a", target: "b" }],
+      "a",
+      { x: 100, y: 40 },
+      new Set(["b"]),
+    );
+
+    expect(moved.b).toEqual({ x: 180, y: 30 });
   });
 
   it("restores the exact revision with its viewport", () => {

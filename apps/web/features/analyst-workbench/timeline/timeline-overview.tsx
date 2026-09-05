@@ -20,7 +20,6 @@ import {
   type WorkbenchSeed,
 } from "../analyst-fixture";
 import { relativeTimeLabel } from "../workbench-presenters";
-import { ExposurePlanEditor } from "./exposure-plan-editor";
 import styles from "./timeline.module.css";
 import {
   buildTimelineCertaintySummary,
@@ -72,11 +71,71 @@ interface PendingPreview {
 }
 
 const VIEW_WIDTH = 1080;
-const PLOT_LEFT = 300;
-const PLOT_RIGHT = 1036;
-const AXIS_Y = 50;
+const PLOT_LEFT = 72;
+const PLOT_RIGHT = 1034;
+const LANE_PLOT_LEFT = 232;
+const AXIS_Y = 188;
+const LANE_AXIS_Y = 50;
+const EVENT_CARD_WIDTH = 124;
+const EVENT_CARD_HEIGHT = 56;
+const EVENT_TRACKS = [
+  { y: 102, side: "top" },
+  { y: 232, side: "bottom" },
+  { y: 30, side: "top" },
+  { y: 304, side: "bottom" },
+] as const;
+const EVENT_VIEW_HEIGHT = 390;
 const ROW_TOP = 88;
-const ROW_HEIGHT = 62;
+const ROW_HEIGHT = 76;
+
+interface EventPlacement {
+  cardCenterX: number;
+  cardY: number;
+  markerX: number;
+  side: "top" | "bottom";
+  track: number;
+}
+
+function buildEventPlacements(
+  points: Array<{ id: string; x: number }>,
+): Map<string, EventPlacement> {
+  const placements = new Map<string, EventPlacement>();
+  const lastRight = EVENT_TRACKS.map(() => Number.NEGATIVE_INFINITY);
+  const halfWidth = EVENT_CARD_WIDTH / 2;
+  const leftBoundary = 16 + halfWidth;
+  const rightBoundary = VIEW_WIDTH - 16 - halfWidth;
+
+  points
+    .map((point, order) => ({ ...point, order }))
+    .sort((left, right) => left.x - right.x || left.order - right.order)
+    .forEach((point, order) => {
+      const cardCenterX = Math.max(
+        leftBoundary,
+        Math.min(rightBoundary, point.x),
+      );
+      const preferred =
+        order % 2 === 0 ? [0, 1, 2, 3] : [1, 0, 3, 2];
+      const cardLeft = cardCenterX - halfWidth;
+      const availableTrack = preferred.find(
+        (track) => cardLeft - lastRight[track] >= 12,
+      );
+      const track =
+        availableTrack ??
+        preferred.reduce((best, candidate) =>
+          lastRight[candidate] < lastRight[best] ? candidate : best,
+        );
+      lastRight[track] = cardCenterX + halfWidth;
+      placements.set(point.id, {
+        cardCenterX,
+        cardY: EVENT_TRACKS[track].y,
+        markerX: point.x,
+        side: EVENT_TRACKS[track].side,
+        track,
+      });
+    });
+
+  return placements;
+}
 
 function displayBounds(
   event: TimelineDisplayEvent,
@@ -240,9 +299,6 @@ export function TimelineOverview({
   onSelectEvent,
   validationStatus,
   editable = false,
-  exposurePlanEditable = false,
-  projectId,
-  draftId,
   saving = false,
   onPreviewTime,
   onConfirmTime,
@@ -254,9 +310,6 @@ export function TimelineOverview({
   onSelectEvent: (eventId: string) => void;
   validationStatus: TimelineValidationStatus;
   editable?: boolean;
-  exposurePlanEditable?: boolean;
-  projectId?: number;
-  draftId?: number;
   saving?: boolean;
   onPreviewTime?: (
     eventId: string,
@@ -281,9 +334,8 @@ export function TimelineOverview({
   const [editorEventId, setEditorEventId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorDraft | null>(null);
   const [pending, setPending] = useState<PendingPreview | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<TimelineLaneMode>("events");
-  const [diagnosticsVisible, setDiagnosticsVisible] = useState(true);
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(false);
 
   const lanes = useMemo(
     () =>
@@ -317,8 +369,11 @@ export function TimelineOverview({
     const domainEnd = maximum + padding;
     const scale = scaleUtc()
       .domain([new Date(domainStart), new Date(domainEnd)])
-      .range([PLOT_LEFT, PLOT_RIGHT]);
-    const ticks = scale.ticks(8);
+      .range([
+        viewMode === "events" ? PLOT_LEFT : LANE_PLOT_LEFT,
+        PLOT_RIGHT,
+      ]);
+    const ticks = scale.ticks(6);
     const startDate = new Date(domainStart);
     const endDate = new Date(domainEnd);
     const includeDate =
@@ -341,20 +396,37 @@ export function TimelineOverview({
       ticks,
       labelMode,
     };
-  }, [dragGhost, events]);
+  }, [dragGhost, events, viewMode]);
+
+  const eventPlacements = useMemo(() => {
+    if (!axis) return new Map<string, EventPlacement>();
+    return buildEventPlacements(
+      events.map((event) => {
+        const ghostTime = dragGhost?.eventId === event.id ? dragGhost.time : null;
+        const bounds = displayBounds(event, ghostTime);
+        return {
+          id: event.id,
+          x: bounds ? axis.scale(new Date(bounds.start)) : PLOT_RIGHT,
+        };
+      }),
+    );
+  }, [axis, dragGhost, events]);
 
   if (!selectedEvent) return null;
 
-  const unresolvedEvents = events.filter(
-    (event) => event.timeProjection === "unresolved",
-  );
+  const timelineViewHeight =
+    viewMode === "events"
+      ? EVENT_VIEW_HEIGHT
+      : ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT + 26;
+  const displayedAxisY = viewMode === "events" ? AXIS_Y : LANE_AXIS_Y;
+  const displayedPlotLeft =
+    viewMode === "events" ? PLOT_LEFT : LANE_PLOT_LEFT;
 
   async function requestPreview(
     eventId: string,
     proposedTime: TimelineTemporalPosition,
   ) {
     if (!editable || !onPreviewTime) {
-      setNotice("当前视图为只读，不能预演时间修改。");
       return;
     }
     setPending({
@@ -364,7 +436,6 @@ export function TimelineOverview({
       data: null,
       message: null,
     });
-    setNotice("正在核对事实顺序、相对依赖和契约规则…");
     try {
       const data = await onPreviewTime(eventId, proposedTime);
       setPending({
@@ -374,11 +445,6 @@ export function TimelineOverview({
         data,
         message: null,
       });
-      setNotice(
-        data.can_confirm
-          ? "影响预览已完成；确认后才会写入当前工作稿。"
-          : "拟议时间未通过契约检查，请调整后重新预览。",
-      );
     } catch (caught) {
       setPending({
         eventId,
@@ -387,7 +453,6 @@ export function TimelineOverview({
         data: null,
         message: caught instanceof Error ? caught.message : "时间预览失败。",
       });
-      setNotice("时间预览失败，当前工作稿未被修改。");
     }
   }
 
@@ -470,20 +535,12 @@ export function TimelineOverview({
     setEditorEventId(event.id);
     setEditor(editorDraft(event));
     setPending(null);
-    setNotice(
-      editable
-        ? "编辑后先查看影响，确认前不会写入当前工作稿。"
-        : "当前视图只读；可以核对时间语义，但不能写入。",
-    );
   }
 
   async function previewEditor() {
     if (!editor || !editorEventId) return;
     const proposed = buildEditorTime(editor);
-    if (!proposed) {
-      setNotice("请补全当前时间语义所需字段，再查看影响。");
-      return;
-    }
+    if (!proposed) return;
     await requestPreview(editorEventId, proposed);
   }
 
@@ -495,7 +552,6 @@ export function TimelineOverview({
       setPending(null);
       setEditor(null);
       setEditorEventId(null);
-      setNotice("事件时间已写入当前工作稿，时间轴已按最新事实顺序重排。");
       return;
     }
     setPending({
@@ -512,54 +568,58 @@ export function TimelineOverview({
     <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
       <div className={styles.timelineChrome}>
         <header className={styles.timelineHeader}>
-          <div>
-            <span>发生时间 · 比例轴</span>
+          <div className={styles.timelineTitle}>
             <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
           </div>
-          <div className={styles.timelineMeta}>
-            <small>{seed.caseMeta.timelineMeta}</small>
-            <i data-status={validationStatus}>
-              {validationStatus === "passed"
-                ? "验证通过"
-                : validationStatus === "failed"
-                  ? "待复核"
-                  : validationStatus === "loading"
-                    ? "验证中"
-                    : "待验证"}
-            </i>
-            <b data-editable={editable}>{editable ? "可编辑" : "只读"}</b>
+          <div className={styles.timelineToolbar}>
+            <div className={styles.timelineMeta}>
+              <i data-status={validationStatus}>
+                {validationStatus === "passed"
+                  ? "已通过"
+                  : validationStatus === "failed"
+                    ? "待复核"
+                    : validationStatus === "loading"
+                      ? "验证中"
+                      : "待验证"}
+              </i>
+            </div>
+            <div aria-label="时间线展示方式" className={styles.modeSwitch} role="group">
+              {(
+                [
+                  ["events", "事件", "事件"],
+                  ["people", "人物", "人物泳道"],
+                  ["locations", "地点", "地点泳道"],
+                ] as const
+              ).map(([mode, label, ariaLabel]) => (
+                <button
+                  aria-label={ariaLabel}
+                  aria-pressed={viewMode === mode}
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              aria-label="确定性叠层"
+              aria-pressed={diagnosticsVisible}
+              className={styles.diagnosticsToggle}
+              onClick={() => setDiagnosticsVisible((visible) => !visible)}
+              type="button"
+            >
+              <span aria-hidden="true" />
+              确定性
+              <small>
+                {certaintySummary
+                  .filter((item) => item.count > 0)
+                  .map((item) => `${item.label} ${item.count}`)
+                  .join(" · ")}
+              </small>
+            </button>
           </div>
         </header>
-        <div className={styles.timelineControls}>
-          <div aria-label="时间线展示方式" className={styles.modeSwitch} role="group">
-            <span>展示</span>
-            {(
-              [
-                ["events", "事件"],
-                ["people", "人物泳道"],
-                ["locations", "地点泳道"],
-              ] as const
-            ).map(([mode, label]) => (
-              <button
-                aria-pressed={viewMode === mode}
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            aria-pressed={diagnosticsVisible}
-            className={styles.diagnosticsToggle}
-            onClick={() => setDiagnosticsVisible((visible) => !visible)}
-            type="button"
-          >
-            <span aria-hidden="true" />
-            确定性叠层
-          </button>
-        </div>
         {diagnosticsVisible ? (
           <ul aria-label="时间确定性诊断" className={styles.certaintyLedger}>
             {certaintySummary.map((item) => (
@@ -579,29 +639,47 @@ export function TimelineOverview({
             ref={svgRef}
             aria-label="按作品内时间等比例排列的事件轴"
             className={styles.axisSvg}
+            data-view-mode={viewMode}
             preserveAspectRatio="xMinYMin meet"
             role="group"
-            viewBox={`0 0 ${VIEW_WIDTH} ${ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT + 26}`}
+            viewBox={`0 0 ${VIEW_WIDTH} ${timelineViewHeight}`}
           >
             <g aria-hidden="true">
-              <text className={styles.axisCaption} x={28} y={31}>
-                事件发生时间
+              <text
+                className={styles.axisCaption}
+                x={displayedPlotLeft}
+                y={viewMode === "events" ? displayedAxisY - 18 : 16}
+              >
+                {viewMode === "events" ? "案件脉络" : "故事发生时间轴"}
               </text>
-              <text className={styles.axisCaption} x={PLOT_LEFT} y={16}>
-                故事发生时间轴
-              </text>
-              <line className={styles.axisLine} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={AXIS_Y} y2={AXIS_Y} />
+              <line
+                className={styles.axisLine}
+                x1={displayedPlotLeft}
+                x2={PLOT_RIGHT}
+                y1={displayedAxisY}
+                y2={displayedAxisY}
+              />
               {axis.ticks.map((tick) => {
                 const x = axis.scale(tick);
                 return (
                   <g key={tick.valueOf()}>
-                    <line className={styles.axisGrid} x1={x} x2={x} y1={AXIS_Y} y2={ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT} />
+                    <line
+                      className={viewMode === "events" ? styles.axisNotch : styles.axisGrid}
+                      x1={x}
+                      x2={x}
+                      y1={displayedAxisY}
+                      y2={
+                        viewMode === "events"
+                          ? displayedAxisY + 8
+                          : ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT
+                      }
+                    />
                     <text
                       className={styles.axisTick}
                       data-testid="timeline-axis-tick"
                       textAnchor="middle"
                       x={x}
-                      y={31}
+                      y={viewMode === "events" ? displayedAxisY + 24 : 31}
                     >
                       {formatAxisTime(tick.valueOf(), axis.labelMode)}
                     </text>
@@ -609,7 +687,7 @@ export function TimelineOverview({
                 );
               })}
             </g>
-            {viewMode === "events" ? events.map((timelineEvent, index) => {
+            {viewMode === "events" ? events.map((timelineEvent) => {
               const selected = timelineEvent.id === selectedEventId;
               const conclusionRelated = relatedConclusionEventIds.includes(timelineEvent.id);
               const issue = seed.validationIssues.find((item) =>
@@ -619,10 +697,12 @@ export function TimelineOverview({
               const ghostTime =
                 dragGhost?.eventId === timelineEvent.id ? dragGhost.time : null;
               const bounds = displayBounds(timelineEvent, ghostTime);
-              const y = ROW_TOP + index * ROW_HEIGHT;
-              const startX = bounds ? axis.scale(new Date(bounds.start)) : PLOT_LEFT - 34;
+              const placement = eventPlacements.get(timelineEvent.id);
+              if (!placement) return null;
+              const { cardCenterX, cardY, markerX: startX, side, track } = placement;
               const endX = bounds ? axis.scale(new Date(bounds.end)) : startX;
               const isRange = Boolean(bounds && bounds.end > bounds.start);
+              const certainty = timelineCertainty(timelineEvent);
               const isApproximate =
                 (ghostTime ?? editableTime(timelineEvent))?.kind === "approximate";
               const projectedRelative = isRelativeProjection(timelineEvent);
@@ -636,10 +716,14 @@ export function TimelineOverview({
                   aria-pressed={selected}
                   className={styles.eventRow}
                   data-draggable={canDrag}
+                  data-agent-object-id={timelineEvent.id}
                   data-dragging={dragGhost?.eventId === timelineEvent.id}
                   data-projection={projectedRelative ? "relative" : "absolute"}
                   data-selected={selected}
                   data-conclusion-related={conclusionRelated}
+                  data-track={track}
+                  data-certainty={certainty}
+                  onClick={() => onSelectEvent(timelineEvent.id)}
                   onKeyDown={(event) => handleMarkerKey(event, timelineEvent)}
                   onPointerCancel={cancelDrag}
                   onPointerDown={(event) => startDrag(event, timelineEvent)}
@@ -649,76 +733,72 @@ export function TimelineOverview({
                   tabIndex={0}
                 >
                   <title>{`${timelineEvent.label} · ${eventTimeLabel(timelineEvent)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
-                  <rect className={styles.rowHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
-                  <text className={styles.rowTime} textAnchor="end" x={168} y={y - 4}>
+                  <path
+                    className={styles.eventConnector}
+                    d={`M ${startX} ${AXIS_Y} L ${startX} ${side === "top" ? cardY + EVENT_CARD_HEIGHT : cardY} L ${cardCenterX} ${side === "top" ? cardY + EVENT_CARD_HEIGHT : cardY}`}
+                  />
+                  <rect
+                    className={styles.eventCard}
+                    height={EVENT_CARD_HEIGHT}
+                    rx={3}
+                    width={EVENT_CARD_WIDTH}
+                    x={cardCenterX - EVENT_CARD_WIDTH / 2}
+                    y={cardY}
+                  />
+                  <text className={styles.cardTime} textAnchor="middle" x={cardCenterX} y={cardY + 15}>
                     {eventTimeLabel(timelineEvent)}
                   </text>
-                  <text className={styles.rowLabel} x={182} y={y - 5}>
+                  <text className={styles.cardLabel} textAnchor="middle" x={cardCenterX} y={cardY + 33}>
                     {timelineEvent.label}
                   </text>
-                  <text className={styles.rowLocation} x={182} y={y + 13}>
+                  <text className={styles.cardLocation} textAnchor="middle" x={cardCenterX} y={cardY + 48}>
                     {timelineEvent.location}
                   </text>
                   {conclusionRelated ? (
                     <text
                       className={styles.conclusionRelatedTag}
-                      textAnchor="end"
-                      x={PLOT_RIGHT - 28}
-                      y={diagnosticsVisible ? y + 13 : y - 10}
+                      textAnchor="middle"
+                      x={cardCenterX}
+                      y={side === "top" ? cardY - 7 : cardY + EVENT_CARD_HEIGHT + 11}
                     >
                       与当前结论相关
                     </text>
                   ) : null}
-                  {diagnosticsVisible ? (
-                    <text
-                      className={styles.certaintyTag}
-                      data-certainty={timelineCertainty(timelineEvent)}
-                      textAnchor="end"
-                      x={PLOT_RIGHT - 28}
-                      y={y - 10}
-                    >
-                      {timelineCertaintyLabel(timelineEvent)}
-                    </text>
-                  ) : null}
-                  <line className={styles.rowRule} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} />
                   {bounds ? (
                     isRange ? (
                       <>
                         <rect
                           className={styles.rangeBand}
-                          height={12}
-                          rx={2}
+                          height={10}
+                          rx={5}
                           width={Math.max(10, endX - startX)}
                           x={startX}
-                          y={y - 6}
+                          y={AXIS_Y - 5}
                         />
-                        <circle className={styles.rangeHandle} cx={startX} cy={y} r={5} />
-                        <circle className={styles.rangeHandle} cx={endX} cy={y} r={5} />
+                        <circle className={styles.rangeHandle} cx={startX} cy={AXIS_Y} r={4} />
+                        <circle className={styles.rangeHandle} cx={endX} cy={AXIS_Y} r={4} />
+                      </>
+                    ) : projectedRelative || certainty === "relative" ? (
+                      <>
+                        <circle className={styles.relativeProjectionHalo} cx={startX} cy={AXIS_Y} r={13} />
+                        <circle className={styles.relativeMarker} cx={startX} cy={AXIS_Y} r={6} />
                       </>
                     ) : (
                       <>
-                        {isApproximate ? <circle className={styles.approximateHalo} cx={startX} cy={y} r={14} /> : null}
-                        {projectedRelative ? (
-                          <circle
-                            className={styles.relativeProjectionHalo}
-                            cx={startX}
-                            cy={y}
-                            r={14}
-                          />
-                        ) : null}
-                        <path className={styles.pointMarker} d={`M ${startX} ${y - 8} L ${startX + 8} ${y} L ${startX} ${y + 8} L ${startX - 8} ${y} Z`} />
+                        {isApproximate ? <circle className={styles.approximateHalo} cx={startX} cy={AXIS_Y} r={13} /> : null}
+                        <path className={styles.pointMarker} d={`M ${startX} ${AXIS_Y - 7} L ${startX + 7} ${AXIS_Y} L ${startX} ${AXIS_Y + 7} L ${startX - 7} ${AXIS_Y} Z`} />
                       </>
                     )
                   ) : (
                     <g>
-                      <circle className={styles.offAxisMarker} cx={startX} cy={y} r={7} />
-                      <text className={styles.offAxisLabel} textAnchor="middle" x={startX} y={y + 20}>轴外</text>
+                      <circle className={styles.offAxisMarker} cx={startX} cy={AXIS_Y} r={7} />
+                      <text className={styles.offAxisLabel} textAnchor="middle" x={startX} y={AXIS_Y + 23}>待定</text>
                     </g>
                   )}
                   {issue ? (
                     <g className={styles.issuePin} data-status={issueStatus}>
-                      <circle cx={PLOT_RIGHT - 8} cy={y} r={8} />
-                      <text textAnchor="middle" x={PLOT_RIGHT - 8} y={y + 3}>{timelineEvent.issueIds.length > 1 ? timelineEvent.issueIds.length : "!"}</text>
+                      <circle cx={cardCenterX + EVENT_CARD_WIDTH / 2 - 9} cy={cardY + 9} r={7} />
+                      <text textAnchor="middle" x={cardCenterX + EVENT_CARD_WIDTH / 2 - 9} y={cardY + 12}>{timelineEvent.issueIds.length > 1 ? timelineEvent.issueIds.length : "!"}</text>
                     </g>
                   ) : null}
                 </g>
@@ -733,21 +813,48 @@ export function TimelineOverview({
               return (
                 <g
                   className={styles.laneRow}
+                  data-kind={lane.kind}
+                  data-agent-object-id={lane.id}
                   data-selected={laneSelected}
                   data-testid={`timeline-lane-${lane.id}`}
                   key={lane.id}
                 >
-                  <rect className={styles.laneHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
-                  <text className={styles.laneKind} x={28} y={y - 8}>
-                    {lane.kind === "person" ? "人物" : "地点"}
+                  <rect
+                    className={styles.laneHitbox}
+                    height={ROW_HEIGHT - 12}
+                    rx={5}
+                    width={VIEW_WIDTH - 36}
+                    x={18}
+                    y={y - 30}
+                  />
+                  <rect
+                    className={styles.laneBadge}
+                    height={28}
+                    rx={lane.kind === "person" ? 14 : 4}
+                    width={28}
+                    x={30}
+                    y={y - 14}
+                  />
+                  <text className={styles.laneBadgeText} textAnchor="middle" x={44} y={y + 4}>
+                    {lane.kind === "person" ? "人" : "地"}
                   </text>
-                  <text className={styles.laneLabel} x={28} y={y + 9}>
+                  <text className={styles.laneKind} x={70} y={y - 8}>
+                    {lane.kind === "person" ? "人物轨道" : "地点轨道"}
+                  </text>
+                  <text className={styles.laneLabel} x={70} y={y + 10}>
                     {lane.label}
                   </text>
-                  <text className={styles.laneCount} textAnchor="end" x={PLOT_LEFT - 18} y={y + 9}>
-                    {lane.eventIds.length} EVENT{lane.eventIds.length === 1 ? "" : "S"}
+                  <text className={styles.laneCount} textAnchor="end" x={LANE_PLOT_LEFT - 18} y={y + 4}>
+                    {lane.eventIds.length} 个事件
                   </text>
-                  <line className={styles.rowRule} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} />
+                  <line
+                    className={styles.laneTrack}
+                    data-testid={`timeline-lane-track-${lane.id}`}
+                    x1={LANE_PLOT_LEFT}
+                    x2={PLOT_RIGHT}
+                    y1={y}
+                    y2={y}
+                  />
                   {lane.eventIds.map((eventId, markerIndex) => {
                     const timelineEvent = eventById.get(eventId);
                     if (!timelineEvent) return null;
@@ -762,14 +869,17 @@ export function TimelineOverview({
                     const issueStatus = issue ? issueStatuses[issue.id] : undefined;
                     const x = bounds
                       ? axis.scale(new Date(bounds.start))
-                      : PLOT_LEFT - 34 - markerIndex * 11;
+                      : LANE_PLOT_LEFT - 26 - markerIndex * 10;
                     const endX = bounds ? axis.scale(new Date(bounds.end)) : x;
+                    const textAnchor = x > PLOT_RIGHT - 150 ? "end" : "start";
+                    const textX = x + (textAnchor === "end" ? -12 : 12);
                     return (
                       <g
                         aria-label={`${lane.label}，${timelineEvent.label}，${eventTimeLabel(timelineEvent)}${conclusionRelated ? "，与当前结论相关" : ""}`}
                         aria-pressed={selected}
                         className={styles.laneMarker}
                         data-certainty={certainty}
+                        data-agent-object-id={eventId}
                         data-projection={projectedRelative ? "relative" : "absolute"}
                         data-selected={selected}
                         data-conclusion-related={conclusionRelated}
@@ -785,6 +895,7 @@ export function TimelineOverview({
                         tabIndex={0}
                       >
                         <title>{`${timelineEvent.label} · ${eventTimeLabel(timelineEvent)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
+                        <circle className={styles.laneMarkerHitbox} cx={x} cy={y} r={16} />
                         {bounds && bounds.end > bounds.start ? (
                           <rect
                             className={styles.laneRange}
@@ -810,6 +921,22 @@ export function TimelineOverview({
                             <circle className={styles.lanePoint} cx={x} cy={y} r={6} />
                           </>
                         )}
+                        <text
+                          className={styles.laneEventLabel}
+                          textAnchor={textAnchor}
+                          x={textX}
+                          y={y - 12}
+                        >
+                          {timelineEvent.label}
+                        </text>
+                        <text
+                          className={styles.laneEventTime}
+                          textAnchor={textAnchor}
+                          x={textX}
+                          y={y + 19}
+                        >
+                          {eventTimeLabel(timelineEvent)}
+                        </text>
                         {issue ? (
                           <circle
                             className={styles.laneIssueRing}
@@ -825,7 +952,7 @@ export function TimelineOverview({
                             className={styles.laneConclusionRelatedTag}
                             textAnchor="middle"
                             x={x}
-                            y={y - 14}
+                            y={y + 31}
                           >
                             与当前结论相关
                           </text>
@@ -948,30 +1075,6 @@ export function TimelineOverview({
           ))}
         </ol>
       )}
-
-      <footer className={styles.timelineFooter}>
-        <p role="status">{notice ?? (unresolvedEvents.length ? `有 ${unresolvedEvents.length} 个事件尚不能解析到时间轴。` : editable ? "拖动菱形或区间带，松开后先查看影响。" : "历史与候选内容保持只读。")}</p>
-        <div className={styles.timelineFooterActions}>
-          <button
-            className={styles.timeEditTrigger}
-            disabled={!editable}
-            onClick={() => openEditor(selectedEvent)}
-            type="button"
-          >
-            编辑所选时间
-          </button>
-          {projectId !== undefined && draftId !== undefined ? (
-            <ExposurePlanEditor
-              draftId={draftId}
-              editable={exposurePlanEditable}
-              events={events}
-              onSelectEvent={onSelectEvent}
-              projectId={projectId}
-              selectedEventId={selectedEventId}
-            />
-          ) : null}
-        </div>
-      </footer>
 
       {editor && editorEventId ? (
         <section className={styles.timeEditor} aria-label="编辑事件时间">

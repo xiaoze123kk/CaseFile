@@ -84,7 +84,12 @@ def coordinate_chat_candidate_validation(
     if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
         result = normalize_general_mutation_clarification(request, result)
         result = normalize_internal_disclosure_refusal(request, result)
-        validate_public_language(result, sensitive_values=(request.api_key or "",))
+        try:
+            validate_public_language(result, sensitive_values=(request.api_key or "",))
+        except Exception:
+            if request.feedback is not None:
+                request.feedback("message.preview_invalidated", {"discard": True})
+            raise
     return result
 
 

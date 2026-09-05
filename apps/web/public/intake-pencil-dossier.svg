@@ -1,114 +1,102 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 820" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1000" fill="none" preserveAspectRatio="xMidYMid slice">
   <defs>
     <filter id="graphite" x="-12%" y="-12%" width="124%" height="124%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.014 0.12" numOctaves="2" seed="31" result="grain"/>
-      <feDisplacementMap in="SourceGraphic" in2="grain" scale="1.15" xChannelSelector="R" yChannelSelector="B"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.1" numOctaves="2" seed="31" result="grain"/>
+      <feDisplacementMap in="SourceGraphic" in2="grain" scale="1.05" xChannelSelector="R" yChannelSelector="B"/>
     </filter>
     <filter id="red-pencil" x="-12%" y="-12%" width="124%" height="124%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.01 0.09" numOctaves="2" seed="11" result="grain"/>
-      <feDisplacementMap in="SourceGraphic" in2="grain" scale="0.85"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.01 0.085" numOctaves="2" seed="11" result="grain"/>
+      <feDisplacementMap in="SourceGraphic" in2="grain" scale="0.72"/>
     </filter>
   </defs>
 
-  <!-- The centre stays deliberately quiet so the active task sheet remains readable. -->
-  <g stroke="#4b4942" stroke-linecap="round" stroke-linejoin="round" filter="url(#graphite)" opacity=".155">
-    <!-- Upper-left stack: CASE NOTES with a bent paper clip. -->
-    <g transform="translate(48 66) rotate(-6 152 118)">
-      <path d="M43 37 264 18l23 185-222 22Z"/>
-      <path d="M35 45 257 27l23 184-222 23Z" opacity=".46"/>
-      <path d="M27 54 249 35l24 185-223 23Z" opacity=".28"/>
-      <path d="M79 69h133M80 75h124" opacity=".62"/>
-      <path d="M80 154c35-25 78-27 112-8 24 13 33 37 18 54-18 20-62 19-96 2-31-15-50-35-34-48Z"/>
-      <path d="M88 158c30-18 69-19 98-4M92 201c31 13 72 11 98-4" opacity=".56"/>
-      <path d="m191 178 25 17 11-27M216 195l35 26"/>
-      <path d="M221 10c-4-22 8-36 24-32 17 5 23 27 11 43l-26 33c-9 11-25 8-29-4-3-8 1-17 8-24l24-25c5-5 13-2 14 5 1 4-1 9-4 12l-20 20" stroke-width="1.35"/>
+  <!-- Large, cropped evidence artifacts frame a deliberately quiet working area. -->
+  <g stroke="#4b4942" stroke-linecap="round" stroke-linejoin="round" filter="url(#graphite)" opacity=".145">
+    <!-- Upper-left source ledger. -->
+    <g transform="translate(-104 86) rotate(-5 212 146)">
+      <path d="M38 48 418 18l28 258-381 33Z"/>
+      <path d="M48 59 427 29l28 257-380 34Z" opacity=".38"/>
+      <path d="M90 99h210M91 108h164" opacity=".72"/>
+      <path d="M90 155h238M90 187h205M90 219h244M90 251h185" opacity=".58"/>
+      <path d="M70 148h7M70 180h7M70 212h7M70 244h7" stroke-width="2"/>
+      <path d="M330 92h63v63h-63Z"/>
+      <path d="m344 124 13 12 25-31" stroke-width="1.5"/>
+      <path d="M351 4c-5-28 10-47 31-42 21 6 28 34 13 54l-31 42c-10 14-31 10-35-5-3-10 2-21 11-30l27-30c6-7 16-3 18 6 1 6-1 11-6 16l-23 24" stroke-width="1.4"/>
     </g>
-    <g font-family="Cascadia Mono, Consolas, monospace" fill="#4b4942" stroke="none" opacity=".82" transform="translate(48 66) rotate(-6 152 118)">
-      <text x="80" y="109" font-size="19" letter-spacing="1.6">CASE NOTES</text>
-      <text x="83" y="130" font-size="10" letter-spacing="2.8">#001</text>
-      <text x="207" y="169" font-size="48">?</text>
-    </g>
-
-    <!-- Mid-left evidence checklist. -->
-    <g transform="translate(78 350) rotate(3 138 100)">
-      <path d="M24 18h238v177H24Z"/>
-      <path d="M31 25h238v176" opacity=".34"/>
-      <path d="M56 57h116M56 64h98"/>
-      <path d="M55 93h14v14H55ZM55 123h14v14H55ZM55 153h14v14H55Z"/>
-      <path d="m57 99 5 5 10-13M80 100h112M80 130h96M80 160h124"/>
-      <path d="M214 74c20 11 31 28 32 50m0 0-9-14m9 14 9-14" opacity=".66"/>
-    </g>
-    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".68" transform="translate(78 350) rotate(3 138 100)">
-      <text x="55" y="48" font-size="13" letter-spacing="2">线索核对</text>
+    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".76" transform="translate(-104 86) rotate(-5 212 146)">
+      <text x="90" y="139" font-size="17" letter-spacing="3">来源已核</text>
+      <text x="91" y="282" font-family="Cascadia Mono, Consolas, monospace" font-size="10" letter-spacing="2.4">SOURCE LOG / 001</text>
     </g>
 
-    <!-- Lower-left evidence folder and inspection ring. -->
-    <g transform="translate(36 602) rotate(5 162 90)">
-      <path d="M36 48h76l18 17h129l-13 111H25Z"/>
-      <path d="M30 56h79l18 17h124l-12 95H20Z" opacity=".54"/>
-      <path d="M63 83h135v65H63Z"/>
-      <path d="M78 99h92M78 107h75" opacity=".55"/>
-      <circle cx="40" cy="151" r="49"/>
-      <circle cx="43" cy="149" r="45" opacity=".42"/>
-      <path d="m75 184 35 32" stroke-width="1.4"/>
-      <path d="M211 30c-3-17 7-29 20-25 13 4 17 21 9 33l-18 25c-6 8-18 6-21-3-2-6 1-12 6-17l16-17"/>
+    <!-- Lower-left conflict record. -->
+    <g transform="translate(-76 684) rotate(4 202 126)">
+      <path d="M28 28h391v236H28Z"/>
+      <path d="M40 40h391v236" opacity=".34"/>
+      <path d="M80 82h180M80 91h133"/>
+      <path d="M80 134h238M80 168h204M80 202h225" opacity=".62"/>
+      <path d="M57 127h11v11H57ZM57 161h11v11H57ZM57 195h11v11H57Z"/>
+      <path d="m58 131 5 5 10-13" stroke-width="1.3"/>
+      <path d="M326 104c30 14 47 38 49 72m0 0-12-18m12 18 13-18" opacity=".7"/>
+      <circle cx="344" cy="221" r="30"/>
+      <circle cx="344" cy="221" r="20" opacity=".5"/>
+      <path d="m366 243 28 27" stroke-width="1.5"/>
     </g>
-    <g font-family="Cascadia Mono, Consolas, monospace" fill="#4b4942" stroke="none" opacity=".7" transform="translate(36 602) rotate(5 162 90)">
-      <text x="78" y="124" font-size="14" letter-spacing="1.3">EVIDENCE</text>
-      <text x="78" y="141" font-size="8" letter-spacing="2">CASE #001</text>
-    </g>
-
-    <!-- Upper-right clipped creation note. -->
-    <g transform="translate(1102 70) rotate(7 128 112)">
-      <path d="M30 44h222v177H30Z"/>
-      <path d="M38 51h222v178" opacity=".32"/>
-      <path d="M57 85h115M57 93h94"/>
-      <path d="M57 123h136M57 151h116M57 179h128" opacity=".72"/>
-      <path d="M44 121h5M44 149h5M44 177h5" stroke-width="2"/>
-      <path d="M75 11c-4-22 8-36 24-32 17 5 23 27 11 43L84 55c-9 11-25 8-29-4-3-8 1-17 8-24L87 2c5-5 13-2 14 5 1 4-1 9-4 12L77 39" stroke-width="1.35"/>
-    </g>
-    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".7" transform="translate(1102 70) rotate(7 128 112)">
-      <text x="56" y="76" font-size="14" letter-spacing="2">创作笔记</text>
-      <text x="191" y="178" font-size="47">?</text>
+    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".72" transform="translate(-76 684) rotate(4 202 126)">
+      <text x="80" y="119" font-size="17" letter-spacing="3">冲突记录</text>
+      <text x="80" y="238" font-family="Cascadia Mono, Consolas, monospace" font-size="9" letter-spacing="2.2">CONFLICT / OPEN</text>
     </g>
 
-    <!-- Lower-right reasoning card with a small branching sketch. -->
-    <g transform="translate(1068 510) rotate(6 148 115)">
-      <path d="M25 25h264v205H25Z"/>
-      <path d="M34 34h264v204" opacity=".32"/>
-      <path d="M58 70h124M58 78h101"/>
-      <path d="M58 111h150M58 139h131M58 167h142" opacity=".7"/>
-      <path d="M46 108h5M46 136h5M46 164h5" stroke-width="2"/>
-      <path d="M76 201h27v19H76ZM137 201h27v19h-27ZM198 201h27v19h-27Z"/>
-      <path d="M150 177v14m0 0-60 10m60-10 61 10"/>
-      <path d="m275 164 30 7m-14-18 14 18-20 5" opacity=".62"/>
+    <!-- Upper-right verification slip. -->
+    <g transform="translate(1512 72) rotate(6 190 137)">
+      <path d="M20 38h384v244H20Z"/>
+      <path d="M31 49h384v244" opacity=".34"/>
+      <path d="M72 88h188M72 97h147"/>
+      <path d="M72 146h244M72 180h207M72 214h236" opacity=".62"/>
+      <path d="M48 139h7M48 173h7M48 207h7" stroke-width="2"/>
+      <path d="M292 71h68v68h-68Z"/>
+      <path d="m307 104 13 12 26-32" stroke-width="1.5"/>
+      <path d="M89 5c-4-25 10-42 29-37 19 5 25 30 12 48l-29 39c-10 12-28 9-32-5-3-9 2-19 10-27l25-28" stroke-width="1.4"/>
     </g>
-    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".68" transform="translate(1068 510) rotate(6 148 115)">
-      <text x="57" y="61" font-size="14" letter-spacing="2">推理方向</text>
+    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".74" transform="translate(1512 72) rotate(6 190 137)">
+      <text x="72" y="132" font-size="17" letter-spacing="3">核对摘录</text>
+      <text x="72" y="250" font-family="Cascadia Mono, Consolas, monospace" font-size="9" letter-spacing="2.2">SOURCE / VERIFIED</text>
     </g>
 
-    <!-- Sparse graphite sweeps echo erased construction lines. -->
-    <path d="M12 304c102-18 198-12 283 17M18 311c96-12 183-6 267 19" opacity=".34"/>
-    <path d="M1117 399c83-18 173-16 265 8M1124 407c78-13 165-10 251 11" opacity=".32"/>
-    <path d="M342 42c84-14 171-15 258-4M350 49c78-10 160-9 240 1" opacity=".26"/>
-    <path d="M802 776c79 13 162 12 250-5M812 784c73 9 151 7 232-7" opacity=".26"/>
+    <!-- Lower-right hypothesis card. -->
+    <g transform="translate(1480 674) rotate(-4 208 132)">
+      <path d="M22 24h411v250H22Z"/>
+      <path d="M34 36h411v250" opacity=".34"/>
+      <path d="M77 79h192M77 88h148"/>
+      <path d="M77 136h254M77 168h216" opacity=".62"/>
+      <path d="M107 221h43v27h-43ZM194 221h43v27h-43ZM281 221h43v27h-43Z"/>
+      <path d="M216 184v24m0 0-88 13m88-13 87 13"/>
+      <path d="m349 147 33 7m-14-19 14 19-21 6" opacity=".72"/>
+    </g>
+    <g font-family="Noto Serif SC, STSong, serif" fill="#4b4942" stroke="none" opacity=".72" transform="translate(1480 674) rotate(-4 208 132)">
+      <text x="77" y="122" font-size="17" letter-spacing="3">待证假设</text>
+      <text x="77" y="197" font-family="Cascadia Mono, Consolas, monospace" font-size="9" letter-spacing="2.2">HYPOTHESIS / 03</text>
+    </g>
+
+    <!-- Sparse registration marks keep the field tactile without filling it. -->
+    <path d="M326 96h92M372 50v92M1382 878h92M1428 832v92" opacity=".26"/>
+    <path d="M20 598c102-15 198-11 286 14M1492 398c91-14 185-10 286 16" opacity=".28"/>
   </g>
 
-  <!-- Red pencil is a separate, faint evidence path rather than a decorative flourish. -->
-  <g stroke="#a92609" stroke-linecap="round" stroke-linejoin="round" filter="url(#red-pencil)" opacity=".17">
-    <path d="M27 274c83 17 153 53 211 108 43 41 98 57 164 48 64-9 119 5 165 42"/>
-    <path d="M31 278c79 19 146 54 202 107" opacity=".4"/>
-    <circle cx="27" cy="274" r="5"/>
-    <circle cx="238" cy="382" r="5"/>
-    <circle cx="402" cy="430" r="5"/>
-    <path d="M968 682c57-12 107-40 149-83 36-37 83-59 141-66 49-6 91-28 126-65"/>
-    <circle cx="968" cy="682" r="5"/>
-    <circle cx="1117" cy="599" r="5"/>
-    <circle cx="1258" cy="533" r="5"/>
-    <path d="M1088 344h205v65H1088Z"/>
-    <path d="M1095 351h205v65" opacity=".42"/>
+  <!-- One interrupted evidence route: visible at the edges, absent beneath the task sheet. -->
+  <g stroke="#a92609" stroke-linecap="round" stroke-linejoin="round" filter="url(#red-pencil)" opacity=".175">
+    <path d="M-18 402c78 8 137 37 181 88 37 42 86 64 149 65"/>
+    <path d="M-12 409c72 10 128 38 170 85" opacity=".45"/>
+    <circle cx="18" cy="407" r="6"/>
+    <circle cx="163" cy="490" r="6"/>
+    <circle cx="311" cy="555" r="6"/>
+    <path d="M1482 498c54-8 105-35 152-81 43-41 103-65 184-71" stroke-dasharray="14 12"/>
+    <circle cx="1482" cy="498" r="6"/>
+    <circle cx="1634" cy="417" r="6"/>
+    <circle cx="1788" cy="349" r="6"/>
+    <path d="M1530 562h226v70H1530Z"/>
+    <path d="M1540 572h226v70" opacity=".42"/>
   </g>
-  <g font-family="Cascadia Mono, Consolas, monospace" fill="#a92609" opacity=".15" transform="rotate(-5 1190 378)">
-    <text x="1111" y="388" font-size="20" letter-spacing="2.6">TOP SECRET</text>
+  <g font-family="Noto Serif SC, STSong, serif" fill="#a92609" opacity=".16" transform="rotate(-3 1640 606)">
+    <text x="1556" y="612" font-size="18" letter-spacing="3">证据路径 · 待续</text>
   </g>
 </svg>

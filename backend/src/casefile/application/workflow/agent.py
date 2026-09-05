@@ -53,6 +53,12 @@ from casefile.application.agent_collaboration import (
     pointer_top_field as _pointer_top_field,
 )
 from casefile.application.agent_collaboration import unique_strings as _unique_strings
+from casefile.application.agent_message_context import (
+    message_context_snapshot as _message_context_snapshot,
+)
+from casefile.application.agent_message_context import (
+    persist_message_context as _persist_message_context,
+)
 from casefile.application.agent_mutation import general_mutation_impact_hash
 from casefile.application.agent_patch_mutation import (
     AgentPatchMutationMixin,
@@ -68,7 +74,7 @@ from casefile.application.chat_public_contracts import (
     public_agent_run_view,
     public_routing_interpretation,
 )
-from casefile.application.chat_public_events import public_agent_event_view
+from casefile.application.chat_public_events import public_agent_event_view, public_feedback_events
 from casefile.application.closure_repair import (
     ValidatedClosureRepair,
     prepare_chat_repair_suggestions,
@@ -109,6 +115,8 @@ from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
     AgentGoalSession,
     AgentMessage,
+    AgentMessageContext,
+    AgentMessageContextRef,
     AgentPatchOperation,
     AgentPatchSet,
     AgentThread,
@@ -304,6 +312,27 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 )
             )
             message_ids = [message.id for message in messages]
+            contexts_by_message = {
+                context.message_id: context
+                for context in (
+                    []
+                    if not message_ids
+                    else self.session.scalars(
+                        select(AgentMessageContext).where(
+                            AgentMessageContext.message_id.in_(message_ids)
+                        )
+                    )
+                )
+            }
+            context_ids = [context.id for context in contexts_by_message.values()]
+            context_refs_by_context: dict[int, list[AgentMessageContextRef]] = {}
+            if context_ids:
+                for ref in self.session.scalars(
+                    select(AgentMessageContextRef)
+                    .where(AgentMessageContextRef.context_id.in_(context_ids))
+                    .order_by(AgentMessageContextRef.context_id, AgentMessageContextRef.ordinal)
+                ):
+                    context_refs_by_context.setdefault(ref.context_id, []).append(ref)
             tasks_by_output = {
                 task.output_message_id: task
                 for task in (
@@ -336,6 +365,14 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 _agent_message_view(
                     message,
                     task=tasks_by_output.get(message.id),
+                    context_snapshot=(
+                        None
+                        if (context := contexts_by_message.get(message.id)) is None
+                        else _message_context_snapshot(
+                            context,
+                            context_refs_by_context.get(context.id, []),
+                        )
+                    ),
                     patch_set=(
                         None
                         if (patch := patch_sets_by_message.get(message.id)) is None
@@ -412,6 +449,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         run_id: int,
         *,
         after_sequence: int = 0,
+        feedback_version: int = 1,
     ) -> list[PublicAgentEvent]:
         if after_sequence < 0:
             raise ApplicationError(
@@ -426,10 +464,22 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 select(TaskEvent)
                 .where(
                     TaskEvent.task_run_id == task.id,
-                    TaskEvent.sequence_no > after_sequence,
+                    TaskEvent.sequence_no > (0 if feedback_version == 2 else after_sequence),
                 )
                 .order_by(TaskEvent.sequence_no)
             )
+            if feedback_version == 2:
+                revision = task.input_draft_revision
+                return [
+                    event
+                    for event in public_feedback_events(
+                        [_event_view(row) for row in rows],
+                        run,
+                        draft_id=task.draft_id,
+                        draft_revision=revision if type(revision) is int else None,
+                    )
+                    if event.root.sequence > after_sequence
+                ]
             projected = (public_agent_event_view(_event_view(row), run) for row in rows)
             return [event for event in projected if event is not None]
 
@@ -504,6 +554,19 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 if resolved_delivery_mode in {"steer", "follow_up", "replace"}
                 else self._provider_setting(actor_user_id, provider)
             )
+            casefile = build_casefile_document(self.session, owned)
+            validation_snapshot = WorkbenchReadModel(self.session).validation_snapshot(owned)
+            known_issue_ids = frozenset(
+                str(item["issue_id"])
+                for item in validation_snapshot.get("issues", [])
+                if isinstance(item, dict) and item.get("issue_id")
+            )
+            frozen_focus = _freeze_agent_focus(
+                casefile,
+                focus if isinstance(focus, dict) else None,
+                known_issue_ids,
+            )
+            context_policy_version = _chat_context_policy_version()
             history = list(
                 self.session.scalars(
                     select(AgentMessage)
@@ -542,6 +605,17 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             )
             self.session.add_all([user_message, assistant_message])
             self.session.flush()
+            message_context, message_context_refs = _persist_message_context(
+                self.session,
+                owned,
+                thread,
+                user_message,
+                frozen_focus,
+            )
+            user_context_snapshot = _message_context_snapshot(
+                message_context,
+                message_context_refs,
+            )
 
             if thread.title_source == "auto" and not any(
                 message.role == "user" for message in history
@@ -574,13 +648,16 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                         goal=goal,
                         delivery=delivery,
                         current_document=casefile,
-                        validation_snapshot=WorkbenchReadModel(
-                            self.session
-                        ).validation_snapshot(owned),
+                        validation_snapshot=WorkbenchReadModel(self.session).validation_snapshot(
+                            owned
+                        ),
                     )
                     return {
                         "thread": _agent_thread_view(thread),
-                        "user_message": _agent_message_view(user_message),
+                        "user_message": _agent_message_view(
+                            user_message,
+                            context_snapshot=user_context_snapshot,
+                        ),
                         "assistant_message": _agent_message_view(
                             assistant_message,
                             task=continuation,
@@ -634,14 +711,16 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 else:
                     return {
                         "thread": _agent_thread_view(thread),
-                        "user_message": _agent_message_view(user_message),
+                        "user_message": _agent_message_view(
+                            user_message,
+                            context_snapshot=user_context_snapshot,
+                        ),
                         "assistant_message": _agent_message_view(assistant_message),
                         "task": None,
                         "goal": self._public_goal_session(goal),
                         "delivery": public_goal_delivery_view(delivery),
                     }
 
-            casefile = build_casefile_document(self.session, owned)
             if resolved_delivery_mode == "new_goal" and not successor_created:
                 goal = self._create_goal_session(
                     owned,
@@ -650,19 +729,6 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     actor_user_id=actor_user_id,
                     baseline_hash=casefile_content_hash(casefile),
                 )
-            focus_values = focus if isinstance(focus, dict) else None
-            validation_snapshot = WorkbenchReadModel(self.session).validation_snapshot(owned)
-            known_issue_ids = frozenset(
-                str(item["issue_id"])
-                for item in validation_snapshot.get("issues", [])
-                if isinstance(item, dict) and item.get("issue_id")
-            )
-            frozen_focus = _freeze_agent_focus(
-                casefile,
-                focus_values,
-                known_issue_ids,
-            )
-            context_policy_version = _chat_context_policy_version()
             frozen_input = {
                 "casefile": casefile,
                 "history": [
@@ -675,6 +741,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 ],
                 "message": content,
                 "focus": frozen_focus,
+                "context_snapshot": user_context_snapshot,
                 "validation": validation_snapshot,
                 "context_policy_version": context_policy_version,
                 "routing_hint": (
@@ -720,7 +787,10 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             )
             return {
                 "thread": _agent_thread_view(thread),
-                "user_message": _agent_message_view(user_message),
+                "user_message": _agent_message_view(
+                    user_message,
+                    context_snapshot=user_context_snapshot,
+                ),
                 "assistant_message": _agent_message_view(
                     assistant_message,
                     task=task,
@@ -728,9 +798,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 "task": task_result,
                 "goal": None if goal is None else self._public_goal_session(goal),
                 "delivery": (
-                    None
-                    if queued_delivery is None
-                    else public_goal_delivery_view(queued_delivery)
+                    None if queued_delivery is None else public_goal_delivery_view(queued_delivery)
                 ),
             }
 
@@ -1174,7 +1242,9 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             if general_mutation_envelope is not None:
                 suggestions = []
 
-            focused_target_ids = _focused_patch_target_ids(task.input_jsonb.get("focus"))
+            focused_target_ids = _focused_patch_target_ids(
+                task.input_jsonb.get("focus"), task.input_jsonb.get("validation")
+            )
             if focused_target_ids is not None:
                 off_focus_targets = sorted(
                     {
@@ -1795,9 +1865,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 "post_apply_verification_run_id": None if post_run is None else post_run.id,
                 "simulation": applied_simulation.as_dict(),
                 "goal": None if goal is None else self._public_goal_session(goal),
-                "continuation_run": (
-                    None if continuation is None else _task_view(continuation)
-                ),
+                "continuation_run": (None if continuation is None else _task_view(continuation)),
             }
 
     def simulate_agent_patch_set(

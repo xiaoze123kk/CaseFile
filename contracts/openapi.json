@@ -4889,6 +4889,77 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/agent/goals/{goal_id}/deliveries": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Goal Deliveries",
+        "operationId": "get_agent_goal_deliveries_api_v1_projects__project_id__agent_goals__goal_id__deliveries_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "goal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Goal Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicGoalDelivery"
+                  },
+                  "title": "Response Get Agent Goal Deliveries Api V1 Projects  Project Id  Agent Goals  Goal Id  Deliveries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/agent/goals/{goal_id}/stream": {
       "get": {
         "tags": [
@@ -5227,6 +5298,18 @@
             }
           },
           {
+            "name": "feedback_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2,
+              "minimum": 1,
+              "default": 1,
+              "title": "Feedback Version"
+            }
+          },
+          {
             "name": "X-CaseFile-User-Id",
             "in": "header",
             "required": false,
@@ -5295,6 +5378,18 @@
             "schema": {
               "type": "integer",
               "title": "Run Id"
+            }
+          },
+          {
+            "name": "feedback_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2,
+              "minimum": 1,
+              "default": 1,
+              "title": "Feedback Version"
             }
           },
           {
@@ -8153,6 +8248,12 @@
         ],
         "title": "DraftCandidateAdoptRequest"
       },
+      "EventId": {
+        "type": "string",
+        "maxLength": 128,
+        "minLength": 1,
+        "title": "EventId"
+      },
       "ExposurePlanEntryRequest": {
         "properties": {
           "entry_key": {
@@ -8823,6 +8924,12 @@
         ],
         "title": "MutationUpdateOperationRequest"
       },
+      "ObjectId": {
+        "type": "string",
+        "maxLength": 128,
+        "minLength": 1,
+        "title": "ObjectId"
+      },
       "ObjectPatchRequest": {
         "properties": {
           "expected_draft_id": {
@@ -9010,6 +9117,68 @@
         ],
         "title": "ProviderSettingRequest"
       },
+      "PublicAgentContextSnapshot": {
+        "properties": {
+          "draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Draft Id"
+          },
+          "draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Draft Revision"
+          },
+          "object_ids": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectId"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Object Ids"
+          },
+          "event_ids": {
+            "items": {
+              "$ref": "#/components/schemas/EventId"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Event Ids"
+          },
+          "validation_issue_ids": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssueId"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Validation Issue Ids"
+          },
+          "view": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "draft_id",
+          "draft_revision",
+          "object_ids",
+          "event_ids",
+          "validation_issue_ids",
+          "view"
+        ],
+        "title": "PublicAgentContextSnapshot"
+      },
       "PublicAgentEvent": {
         "anyOf": [
           {
@@ -9032,11 +9201,242 @@
           },
           {
             "$ref": "#/components/schemas/PublicAgentEvent7"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent8"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent9"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent10"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent11"
           }
         ],
         "title": "PublicAgentEvent"
       },
       "PublicAgentEvent1": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.activity_detail",
+            "title": "Event"
+          },
+          "activity_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Activity Id"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/Activity1"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status8"
+          },
+          "object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Object Ids"
+          },
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id"
+          },
+          "draft_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "activity_id",
+          "activity",
+          "status",
+          "object_ids"
+        ],
+        "title": "PublicAgentEvent1"
+      },
+      "PublicAgentEvent10": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.failed",
+            "title": "Event"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/PublicAgentFailure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "failure"
+        ],
+        "title": "PublicAgentEvent10"
+      },
+      "PublicAgentEvent11": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.cancelled",
+            "title": "Event"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "message"
+        ],
+        "title": "PublicAgentEvent11"
+      },
+      "PublicAgentEvent2": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "message.preview_started",
+            "title": "Event"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event"
+        ],
+        "title": "PublicAgentEvent2"
+      },
+      "PublicAgentEvent3": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "message.preview_delta",
+            "title": "Event"
+          },
+          "preview_sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Preview Sequence"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "final": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 65536,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "preview_sequence",
+          "offset",
+          "text"
+        ],
+        "title": "PublicAgentEvent3"
+      },
+      "PublicAgentEvent4": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "message.preview_invalidated",
+            "title": "Event"
+          },
+          "discard": {
+            "type": "boolean",
+            "title": "Discard"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "discard"
+        ],
+        "title": "PublicAgentEvent4"
+      },
+      "PublicAgentEvent5": {
         "properties": {
           "sequence": {
             "type": "integer",
@@ -9059,9 +9459,9 @@
           "event",
           "run"
         ],
-        "title": "PublicAgentEvent1"
+        "title": "PublicAgentEvent5"
       },
-      "PublicAgentEvent2": {
+      "PublicAgentEvent6": {
         "properties": {
           "sequence": {
             "type": "integer",
@@ -9085,9 +9485,9 @@
           "event",
           "activity"
         ],
-        "title": "PublicAgentEvent2"
+        "title": "PublicAgentEvent6"
       },
-      "PublicAgentEvent3": {
+      "PublicAgentEvent7": {
         "properties": {
           "sequence": {
             "type": "integer",
@@ -9111,9 +9511,9 @@
           "event",
           "context_state"
         ],
-        "title": "PublicAgentEvent3"
+        "title": "PublicAgentEvent7"
       },
-      "PublicAgentEvent4": {
+      "PublicAgentEvent8": {
         "properties": {
           "sequence": {
             "type": "integer",
@@ -9144,9 +9544,9 @@
           "verification_status",
           "summary"
         ],
-        "title": "PublicAgentEvent4"
+        "title": "PublicAgentEvent8"
       },
-      "PublicAgentEvent5": {
+      "PublicAgentEvent9": {
         "properties": {
           "sequence": {
             "type": "integer",
@@ -9169,60 +9569,7 @@
           "event",
           "run"
         ],
-        "title": "PublicAgentEvent5"
-      },
-      "PublicAgentEvent6": {
-        "properties": {
-          "sequence": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Sequence"
-          },
-          "event": {
-            "type": "string",
-            "const": "run.failed",
-            "title": "Event"
-          },
-          "failure": {
-            "$ref": "#/components/schemas/PublicAgentFailure"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "sequence",
-          "event",
-          "failure"
-        ],
-        "title": "PublicAgentEvent6"
-      },
-      "PublicAgentEvent7": {
-        "properties": {
-          "sequence": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Sequence"
-          },
-          "event": {
-            "type": "string",
-            "const": "run.cancelled",
-            "title": "Event"
-          },
-          "message": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Message"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "sequence",
-          "event",
-          "message"
-        ],
-        "title": "PublicAgentEvent7"
+        "title": "PublicAgentEvent9"
       },
       "PublicAgentFailure": {
         "properties": {
@@ -9285,6 +9632,16 @@
               }
             ],
             "title": "Body"
+          },
+          "context_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicAgentContextSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "interpretation": {
             "anyOf": [
@@ -10426,6 +10783,15 @@
         ],
         "title": "Status7"
       },
+      "Status8": {
+        "type": "string",
+        "enum": [
+          "started",
+          "completed",
+          "failed"
+        ],
+        "title": "Status8"
+      },
       "TimelineTimePreviewRequest": {
         "properties": {
           "expected_draft_id": {
@@ -10493,6 +10859,12 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ValidationIssueId": {
+        "type": "string",
+        "maxLength": 128,
+        "minLength": 1,
+        "title": "ValidationIssueId"
       },
       "VerificationFindingReviewRequest": {
         "properties": {

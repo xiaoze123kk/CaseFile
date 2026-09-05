@@ -54,6 +54,7 @@ from casefile.agent_runtime.models import (
     RouteDecision,
     ToolMetrics,
 )
+from casefile.worker.chat_feedback import ChatFeedbackWriter
 from casefile.worker.execution import (
     GoalSafePointObserver,
     ProviderRequirement,
@@ -145,6 +146,9 @@ class ChatHandler:
         provider, api_key = context.require_provider()
         task = context.task
         request = self._chat._load_chat_request(task, api_key)
+        feedback = ChatFeedbackWriter(context.session_factory, task.id, context.attempt_id)
+        request = replace(request, feedback=feedback)
+        feedback("message.preview_invalidated", {"discard": True})
         if self._try_goal(context, request, provider, api_key):
             return
         self._execute_single(context, request, provider, api_key)
@@ -982,6 +986,7 @@ class ChatHandler:
             replace(
                 request,
                 message=scoped_message,
+                feedback=None,
                 casefile=(
                     request.casefile if action.target_state == "baseline" else candidate_document
                 ),

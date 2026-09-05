@@ -567,12 +567,12 @@ function sectionsFor(
         section("核心信息", [
           creatorListField("别名", object.aliases),
           creatorListField("特征", object.traits),
+          creatorListField("目标", object.goals),
         ]),
       ]),
       moreSections: [
         ...compact([
           section("人物与实体设定", [
-            creatorListField("目标", object.goals),
             creatorListField("秘密", object.secrets),
             creatorListField("能力", object.capabilities),
             knowledgeStatesField(object.knowledge_states, catalog),
@@ -618,14 +618,16 @@ function sectionsFor(
       coreSections: compact([
         section("发生信息", [
           textField("卷宗时间", formatCaseWallClock(stringValue(time?.start))),
-          textField("时间精度", objectSubtypeLabel(stringValue(time?.precision))),
-          textField("事实状态", objectSubtypeLabel(stringValue(object.truth_status))),
           referenceField("发生地点", object.location_ref, catalog),
           referenceField("参与者", object.participant_refs, catalog),
         ]),
       ]),
       moreSections: [
         ...compact([
+          section("事实标注", [
+            textField("时间精度", objectSubtypeLabel(stringValue(time?.precision))),
+            textField("事实状态", objectSubtypeLabel(stringValue(object.truth_status))),
+          ]),
           section("因果与观察", [
             referenceField("原因事件", object.cause_refs, catalog),
             referenceField("结果事件", object.effect_refs, catalog),

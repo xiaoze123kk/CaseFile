@@ -18,6 +18,8 @@ inconclusive 或 semantic rejected 不得改变已成功的 N4.4 Artifact、Comp
 
 ## M3.8 GoalSession Runtime 冻结边界
 
+Agent 增强反馈只追加受公开语言门禁约束的 answer 片段与展示事件，不持久化完整模型候选或内部推理。预览写入独立验证 TaskAttempt/lease，不推进 TaskRun 阶段、不续租、不新增控制消费点；预览永远不拥有消息完成、Finding、Patch 或 Apply 权威。
+
 M3.8 的完整决策见 `docs/m3.8-goal-session-runtime.md`。该阶段以 `GoalSession > TaskRun` 为核心：GoalSession 可以跨消息和多个顺序 TaskRun 持续，TaskRun 仍是输入、Provider、Prompt、工具集和预算全部冻结的单次执行切片。M3.8 不扩展 TaskRun 六种状态；waiting、stale、superseded 只属于 GoalSession。
 
 运行中输入必须由用户显式标记为 `steer`、`follow_up` 或 `replace`。steer/replace 进入 FIFO 队列，仅在 Controller 前、完整 capability 后或 Finalizer 前的安全点消费；命中后当前 TaskRun 以 `succeeded + checkpointed` 收敛，再原子创建新 GoalRevision 和新 TaskRun。Provider、Binder、Simulation、Verification 与 Apply 事务不得强制中断。
@@ -54,7 +56,7 @@ M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通
 | `pnpm-workspace.yaml` | pnpm workspace 范围、依赖构建白名单和跨包兼容性 override。 |
 | `pnpm-lock.yaml` | JavaScript/TypeScript 工具与 workspace 依赖的可复现锁文件。 |
 | `infra/compose/docker-compose.yml` | 仅绑定回环地址的 PostgreSQL 18 开发库与独立 `_test` 测试库。 |
-| `scripts/bootstrap.ps1` | 幂等准备本地 `.env` 与加密主密钥、两个 PostgreSQL 容器、开发库迁移、51 表/head 验证，以及可选开发用户种子。 |
+| `scripts/bootstrap.ps1` | 幂等准备本地 `.env` 与加密主密钥、两个 PostgreSQL 容器、开发库迁移、76 表/head 验证，以及可选开发用户种子。 |
 | `scripts/dev.ps1` | 从仓库根目录启动 `apps/web` 本地开发服务器；API 与 Worker 仍按各自入口启动。 |
 | `scripts/benchmark.ps1` | `brief_to_draft` Provider 级 Benchmark CLI 入口，支持 fake/openai/deepseek、重复运行和可选 JSON 报告；失败或环境阻断会返回非零状态，运行时发布验收另走 API/Worker/PostgreSQL 集成测试。 |
 | `scripts/acceptance-brief-to-draft-v8.ps1` | 显式触发真实 Provider 的组件化 Brief-to-Draft 运行时验收；兼容 v8–v14、默认验证 v14，仅使用当前本地配置凭据的密文副本和隔离 `*_test` 数据库，轮换五类时间/空间/竞争矩阵场景并验证 API、Worker、持久化、SSE 与未自动采用边界。 |

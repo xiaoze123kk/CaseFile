@@ -18,6 +18,7 @@ from casefile_contracts import (
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from casefile.agent_runtime.chat_preview import AnswerPreview
 from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
     ChatToolLedger,
@@ -54,6 +55,7 @@ from casefile.agent_runtime.prompt_repository import (
     system_prompt_for_task,
 )
 from casefile.agent_runtime.provider_adapters.protocols import ProviderProtocolError
+from casefile.agent_runtime.public_language import is_protected_internal_disclosure_request
 from casefile.agent_runtime.scene_compiler import SceneFillBatchRequest
 from casefile.agent_runtime.story_planner import (
     StoryPlannerPatchRequest,
@@ -345,6 +347,15 @@ async def _run_auxiliary_agent(
     if max_protocol_attempts < 1 or max_protocol_attempts > 3:
         raise ValueError("max_protocol_attempts must be between 1 and 3")
     for attempt_no in range(1, max_protocol_attempts + 1):
+        preview = (
+            AnswerPreview(request.feedback, sensitive_values=(request.api_key or "",))
+            if isinstance(request, CaseFileChatRequest)
+            and request.feedback is not None
+            and stage in {"finalizing", "goal_finalizing"}
+            and "answer" in output_type.model_fields
+            and not is_protected_internal_disclosure_request(request.message)
+            else None
+        )
         raw_output_text: str | None = None
         if protocol not in selected_protocols:
             request.emit(
@@ -392,6 +403,7 @@ async def _run_auxiliary_agent(
                     input_text=current_input,
                     output_type=output_type,
                     temperature=model_settings.temperature,
+                    on_delta=preview.feed if preview is not None else None,
                 )
                 raw_output_text = strict_result.raw_output
                 usage_records.append(strict_result.usage)
@@ -418,7 +430,23 @@ async def _run_auxiliary_agent(
                     tools=tools or [],
                     output_type=agent_output_type,
                 )
-                if context is None:
+                if preview is not None and context is None:
+                    result: Any = Runner.run_streamed(
+                        agent,
+                        current_input,
+                        max_turns=max_turns or request.max_turns,
+                        run_config=RunConfig(
+                            workflow_name=f"CaseFile {stage}",
+                            tracing_disabled=tracing_disabled,
+                            trace_include_sensitive_data=False,
+                        ),
+                    )
+                    async for stream_event in result.stream_events():
+                        if stream_event.type == "raw_response_event":
+                            data = stream_event.data
+                            if data.type == "response.output_text.delta":
+                                preview.feed(data.delta)
+                elif context is None:
                     result = await Runner.run(
                         agent,
                         current_input,
@@ -464,6 +492,8 @@ async def _run_auxiliary_agent(
                         normalized_time_paths=normalized_time_paths,
                         discard_forbidden_fields=not strict_validation,
                     )
+            if preview is not None:
+                preview.finish()
             if discarded_paths:
                 request.emit(
                     "validation.extra_fields_discarded",
@@ -547,6 +577,8 @@ async def _run_auxiliary_agent(
             )
             return output.model_dump(mode="json"), usage
         except ContractValidationError as error:
+            if preview is not None:
+                preview.invalidate()
             if component_id:
                 request.emit(
                     "agent.model_call.failed",
@@ -598,6 +630,8 @@ async def _run_auxiliary_agent(
             )
             current_input = repair_input(input_text, issues)
         except ModelBehaviorError:
+            if preview is not None:
+                preview.invalidate()
             if component_id:
                 request.emit(
                     "agent.model_call.failed",
@@ -641,6 +675,8 @@ async def _run_auxiliary_agent(
             )
             current_input = repair_input(input_text, issues)
         except Exception as error:
+            if preview is not None:
+                preview.invalidate()
             reason = strict_fallback_reason(error) if protocol == "strict_tool" else None
             will_fallback = reason is not None and attempt_no < 3
             diagnostics = classify_transport_error(

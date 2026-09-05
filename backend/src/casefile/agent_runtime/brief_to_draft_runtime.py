@@ -1,6 +1,6 @@
 """Versioned runtime specs and pluggable feature hooks for brief-to-draft.
 
-Every component generation version (v8-v15) executes the same deterministic
+Every component generation version (v8-v16) executes the same deterministic
 graph in :mod:`casefile.agent_runtime.brief_to_draft_v8.workflow`. Historically
 the differences between versions were expressed as `request.prompt_version`
 literals scattered through that graph, so each new capability forced edits in
@@ -52,6 +52,7 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     DraftContextPackV5,
     ResolutionGovernanceIRV2,
 )
+from casefile.agent_runtime.brief_to_draft_v16.contracts import DraftContextPackV6
 from casefile.agent_runtime.prompt import (
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
@@ -61,12 +62,11 @@ from casefile.agent_runtime.prompt import (
     V13_GENERATION_AGENT_VERSION,
     V14_GENERATION_AGENT_VERSION,
     V15_GENERATION_AGENT_VERSION,
+    V16_GENERATION_AGENT_VERSION,
 )
 
 _V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
-_V12_PROMPT_COMPONENTS = frozenset(
-    {"planner", "temporal", "story", "evidence", "governance"}
-)
+_V12_PROMPT_COMPONENTS = frozenset({"planner", "temporal", "story", "evidence", "governance"})
 _V15_PROMPT_COMPONENTS = frozenset(
     {"planner", "temporal", "story", "evidence", "matrix", "governance"}
 )
@@ -109,6 +109,7 @@ class FeatureFlags:
     matrix_evaluation: bool = False
     language_gate: bool = False
     explicit_targets: bool = False
+    relationship_coverage: bool = False
     blueprint_repair_budget: int = 1
 
 
@@ -287,6 +288,34 @@ _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
             blueprint_repair_budget=2,
         ),
         evidence_repair_input_contract_id="brief-to-draft-evidence-repair-input-v1",
+    ),
+    "brief-to-draft-v16": BriefToDraftSpec(
+        prompt_version="brief-to-draft-v16",
+        agent_version=V16_GENERATION_AGENT_VERSION,
+        context_pack_type=DraftContextPackV6,
+        context_schema_id="draft-context-pack-v6",
+        story_output_type=StoryWorldIRV3,
+        story_schema_id="story-world-ir-v3",
+        evidence_output_type=EvidenceLogicIRV2,
+        evidence_schema_id="evidence-logic-ir-v2",
+        governance_output_type=ResolutionGovernanceIRV2,
+        governance_schema_id="resolution-governance-ir-v2",
+        prompt_components=_V15_PROMPT_COMPONENTS,
+        prompt_package=True,
+        stages=_STAGES_V15,
+        governance_runs_in_parallel=False,
+        features=FeatureFlags(
+            v2_context=True,
+            temporal_plan=True,
+            competition_matrix=True,
+            governance_v2=True,
+            matrix_evaluation=True,
+            language_gate=True,
+            explicit_targets=True,
+            relationship_coverage=True,
+            blueprint_repair_budget=2,
+        ),
+        evidence_repair_input_contract_id="brief-to-draft-evidence-repair-input-v2",
     ),
 }
 

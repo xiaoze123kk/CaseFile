@@ -112,16 +112,6 @@ export interface ValidationIssue {
   };
 }
 
-export interface SourceItem {
-  id: string;
-  kind: "audio" | "transcript" | "record" | "retrieval";
-  label: string;
-  meta: string;
-  excerpt: string;
-  eventId: string;
-  evidenceObjectId?: string;
-}
-
 export interface GraphNode {
   objectId: string;
   x: number;
@@ -155,16 +145,6 @@ export interface WorkbenchAuditEntry {
   detail: string;
 }
 
-export interface WorkbenchDrawerCopy {
-  audioTitle: string;
-  audioDuration: string;
-  audioProgress: string;
-  keyTime: string;
-  keyExcerpt: string;
-  transcript: string;
-  logs: Array<{ time: string; actor: string; detail: string }>;
-}
-
 export interface WorkbenchCaseMeta {
   title: string;
   monogram: string;
@@ -190,7 +170,6 @@ export interface WorkbenchSeed {
   caseObjects: CaseObject[];
   timelineEvents: TimelineEvent[];
   validationIssues: ValidationIssue[];
-  sourceItems: SourceItem[];
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
   reasoningPaths: ReasoningPath[];
@@ -198,7 +177,6 @@ export interface WorkbenchSeed {
   conclusions?: import("./workbench-real-data-types").WorkbenchConclusion[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
-  drawer: WorkbenchDrawerCopy;
   initialAuditEntries: WorkbenchAuditEntry[];
   defaultEventId: string | null;
   defaultObjectId: string | null;
@@ -430,45 +408,6 @@ export const validationIssues: ValidationIssue[] = [
   },
 ];
 
-export const sourceItems: SourceItem[] = [
-  {
-    id: "SRC-A13",
-    kind: "audio",
-    label: "海关电台录音 A-13",
-    meta: "03:42 · 关键片段 02:18",
-    excerpt: "……那个覆盖码，我们内部叫它第五人权限。别在公开频道提。",
-    eventId: "EV-1823",
-    evidenceObjectId: "EVD-113",
-  },
-  {
-    id: "SRC-T13",
-    kind: "transcript",
-    label: "A-13 人工校订转写",
-    meta: "校订者：秦彻 · 可信度高",
-    excerpt: "首次明确出现“第五人权限”一词的时间为 22:40。",
-    eventId: "EV-1823",
-    evidenceObjectId: "EVD-113",
-  },
-  {
-    id: "SRC-R71",
-    kind: "record",
-    label: "07 号门禁审计记录",
-    meta: "签名校验通过 · R4 覆盖",
-    excerpt: "22:31:08 使用未知 R4 权限打开备用门；记录未包含内部代号。",
-    eventId: "EV-1825",
-    evidenceObjectId: "EVD-071",
-  },
-  {
-    id: "SRC-Q09",
-    kind: "retrieval",
-    label: "检索命中：内部权限词表",
-    meta: "命中 3 / 47 · 不进入 Canon",
-    excerpt: "“第五人权限”只在唐默补充录音和一份未采用备忘中出现。",
-    eventId: "EV-1825",
-    evidenceObjectId: "EVD-113",
-  },
-];
-
 export const graphNodes: GraphNode[] = [
   { objectId: "PER-001", x: 16, y: 24 },
   { objectId: "PER-009", x: 79, y: 21 },
@@ -481,6 +420,7 @@ export const graphNodes: GraphNode[] = [
 ];
 
 export const graphEdges: GraphEdge[] = [
+  { from: "PER-001", to: "PER-009", label: "调查" },
   { from: "PER-001", to: "EV-1825", label: "目击" },
   { from: "PER-009", to: "EV-1825", label: "证词" },
   { from: "EVD-071", to: "EV-1825", label: "记录" },
@@ -552,7 +492,6 @@ export const defaultWorkbenchSeed: WorkbenchSeed = {
   caseObjects,
   timelineEvents,
   validationIssues,
-  sourceItems,
   graphNodes,
   graphEdges,
   reasoningPaths: [
@@ -646,20 +585,6 @@ export const defaultWorkbenchSeed: WorkbenchSeed = {
   ],
   mapMarkers: defaultMapMarkers,
   mapLabels: defaultMapLabels,
-  drawer: {
-    audioTitle: "海关电台录音 A-13",
-    audioDuration: "03:42",
-    audioProgress: "01:58 / 03:42",
-    keyTime: "02:18",
-    keyExcerpt: "那个覆盖码，我们内部叫它第五人权限。",
-    transcript:
-      "唐默随后要求不要在公开频道提及。此处是该术语第一次进入秦彻可用的知识状态。",
-    logs: [
-      { time: "10:42:11", actor: "Validator", detail: "比较 EV-1825 与 PER-001 的事件前知识状态。" },
-      { time: "10:42:12", actor: "Retrieval", detail: "命中 A-13 02:18 与门禁审计记录 22:31。" },
-      { time: "10:42:13", actor: "Validator", detail: "产生 S0 问题；未输出模型内部思维文本。" },
-    ],
-  },
   initialAuditEntries: [...initialAuditEntries],
   defaultEventId: "EV-1825",
   defaultObjectId: "EV-1825",
@@ -708,9 +633,6 @@ interface CandidateBlueprint {
     patchBefore: string;
     patchAfter: string;
   };
-  keyTerm: string;
-  audioTitle: string;
-  audioExcerpt: string;
   strengths: string[];
   tradeoffs: string[];
   reasoningPaths: ReasoningPath[];
@@ -759,9 +681,6 @@ const candidateBlueprints: CandidateBlueprint[] = [
       patchBefore: "顾遥离开交接台后进入校准室签字。",
       patchAfter: "顾遥留在交接台；校准室签名随后被证实为复写板转印。",
     },
-    keyTerm: "共享校准层",
-    audioTitle: "交接台口述记录 C-07",
-    audioExcerpt: "那枚指纹只会在共享校准层里出现。",
     strengths: ["事件因果最清楚", "每条证据都有进入时间"],
     tradeoffs: ["场景气氛较克制", "人物关系留白较多"],
     reasoningPaths: [
@@ -837,9 +756,6 @@ const candidateBlueprints: CandidateBlueprint[] = [
       patchBefore: "林雾赶回抄录间写下七分钟空白。",
       patchAfter: "抄录本在 23:25 被发现；签名其实早在夜班开始前就已写下。",
     },
-    keyTerm: "第四段呼吸",
-    audioTitle: "白噪机磁带 N-4",
-    audioExcerpt: "停机前有四组呼吸，最后一组伴随翻页声。",
     strengths: ["场景记忆点强", "来源形式更丰富"],
     tradeoffs: ["时间线需要更仔细阅读", "真相解释更含蓄"],
     reasoningPaths: [
@@ -937,9 +853,6 @@ const candidateBlueprints: CandidateBlueprint[] = [
       patchBefore: "系统调用了刚被创建的第七码。",
       patchAfter: "系统调用了一张尚未登记、但已在 20:40 制成的第七码索引卡。",
     },
-    keyTerm: "隐藏的第四索引",
-    audioTitle: "互证机房报码 R-7",
-    audioExcerpt: "三份记录没有互相作证，它们都在引用第四条索引。",
     strengths: ["竞争假设最完整", "验证问题密度最高"],
     tradeoffs: ["认知负荷最高", "需要更多图谱对照"],
     reasoningPaths: [
@@ -1044,12 +957,6 @@ function buildCandidateSeed(
     { id: "ISSUE-KNOW-001", severity: "S0", title: blueprint.primaryIssue.title, summary: blueprint.primaryIssue.summary, eventId: "EV-1825", rule: "KNOWLEDGE_STATE_BEFORE_EVENT", evidenceIds: ["EVD-071", "EVD-113"], beforeKnowledge: blueprint.primaryIssue.before, eventClaim: blueprint.primaryIssue.claim, afterKnowledge: blueprint.primaryIssue.after, patchBefore: blueprint.primaryIssue.patchBefore, patchAfter: blueprint.primaryIssue.patchAfter },
     { id: "ISSUE-TIME-006", severity: "S1", title: blueprint.secondaryIssue.title, summary: blueprint.secondaryIssue.summary, eventId: "EV-1812", rule: "TEMPORAL_EXCLUSIVITY", evidenceIds: ["EVD-209"], beforeKnowledge: blueprint.secondaryIssue.before, eventClaim: blueprint.secondaryIssue.claim, afterKnowledge: blueprint.secondaryIssue.after, patchBefore: blueprint.secondaryIssue.patchBefore, patchAfter: blueprint.secondaryIssue.patchAfter },
   ];
-  const sources: SourceItem[] = [
-    { id: "SRC-A13", kind: "audio", label: blueprint.audioTitle, meta: `关键片段 ${eventC.time}`, excerpt: blueprint.audioExcerpt, eventId: "EV-1823", evidenceObjectId: "EVD-113" },
-    { id: "SRC-T13", kind: "transcript", label: `${blueprint.audioTitle}人工校订`, meta: `校订者：${blueprint.protagonist} · 可信度高`, excerpt: `${blueprint.keyTerm}首次获得可验证含义。`, eventId: "EV-1823", evidenceObjectId: "EVD-113" },
-    { id: "SRC-R71", kind: "record", label: blueprint.evidence[0], meta: "签章校验通过", excerpt: eventD.summary, eventId: "EV-1825", evidenceObjectId: "EVD-071" },
-    { id: "SRC-Q09", kind: "retrieval", label: `检索命中：${blueprint.keyTerm}`, meta: "命中 3 / 29 · 不进入当前事实", excerpt: `该词只在校订转写与一份未采用备忘中出现。`, eventId: "EV-1825", evidenceObjectId: "EVD-113" },
-  ];
   const candidateGraphNodes: GraphNode[] = [
     { objectId: "PER-001", x: 16, y: 24 }, { objectId: "PER-009", x: 79, y: 21 },
     { objectId: "EV-1825", x: 50, y: 45 }, { objectId: "EVD-071", x: 19, y: 72 },
@@ -1057,6 +964,7 @@ function buildCandidateSeed(
     { objectId: "HYP-002", x: 87, y: 49 },
   ];
   const candidateGraphEdges: GraphEdge[] = [
+    { from: "PER-001", to: "PER-009", label: "调查" },
     { from: "PER-001", to: "EV-1825", label: "发现" }, { from: "PER-009", to: "EV-1825", label: "证词" },
     { from: "EVD-071", to: "EV-1825", label: "记录" }, { from: "EVD-113", to: "EV-1825", label: "后知" },
     { from: "LOC-007", to: "EV-1825", label: "发生于" }, { from: "HYP-002", to: "EV-1825", label: "解释" },
@@ -1084,7 +992,6 @@ function buildCandidateSeed(
     caseObjects: objects,
     timelineEvents: events,
     validationIssues: issues,
-    sourceItems: sources,
     graphNodes: candidateGraphNodes,
     graphEdges: candidateGraphEdges,
     reasoningPaths: blueprint.reasoningPaths,
@@ -1094,23 +1001,10 @@ function buildCandidateSeed(
       { label: blueprint.restrictedLocation, x: 42, y: 42 },
       { label: "关键记录点", x: 70, y: 84 },
     ],
-    drawer: {
-      audioTitle: blueprint.audioTitle,
-      audioDuration: "03:42",
-      audioProgress: "01:58 / 03:42",
-      keyTime: "02:18",
-      keyExcerpt: blueprint.audioExcerpt,
-      transcript: `该片段是“${blueprint.keyTerm}”第一次进入${blueprint.protagonist}可用知识状态的来源。`,
-      logs: [
-        { time: "10:42:11", actor: "Validator", detail: `比较 ${eventD.label} 与${blueprint.protagonist}的事件前知识状态。` },
-        { time: "10:42:12", actor: "Retrieval", detail: `命中${blueprint.audioTitle}与${blueprint.evidence[0]}。` },
-        { time: "10:42:13", actor: "Validator", detail: "产生 S0 问题；未输出模型内部思维文本。" },
-      ],
-    },
     initialAuditEntries: [
       { id: "AUD-120", time: "10:42", actor: "Validator", action: "发现知识状态冲突", detail: "ISSUE-KNOW-001 · S0 · 候选校验" },
       { id: "AUD-119", time: "10:41", actor: blueprint.protagonist, action: "采用关键记录引用", detail: "EVD-071 → EV-1825" },
-      { id: "AUD-118", time: "10:36", actor: "Retrieval", action: "更新来源检索命中", detail: `${blueprint.audioTitle} · 3 个片段` },
+      { id: "AUD-118", time: "10:36", actor: "Retrieval", action: "更新来源检索命中", detail: `${blueprint.evidence[1]} · 3 个片段` },
     ],
     defaultEventId: "EV-1825",
     defaultObjectId: "EV-1825",
@@ -1167,10 +1061,6 @@ export function validateWorkbenchSeed(seed: WorkbenchSeed) {
     for (const evidenceId of issue.evidenceIds) {
       if (!objectIds.has(evidenceId)) errors.push(`${issue.id} 引用未知证据 ${evidenceId}`);
     }
-  }
-  for (const source of seed.sourceItems) {
-    if (!eventIds.has(source.eventId)) errors.push(`${source.id} 引用未知事件 ${source.eventId}`);
-    if (source.evidenceObjectId && !objectIds.has(source.evidenceObjectId)) errors.push(`${source.id} 引用未知证据 ${source.evidenceObjectId}`);
   }
   for (const edge of seed.graphEdges) {
     if (!objectIds.has(edge.from) || !objectIds.has(edge.to)) errors.push(`关系 ${edge.from} → ${edge.to} 存在未知端点`);

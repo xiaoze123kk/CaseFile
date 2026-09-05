@@ -75,6 +75,13 @@ describe("editable proportional timeline", () => {
       />,
     );
 
+    expect(
+      screen.queryByRole("list", { name: "时间确定性诊断" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确定性叠层" })).toHaveTextContent(
+      "准确 4",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "确定性叠层" }));
     expect(screen.getByRole("list", { name: "时间确定性诊断" })).toHaveTextContent(
       "准确4",
     );
@@ -82,7 +89,11 @@ describe("editable proportional timeline", () => {
 
     const personLane = screen.getByTestId("timeline-lane-PER-004");
     expect(personLane).toHaveAttribute("data-selected", "true");
+    expect(personLane).toHaveAttribute("data-kind", "person");
     expect(personLane).toHaveTextContent("林岚");
+    expect(
+      screen.getByTestId("timeline-lane-track-PER-004"),
+    ).toBeInTheDocument();
     expect(
       container.querySelector('[data-issue="ISSUE-TIME-006"]'),
     ).not.toBeNull();
@@ -92,9 +103,10 @@ describe("editable proportional timeline", () => {
     expect(onSelectEvent).toHaveBeenCalledWith("EV-1812");
 
     fireEvent.click(screen.getByRole("button", { name: "地点泳道" }));
-    expect(screen.getByTestId("timeline-lane-LOC-007")).toHaveTextContent(
-      "07 号检修通道",
-    );
+    const locationLane = screen.getByTestId("timeline-lane-LOC-007");
+    expect(locationLane).toHaveAttribute("data-kind", "location");
+    expect(locationLane).toHaveTextContent("地点轨道");
+    expect(locationLane).toHaveTextContent("07 号检修通道");
     fireEvent.click(screen.getByRole("button", { name: "确定性叠层" }));
     expect(
       screen.queryByRole("list", { name: "时间确定性诊断" }),
@@ -120,8 +132,9 @@ describe("editable proportional timeline", () => {
 
     expect(screen.getAllByText("11-18 09:00").length).toBeGreaterThan(0);
     expect(screen.queryByText(/09:00:00\+08:00/)).not.toBeInTheDocument();
-    expect(screen.getByText("事件发生时间")).toBeInTheDocument();
-    expect(screen.getByText("故事发生时间轴")).toBeInTheDocument();
+    expect(screen.queryByText("作品内时间")).not.toBeInTheDocument();
+    expect(screen.queryByText(seed.caseMeta.timelineMeta)).not.toBeInTheDocument();
+    expect(screen.getByText("案件脉络")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("timeline-proportional-axis")).getByRole(
         "button",
@@ -133,6 +146,31 @@ describe("editable proportional timeline", () => {
         new RegExp(`${seed.timelineEvents[0].label} · 11-18 09:00 ·`, "u"),
       ),
     ).toBeInTheDocument();
+  });
+
+  it("selects a read-only event card independently from the drag flow", () => {
+    const seed = timelineSeed();
+    const onSelectEvent = vi.fn();
+    const target = seed.timelineEvents[1];
+
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={onSelectEvent}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[0].id}
+        validationStatus="passed"
+      />,
+    );
+
+    fireEvent.click(
+      within(screen.getByTestId("timeline-proportional-axis")).getByRole(
+        "button",
+        { name: new RegExp(target.label, "u") },
+      ),
+    );
+
+    expect(onSelectEvent).toHaveBeenCalledWith(target.id);
   });
 
   it("pins the proportional axis to the top of the desktop canvas", () => {
@@ -152,7 +190,7 @@ describe("editable proportional timeline", () => {
     ).toHaveAttribute("preserveAspectRatio", "xMinYMin meet");
   });
 
-  it("reserves a full left gutter for unresolved relative time labels", () => {
+  it("places event cards on alternating tracks instead of full-width rows", () => {
     const seed = timelineSeed();
     const relativeTime = "相对 120 分钟之后";
     seed.timelineEvents[1] = {
@@ -169,11 +207,16 @@ describe("editable proportional timeline", () => {
       />,
     );
 
-    expect(
-      within(screen.getByTestId("timeline-proportional-axis")).getByText(
-        relativeTime,
-      ),
-    ).toHaveAttribute("x", "168");
+    const axis = within(screen.getByTestId("timeline-proportional-axis"));
+    expect(axis.getByText(relativeTime)).not.toHaveAttribute("x", "168");
+    const firstEvent = axis.getByRole("button", {
+      name: new RegExp(seed.timelineEvents[0].label, "u"),
+    });
+    const secondEvent = axis.getByRole("button", {
+      name: new RegExp(seed.timelineEvents[1].label, "u"),
+    });
+    expect(firstEvent).toHaveAttribute("data-track", "0");
+    expect(secondEvent).toHaveAttribute("data-track", "1");
   });
 
   it("shows a resolved wall-clock time instead of a long relative offset", () => {
@@ -374,7 +417,13 @@ describe("editable proportional timeline", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑所选时间" }));
+    fireEvent.keyDown(
+      within(screen.getByTestId("timeline-proportional-axis")).getByRole(
+        "button",
+        { name: new RegExp(selected.label) },
+      ),
+      { key: "Enter" },
+    );
     fireEvent.change(screen.getByLabelText("语义类型"), {
       target: { value: "unknown" },
     });
@@ -384,6 +433,29 @@ describe("editable proportional timeline", () => {
     await waitFor(() =>
       expect(onPreviewTime).toHaveBeenCalledWith(selected.id, { kind: "unknown" }),
     );
+  });
+
+  it("omits the retired timeline footer actions", () => {
+    const seed = timelineSeed();
+    const { container } = render(
+      <TimelineOverview
+        editable
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[0].id}
+        validationStatus="passed"
+      />,
+    );
+
+    expect(container.querySelector("footer")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "编辑所选时间" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /披露计划/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/拖动菱形或区间带/)).not.toBeInTheDocument();
   });
 
   it("keeps every event visible on desktop when an older draft has no resolvable time anchor", () => {

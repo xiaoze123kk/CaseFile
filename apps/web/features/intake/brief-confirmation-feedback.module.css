@@ -1,0 +1,472 @@
+.briefEditor {
+  border: 0;
+  padding: 0;
+  margin-inline: 0;
+  min-width: 0;
+}
+
+.frozenNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  color: var(--ink-muted);
+  background: rgba(255, 250, 247, 0.96);
+  font-size: 12px;
+}
+
+.frozenNotice p {
+  margin: 0;
+}
+
+.frozenNotice button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirmationTransition {
+  display: grid;
+  min-height: calc(100svh - 138px);
+  place-items: center;
+  padding: 32px;
+}
+
+.confirmationTransitionCard {
+  display: grid;
+  width: min(540px, 100%);
+  min-height: 290px;
+  place-items: center;
+  align-content: center;
+  padding: 44px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 60px rgba(52, 39, 27, 0.09);
+  text-align: center;
+}
+
+.confirmationTransitionCard > span {
+  margin-bottom: 24px;
+  color: var(--red);
+  font: 700 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.16em;
+}
+
+.confirmationTransitionCard > i {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-bottom: 15px;
+  border: 1px solid var(--rule);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  color: var(--red);
+  font-size: 18px;
+  font-style: normal;
+  animation: brief-confirmation-spin 900ms linear infinite;
+}
+
+.confirmationTransitionCard > i[data-completed="true"] {
+  border-color: var(--red);
+  animation: none;
+}
+
+.confirmationTransitionCard h1 {
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.confirmationTransitionCard p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.confirmationInterruption,
+.confirmationDecision,
+.confirmationError {
+  margin-top: 14px;
+  border: 1px solid var(--red-line);
+  border-left: 3px solid var(--red);
+  background: rgba(255, 250, 247, 0.97);
+}
+
+.confirmationInterruption {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.confirmationInterruption > span,
+.confirmationDecision > header > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--red-line);
+  border-radius: 50%;
+  color: var(--red);
+  font: 700 12px "Cascadia Mono", Consolas, monospace;
+}
+
+.confirmationInterruption strong,
+.confirmationDecision > header strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+}
+
+.confirmationInterruption p,
+.confirmationDecision > header p,
+.confirmationError p {
+  margin: 3px 0 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.confirmationInterruption button,
+.confirmationError button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirmationDecision {
+  padding: 18px 20px;
+}
+
+.confirmationDecision > header {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.confirmationDecision fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0 44px;
+  padding: 0;
+  border: 0;
+}
+
+.confirmationDecision legend {
+  margin-bottom: 7px;
+  color: var(--ink-faint);
+  font: 700 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.confirmationDecision label {
+  display: grid;
+  min-height: 54px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.confirmationDecision label:has(input:checked) {
+  border-color: var(--red-line);
+  background: var(--red-soft);
+}
+
+.confirmationDecision label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.confirmationDecision label strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+}
+
+.confirmationDecision label small {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.confirmationDecision footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.confirmationDecision footer button {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid var(--red);
+  color: #fff;
+  background: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confirmationDecision footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.confirmationError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+}
+
+.confirmationError p {
+  color: var(--red);
+}
+
+.confirmationError > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.confirmationError button[data-primary="true"] {
+  color: #fff;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+@keyframes brief-confirmation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirmationTransitionCard > i {
+    animation: none;
+  }
+}
+
+.exampleConfirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  color: var(--ink-muted);
+  background: var(--paper-low);
+  font-size: 12px;
+}
+
+.exampleConfirm p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.exampleConfirm button,
+.suggestionConfirm {
+  padding: 5px 9px;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  background: transparent;
+  font-size: 11px;
+}
+
+.suggestionConfirm {
+  margin-top: 8px;
+}
+
+.impactDialogBackdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgba(31, 27, 23, 0.44);
+  backdrop-filter: blur(3px);
+}
+
+.impactDialog {
+  position: relative;
+  display: grid;
+  width: min(520px, 100%);
+  grid-template-columns: 40px minmax(0, 1fr);
+  padding: 28px 30px 24px;
+  border: 1px solid rgba(94, 70, 51, 0.34);
+  border-top: 3px solid var(--red);
+  background:
+    linear-gradient(rgba(111, 87, 65, 0.045) 1px, transparent 1px) 0 0 / 100% 28px,
+    #fffdf9;
+  box-shadow: 0 24px 70px rgba(31, 27, 23, 0.28);
+  animation: impactDialogIn 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.impactDialog > small {
+  grid-column: 1 / -1;
+  margin-bottom: 18px;
+  color: var(--red);
+  font: 700 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.12em;
+}
+
+.impactDialog > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: white;
+  border-radius: 50%;
+  background: var(--red);
+  font: 800 13px "Cascadia Mono", Consolas, monospace;
+}
+
+.impactDialog h2,
+.impactDialog > p,
+.impactDialog ul,
+.impactDialog > strong,
+.impactDialog footer {
+  grid-column: 2;
+}
+
+.impactDialog h2 {
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 25px;
+  font-weight: 600;
+}
+
+.impactDialog > p {
+  margin: 18px 0 7px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.impactDialog ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.impactDialog li::before {
+  margin-right: 8px;
+  color: var(--red);
+  content: "—";
+}
+
+.impactDialog > strong {
+  margin-top: 18px;
+  color: var(--red);
+  font-size: 12px;
+}
+
+.revisionVersionPreview {
+  display: grid;
+  grid-column: 2;
+  grid-template-columns: max-content 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 17px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.72);
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.revisionVersionPreview > span {
+  color: var(--ink-muted);
+}
+
+.revisionVersionPreview > i {
+  position: relative;
+  height: 1px;
+  background: var(--red-line);
+}
+
+.revisionVersionPreview > i::after {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid var(--red);
+  border-right: 1px solid var(--red);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.revisionVersionPreview > strong {
+  color: var(--red);
+}
+
+.impactDialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 24px;
+}
+
+.impactDialog button {
+  min-height: 40px;
+  padding: 0 15px;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  background: white;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.impactDialog button:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.impactDialog button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentcolor;
+}
+
+@keyframes impactDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .impactDialog {
+    animation: none;
+  }
+}

@@ -34,6 +34,7 @@ V12_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v12"
 V13_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v13"
 V14_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v14"
 V15_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v15"
+V16_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v16"
 BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
     "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
@@ -43,6 +44,7 @@ BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v13": V13_GENERATION_AGENT_VERSION,
     "brief-to-draft-v14": V14_GENERATION_AGENT_VERSION,
     "brief-to-draft-v15": V15_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v16": V16_GENERATION_AGENT_VERSION,
 }
 COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
 PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
@@ -54,6 +56,7 @@ PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
         "brief-to-draft-v13",
         "brief-to-draft-v14",
         "brief-to-draft-v15",
+        "brief-to-draft-v16",
     }
 )
 COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
@@ -64,6 +67,7 @@ COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
         "brief-to-draft-v13",
         "brief-to-draft-v14",
         "brief-to-draft-v15",
+        "brief-to-draft-v16",
     }
 )
 CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
@@ -91,7 +95,13 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
 TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
-    {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15"}
+    {
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+        "brief-to-draft-v15",
+        "brief-to-draft-v16",
+    }
 )
 
 
@@ -174,6 +184,7 @@ def anchor_extract_input(
     payload = {
         "input_hash": input_hash,
         "mode": mode,
+        "creative_intent": brief.get("creative_intent"),
         "resolution_mode": brief["resolution_mode"],
         "reasoning_proposition": brief["reasoning_proposition"],
         "author_answer": brief["author_answer"],
@@ -320,7 +331,8 @@ def _with_chat_repair_feedback(
     lines = "".join(f"- {item}\n" for item in request.repair_feedback)
     repair_scope = (
         "只执行下列最小修复"
-        if request.prompt_version in {
+        if request.prompt_version
+        in {
             "casefile-chat-v16",
             "casefile-chat-v17",
             "casefile-chat-v18",
