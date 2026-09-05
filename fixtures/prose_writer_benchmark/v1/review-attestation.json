@@ -1,0 +1,16 @@
+{
+  "schema_id": "casefile.prose-writer-dev-attestation.v1",
+  "suite_hash": "f2a5baa8f4ee30c473201222525d94737405989e372ee6ccfd19ae689f00dbc5",
+  "reviewer": "Codex",
+  "reviewer_independence": false,
+  "passes": [
+    "input_lineage",
+    "fake_candidate",
+    "evidence_binding"
+  ],
+  "allowed_use": "public_writer_development_baseline_only",
+  "holdout_qualification": false,
+  "unresolved_findings": [],
+  "statement": "公开 Fake 资产只验证当前 Writer 协议与评测闭环，不代表 B0、B1 或 B4 资格。",
+  "attestation_hash": "41a6197d96b297dbc196bdbaaa0b408f63b209b491d18bf59b2a26ea98672458"
+}

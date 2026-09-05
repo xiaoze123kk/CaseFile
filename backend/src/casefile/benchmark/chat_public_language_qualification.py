@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 
 import rfc8785
+from casefile_contracts import PublicAgentEvent, PublicAgentMessage
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
@@ -613,9 +615,23 @@ def inspect_public_payload(
     )
     rules: set[str] = set()
 
-    def walk(value: Any) -> None:
+    def public_shape(model: Any, value: Mapping[str, Any]) -> bool:
+        try:
+            model.model_validate(value)
+        except ValidationError:
+            return False
+        return True
+
+    def walk(value: Any, *, allowed_keys: frozenset[str] = frozenset()) -> None:
         if isinstance(value, Mapping):
-            forbidden = _FORBIDDEN_PUBLIC_KEYS.intersection(str(key) for key in value)
+            public_message = "context_snapshot" in value and public_shape(PublicAgentMessage, value)
+            if value.get("event") == "run.activity_detail" and public_shape(
+                PublicAgentEvent, value
+            ):
+                allowed_keys = allowed_keys | {"draft_revision"}
+            forbidden = (_FORBIDDEN_PUBLIC_KEYS - allowed_keys).intersection(
+                str(key) for key in value
+            )
             if forbidden:
                 rules.add("forbidden_public_key")
             for key, nested in value.items():
@@ -625,7 +641,12 @@ def inspect_public_payload(
                         for rule in public_language_rule_ids(nested, sensitive_values=sensitive)
                         if rule != "current_sensitive_value"
                     )
-                walk(nested)
+                walk(
+                    nested,
+                    allowed_keys=frozenset({"draft_revision"})
+                    if public_message and key == "context_snapshot"
+                    else frozenset(),
+                )
         elif isinstance(value, Sequence) and not isinstance(value, str | bytes):
             for nested in value:
                 walk(nested)

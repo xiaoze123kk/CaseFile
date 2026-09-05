@@ -228,6 +228,17 @@ class CompletionExecutor:
             raise RuntimeError("TaskRun dispatch type changed")
         if task.status == "cancelling" and task.leased_by == self.worker_id:
             raise TaskCancellationRequested
+        if expected_task_type == "novel_compile" and task.input_jsonb.get("prose_renderer_shadow"):
+            from casefile.worker.executors.prose_store import ProseLeaseLost
+
+            if (
+                attempt.task_run_id != task.id
+                or attempt.status != "running"
+                or attempt.attempt_no != task.attempt_count
+                or task.lease_expires_at is None
+                or task.lease_expires_at <= datetime.now(UTC)
+            ):
+                raise ProseLeaseLost("compiler_prose_completion_lease_lost")
         if task.leased_by != self.worker_id or task.status != "running":
             raise RuntimeError("TaskRun lease was lost before the final write")
         return task, attempt

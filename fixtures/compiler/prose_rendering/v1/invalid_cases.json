@@ -1,0 +1,110 @@
+{
+  "cases": [
+    {
+      "name": "profile_extra_field",
+      "base_fixture": "profile_v2.json",
+      "expected_layer": "schema",
+      "mutation": {
+        "op": "add",
+        "path": "/prose/unknown",
+        "value": true
+      }
+    },
+    {
+      "name": "profile_scene_range_order",
+      "base_fixture": "profile_v2.json",
+      "expected_layer": "domain",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/prose/target_scene_chars/min",
+          "value": 1100
+        },
+        {
+          "op": "replace",
+          "path": "/prose/target_scene_chars/max",
+          "value": 1000
+        }
+      ]
+    },
+    {
+      "name": "profile_normalized_duplicate_pattern",
+      "base_fixture": "profile_v2.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "add",
+        "path": "/prose/forbidden_style_patterns/-",
+        "value": " 总结式解释凶手动机 "
+      }
+    },
+    {
+      "name": "checklist_wrong_schema_id",
+      "base_fixture": "checklist_scene_1.json",
+      "expected_layer": "schema",
+      "mutation": {
+        "op": "replace",
+        "path": "/schema_id",
+        "value": "compiler.prose-judge-checklist.v2"
+      }
+    },
+    {
+      "name": "checklist_noncontinuous_ordinal",
+      "base_fixture": "checklist_scene_1.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "replace",
+        "path": "/checks/0/ordinal",
+        "value": 2
+      }
+    },
+    {
+      "name": "checklist_wrong_evidence_policy",
+      "base_fixture": "checklist_scene_1.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "replace",
+        "path": "/checks/0/evidence_policy",
+        "value": "required_on_fail"
+      }
+    },
+    {
+      "name": "render_round_mismatch",
+      "base_fixture": "scene_render_writer.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "replace",
+        "path": "/round",
+        "value": 1
+      }
+    },
+    {
+      "name": "render_block_id_mismatch",
+      "base_fixture": "scene_render_writer.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "replace",
+        "path": "/blocks/0/block_id",
+        "value": "block_scene_1_002"
+      }
+    },
+    {
+      "name": "judge_evidence_out_of_bounds",
+      "base_fixture": "judge_required_pass.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "replace",
+        "path": "/assessments/0/evidence/0/end_char",
+        "value": 9999
+      }
+    },
+    {
+      "name": "judge_missing_check",
+      "base_fixture": "judge_required_pass.json",
+      "expected_layer": "domain",
+      "mutation": {
+        "op": "remove",
+        "path": "/assessments/0"
+      }
+    }
+  ]
+}

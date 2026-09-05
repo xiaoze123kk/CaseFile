@@ -1,0 +1,118 @@
+{
+  "schema_id": "casefile.prose-quality-dev-suite.v1",
+  "suite_id": "n4.5-b3-quality-public-development-v2",
+  "suite_role": "development",
+  "task_count": 8,
+  "quality_dimensions": [
+    "pov_voice_consistency",
+    "scene_specificity",
+    "dialogue_narration_naturalness",
+    "dramatic_progression_pacing",
+    "readability_editability"
+  ],
+  "preference_distribution": {
+    "a": 2,
+    "b": 4,
+    "tie": 2
+  },
+  "quality_model_id": "deepseek-v4-flash",
+  "findings_prompt_version": "prose-quality-critic-v1",
+  "pairwise_prompt_version": "prose-quality-pairwise-v2",
+  "quality_component_hash": "7d9f9d51aa6e726ff3ca55472581661792208e4e3cd7118caed44ee7ccf076f5",
+  "gate_thresholds": {
+    "overall_accuracy_min": 8,
+    "mirrored_consistency_min": 8,
+    "dimension_accuracy_min": 40,
+    "semantic_invalid_max": 0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0
+  },
+  "qualification": {
+    "qualified": false,
+    "qualification_eligible": false,
+    "development_baseline": true
+  },
+  "tasks": [
+    {
+      "task_id": "quality_dev_01_readability_clearer",
+      "focus": "readability_clearer",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_01_readability_clearer.json",
+        "hash": "21924f9191f8529008a69517f33d9d190952780ef8e6ed3d8b8851a420a027bd"
+      },
+      "pair_fingerprint": "8f8b0d8dc83709b82a821aa6fc0413b59fd643a70e42c87854b8b0dcff94e617",
+      "content_hash": "bf20e0d8a0987c40f70d110ce0a1c6fdfbe3766232fe744c6aec9e5f73f8e5d4"
+    },
+    {
+      "task_id": "quality_dev_02_pacing_original",
+      "focus": "pacing_original",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_02_pacing_original.json",
+        "hash": "dc967b2bded79818885c71dbb4f150923ecbc2c85508b76aae6034a1646d11f2"
+      },
+      "pair_fingerprint": "4316522773be6e6685625be2647164cd2ba5b57320b7f4efc5181660b32431bf",
+      "content_hash": "fbc69358734f6f517db74dab7ec6ea64b056419ff04a98e8858ecb7411194463"
+    },
+    {
+      "task_id": "quality_dev_03_specificity_polished",
+      "focus": "specificity_polished",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_03_specificity_polished.json",
+        "hash": "fc41157fc5b9d0a74918f46146309133169a93ff85c65f9603237c25e16e7916"
+      },
+      "pair_fingerprint": "5c4c5a38e496148df66a7ee5f0fa0d36d4b65c11601086beb350f440cba04498",
+      "content_hash": "7cf3960c6cfb654a346a98f340a58696ae66a47083450b50f4d2c8ed88c3d813"
+    },
+    {
+      "task_id": "quality_dev_04_voice_consistency",
+      "focus": "voice_consistency",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_04_voice_consistency.json",
+        "hash": "90604779379906af2038a9b77a4dca3a50c554360b465922bbfec1f7b45d984a"
+      },
+      "pair_fingerprint": "55e1230817a634a1d6c7f947e6920f73272e5a5ad3aea0536a2d524c1e606521",
+      "content_hash": "2dbd21d0cc7885bc52684642bffb50c926fcb20aab3ffbf0f3cbe29c57de9663"
+    },
+    {
+      "task_id": "quality_dev_05_dialogue_naturalness",
+      "focus": "dialogue_naturalness",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_05_dialogue_naturalness.json",
+        "hash": "9bbf81d0d194166dd4bc7d0fcfce39aaea0145749348c373a1e7707cc39ccd76"
+      },
+      "pair_fingerprint": "612bb9de65251621ba86433597c3022a4bbd2aab98352b151913962124fa1826",
+      "content_hash": "17c60f6f519fd64920875657be32f8ab8adb5bba0fb8019fc94d7a7fd724fb73"
+    },
+    {
+      "task_id": "quality_dev_06_balanced_paraphrase_tie",
+      "focus": "balanced_paraphrase_tie",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_06_balanced_paraphrase_tie.json",
+        "hash": "2548998c26a8b35f1266cc4910d90817045e9e00dea45f7ef173d319825e146f"
+      },
+      "pair_fingerprint": "621e08531b5fbeee1a5fa1f647042b6d32a1b3e81d63fb74dfd4fa002e853429",
+      "content_hash": "01961d27a597431b8494d801f778f005403e2bd421936165a26d3dd57a938f7c"
+    },
+    {
+      "task_id": "quality_dev_07_tradeoff_tie",
+      "focus": "tradeoff_tie",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_07_tradeoff_tie.json",
+        "hash": "53c164ddb1d5fcf6ffefbbfdb948adf67fcfeb0732f4ae0d2344c3027a2f10bc"
+      },
+      "pair_fingerprint": "05fdfe96759450d7b1545f52ae60c9bb4aa8152324699e3c399cb3fa99018165",
+      "content_hash": "14dad90a0a67f8041d74d9f4f8c464c4053d62e73ec30ca576338ba2f626c1d6"
+    },
+    {
+      "task_id": "quality_dev_08_original_more_vivid",
+      "focus": "original_more_vivid",
+      "task_asset": {
+        "path": "fixtures/prose_quality_benchmark/v1/tasks/quality_dev_08_original_more_vivid.json",
+        "hash": "f35b0ea7f34742d37b3d4e6c915875775a4c7cde7bff0cc2b047e62ae07dae8b"
+      },
+      "pair_fingerprint": "7de9f1b428155c0b424406c307b784620212c0693f74a3bd04c8534c984b6a92",
+      "content_hash": "6184b3efafc3619f235c63eb96f3913ea1f66fe33f08e4201a6831c2f458b718"
+    }
+  ],
+  "suite_hash": "0a75f29d43da39d702e1d1543780a8fa5d8a3d4e7c2aa18174864a01f603cbc6"
+}

@@ -8067,6 +8067,11 @@
       },
       "CompileRunCreateRequest": {
         "properties": {
+          "prose_renderer_shadow": {
+            "type": "boolean",
+            "title": "Prose Renderer Shadow",
+            "default": false
+          },
           "mode": {
             "type": "string",
             "enum": [

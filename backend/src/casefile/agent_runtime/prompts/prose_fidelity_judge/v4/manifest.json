@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_fidelity_judge",
+  "version": "prose-fidelity-judge-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "8e850c5609fdcd45e38df730c05d0f4465ff5af495e2860da6a26ee7ce7d6b72",
+  "previous_version": "prose-fidelity-judge-v3",
+  "change_summary": "改用 Evidence ID 候选协议，并加强逐项独立、地点时间、因果与披露边界判定。"
+}

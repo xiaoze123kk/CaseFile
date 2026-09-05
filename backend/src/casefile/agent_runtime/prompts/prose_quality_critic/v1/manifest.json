@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_quality_critic",
+  "version": "prose-quality-critic-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "90647d6341174462190709666c2c7d84e19956f3b5d8af1564da0ad9130dfca1",
+  "previous_version": null,
+  "change_summary": "建立语义通过后五维文学质量 findings 与服务端 Evidence 目录协议。"
+}

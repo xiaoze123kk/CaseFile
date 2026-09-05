@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_arbiter",
+  "version": "prose-arbiter-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "dc858601f1faf7d49887376bba7ff9f718db20cd87268c7c6e6d380c6379635f",
+  "previous_version": "prose-arbiter-v1",
+  "change_summary": "显式绑定服务器计算的 scene/checklist/render identity，禁止模型自行计算或误用上游 hash。"
+}

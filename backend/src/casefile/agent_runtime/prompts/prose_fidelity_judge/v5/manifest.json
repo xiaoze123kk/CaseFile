@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_fidelity_judge",
+  "version": "prose-fidelity-judge-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "48a711bb1ca193fbf7adbbe4ae5e3dbd8b7bf87ab5e5ee2b9644a7eb6ee3dbbd",
+  "previous_version": "prose-fidelity-judge-v4",
+  "change_summary": "明确事件缺失的时间判定、逐项独立边界与事件关系优先的因果顺序。"
+}

@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_coherence_judge",
+  "version": "prose-coherence-judge-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "e2dccc50cccea95814720084bcdbbaee65b745eee097611b5d66cc0456ac5e57",
+  "previous_version": null,
+  "change_summary": "冻结 Coherence Judge 的跨句连贯性与隐含语义协议。"
+}

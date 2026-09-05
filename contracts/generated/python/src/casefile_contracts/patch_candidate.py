@@ -3,6 +3,6 @@
 #   filename:  editing-contracts.schema.json
 
 from ._internal import ApprovalStatus, IssueRef
-from ._internal import Schema_5 as Schema
+from ._internal import Schema_6 as Schema
 
 __all__ = ["ApprovalStatus", "IssueRef", "Schema"]

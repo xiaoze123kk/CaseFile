@@ -1,0 +1,37 @@
+{
+  "schema_id": "casefile.prose-rewrite-qualification-descriptor.v1",
+  "suite_id": "n4.5-b2-rewrite-private-qualification-v1",
+  "task_count": 24,
+  "defect_distribution": {
+    "missing_required_beat": 3,
+    "modality_weakening": 3,
+    "premature_reveal": 3,
+    "pov_knowledge_violation": 3,
+    "location_time_drift": 3,
+    "causality_ordering_inversion": 3,
+    "major_hallucination": 3,
+    "multi_error_combination": 3
+  },
+  "variant_distribution": {
+    "basic": 8,
+    "preservation_dense": 8,
+    "second_round": 8
+  },
+  "gate_thresholds": {
+    "final_rescue_min": 21,
+    "preservation_task_min": 23,
+    "new_critical_issue_max": 0,
+    "extra_rewrite_call_max": 0,
+    "protocol_failure_max": 0,
+    "infrastructure_failure_max": 0
+  },
+  "loader_version": "prose-rewrite-suite-loader-v1",
+  "public_development_suite_hash": "e7953a5f604e303a85ec96a045e0f8593bc12741b3076e6750abf73a70a27470",
+  "private_suite_hash": "98c1aaefc8f240c67f77a49a68314120af3a1066d92638fafd1eb7b9ff277995",
+  "review_policy": "codex-owner-accepted-review-v1",
+  "review_status": "codex_reviewed",
+  "qualification_eligible": true,
+  "author_attestation_hash": "b0874f67599b32df4ad0dec933479a3f83d77ad20e43f8d7a5aff658da74062e",
+  "review_attestation_hash": "b02c1777c465766d54ff2230da5189c1e95dd96dfab8babde386c88128c30907",
+  "descriptor_hash": "3c0eb3b1aa135c96545915226974ebd350fe2e9a014688a3f990ad0bfa93740f"
+}

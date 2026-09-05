@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -50,6 +49,15 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
+    "prose_writer": "prose-writer-v1",
+    "prose_rewriter": "prose-rewriter-v3",
+    "prose_fidelity_judge": "prose-fidelity-judge-v6",
+    "prose_adversarial_judge": "prose-adversarial-judge-v5",
+    "prose_coherence_judge": "prose-coherence-judge-v5",
+    "prose_arbiter": "prose-arbiter-v5",
+    "prose_quality_critic": "prose-quality-critic-v1",
+    "prose_quality_pairwise": "prose-quality-pairwise-v1",
+    "prose_polisher": "prose-polisher-v2",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -563,6 +571,99 @@ EXPECTED_RELEASE_HASHES = {
     ("idea_generation", "idea-generation-v4"): {
         "system": "d0d69a92ad29a1ab6773121cf9b9f7f5ee9a7bc1b6c102d7d6b4835fa348b0b6"
     },
+    ("prose_writer", "prose-writer-v1"): {
+        "system": "8fb5ffaccb98afc8663ba7a54b4859391a661a1bd3f49f57b962b665683270e1"
+    },
+    ("prose_rewriter", "prose-rewriter-v1"): {
+        "system": "f07195bf4dd6ee7493eef428895636530de87b5f17e4000c10a32777b7b53126"
+    },
+    ("prose_rewriter", "prose-rewriter-v2"): {
+        "system": "3ad1db4d3b6c5cab1d37a7d3ec84a5ecb8ea58195a1f4d35f730c1eed9ae1d81"
+    },
+    ("prose_rewriter", "prose-rewriter-v3"): {
+        "system": "47f42f0b6bde28c96ae3c0e6f98fca69bec3e20b90f2040749c03bcb884fd767"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v1"): {
+        "system": "a280fe22e8dd879496af0852b12903a2540401bc6ff656d04906d661077933d0"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v1"): {
+        "system": "a1335bf6d0956a3a9b11a30af5a0d4fa0590ca290b52d6c85dd5e2db89bd2ba3"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v1"): {
+        "system": "e2dccc50cccea95814720084bcdbbaee65b745eee097611b5d66cc0456ac5e57"
+    },
+    ("prose_arbiter", "prose-arbiter-v1"): {
+        "system": "b85e088bf3fd7b87ad640370bacc198f3a1372de7dd55aefa486d209c2e19458"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v2"): {
+        "system": "512e954a0eec8be4743c0fb07931634b52dad5a43cc987ee2be1c136c61f2f5a"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v2"): {
+        "system": "fbcd7d80b8c547f7e6e05b67e2a17274eb87f24f9e983f18adb74d2117ac73f3"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v2"): {
+        "system": "ac58fb7dbce0b813a2d52093f19dcaba3e5ac3cfde54082644fa6b094f1f085a"
+    },
+    ("prose_arbiter", "prose-arbiter-v2"): {
+        "system": "dc858601f1faf7d49887376bba7ff9f718db20cd87268c7c6e6d380c6379635f"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v3"): {
+        "system": "8d7d7dfacb735ff4ca9642c0fa96ce8354be5731d378c129fc4cf469f37b265a"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v3"): {
+        "system": "87e83d2302fbff061fd8562e1a4bd2447886a5d6f6054312b96f998d8b10e937"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v3"): {
+        "system": "58fae6449a560ac2c8ca283930ccf32147e110ce79e2ab8104c9ac4f3ba84ae9"
+    },
+    ("prose_arbiter", "prose-arbiter-v3"): {
+        "system": "883d09391089b80c29098895350e20f6c12f55e9639069531224e5fe67bb5f6a"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v4"): {
+        "system": "8e850c5609fdcd45e38df730c05d0f4465ff5af495e2860da6a26ee7ce7d6b72"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v4"): {
+        "system": "aa2e200a22b9e2d0333881d17fdc99055c7af12a8987e1389509e3dd5bc5b8b7"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v4"): {
+        "system": "ad78553c6d2cd1c64a5318127b55c36568c6138fc2d1324a6485a5733382bc83"
+    },
+    ("prose_arbiter", "prose-arbiter-v4"): {
+        "system": "8dd865428c4af435feade3cbe6f7fc6156a2f95e7e2189459f4825cd02328cca"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v5"): {
+        "system": "48a711bb1ca193fbf7adbbe4ae5e3dbd8b7bf87ab5e5ee2b9644a7eb6ee3dbbd"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v6"): {
+        "system": "90a8e66d3a38d624e286bf2d69bf31db5cd8b8294498089816cb638f940e9802"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v5"): {
+        "system": "dc1785d7e5f4d1ade53b925679f36014b843e4a89bfd881da74ed3d222e01d4d"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v5"): {
+        "system": "6dedcf310b0a090c27c570d565f57f2e243e1781fca68b07e1c5aa86abc89297"
+    },
+    ("prose_arbiter", "prose-arbiter-v5"): {
+        "system": "4b9e9ef21569a8ede75ce979f5043dc621372a5d1f8e9e18f9a74c180bc1290a"
+    },
+    ("prose_quality_critic", "prose-quality-critic-v1"): {
+        "system": "90647d6341174462190709666c2c7d84e19956f3b5d8af1564da0ad9130dfca1"
+    },
+    ("prose_quality_pairwise", "prose-quality-pairwise-v1"): {
+        "system": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe"
+    },
+    ("prose_quality_pairwise", "prose-quality-pairwise-v2"): {
+        "system": "44fff7be022321f1f01df190b5d35900983f4becde3e386ddf4c91f03cc8c064"
+    },
+    ("prose_polisher", "prose-polisher-v1"): {
+        "system": "79253e33d9abe25ba9a226b0e209dfaf462107fff1f752d8eecfe0a319e77f68"
+    },
+    ("prose_polisher", "prose-polisher-v2"): {
+        "system": "1f2eb0986a81997c953edb6b06a414fec30b49ce4a5f3bc987540dc4545ee731"
+    },
+    ("prose_polisher", "prose-polisher-v3"): {
+        "system": "7a04048b24115cdea341ce89902acf772d100434c36eff11bdca21d3c5c889b2"
+    },
 }
 
 
@@ -576,7 +677,16 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "story_planner_skeleton",
         "story_planner_semantic_fill",
         "scene_compiler_semantic_fill",
-        "general_mutation_planner",
+        "prose_writer",
+        "prose_rewriter",
+        "prose_fidelity_judge",
+        "prose_adversarial_judge",
+            "prose_coherence_judge",
+            "prose_arbiter",
+            "prose_quality_critic",
+            "prose_quality_pairwise",
+            "prose_polisher",
+            "general_mutation_planner",
     }
 
     assert deterministic_task_types <= contract_task_types
@@ -655,6 +765,51 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
             == definition.system_prompt
         )
         assert all(prompt.endswith("\n") for prompt in definition.component_prompts.values())
+
+
+@pytest.mark.parametrize(
+    "agent_id",
+    (
+        "prose_fidelity_judge",
+        "prose_adversarial_judge",
+        "prose_coherence_judge",
+        "prose_arbiter",
+    ),
+)
+def test_prose_judge_v5_preserves_protocol_and_closes_semantic_gaps(
+    agent_id: str,
+) -> None:
+    prefix = agent_id.replace("_", "-")
+    legacy = load_prompt(agent_id, f"{prefix}-v1")
+    hash_binding = load_prompt(agent_id, f"{prefix}-v2")
+    catalog_copy = load_prompt(agent_id, f"{prefix}-v3")
+    candidate_protocol = load_prompt(agent_id, f"{prefix}-v4")
+    semantic_gaps = load_prompt(agent_id, f"{prefix}-v5")
+
+    assert hash_binding.previous_version == legacy.version
+    assert catalog_copy.previous_version == hash_binding.version
+    assert candidate_protocol.previous_version == catalog_copy.version
+    assert semantic_gaps.previous_version == candidate_protocol.version
+    assert "server_bindings" not in legacy.system_prompt
+    assert "server_evidence_catalog" not in hash_binding.system_prompt
+    assert "server_bindings.checklist_hash" in catalog_copy.system_prompt
+    assert "不得自行计算哈希" in catalog_copy.system_prompt
+    assert "server_evidence_catalog" in semantic_gaps.system_prompt
+    assert "evidence_id" in semantic_gaps.system_prompt
+    assert "不要输出 role、scene_id 或任何 hash" in semantic_gaps.system_prompt
+    assert "causality_ordering" in semantic_gaps.system_prompt
+    assert "location_time" in semantic_gaps.system_prompt
+    assert "地点正确不能抵消时间失败" in semantic_gaps.system_prompt
+    assert "事件关系优先于句子" in semantic_gaps.system_prompt
+
+
+def test_prose_fidelity_judge_v6_audits_required_evidence_before_output() -> None:
+    current = load_prompt("prose_fidelity_judge")
+
+    assert current.previous_version == "prose-fidelity-judge-v5"
+    assert "required+pass" in current.system_prompt
+    assert "forbidden+fail" in current.system_prompt
+    assert "必须把该项改为 uncertain" in current.system_prompt
 
 
 def test_casefile_chat_v16_adds_public_language_only_to_finalizers() -> None:

@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_arbiter",
+  "version": "prose-arbiter-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "4b9e9ef21569a8ede75ce979f5043dc621372a5d1f8e9e18f9a74c180bc1290a",
+  "previous_version": "prose-arbiter-v4",
+  "change_summary": "明确事件缺失的时间判定、逐项独立边界与事件关系优先的因果顺序。"
+}

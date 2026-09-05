@@ -1073,7 +1073,10 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 "router_version",
                 "context_state",
                 "goal_runtime",
+                "context_snapshot",
             }
+            assert frozen_input["context_snapshot"]["draft_id"] == draft_id
+            assert frozen_input["context_snapshot"]["draft_revision"] == 2
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
             assert frozen_input["focus"]["object_ids"] == []
@@ -1361,7 +1364,10 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
             "router_version",
             "context_state",
             "goal_runtime",
+            "context_snapshot",
         }
+        assert frozen_input["context_snapshot"]["draft_id"] == draft_id
+        assert frozen_input["context_snapshot"]["draft_revision"] == 2
         assert frozen_input["routing_hint"] == {
             "entrypoint": "preset",
             "preset_id": "inspect",
@@ -1961,7 +1967,10 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             "router_version",
             "context_state",
             "goal_runtime",
+            "context_snapshot",
         }
+        assert frozen_input["context_snapshot"]["draft_id"] == draft_id
+        assert frozen_input["context_snapshot"]["draft_revision"] == 2
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []
         assert frozen_input["message"] == "请逐项建议调整研究员、实验室和重启事件。"

@@ -1,0 +1,24 @@
+{
+  "schema_id": "compiler.scene-render.v1",
+  "scene_id": "scene_1",
+  "scene_ordinal": 1,
+  "source": {
+    "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+    "profile_hash": "f8ed6b8b0c59bced6d08a088b1b1b6f941b8d7db5d4e0ff79de9b813ad805376",
+    "scene_plan_hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76",
+    "previous_scene_render_hash": null,
+    "component_input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "stage": "polished",
+  "round": 0,
+  "previous_render_hash": "80d24826b114f5f9e234bb050a8eae4703e25bcea6efd04ee216175d7b76bc18",
+  "blocks": [
+    {
+      "block_id": "block_scene_1_001",
+      "ordinal": 1,
+      "text": "研究员推开实验室的隔离门，备用控制系统的指示灯正在第七次重启记录旁闪烁。她没有急着下结论，而是先核对控制台留下的人工操作痕迹，并把时间、温度和登录记录逐项抄进纸质表格。系统发出短促蜂鸣，她让同伴保持距离，自己沿着线路检查保险模块。屏幕上的恢复程序声称一切由安全规则自动触发，但控制台边缘新鲜的指纹使这句话变得可疑。她只把已经确认的现象告诉同伴，没有泄露尚未出现的后续日志。最后，她封存操作面板，确认本场调查已经取得人工干预的明确痕迹，并为下一次核验保留完整记录。走廊里的应急灯明灭了一次，她回到门边检查封条编号，又让同伴复述刚才看见的操作顺序。两人的记录相互吻合，唯独重启按钮附近多出一道新划痕。她把这处差异单独标记，没有把猜测写成事实，也没有越过当前调查能够支持的范围。"
+    }
+  ],
+  "character_count": 336,
+  "selection_reason": null
+}

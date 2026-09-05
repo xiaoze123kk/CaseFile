@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_quality_pairwise",
+  "version": "prose-quality-pairwise-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe",
+  "previous_version": null,
+  "change_summary": "建立匿名双位置五维文学质量比较协议。"
+}

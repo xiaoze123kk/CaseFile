@@ -257,9 +257,7 @@ class AgentPatchApplyRequest(StrictRequest):
 
     @model_validator(mode="after")
     def valid_public_confirmation(self) -> Self:
-        if self.change_ids is not None and len(set(self.change_ids)) != len(
-            self.change_ids
-        ):
+        if self.change_ids is not None and len(set(self.change_ids)) != len(self.change_ids):
             raise ValueError("change_ids must be unique")
         if len(set(self.accepted_warning_ids)) != len(self.accepted_warning_ids):
             raise ValueError("accepted_warning_ids must be unique")
@@ -286,9 +284,7 @@ class AgentPatchSimulateRequest(StrictRequest):
 
     @model_validator(mode="after")
     def valid_public_confirmation(self) -> Self:
-        if self.change_ids is not None and len(set(self.change_ids)) != len(
-            self.change_ids
-        ):
+        if self.change_ids is not None and len(set(self.change_ids)) != len(self.change_ids):
             raise ValueError("change_ids must be unique")
         if len(set(self.accepted_warning_ids)) != len(self.accepted_warning_ids):
             raise ValueError("accepted_warning_ids must be unique")
@@ -519,6 +515,7 @@ class CompilerProfileVersionCreateRequest(StrictRequest):
 
 
 class CompileRunCreateRequest(StrictRequest):
+    prose_renderer_shadow: bool = False
     mode: Literal["preview", "canonical"]
     expected_draft_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)

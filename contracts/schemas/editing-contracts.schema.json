@@ -12,8 +12,11 @@
     "compiler_source_ref", "compiler_artifact_ref", "compiler_diagnostic",
     "compiler_profile_binding", "compile_input_manifest", "narrative_ir",
     "scene_compiler_input", "scene_plan_candidate", "scene_plan",
-    "novel_profile", "planner_input", "planner_model_view", "story_plan_structural_patch",
-    "constraint_first_planner", "novel_plan_candidate", "novel_plan"
+    "novel_profile", "novel_profile_v2", "planner_input", "planner_model_view",
+    "story_plan_structural_patch", "constraint_first_planner", "novel_plan_candidate",
+    "novel_plan", "prose_judge_checklist", "scene_render_candidate", "scene_render",
+    "prose_judge_report", "prose_consensus_report", "prose_quality_report",
+    "novel_candidate", "compile_manifest"
   ],
   "properties": {
     "casefile": {"$ref": "casefile/casefile.schema.json"},
@@ -53,6 +56,7 @@
     "scene_plan": {"$ref": "compiler/scene-plan.schema.json"},
     "scene_plan_v2": {"$ref": "compiler/scene-plan-v2.schema.json"},
     "novel_profile": {"$ref": "compiler/novel-profile.schema.json"},
+    "novel_profile_v2": {"$ref": "compiler/novel-profile-v2.schema.json"},
     "planner_input": {
       "oneOf": [
         {"$ref": "compiler/planner-input.schema.json"},
@@ -71,6 +75,26 @@
     },
     "constraint_first_planner": {"$ref": "compiler/constraint-first-planner.schema.json"},
     "novel_plan_candidate": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanCandidate"},
-    "novel_plan": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanIR"}
+    "novel_plan": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanIR"},
+    "prose_judge_checklist": {"$ref": "compiler/prose-rendering.schema.json"},
+    "scene_render_candidate": {
+      "$ref": "compiler/prose-rendering.schema.json#/$defs/SceneRenderCandidate"
+    },
+    "scene_render": {"$ref": "compiler/prose-rendering.schema.json#/$defs/SceneRender"},
+    "prose_judge_report": {
+      "$ref": "compiler/prose-rendering.schema.json#/$defs/ProseJudgeReport"
+    },
+    "prose_consensus_report": {
+      "$ref": "compiler/prose-rendering.schema.json#/$defs/ProseConsensusReport"
+    },
+    "prose_quality_report": {
+      "$ref": "compiler/prose-rendering.schema.json#/$defs/ProseQualityReport"
+    },
+    "novel_candidate": {
+      "$ref": "compiler/prose-rendering.schema.json#/$defs/NovelCandidate"
+    },
+    "compile_manifest": {
+      "$ref": "compiler/prose-rendering.schema.json#/$defs/CompileManifest"
+    }
   }
 }

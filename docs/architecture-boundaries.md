@@ -1,5 +1,21 @@
 # 架构边界与模块规则
 
+## N4.5 Prose Rendering 与 Judge Council 冻结边界
+
+N4.5 在 N4.4 `compiler.scene-plan.v2`、匹配的 `compiler.narrative-ir.v1` 与新增
+`compiler.novel-profile.v2` 之上生成小说正文，不重新规划 ScenePlan，不写 CaseFile、Canon、
+Exposure 或 Draft。服务端确定性生成逐项 Checklist 并拥有输入冻结、证据原文、哈希、预算、
+恢复和状态转换；Writer、Rewrite、Polisher 只产生正文候选，Semantic Judge 只解释自然语言，
+Quality Critic 不参与语义放行。每个 Scene 最多两轮完整 Rewrite，Judge 分歧只进行一次批量
+Arbiter，仍不确定即失败关闭。
+
+第一版只允许显式 `preview + prose_renderer_shadow=true`，默认关闭；N4.5 blocked、
+inconclusive 或 semantic rejected 不得改变已成功的 N4.4 Artifact、CompileRun 主终态或 Draft。
+完整架构、字段协议和前瞻资格门槛分别见
+[`n4.5-prose-rendering-architecture.md`](narrative-compiler/n4.5-prose-rendering-architecture.md)、
+[`n4.5-agent-judge-protocol.md`](narrative-compiler/n4.5-agent-judge-protocol.md) 与
+[`n4.5-benchmark-qualification.md`](narrative-compiler/n4.5-benchmark-qualification.md)。
+
 ## M3.8 GoalSession Runtime 冻结边界
 
 Agent 增强反馈只追加受公开语言门禁约束的 answer 片段与展示事件，不持久化完整模型候选或内部推理。预览写入独立验证 TaskAttempt/lease，不推进 TaskRun 阶段、不续租、不新增控制消费点；预览永远不拥有消息完成、Finding、Patch 或 Apply 权威。

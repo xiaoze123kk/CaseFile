@@ -167,6 +167,10 @@ class AgentModelCall(BigIntIdentityPrimaryKeyMixin, Base):
         ForeignKey("agent_step_runs.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    response_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    parse_status: Mapped[str | None] = mapped_column(String(40))
     call_no: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)

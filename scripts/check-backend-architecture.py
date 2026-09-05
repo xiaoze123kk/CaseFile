@@ -97,6 +97,9 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/agent_runtime/chat_reference_normalization.py",
     "backend/src/casefile/agent_runtime/chat_validation_contracts.py",
     "backend/src/casefile/agent_runtime/provider_adapters/",
+    "backend/src/casefile/agent_runtime/prose_writer.py",
+    "backend/src/casefile/agent_runtime/prose_rewriter.py",
+    "backend/src/casefile/agent_runtime/prose_rewrite_supervisor.py",
     "backend/src/casefile/agent_runtime/brief_to_draft_v8/validation.py",
     "backend/src/casefile/application/workflow/",
     "backend/src/casefile/application/chat_public_contracts.py",
@@ -114,6 +117,8 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/worker/generation_reuse.py",
     "backend/src/casefile/worker/handlers/",
     "backend/src/casefile/worker/input_contracts.py",
+    "backend/src/casefile/benchmark/prose_writer_eval.py",
+    "backend/src/casefile/benchmark/prose_rewrite_eval.py",
     "backend/src/casefile/worker/observability.py",
     "backend/src/casefile/worker/provider_resolution.py",
 }

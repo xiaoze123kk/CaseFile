@@ -115,16 +115,21 @@ from ._internal import (
     BriefIntakeQuestionSet,
     CanonBinding,
     CompileInputManifest,
+    CompileManifest,
     CompileMode,
     CompilerArtifactRef,
     CompilerDiagnostic,
     CompilerProfileBinding,
     CompilerSourceRef,
     ExposureBinding,
+    NovelCandidate,
     NovelPlanCandidate,
     NovelPlanIR,
     PlanningProblem,
     PlanSkeleton,
+    ProseConsensusReport,
+    ProseJudgeReport,
+    ProseQualityReport,
     PublicAgentEvent,
     PublicAgentFailure,
     PublicAgentMessage,
@@ -149,6 +154,8 @@ from ._internal import (
     SceneCompilerInputBundle,
     SceneCompilerModelView,
     ScenePlanCandidate,
+    SceneRender,
+    SceneRenderCandidate,
     SceneSemanticFillProposal,
     SemanticFillProposal,
     SkeletonProposal,
@@ -162,12 +169,14 @@ from .brief_intake import Schema as BriefIntakeCandidate
 from .casefile import Schema as CaseFile
 from .narrative_ir import Schema as NarrativeIR
 from .novel_profile import Schema as NovelProfile
+from .novel_profile_v2 import Schema as NovelProfileV2
 from .patch_candidate import Schema as PatchCandidate
 from .planner_input import Schema as PlannerInputBundle
 from .planner_input_v2 import Schema as PlannerInputBundleV2
 from .planner_input_v3 import Schema as PlannerInputBundleV3
 from .planner_model_view_v3 import Schema as PlannerModelViewV3
 from .planner_model_view_v4 import Schema as PlannerModelViewV4
+from .prose_rendering import Schema as ProseJudgeChecklist
 from .scene_compiler import Schema as SceneCompilerInputBundleV2
 from .scene_plan import Schema as ScenePlanIR
 from .scene_plan_v2 import Schema as ScenePlanIRV2
@@ -208,6 +217,15 @@ __all__ = [
     "ScenePlanIRV2",
     "SkeletonProposal",
     "NovelProfile",
+    "NovelProfileV2",
+    "ProseJudgeChecklist",
+    "SceneRenderCandidate",
+    "SceneRender",
+    "ProseJudgeReport",
+    "ProseConsensusReport",
+    "ProseQualityReport",
+    "NovelCandidate",
+    "CompileManifest",
     "PlannerInputBundle",
     "PlannerInputBundleV2",
     "PlannerInputBundleV3",
@@ -254,6 +272,8 @@ from .public import (
     CaseFile,
     NarrativeIR,
     NovelProfile,
+    NovelProfileV2,
+    ProseJudgeChecklist,
     PatchCandidate,
     PlannerInputBundle,
     PlannerInputBundleV2,
@@ -273,6 +293,8 @@ __all__ += [
     "CaseFile",
     "NarrativeIR",
     "NovelProfile",
+    "NovelProfileV2",
+    "ProseJudgeChecklist",
     "PatchCandidate",
     "PlannerInputBundle",
     "PlannerInputBundleV2",
