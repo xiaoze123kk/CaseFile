@@ -1,0 +1,214 @@
+{
+  "schema_id": "casefile.prose-writer-dev-task.v1",
+  "task_id": "b1_20_setup_payoff_scene_outcome_implicit_friendly",
+  "profile": {
+    "schema_id": "compiler.novel-profile.v2",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear",
+      "flashback"
+    ],
+    "exposure_policy": "bound_plan",
+    "prose": {
+      "language": "zh-CN",
+      "narrative_person": "third_person_limited",
+      "narrative_tense": "past",
+      "target_scene_chars": {
+        "min": 300,
+        "max": 1200
+      },
+      "dialogue_ratio": {
+        "min": 0.1,
+        "max": 0.5
+      },
+      "description_density": "balanced",
+      "pacing": "balanced",
+      "style_brief": "克制、清晰；允许用动作、潜台词和省略表达已经成立的语义，不作总结式解释。",
+      "forbidden_style_patterns": [
+        "总结式解释凶手动机"
+      ]
+    }
+  },
+  "previous_scene_render": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_1",
+    "scene_ordinal": 1,
+    "source": {
+      "checklist_hash": "b7698363e7bb72ed8d339ac1a60d118f3f9151c12b4e63f27b6242dba3817dbb",
+      "profile_hash": "09d6be62848a5b31337e46b05635c12b8410eb30227de1180672dc9ff1d68c8f",
+      "scene_plan_hash": "ba441f728269c01c228427d032d044d7874efe02ded57b37d290d204cb9701eb",
+      "previous_scene_render_hash": null,
+      "component_input_hash": "df62b01df70e965babb7eb898d59c2ca5a87c65626631d5894b90546688ad966"
+    },
+    "stage": "accepted",
+    "round": 0,
+    "previous_render_hash": "586faf64c7de8004917222d93b55eceb52c9f4bc352d5eed64fccac1c4a97506",
+    "blocks": [
+      {
+        "block_id": "block_scene_1_001",
+        "ordinal": 1,
+        "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。他只依据当前可见的信息推进目标，不把猜测当成事实。"
+      },
+      {
+        "block_id": "block_scene_1_002",
+        "ordinal": 2,
+        "text": "执行 obligation_scene_1_event_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "block_id": "block_scene_1_003",
+        "ordinal": 3,
+        "text": "执行 obligation_scene_1_exposure_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "block_id": "block_scene_1_004",
+        "ordinal": 4,
+        "text": "场景最终形成既定结果：硬义务完成并为后续场景留下可追溯状态。人物没有提前揭露后续信息，也没有引入未经授权的重要人物、事件或结论。环境中的细微声响保持连续，视角人物核对已经发生的动作、地点和时间，只记录能够由当前场景支持的变化，并为下一场保留清楚而有限的衔接。"
+      }
+    ],
+    "character_count": 317,
+    "selection_reason": "semantic_accepted"
+  },
+  "fake_candidate": {
+    "schema_id": "compiler.scene-render-candidate.v1",
+    "blocks": [
+      {
+        "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。他只依据当前可见的信息推进目标，不把猜测当成事实。"
+      },
+      {
+        "text": "执行 obligation_scene_2_event_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "text": "执行 obligation_scene_2_exposure_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "text": "场景最终形成既定结果：硬义务完成并为后续场景留下可追溯状态。人物没有提前揭露后续信息，也没有引入未经授权的重要人物、事件或结论。环境中的细微声响保持连续，视角人物核对已经发生的动作、地点和时间，只记录能够由当前场景支持的变化，并为下一场保留清楚而有限的衔接。"
+      }
+    ]
+  },
+  "gold": {
+    "scene_verdict": "pass",
+    "assessments": [
+      {
+        "check_id": "check_scene_2_001",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_002",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_003",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_004",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_005",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_006",
+        "verdict": "pass",
+        "evidence": [],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_007",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_008",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_009",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_2_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      },
+      {
+        "check_id": "check_scene_2_010",
+        "verdict": "pass",
+        "evidence": [],
+        "rationale": "公开 Fake 基线审定：候选满足该项或未触发禁止项。"
+      }
+    ]
+  },
+  "content_hash": "4e4c649ae1ad0af3de8d97c9bf2f2303ce0c7fd01730d85ef5fc0f126b8a87f1"
+}

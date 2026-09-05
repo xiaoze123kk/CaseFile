@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_adversarial_judge",
+  "version": "prose-adversarial-judge-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "aa2e200a22b9e2d0333881d17fdc99055c7af12a8987e1389509e3dd5bc5b8b7",
+  "previous_version": "prose-adversarial-judge-v3",
+  "change_summary": "改用 Evidence ID 候选协议，并加强逐项独立、地点时间、因果与披露边界判定。"
+}

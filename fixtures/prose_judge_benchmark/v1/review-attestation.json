@@ -1,0 +1,15 @@
+{
+  "schema_id": "casefile.prose-judge-dev-attestation.v1",
+  "suite_hash": "bbac2b7e053a0723396cec240ca22fb9f1fdb4b35494504fb70d737db695868d",
+  "reviewer": "Codex",
+  "passes": [
+    "semantic",
+    "adversarial"
+  ],
+  "reviewer_independence": false,
+  "allowed_use": "public_development_policy_selection_only",
+  "holdout_qualification": false,
+  "unresolved_findings": [],
+  "statement": "Codex 顺序完成语义与对抗双遍审查；本签核不替代 N4.5-03 独立 Holdout reviewer。",
+  "attestation_hash": "bf0bbeadc51973b051d63b0f6674568b8d7e317b876ab99223f16eb10ff0d862"
+}

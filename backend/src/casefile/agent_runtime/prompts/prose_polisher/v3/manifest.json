@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_polisher",
+  "version": "prose-polisher-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "7a04048b24115cdea341ce89902acf772d100434c36eff11bdca21d3c5c889b2",
+  "previous_version": "prose-polisher-v2",
+  "change_summary": "增加最小改动、逐项语义保留账本和源稿长度对照自检，减少润色过度压缩。"
+}

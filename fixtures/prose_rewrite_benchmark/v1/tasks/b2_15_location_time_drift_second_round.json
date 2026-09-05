@@ -1,0 +1,760 @@
+{
+  "schema_id": "casefile.prose-rewrite-dev-task.v1",
+  "task_id": "b2_15_location_time_drift_second_round",
+  "profile": {
+    "schema_id": "compiler.novel-profile.v2",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear",
+      "flashback"
+    ],
+    "exposure_policy": "bound_plan",
+    "prose": {
+      "language": "zh-CN",
+      "narrative_person": "third_person_limited",
+      "narrative_tense": "past",
+      "target_scene_chars": {
+        "min": 300,
+        "max": 1200
+      },
+      "dialogue_ratio": {
+        "min": 0.1,
+        "max": 0.5
+      },
+      "description_density": "balanced",
+      "pacing": "fast",
+      "style_brief": "克制、清晰；在多项语义约束并存时仍保持动作顺序、有限视角和可编辑段落。",
+      "forbidden_style_patterns": [
+        "总结式解释凶手动机"
+      ]
+    }
+  },
+  "previous_scene_render": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_4",
+    "scene_ordinal": 4,
+    "source": {
+      "checklist_hash": "733431259b881f7010e701290824cfe053041dc59d06f52c35848143653e588e",
+      "profile_hash": "af963c467f22e1fc70ba373974bc47911bf75601a99d1f95824d050a3c178bb9",
+      "scene_plan_hash": "9493328a20c13047e58492dd195181a3bde0f659371d853dc43711e6829f845a",
+      "previous_scene_render_hash": "c9af0dbedad345c2034adde9ea312d35503db28fc1f22a39180ea4a05b445020",
+      "component_input_hash": "19eb7d3a1967cf72855273e463276811967fc37d3e16d9e54cf72d5b281a0cac"
+    },
+    "stage": "accepted",
+    "round": 0,
+    "previous_render_hash": "490f6fb7628cfb2808f650cf4e1456de6f603adf37f6f14fbc0974354e16bbee",
+    "blocks": [
+      {
+        "block_id": "block_scene_4_001",
+        "ordinal": 1,
+        "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。他只依据当前可见的信息推进目标，不把猜测当成事实。"
+      },
+      {
+        "block_id": "block_scene_4_002",
+        "ordinal": 2,
+        "text": "执行 obligation_scene_4_event_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "block_id": "block_scene_4_003",
+        "ordinal": 3,
+        "text": "场景最终形成既定结果：硬义务完成并为后续场景留下可追溯状态。人物没有提前揭露后续信息，也没有引入未经授权的重要人物、事件或结论。环境中的细微声响保持连续，视角人物核对已经发生的动作、地点和时间，只记录能够由当前场景支持的变化，并为下一场保留清楚而有限的衔接。环境中的细微声响保持连续，视角人物核对已经发生的动作、地点和时间，只记录能够由当前场景支持的变化，并为下一场保留清楚而有限的衔接。"
+      }
+    ],
+    "character_count": 319,
+    "selection_reason": "semantic_accepted"
+  },
+  "initial_render": {
+    "schema_id": "compiler.scene-render.v1",
+    "scene_id": "scene_5",
+    "scene_ordinal": 5,
+    "source": {
+      "checklist_hash": "3ce63407d610adb07f8e592d9ba5dcbe03206a5659804a6d51d44f9887183744",
+      "profile_hash": "af963c467f22e1fc70ba373974bc47911bf75601a99d1f95824d050a3c178bb9",
+      "scene_plan_hash": "9493328a20c13047e58492dd195181a3bde0f659371d853dc43711e6829f845a",
+      "previous_scene_render_hash": "c834fcb95cfafc798f1c9f84eee9d0a9b24f355565341b25d6f3cba9860d488c",
+      "component_input_hash": "c2b785fdae40f28f127fbaaf2633603c9b693060a509cb3d9dc07e9802fbff85"
+    },
+    "stage": "writer",
+    "round": 0,
+    "previous_render_hash": null,
+    "blocks": [
+      {
+        "block_id": "block_scene_5_001",
+        "ordinal": 1,
+        "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。他只依据当前可见的信息推进目标，不把猜测当成事实。"
+      },
+      {
+        "block_id": "block_scene_5_002",
+        "ordinal": 2,
+        "text": "执行 obligation_scene_5_event_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "block_id": "block_scene_5_003",
+        "ordinal": 3,
+        "text": "执行 obligation_scene_5_resolution_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "block_id": "block_scene_5_004",
+        "ordinal": 4,
+        "text": "执行 obligation_scene_5_resolution_002 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+      },
+      {
+        "block_id": "block_scene_5_005",
+        "ordinal": 5,
+        "text": "场景最终形成既定结果：硬义务完成并为后续场景留下可追溯状态。人物没有提前揭露后续信息，也没有引入未经授权的重要人物、事件或结论。"
+      },
+      {
+        "block_id": "block_scene_5_006",
+        "ordinal": 6,
+        "text": "叙述毫无过渡地把人物移到另一个地点和错误时刻，当前场景的时空被替换。"
+      }
+    ],
+    "character_count": 353,
+    "selection_reason": null
+  },
+  "initial_judge_report": {
+    "schema_id": "compiler.prose-judge-report.v1",
+    "role": "fidelity",
+    "scene_id": "scene_5",
+    "checklist_hash": "3ce63407d610adb07f8e592d9ba5dcbe03206a5659804a6d51d44f9887183744",
+    "render_hash": "bbca93ba226c93d0b1f7a46b846204dad315efa3109a1ca39893105a6277ac11",
+    "assessments": [
+      {
+        "check_id": "check_scene_5_001",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_002",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_003",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_004",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_005",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_006",
+        "verdict": "pass",
+        "evidence": [],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_007",
+        "verdict": "fail",
+        "evidence": [],
+        "rationale": "公开 B2 Gold：坏正文触发该缺陷。"
+      },
+      {
+        "check_id": "check_scene_5_008",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_009",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_010",
+        "verdict": "pass",
+        "evidence": [
+          {
+            "block_id": "block_scene_5_001",
+            "start_char": 0,
+            "end_char": 40,
+            "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+          }
+        ],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      },
+      {
+        "check_id": "check_scene_5_011",
+        "verdict": "pass",
+        "evidence": [],
+        "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+      }
+    ]
+  },
+  "initial_consensus": {
+    "schema_id": "compiler.prose-consensus-report.v1",
+    "scene_id": "scene_5",
+    "round": 0,
+    "checklist_hash": "3ce63407d610adb07f8e592d9ba5dcbe03206a5659804a6d51d44f9887183744",
+    "render_hash": "bbca93ba226c93d0b1f7a46b846204dad315efa3109a1ca39893105a6277ac11",
+    "council_policy_hash": "b1d492fc9be3ef834e09d2c50b39cc5be19647900ad182db58e25d17c4b18c63",
+    "judge_report_hashes": [
+      "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6"
+    ],
+    "checks": [
+      {
+        "check_id": "check_scene_5_001",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_002",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_003",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_004",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_005",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_006",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_007",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "fail"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "fail",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_008",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_009",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_010",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      },
+      {
+        "check_id": "check_scene_5_011",
+        "role_verdicts": [
+          {
+            "role": "fidelity",
+            "report_hash": "df2e38cb712967709c65390e24552c008876ac4ca1864bd0db764bb35ee910a6",
+            "verdict": "pass"
+          }
+        ],
+        "unanimous": true,
+        "entered_arbiter": false,
+        "final_verdict": "pass",
+        "resolution_source": "unanimous"
+      }
+    ],
+    "arbiter_request_hash": null,
+    "arbiter_report_hash": null,
+    "scene_verdict": "fail",
+    "failed_check_ids": [
+      "check_scene_5_007"
+    ],
+    "unresolved_check_ids": []
+  },
+  "initial_passed_check_ids": [
+    "check_scene_5_001",
+    "check_scene_5_002",
+    "check_scene_5_003",
+    "check_scene_5_004",
+    "check_scene_5_005",
+    "check_scene_5_006",
+    "check_scene_5_008",
+    "check_scene_5_009",
+    "check_scene_5_010",
+    "check_scene_5_011"
+  ],
+  "original_issue_check_ids": [
+    "check_scene_5_007"
+  ],
+  "critical_check_ids": [
+    "check_scene_5_002",
+    "check_scene_5_006",
+    "check_scene_5_011"
+  ],
+  "fake_rewrite_candidates": [
+    {
+      "schema_id": "compiler.scene-render-candidate.v1",
+      "blocks": [
+        {
+          "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。他只依据当前可见的信息推进目标，不把猜测当成事实。"
+        },
+        {
+          "text": "执行 obligation_scene_5_event_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+        },
+        {
+          "text": "执行 obligation_scene_5_resolution_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+        },
+        {
+          "text": "执行 obligation_scene_5_resolution_002 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+        },
+        {
+          "text": "场景最终形成既定结果：硬义务完成并为后续场景留下可追溯状态。人物没有提前揭露后续信息，也没有引入未经授权的重要人物、事件或结论。"
+        },
+        {
+          "text": "叙述毫无过渡地把人物移到另一个地点和错误时刻，当前场景的时空被替换。"
+        }
+      ]
+    },
+    {
+      "schema_id": "compiler.scene-render-candidate.v1",
+      "blocks": [
+        {
+          "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。他只依据当前可见的信息推进目标，不把猜测当成事实。"
+        },
+        {
+          "text": "执行 obligation_scene_5_event_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+        },
+        {
+          "text": "执行 obligation_scene_5_resolution_001 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+        },
+        {
+          "text": "执行 obligation_scene_5_resolution_002 并推进场景目标。这一行动在当前场景中实际发生并留下结果。"
+        },
+        {
+          "text": "场景最终形成既定结果：硬义务完成并为后续场景留下可追溯状态。人物没有提前揭露后续信息，也没有引入未经授权的重要人物、事件或结论。"
+        }
+      ]
+    }
+  ],
+  "round_gold": [
+    {
+      "round": 1,
+      "scene_verdict": "fail",
+      "assessments": [
+        {
+          "check_id": "check_scene_5_001",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_002",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_003",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_004",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_005",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_006",
+          "verdict": "pass",
+          "evidence": [],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_007",
+          "verdict": "fail",
+          "evidence": [],
+          "rationale": "公开 B2 Gold：坏正文触发该缺陷。"
+        },
+        {
+          "check_id": "check_scene_5_008",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_009",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_010",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_011",
+          "verdict": "pass",
+          "evidence": [],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scene_verdict": "pass",
+      "assessments": [
+        {
+          "check_id": "check_scene_5_001",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_002",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_003",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_004",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_005",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_006",
+          "verdict": "pass",
+          "evidence": [],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_007",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_008",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_009",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_010",
+          "verdict": "pass",
+          "evidence": [
+            {
+              "block_id": "block_scene_5_001",
+              "start_char": 0,
+              "end_char": 40,
+              "text": "在��ʵ����，���о�Ա面对眼前的阻力：来源事实与角色目标形成可执行阻力。"
+            }
+          ],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        },
+        {
+          "check_id": "check_scene_5_011",
+          "verdict": "pass",
+          "evidence": [],
+          "rationale": "公开 B2 Gold：该项在当前正文中保持通过。"
+        }
+      ]
+    }
+  ],
+  "review_notes": {
+    "defect_family": "location_time_drift",
+    "expected_rescue_round": 2,
+    "semantic_review": "development_fixture_reviewed"
+  },
+  "content_hash": "a2e938ecb2977afc82c3ccb4bddf0c40f92790241887d8478d245db2a564d24a"
+}

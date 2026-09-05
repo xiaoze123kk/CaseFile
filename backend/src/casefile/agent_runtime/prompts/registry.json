@@ -46,6 +46,33 @@
     "scene_compiler_semantic_fill": {
       "current_version": "scene-compiler-semantic-fill-v6"
     },
+    "prose_writer": {
+      "current_version": "prose-writer-v1"
+    },
+    "prose_rewriter": {
+      "current_version": "prose-rewriter-v3"
+    },
+    "prose_fidelity_judge": {
+      "current_version": "prose-fidelity-judge-v6"
+    },
+    "prose_adversarial_judge": {
+      "current_version": "prose-adversarial-judge-v5"
+    },
+    "prose_coherence_judge": {
+      "current_version": "prose-coherence-judge-v5"
+    },
+    "prose_arbiter": {
+      "current_version": "prose-arbiter-v5"
+    },
+    "prose_quality_critic": {
+      "current_version": "prose-quality-critic-v1"
+    },
+    "prose_quality_pairwise": {
+      "current_version": "prose-quality-pairwise-v1"
+    },
+    "prose_polisher": {
+      "current_version": "prose-polisher-v2"
+    },
     "general_mutation_planner": {
       "current_version": "general-mutation-planner-v6"
     }

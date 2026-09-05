@@ -262,18 +262,16 @@ def _execute_constraint_first_component(
             stage,
             input_hash,
         ),
-        before_stage=lambda stage, input_hash, prompt_version, schema_id: (
-            _start_constraint_call(
-                worker,
-                task,
-                attempt_id,
-                step_id,
-                stage,
-                input_hash,
-                prompt_version,
-                prompt_by_stage[stage][1],
-                schema_id,
-            )
+        before_stage=lambda stage, input_hash, prompt_version, schema_id: _start_constraint_call(
+            worker,
+            task,
+            attempt_id,
+            step_id,
+            stage,
+            input_hash,
+            prompt_version,
+            prompt_by_stage[stage][1],
+            schema_id,
         ),
         after_stage=lambda stage: (
             None if stage.recovered else _finish_constraint_call(worker, step_id, stage)
@@ -502,9 +500,7 @@ def _record_repair_evaluation(
     with worker.session_factory() as session, session.begin():
         task, _attempt = _lock_active(session, worker, task_run_id, attempt_id)
         step = session.scalar(
-            select(AgentStepRun)
-            .where(AgentStepRun.id == step_id)
-            .with_for_update(of=AgentStepRun)
+            select(AgentStepRun).where(AgentStepRun.id == step_id).with_for_update(of=AgentStepRun)
         )
         if step is None or step.task_run_id != task.id:
             raise CompilerExecutionError("compiler_story_planner_step_mismatch")
@@ -525,6 +521,9 @@ def _finish_call(worker: Any, step_id: int, result: StoryPlannerRound) -> None:
     encoded = raw.encode("utf-8")
     bounded = encoded[:262_144].decode("utf-8", errors="ignore")
     with worker.session_factory() as session, session.begin():
+        from casefile.worker.executors.prose_store import fence_prose_step
+
+        fence_prose_step(session, worker.config.worker_id, step_id)
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -569,9 +568,7 @@ def _start_constraint_call(
                 status="running",
                 provider=str(task.provider),
                 model_id=str(task.model_id),
-                output_protocol=(
-                    "json_object" if task.provider == "deepseek" else "strict_schema"
-                ),
+                output_protocol=("json_object" if task.provider == "deepseek" else "strict_schema"),
                 prompt_version=prompt_version,
                 prompt_component_id=stage,
                 prompt_sha256=prompt_hash,
@@ -589,6 +586,9 @@ def _finish_constraint_call(
     raw = json.dumps(stage.output, ensure_ascii=False, separators=(",", ":"))
     encoded = raw.encode("utf-8")
     with worker.session_factory() as session, session.begin():
+        from casefile.worker.executors.prose_store import fence_prose_step
+
+        fence_prose_step(session, worker.config.worker_id, step_id)
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -744,9 +744,7 @@ def _commit(
     with worker.session_factory() as session, session.begin():
         task, _attempt = _lock_active(session, worker, task_run_id, attempt_id)
         step = session.scalar(
-            select(AgentStepRun)
-            .where(AgentStepRun.id == step_id)
-            .with_for_update(of=AgentStepRun)
+            select(AgentStepRun).where(AgentStepRun.id == step_id).with_for_update(of=AgentStepRun)
         )
         if step is None or step.input_hash != component_hash:
             raise CompilerExecutionError("compiler_story_planner_step_mismatch")
@@ -783,6 +781,10 @@ def _lock_active(session: Any, worker: Any, task_run_id: int, attempt_id: int) -
     attempt = session.scalar(
         select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
     )
+    if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
+        from casefile.worker.executors.prose_store import assert_prose_owner
+
+        assert_prose_owner(task, attempt, worker.config.worker_id)
     if task is None or attempt is None:
         raise CompilerExecutionError("compiler_run_task_mismatch")
     if task.status == "cancelling":
@@ -801,6 +803,9 @@ def fail_story_planner_component(
     worker: Any, task_run_id: int, attempt_id: int, error_code: str
 ) -> None:
     with worker.session_factory() as session, session.begin():
+        current_task = session.get(TaskRun, task_run_id)
+        if current_task is not None and current_task.input_jsonb.get("prose_renderer_shadow"):
+            _lock_active(session, worker, task_run_id, attempt_id)
         task = session.get(TaskRun, task_run_id)
         if task is None:
             return

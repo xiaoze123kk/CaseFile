@@ -1,0 +1,125 @@
+{
+  "schema_id": "compiler.prose-judge-report.v1",
+  "role": "adversarial",
+  "scene_id": "scene_1",
+  "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+  "render_hash": "80d24826b114f5f9e234bb050a8eae4703e25bcea6efd04ee216175d7b76bc18",
+  "assessments": [
+    {
+      "check_id": "check_scene_1_001",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_002",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_003",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_004",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_005",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_006",
+      "verdict": "fail",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文存在精确可绑定的禁止项引文。"
+    },
+    {
+      "check_id": "check_scene_1_007",
+      "verdict": "pass",
+      "evidence": [],
+      "rationale": "未发现该禁止项。"
+    },
+    {
+      "check_id": "check_scene_1_008",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_009",
+      "verdict": "pass",
+      "evidence": [
+        {
+          "block_id": "block_scene_1_001",
+          "start_char": 0,
+          "end_char": 18,
+          "text": "研究员推开实验室的隔离门，备用控制系"
+        }
+      ],
+      "rationale": "正文提供了可绑定的实现证据。"
+    },
+    {
+      "check_id": "check_scene_1_010",
+      "verdict": "pass",
+      "evidence": [],
+      "rationale": "未发现该禁止项。"
+    }
+  ]
+}

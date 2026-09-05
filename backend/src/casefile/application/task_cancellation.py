@@ -24,6 +24,11 @@ def finalize_task_cancellation(
 ) -> None:
     """Move one queued/running cancellation to its durable terminal shape."""
 
+    if task.task_type == "novel_compile" and task.input_jsonb.get("prose_renderer_shadow"):
+        from casefile.application.compiler.prose_projection import finalize_prose_cancellation
+
+        finalize_prose_cancellation(session, task, attempt, now)
+
     if attempt is not None:
         attempt.status = "cancelled"
         if validation_errors is not None:

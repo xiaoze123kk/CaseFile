@@ -119,6 +119,7 @@ DEDICATED_CURRENT_TABLES = {
 }
 
 JSONB_ALLOWLIST = {
+    ("agent_model_calls", "response_jsonb"),  # N4.5 immutable Provider replay envelope.
     ("agent_model_calls", "issues_jsonb"),
     ("agent_model_calls", "usage_jsonb"),
     ("agent_patch_operations", "new_value_jsonb"),

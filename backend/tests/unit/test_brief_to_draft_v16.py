@@ -6,8 +6,6 @@ import asyncio
 import json
 from typing import Any
 
-from pydantic import BaseModel
-
 from casefile.agent_runtime import CandidateStrategy, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
 from casefile.agent_runtime.brief_to_draft_v8.ir import CaseBlueprintV1
@@ -23,6 +21,7 @@ from casefile.agent_runtime.brief_to_draft_v8.workflow import (
 from casefile.agent_runtime.brief_to_draft_v12.contracts import StoryWorldIRV3
 from casefile.agent_runtime.prompt import V16_GENERATION_AGENT_VERSION
 from casefile.agent_runtime.tools import TOOLSET_VERSION
+from pydantic import BaseModel
 
 
 def _entity(local_key: str, name: str) -> dict[str, object]:

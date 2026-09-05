@@ -11,6 +11,7 @@ from casefile_contracts import (
     CompilerProfileBinding,
     ExposureBinding,
     NovelProfile,
+    NovelProfileV2,
     SnapshotBinding,
 )
 from pydantic import ValidationError
@@ -21,6 +22,7 @@ from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
     CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
+from casefile.agent_runtime.prose_runtime import prose_runtime_binding
 from casefile.agent_runtime.scene_compiler import (
     SCENE_COMPILER_PIPELINE_VERSION,
     SCENE_COMPILER_PROMPT_BUNDLE_VERSION,
@@ -53,6 +55,7 @@ from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
     validate_compile_input_manifest,
+    validate_novel_profile_v2,
 )
 
 
@@ -175,6 +178,7 @@ class CompilerService:
         compiler_profile_version_id: int,
         planner_provider: str | None = None,
         scene_compiler_shadow: bool = False,
+        prose_renderer_shadow: bool = False,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self.projects.get_owned(actor_user_id, project_id, lock=True)
@@ -224,8 +228,28 @@ class CompilerService:
             profile = self.compiler.get_profile_version(project_id, compiler_profile_version_id)
             if profile is None:
                 raise not_found("CompilerProfileVersion")
+            if prose_renderer_shadow:
+                if mode != "preview" or planner_provider != "deepseek":
+                    raise ApplicationError(
+                        "compiler_prose_shadow_mode_provider_invalid",
+                        "正文影子运行仅支持 preview 和 DeepSeek。",
+                        status_code=422,
+                    )
+                if profile.schema_id != "compiler.novel-profile.v2":
+                    raise ApplicationError(
+                        "compiler_prose_shadow_profile_v2_required",
+                        "正文影子运行需要 Profile v2。",
+                        status_code=422,
+                    )
+                try:
+                    validate_novel_profile_v2(profile.payload_jsonb)
+                except CompilerContractError as error:
+                    raise ApplicationError(
+                        error.reason_code, "正文 Profile v2 配置无效。", status_code=422
+                    ) from error
+                scene_compiler_shadow = True
             setting: UserProviderSetting | None = None
-            novel_profile: NovelProfile | None = None
+            novel_profile: NovelProfile | NovelProfileV2 | None = None
             if planner_provider is not None:
                 setting = self.session.scalar(
                     select(UserProviderSetting)
@@ -243,7 +267,11 @@ class CompilerService:
                         details={"provider": planner_provider},
                     )
                 try:
-                    novel_profile = NovelProfile.model_validate(profile.payload_jsonb)
+                    novel_profile = (
+                        NovelProfileV2
+                        if profile.schema_id == "compiler.novel-profile.v2"
+                        else NovelProfile
+                    ).model_validate(profile.payload_jsonb)
                 except ValidationError as error:
                     raise ApplicationError(
                         "compiler_novel_profile_invalid",
@@ -325,7 +353,12 @@ class CompilerService:
                     "冻结编译输入不满足约束。",
                     status_code=422,
                 ) from error
-            manifest_json = manifest.model_dump(mode="json")
+            manifest_json = manifest.model_dump(mode="json", exclude_unset=True)
+            if prose_renderer_shadow:
+                manifest_json["prose_renderer_shadow"] = True
+                manifest_json["prose_runtime"] = prose_runtime_binding(
+                    profile.payload_jsonb["structure"]["target_scenes"]
+                )
             input_hash = canonical_json_sha256(manifest_json)
             task = TaskRun(
                 project_id=project_id,
@@ -349,7 +382,13 @@ class CompilerService:
                 stage="queued",
                 input_draft_revision=owned.draft.revision,
                 provider=None if setting is None else setting.provider,
-                model_id=None if setting is None else setting.model_id,
+                model_id=(
+                    "deepseek-v4-pro"
+                    if prose_renderer_shadow
+                    else None
+                    if setting is None
+                    else setting.model_id
+                ),
                 provider_config_version=None if setting is None else setting.config_version,
                 schema_version=INPUT_MANIFEST_SCHEMA_ID,
                 agent_version=(
@@ -378,9 +417,7 @@ class CompilerService:
                     if setting is None
                     else {
                         **setting.default_budget_jsonb,
-                        "max_turns": (
-                            2 + scene_batch_count if scene_compiler_shadow else 2
-                        ),
+                        "max_turns": (2 + scene_batch_count if scene_compiler_shadow else 2),
                         "max_repairs": 0,
                     }
                 ),
@@ -396,6 +433,7 @@ class CompilerService:
                 draft_id=owned.draft.id,
                 task_run_id=task.id,
                 target_kind="novel",
+                prose_renderer_shadow=prose_renderer_shadow,
                 compile_mode=mode,
                 source_snapshot_id=snapshot.id,
                 source_canon_version_id=None if canon is None else canon.id,
@@ -579,6 +617,40 @@ class CompilerService:
             "updated_at": profile.updated_at.isoformat(),
         }
 
+    def _shadow_view(self, run: CompileRun, task: TaskRun) -> dict[str, Any]:
+        if not run.prose_renderer_shadow:
+            return {"prose_shadow": {"status": "disabled"}}
+        artifacts = self.compiler.list_artifacts(run.id)
+        main_ready = any(a.schema_id == "compiler.scene-plan.v2" for a in artifacts)
+        manifest = next(
+            (a for a in artifacts if a.artifact_key == "compiler.compile_manifest"), None
+        )
+        status = (
+            manifest.content_jsonb["shadow_status"]
+            if manifest
+            else "inconclusive_infrastructure"
+            if task.status in {"failed", "cancelled"}
+            else "running"
+            if main_ready
+            else "pending"
+        )
+        return {
+            "compilation": {"status": "succeeded" if main_ready else task.status},
+            "prose_shadow": {
+                "status": status,
+                "manifest_artifact_id": manifest.id if manifest else None,
+                "completed_scene_count": (
+                    sum(
+                        s["final_state"].startswith("finalized_")
+                        for s in manifest.content_jsonb["scenes"]
+                    )
+                    if manifest
+                    else 0
+                ),
+                "is_adopted": False,
+            },
+        }
+
     def _run_view(self, run: CompileRun, task: TaskRun | None) -> dict[str, Any]:
         if task is None:
             raise RuntimeError("CompileRun TaskRun is missing")
@@ -595,6 +667,8 @@ class CompilerService:
             "exposure_plan_revision_id": run.exposure_plan_revision_id,
             "compiler_profile_version_id": run.compiler_profile_version_id,
             "compiler_version": run.compiler_version,
+            "prose_renderer_shadow": run.prose_renderer_shadow,
+            **self._shadow_view(run, task),
             "input_hash": run.input_hash,
             "execution": task_view(task),
             "artifacts": [

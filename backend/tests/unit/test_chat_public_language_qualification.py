@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -17,6 +19,65 @@ from casefile.benchmark.chat_public_language_qualification import (
 )
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_context_snapshot_revision_is_allowed_only_in_valid_public_message() -> None:
+    message = json.loads(
+        (ROOT / "fixtures/editing/chat_public_message.json").read_text(encoding="utf-8")
+    )
+    message["context_snapshot"] = {
+        "draft_id": 1,
+        "draft_revision": 2,
+        "object_ids": [],
+        "event_ids": [],
+        "validation_issue_ids": [],
+        "view": "timeline",
+    }
+    assert inspect_public_payload(message, sensitive_values=()) == ((), False)
+    for payload in (
+        {"draft_revision": 2},
+        {"context_snapshot": message["context_snapshot"]},
+        {**message, "input_hash": "a" * 64},
+        {**message, "context_snapshot": {**message["context_snapshot"], "model_id": "private"}},
+    ):
+        assert "forbidden_public_key" in inspect_public_payload(payload, sensitive_values=())[0]
+    invalid = deepcopy(message)
+    invalid["context_snapshot"]["draft_revision"] = -1
+    assert "forbidden_public_key" in inspect_public_payload(invalid, sensitive_values=())[0]
+
+
+def test_activity_detail_revision_requires_valid_public_event() -> None:
+    event = {
+        "sequence": 1,
+        "event": "run.activity_detail",
+        "activity_id": 1,
+        "activity": "reading",
+        "status": "completed",
+        "object_ids": [],
+        "draft_id": 1,
+        "draft_revision": 2,
+    }
+    assert inspect_public_payload(event, sensitive_values=()) == ((), False)
+    for invalid in ({**event, "activity": "private"}, {**event, "output_hash": "a" * 64}):
+        assert "forbidden_public_key" in inspect_public_payload(invalid, sensitive_values=())[0]
+
+
+def test_valid_context_does_not_skip_prose_or_sensitive_value_inspection() -> None:
+    message = json.loads(
+        (ROOT / "fixtures/editing/chat_public_message.json").read_text(encoding="utf-8")
+    )
+    message["context_snapshot"] = {
+        "draft_id": 1,
+        "draft_revision": 2,
+        "object_ids": ["secret-canary"],
+        "event_ids": [],
+        "validation_issue_ids": [],
+        "view": None,
+    }
+    message["body"] = "TaskRun ent_researcher"
+    rules, sensitive = inspect_public_payload(message, sensitive_values=("secret-canary",))
+    assert "engineering_term" in rules and "internal_id" in rules
+    assert sensitive
 
 
 def _manifest() -> dict[str, object]:

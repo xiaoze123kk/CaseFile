@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_adversarial_judge",
+  "version": "prose-adversarial-judge-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "87e83d2302fbff061fd8562e1a4bd2447886a5d6f6054312b96f998d8b10e937",
+  "previous_version": "prose-adversarial-judge-v2",
+  "change_summary": "加入服务端 Evidence 目录原样复制协议，禁止模型自行计算或改写 Unicode 引文区间。"
+}

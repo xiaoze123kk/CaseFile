@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_fidelity_judge",
+  "version": "prose-fidelity-judge-v6",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "90a8e66d3a38d624e286bf2d69bf31db5cd8b8294498089816cb638f940e9802",
+  "previous_version": "prose-fidelity-judge-v5",
+  "change_summary": "在输出前逐项复核 Evidence 必填条件，无充分证据时保守返回 uncertain。"
+}

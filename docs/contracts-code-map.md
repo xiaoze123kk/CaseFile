@@ -19,8 +19,8 @@ Run `/events` 和 `/stream` 接受 `feedback_version=1|2`，默认 1；新工作
 | `contracts/schemas/` | 面向跨语言消费者的 CaseFile、编辑、验证、任务、Chat Public DTO、推理、Benchmark、Compiler 与 API Schema 集合；`chat/chat-public.schema.json` 是 M3.6 作者侧协议事实源。 |
 | `contracts/schemas/compiler/compiler.schema.json` | N4.0 Narrative Compiler 基础契约：稳定 SourceRef/ArtifactRef、Diagnostic、Profile binding、Snapshot/Canon/Exposure 冻结绑定与 CompileInputManifest；不定义具体 IR 或 Artifact payload。 |
 | `contracts/schemas/compiler/narrative-ir.schema.json` | N4.2 NarrativeIR：Snapshot 无损对象 envelope、根与对象来源证明、带嵌套上下文的完整引用导航边。 |
-| `contracts/schemas/compiler/novel-profile.schema.json` | N4.3 小说结构、章节/场景目标、叙述方式和 Exposure 策略契约。 |
-| `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入。 |
+| `contracts/schemas/compiler/novel-profile.schema.json`、`novel-profile-v2.schema.json` | v1 保留 N4.3 小说结构与 Exposure 策略；v2 追加 BCP-47 语言、叙述人称/时态、Scene 字符与对白比例范围、描写密度、节奏和风格边界。 |
+| `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入；v1–v3 均兼容 NovelProfile v1/v2。 |
 | `contracts/schemas/compiler/planner-input-v2.schema.json` | 兼容新增的 Story Planner v2 输入：保留完整冻结输入，并加入可独立复验的 PlannerView；硬约束只投影现有权威规则，因果、知识与作者备注保持规划上下文。 |
 | `contracts/schemas/compiler/planner-model-view-v3.schema.json` | 显式 Provider-facing 精简视图：从完整 PlannerInput v2 确定性投影结构、Exposure precedence、Temporal rank、Resolution obligations、对象目录和规划上下文；不替代完整审计输入。 |
 | `contracts/schemas/compiler/planner-input-v3.schema.json`、`planner-model-view-v4.schema.json` | 将 Exposure v2 的 participant/basis/hypothesis typed obligations 按 hard/soft 分离；hard 进入 ConstraintIR v2 与权威校验，soft 仅进入模型规划上下文。 |
@@ -29,6 +29,7 @@ Run `/events` 和 `/stream` 接受 `feedback_version=1|2`，默认 1；新工作
 | `contracts/schemas/compiler/scene-plan.schema.json` | N4.4 SceneCompilerInputBundle、模型所有的 ScenePlanCandidate 与服务器规范 ScenePlanIR：候选只能为既有 Scene 填来源支持的 Beat，IR 保存稳定 ID、读者状态、显式图边、provenance、索引、诊断与计数。 |
 | `contracts/schemas/compiler/scene-compiler.schema.json` | N4.4 v2 完整冻结输入、章内最多八场的 Provider-facing ModelView、跨 batch typed inbound state 与受控 SemanticFill 契约；ModelView schema v1 兼容 projection v1/v2/v3，v2 保证可见引用目录闭包，v3 以 `beat_basis_allowlist` 显式呈现顶层 Beat provenance 精确白名单；Inbound State v1 显式给出当前知识、known-fact 操作白名单和开放/已用 setup key；模型不得控制最终 ID、规划顺序、Exposure 或 Resolution 权威字段。 |
 | `contracts/schemas/compiler/scene-plan-v2.schema.json` | N4.4 影子 ScenePlanIR v2：在 v1 执行结构上增加场景语义、Beat 义务与因果、知识/地点状态增量、setup/payoff、状态哈希和重放索引。 |
+| `contracts/schemas/compiler/prose-rendering.schema.json` | N4.5 Checklist、SceneRender candidate/服务器 Render、Judge/Consensus/Quality 报告、NovelCandidate 与 CompileManifest 的严格公共协议；Evidence 使用单 block、Unicode 半开区间和逐字原文。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
@@ -64,9 +65,28 @@ Run `/events` 和 `/stream` 接受 `feedback_version=1|2`，默认 1；新工作
 | `fixtures/compiler/foundation/` | N4.0 Compiler 基础合法/非法样例：Preview/Canonical 冻结输入、Exposure/Profile hash、SourceRef、ArtifactRef、Diagnostic 与结构/语义失败场景。 |
 | `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
 | `fixtures/compiler/scene_plan/v1/` | N4.4 SceneCompilerInputBundle 与 ScenePlanIR 最小跨语言往返样例，覆盖 NovelPlanScene 原生 Schema、稳定执行节点、显式图边、来源证明与空揭露状态。 |
+| `fixtures/compiler/prose_rendering/v1/` | N4.5 Profile v2、首场/后续场 Checklist、各 Render stage、Judge 正反 Evidence、Consensus、Quality、NovelCandidate、CompileManifest 及 Schema/领域非法变体。 |
+| `compiler.scene-render-candidate.v1` → `compiler.scene-render.v1` | Writer 与 Rewrite 共用公共完整正文 candidate；模型不得控制 identity/stage/hash。领域层分别注入 `writer/0/null` 或 `rewrite_1|rewrite_2/1|2/direct previous_render_hash`，不新增 patch Schema 或契约生成物。 |
+| `fixtures/prose_judge_benchmark/v1/` | N4.5-02 公开 B0 开发集：8 能力族各含 explicit valid、implicit valid、adversarial invalid，合计 24 Task 与 72 份 base/paraphrase/mutation Render；保存逐 check Gold Evidence、内容 hash、Codex 语义/对抗双遍开发 attestation 及确定性重建脚本。该集合只用于 Council policy 开发选择，不替代独立私有 Holdout。 |
+| `fixtures/prose_writer_benchmark/v1/` | N4.5-04 公开 Writer development baseline：引用当前 N4.4 八能力输入形成 basic/implicit-friendly/constraint-dense 共 24 Task，冻结 Profile、previous accepted Render、Fake candidate、逐 check Gold Evidence、输入/suite/attestation hash；只验证零网络 Writer→Fidelity-only Council 闭环，不构成 B1 资格。 |
+| `fixtures/prose_rewrite_benchmark/v1/` | N4.5 B2 公开 Rewrite development suite：8 个缺陷族×basic/preservation-dense/second-round 共 24 个坏正文，冻结初始 Writer Render、合法 Fidelity-only Judge/Consensus、原问题/此前通过/关键 check、完整 Rewrite Fake candidate、逐轮 Gold Evidence、输入/suite/attestation hash；只构成 development baseline。 |
+| `fixtures/prose_quality_benchmark/v1/` | N4.5 B3 公开 Quality development suite：冻结 8 组均通过同一 Semantic Checklist 的 Writer/Polished 偏好对、五个质量维度与 overall Gold、2/4/2 的 A/B/Tie 分布、直接 previous-render lineage、suite/task/attestation hash 及确定性重建脚本；只用于双位置 Quality Critic 开发验证，不构成私有 Holdout 或 B3 资格。 |
+| `fixtures/prose_quality_benchmark/v2/` | N4.5 B3 v3 修复后的公开 development descriptor/attestation：复用已公开且不可用于资格的 8 组 v1 任务正文与 Gold，重新绑定 Pairwise v2、Quality component v2 和新的 suite hash；零网络 runner 为 8/8 整体、8/8 镜像、40/40 维度基线，仍固定 `qualified=false`。 |
+| `backend/src/casefile/benchmark/policies/prose-quality-qualification-v1-descriptor.json` | B3 私有 Quality/Polisher qualification fail-closed descriptor：公开冻结 16 组 Holdout 与 24 个 Polisher Scene 的 8 焦点分布、A/B/Tie 分布、Quality/Polisher 门槛、精确模型/Prompt/component/public/private suite 与 author/reviewer attestation hash；私有正文、Gold 和本地构建脚本仅位于 `backend/var/benchmark/private/prose-quality/qualification-v1/`，不进入 Git。采用 `codex-owner-accepted-review-v1`，如实记录 `reviewer_independence=false`；正式 v1 attempt 已在 clean revision `0b08079` 上运行并因 Quality 5/16、镜像 12/16、Polisher 协议失败 19 而 `qualified=false`，详情记录于 N4.5-06 handoff。 |
+| `backend/src/casefile/benchmark/policies/prose-quality-qualification-v2-descriptor.json` | B3 修复后的全新私有资格 descriptor：保持 v1 证据不可变，重新冻结 16 组跨完整 Scene 拉开差异的 Quality Holdout 和 24 个 Polisher 场景，绑定 `prose-polisher-v2`、新 component/private suite/attestation hash 与 loader v2。Profile 字符范围是模型质量指导，服务端继续对 Schema、身份/lineage、hash、Evidence、调用预算和完整 Semantic/Preservation 结论失败关闭。正式 v2 attempt `b3-live-v2-20260903T071751Z` 已在 clean revision `c6709bd` 上运行：协议/基础设施失败为 0，但 Quality 13/16、镜像 11/16、Preservation 21/24，结果 `qualified=false`。v3 退步后活动实现回退至此版本，但该资格包已经消耗，入口拒绝再次运行；新资格必须另建包。 |
+| `backend/src/casefile/benchmark/policies/prose-quality-qualification-v3-descriptor.json` | B3 第二轮修复后的历史私有资格 descriptor：绑定 Pairwise v2、Polisher v3、公开 development v2 与 16/24 个全新 source assignment/surface construction；v2/v3 Quality pair fingerprint 与 Polisher input fingerprint 交集均为 0。正式 v3 attempt `b3-live-v3-20260903T082502Z` 在 clean revision `0c4cf0f` 上得到 Quality 10/16、镜像 8/16、Preservation 22/24，结果 `qualified=false`。因相对 v2 退步，v3 已退出活动基线；descriptor、Prompt、fixture 与正式报告继续不可变保留用于历史审计。 |
+| `backend/src/casefile/benchmark/policies/prose-rewrite-qualification-v1-descriptor.json` | B2 私有 qualification fail-closed descriptor：只公开 24 题分布、冻结门槛、public/private suite hash、author/reviewer attestation hash 和 review readiness；私有正文与 Gold 仅位于 `backend/var/benchmark/private/prose-rewrite/qualification-v1/`，不进入 Git。采用 `codex-owner-accepted-review-v1`，冻结为 `codex_reviewed / qualification_eligible=true`；正式 attempt `b2-live-v3-20260903T042158Z` 已在 clean revision `14c55c9` 上以 24/24 rescue、零协议/基础设施失败通过，报告 hash 记录于 N4.5-05 handoff。 |
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
 | `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
 | `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |
 | `fixtures/novel_plan_benchmark/v3/constraint_first_diagnostic_v1.json` | Constraint-First 实验的六 Task × 三 Trial 定向诊断集合及 `ea0bc...` 基线失败分布；只用于开发诊断，不构成正式晋级证据。 |
 | `fixtures/scene_plan_benchmark/v1/` | N4.4 Narrative Execution Benchmark 历史审计源：冻结 8 能力×basic/decoy/dense 的 NovelPlan/NarrativeIR 输入、人工审阅 Reference、每能力一个合法 Alternative、11 个面向 v2 SemanticFill/State Engine 的确定性 Safety Mutation，以及早期 contract-only G3 rubric。 |
 | `fixtures/scene_plan_benchmark/v2/` | 当前 N4.4 G3/G4 资格套件：复用并 hash 绑定 v1 审计输入，为 24 Task 冻结由正式 v2 State Engine 生成的 runtime reference；G3 固定 `deepseek-v4-flash` 盲位 pairwise 协议，正常单调用、仅空响应额外重试一次，并冻结五维 rubric、同源偏差声明与 Task-cluster bootstrap 阈值；G4 固定 v2 语义签名。前瞻门槛以既有 71/72 完整基线冻结，但必须由全新 24×3 Pro 生成 + Flash Judge 报告计算资格。 |
+
+## N4.5-07 兼容扩展
+
+CompileInputManifest 增加可选 `prose_renderer_shadow`（缺省 false）和冻结的 `prose_runtime`。历史原始 JSON 按原形校验 hash，不通过补默认值迁移历史身份。CompileManifest 保留既有组件报告，增加 runtime、not_run_scene_ids，允许前置阻断时 scenes 为空；SceneManifest 增加 physical_request_count、unknown_usage_count，call_count 继续表示逻辑调用。新字段兼容旧 Fixture/资格报告；Schema、Python/TS 与 OpenAPI 由统一入口同步。
+
+## B3 公开诊断套件
+
+`fixtures/prose_quality_benchmark/diagnostic_v1/` 保存新写的公开24组偏好对与24个润色场景及确定性生成脚本，八类 focus 各三题、每类 A/B/tie 各一。上下文为明确标注的合成诊断事实，不冒充 N4.4 编译产物；语义接受对象是非独立 Codex 审阅 Gold，不冒充真实 Council 输出。新的完整 Council 结果只写本地运行目录。旧公开集和私有资格包保持不变。

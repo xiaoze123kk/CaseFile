@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_coherence_judge",
+  "version": "prose-coherence-judge-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "ad78553c6d2cd1c64a5318127b55c36568c6138fc2d1324a6485a5733382bc83",
+  "previous_version": "prose-coherence-judge-v3",
+  "change_summary": "改用 Evidence ID 候选协议，并加强逐项独立、地点时间、因果与披露边界判定。"
+}

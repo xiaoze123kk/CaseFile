@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/novel-profile-v2.schema.json",
+  "title": "NovelProfileV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "structure", "allowed_presentation_modes", "exposure_policy", "prose"
+  ],
+  "properties": {
+    "schema_id": {"const": "compiler.novel-profile.v2"},
+    "structure": {"$ref": "novel-profile.schema.json#/properties/structure"},
+    "allowed_presentation_modes": {
+      "$ref": "novel-profile.schema.json#/properties/allowed_presentation_modes"
+    },
+    "exposure_policy": {"$ref": "novel-profile.schema.json#/properties/exposure_policy"},
+    "prose": {"$ref": "#/$defs/ProseProfile"}
+  },
+  "$defs": {
+    "ClosedIntegerRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": {"type": "integer", "minimum": 300, "maximum": 12000},
+        "max": {"type": "integer", "minimum": 300, "maximum": 12000}
+      }
+    },
+    "ClosedRatioRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": {"type": "number", "minimum": 0, "maximum": 1},
+        "max": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "ProseProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language", "narrative_person", "narrative_tense", "target_scene_chars",
+        "dialogue_ratio", "description_density", "pacing", "style_brief",
+        "forbidden_style_patterns"
+      ],
+      "properties": {
+        "language": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 35,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"
+        },
+        "narrative_person": {
+          "enum": ["first_person", "third_person_limited", "third_person_omniscient"]
+        },
+        "narrative_tense": {"enum": ["past", "present"]},
+        "target_scene_chars": {"$ref": "#/$defs/ClosedIntegerRange"},
+        "dialogue_ratio": {"$ref": "#/$defs/ClosedRatioRange"},
+        "description_density": {"enum": ["low", "balanced", "high"]},
+        "pacing": {"enum": ["slow", "balanced", "fast"]},
+        "style_brief": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "forbidden_style_patterns": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 200},
+          "maxItems": 20,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

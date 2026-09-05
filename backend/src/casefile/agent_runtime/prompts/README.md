@@ -46,6 +46,22 @@ Prompt 版本有三种互斥形态：
 
 `story_planner_skeleton-v1` 与 `story_planner_semantic_fill-v1` 是 Constraint-First 生产管线的两个独立、不可变 Prompt。前者只提议求解器字段，后者只填充模型所有字段；新建 Planner Task 以 `story-planner-constraint-first-v1` 记录 bundle 身份，各 AgentModelCall 继续分别记录真实 Prompt 版本与 hash。`story_planner-v3` 仅保留给历史 TaskRun 精确重放。
 
+`prose-fidelity-judge-v1`、`prose-adversarial-judge-v1`、`prose-coherence-judge-v1` 与 `prose-arbiter-v1` 是 N4.5-02 正文语义委员会的四个独立无工具 Prompt。前三者必须按服务端 Checklist 原顺序完整返回，Arbiter 只批量裁决争议项；Runtime 负责 Evidence 原文绑定、Consensus、预算和恢复，Prompt 不拥有控制流或资格决定。
+
+四个 `v2` 版本保留 v1 语义职责，只增加顶层 `server_bindings` 复制协议：`scene_id`、`checklist_hash`、`render_hash` 由 Runtime 预计算并纳入 request fingerprint，模型不得自行计算或误用 ScenePlan/Profile 等上游 hash。v1 保留用于 `0923fe3` 开发消融的精确重放。
+
+四个 `v3` 版本在 v2 的身份绑定之上增加 `server_evidence_catalog`：Runtime 按冻结策略从正文生成 Unicode 区间与逐字原文，模型只能完整复制目录对象，不能自行计算或改写 Evidence。Runtime 仍会复验正文绑定和目录成员资格；v1、v2 保留用于历史调用精确重放。
+
+四个 `v4` 版本把 Provider 输出缩为私有 `compiler.prose-judge-candidate.v1`：模型只返回逐 check verdict、rationale 与服务端 Evidence ID，不再转写 role、scene、hash、Unicode 区间或引文。Runtime 解析 ID 后组装并复验公共 `compiler.prose-judge-report.v1`。v4 同时冻结逐 check 独立判定、地点/时间分别核验、因果两端必须实际成立，以及“授权但提前披露”和“根本未授权新增事实”分离规则；v1–v3 保留用于历史调用精确重放。
+
+四个 `v5` 版本保持 Candidate/Public Report 边界不变，并补齐三项开发集语义：必需 Event 被否定、未来化或假设化时不得放过相关 `location_time`，一个 check 的失败不得传播到正文已实际实现的独立 Beat/Reveal，因果顺序按明确事件关系而非句子排列或自我说明判断。v4 继续保留用于历史调用精确重放。
+
+`prose-writer-v1` 是 N4.5-04 的单轮、无工具完整 Scene Writer。Runtime 在调用前精确复验 ScenePlanIR、NarrativeIR、Profile、Checklist 与前一场 accepted Render，只向模型发送 Checklist 已投影的当前 Scene 权威上下文；模型只返回 `compiler.scene-render-candidate.v1`，Scene identity、stage、round、block ID、字符数与全部 lineage hash 由服务端注入。
+
+`prose-rewriter-v1`、`v2` 保留 N4.5-05 初版与首次长度修复的历史回放。当前 `prose-rewriter-v3` 在相同单轮、无工具、最多两轮和完整替代正文边界上，把 Profile 的 Unicode 字符范围投影为带安全余量的 `length_contract` 与明确分段计划；模型不得把服务端拒绝线当作写作目标，输出前须逐 block 与总量复核。`prose-fidelity-judge-v6` 在 v5 语义规则之上增加 Evidence 必填条件的最终逐项审计，无充分目录证据时必须保守返回 `uncertain`。
+
+`prose-quality-critic-v1` 只在语义通过后按五个冻结维度产生带服务端 Evidence ID 的文学质量 findings，不改写正文或覆盖 Semantic verdict。`prose-quality-pairwise-v1` 对两份语义合格正文执行匿名 A/B 比较，固定输出整体和五维 `a|b|tie`；Runtime 以相反位置调用两次，模型看不到 original/polished、stage、版本或来源。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

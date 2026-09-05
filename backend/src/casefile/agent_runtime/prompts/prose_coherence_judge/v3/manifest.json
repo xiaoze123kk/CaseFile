@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_coherence_judge",
+  "version": "prose-coherence-judge-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "58fae6449a560ac2c8ca283930ccf32147e110ce79e2ab8104c9ac4f3ba84ae9",
+  "previous_version": "prose-coherence-judge-v2",
+  "change_summary": "加入服务端 Evidence 目录原样复制协议，禁止模型自行计算或改写 Unicode 引文区间。"
+}

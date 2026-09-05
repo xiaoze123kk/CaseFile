@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -186,6 +187,9 @@ class CompileRun(BigIntIdentityPrimaryKeyMixin, Base):
     casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     task_run_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    prose_renderer_shadow: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     target_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     compile_mode: Mapped[str] = mapped_column(String(32), nullable=False)
     source_snapshot_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -229,18 +233,50 @@ class CompileArtifact(BigIntIdentityPrimaryKeyMixin, Base):
             "compile_run_id", "artifact_key", name="uq_compile_artifacts_run_artifact_key"
         ),
         CheckConstraint(
-            "(artifact_kind = 'input_manifest' AND "
-            "artifact_key = 'compiler.input_manifest' AND "
-            "schema_id = 'compiler.input-manifest.v1') OR "
-            "(artifact_kind = 'narrative_ir' AND "
-            "artifact_key = 'compiler.narrative_ir' AND "
-            "schema_id = 'compiler.narrative-ir.v1') OR "
-            "(artifact_kind = 'novel_plan' AND "
-            "artifact_key = 'compiler.novel_plan' AND "
-            "schema_id = 'compiler.novel-plan.v1') OR "
-            "(artifact_kind = 'scene_plan' AND "
-            "artifact_key = 'compiler.scene_plan' AND "
-            "schema_id IN ('compiler.scene-plan.v1', 'compiler.scene-plan.v2'))",
+            "COALESCE(((artifact_kind = 'input_manifest' AND artifact_key = "
+            "'compiler.input_manifest' AND schema_id = 'compiler.input-manifest.v1') OR "
+            "(artifact_kind = 'narrative_ir' AND artifact_key = 'compiler.narrative_ir' "
+            "AND schema_id = 'compiler.narrative-ir.v1') OR (artifact_kind = 'novel_plan'"
+            " AND artifact_key = 'compiler.novel_plan' AND schema_id = 'compiler.novel-"
+            "plan.v1') OR (artifact_kind = 'scene_plan' AND artifact_key = "
+            "'compiler.scene_plan' AND schema_id IN ('compiler.scene-plan.v1', "
+            "'compiler.scene-plan.v2')) OR (content_jsonb->>'schema_id' = schema_id AND "
+            "((artifact_kind = 'scene_context' AND schema_id = 'compiler.prose-judge-"
+            "checklist.v1' AND artifact_key = 'compiler.scene_context.' || "
+            "(content_jsonb->>'scene_id')) OR (artifact_kind = 'scene_render' AND "
+            "schema_id = 'compiler.scene-render.v1' AND content_jsonb->>'stage' IN "
+            "('writer','rewrite_1','rewrite_2','polished','accepted') AND artifact_key = "
+            "'compiler.scene_render.' || (content_jsonb->>'scene_id') || '.' || "
+            "(content_jsonb->>'stage')) OR (artifact_kind = 'validation_report' AND "
+            "schema_id = 'compiler.prose-judge-report.v1' AND content_jsonb->>'role' IN "
+            "('fidelity','adversarial','coherence','arbiter') AND artifact_key IN "
+            "('compiler.validation_report.' || (content_jsonb->>'scene_id') || "
+            "'.semantic_0.' || (content_jsonb->>'role'),'compiler.validation_report.' || "
+            "(content_jsonb->>'scene_id') || '.semantic_1.' || "
+            "(content_jsonb->>'role'),'compiler.validation_report.' || "
+            "(content_jsonb->>'scene_id') || '.semantic_2.' || "
+            "(content_jsonb->>'role'),'compiler.validation_report.' || "
+            "(content_jsonb->>'scene_id') || '.preservation.' || "
+            "(content_jsonb->>'role'))) OR (artifact_kind = 'validation_report' AND "
+            "schema_id = 'compiler.prose-consensus-report.v1' AND artifact_key IN "
+            "('compiler.validation_report.' || (content_jsonb->>'scene_id') || "
+            "'.semantic_' || (content_jsonb->>'round') || '.consensus', "
+            "'compiler.validation_report.' || (content_jsonb->>'scene_id') || "
+            "'.preservation.consensus')) OR (artifact_kind = 'validation_report' AND "
+            "schema_id = 'compiler.prose-quality-report.v1' AND "
+            "((content_jsonb->>'report_kind' = 'findings' AND artifact_key = "
+            "'compiler.validation_report.' || (content_jsonb->>'scene_id') || "
+            "'.quality.findings') OR (content_jsonb->>'report_kind' = 'pairwise' AND "
+            "((content_jsonb->'position_mapping'->>'a' = 'original' AND artifact_key = "
+            "'compiler.validation_report.' || (content_jsonb->>'scene_id') || "
+            "'.quality.pairwise.original_first') OR "
+            "(content_jsonb->'position_mapping'->>'a' = 'polished' AND artifact_key = "
+            "'compiler.validation_report.' || (content_jsonb->>'scene_id') || "
+            "'.quality.pairwise.polished_first'))))) OR (artifact_kind = "
+            "'novel_candidate' AND artifact_key = 'compiler.novel_candidate' AND "
+            "schema_id = 'compiler.novel-candidate.v1') OR (artifact_kind = "
+            "'compile_manifest' AND artifact_key = 'compiler.compile_manifest' AND "
+            "schema_id = 'compiler.compile-manifest.v1')))), false)",
             name="identity_allowed",
         ),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),

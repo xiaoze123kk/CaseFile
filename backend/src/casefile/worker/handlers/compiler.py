@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from casefile.worker.execution import ProviderRequirement, TaskExecutionContext
 from casefile.worker.executors.compiler import CompilerExecutor
+from casefile.worker.executors.prose_store import ProseLeaseLost
 
 
 class CompilerHandler:
@@ -14,7 +17,15 @@ class CompilerHandler:
         self._executor = executor
 
     def execute(self, context: TaskExecutionContext) -> None:
-        self._executor.execute(context.task.id, context.attempt_id)
+        try:
+            self._executor.execute(context.task.id, context.attempt_id)
+        except ProseLeaseLost:
+            return
+        except SQLAlchemyError:
+            if not context.task.input_jsonb.get("prose_renderer_shadow"):
+                raise
+            # Storage cannot certify completion; leave the task recoverable by lease.
+            return
 
 
 __all__ = ["CompilerHandler"]

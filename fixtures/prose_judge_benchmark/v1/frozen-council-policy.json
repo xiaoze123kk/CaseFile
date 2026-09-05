@@ -1,0 +1,60 @@
+{
+  "schema_id": "casefile.prose-council-policy.v2",
+  "policy_id": "fidelity-only-v1",
+  "roles": [
+    "fidelity"
+  ],
+  "use_arbiter": false,
+  "consensus_rule": "unanimous-then-batch-arbiter-v1",
+  "scene_verdict_precedence": [
+    "uncertain",
+    "fail",
+    "pass"
+  ],
+  "max_arbiter_calls_per_round": 1,
+  "policy_hash": "b1d492fc9be3ef834e09d2c50b39cc5be19647900ad182db58e25d17c4b18c63",
+  "model_id": "deepseek-v4-pro",
+  "max_output_tokens": 8192,
+  "max_turns": 1,
+  "network_retries": 1,
+  "retry_delay_ms": 1000,
+  "retryable_errors": [
+    "APIConnectionError",
+    "APITimeoutError"
+  ],
+  "temperature": 0,
+  "thinking_enabled": false,
+  "prompt_bindings": {
+    "prose_fidelity_judge": {
+      "version": "prose-fidelity-judge-v5",
+      "hash": "48a711bb1ca193fbf7adbbe4ae5e3dbd8b7bf87ab5e5ee2b9644a7eb6ee3dbbd"
+    },
+    "prose_adversarial_judge": {
+      "version": "prose-adversarial-judge-v5",
+      "hash": "dc1785d7e5f4d1ade53b925679f36014b843e4a89bfd881da74ed3d222e01d4d"
+    },
+    "prose_coherence_judge": {
+      "version": "prose-coherence-judge-v5",
+      "hash": "6dedcf310b0a090c27c570d565f57f2e243e1781fca68b07e1c5aa86abc89297"
+    },
+    "prose_arbiter": {
+      "version": "prose-arbiter-v5",
+      "hash": "4b9e9ef21569a8ede75ce979f5043dc621372a5d1f8e9e18f9a74c180bc1290a"
+    }
+  },
+  "schema_id_binding": "compiler.prose-judge-report.v1",
+  "schema_hash": "3d8d236b2b2917181b98677956515242de6cafb50d3b433ba27b017243f93e2a",
+  "candidate_schema_id_binding": "compiler.prose-judge-candidate.v1",
+  "candidate_schema_hash": "163260fc7f2959e49336b106b7381bfd5ee6c817870f2c3a9ee0f797f870af98",
+  "request_protocol": "prose-judge-json-object-v5",
+  "evidence_catalog_version": "prose-evidence-catalog-v2",
+  "evidence_catalog_policy_hash": "8e16f47442637665efe5e35565426f65b006af749b0ab346491ccda22714acfa",
+  "suite_hash": "bbac2b7e053a0723396cec240ca22fb9f1fdb4b35494504fb70d737db695868d",
+  "attestation_hash": "bf0bbeadc51973b051d63b0f6674568b8d7e317b876ab99223f16eb10ff0d862",
+  "development_report_hash": "1c6260c207ca9fde190354e211ba8b3e73faf3f94e03dc3b423a12c57ae332ba",
+  "raw_call_bundle_hash": "fa61ecad8988a4c4d5d1a5f8b870e63e4ff2df054cd8794ef816aca2afe9ac64",
+  "implementation_revision": "db83bbdc0169f541beb3001cd818e04847f7ea6a",
+  "qualified": false,
+  "qualification_stage": "development_only",
+  "descriptor_hash": "28761f251851eefcf76bb15c13bd829ab0f0ee78ca1586a1772947a02822b2ed"
+}

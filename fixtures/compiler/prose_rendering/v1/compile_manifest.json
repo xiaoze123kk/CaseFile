@@ -1,0 +1,56 @@
+{
+  "schema_id": "compiler.compile-manifest.v1",
+  "source": {
+    "scene_plan_hash": "a489cba44dee0dba9aef021413dd86db5ca9c62f824c332cff3c7dc60c075c76",
+    "narrative_ir_hash": "3ae56a41e597941588f4d2fb43bad8a5bb8d3328eb6671b6df15ddbb868bf9a2",
+    "profile_hash": "f8ed6b8b0c59bced6d08a088b1b1b6f941b8d7db5d4e0ff79de9b813ad805376"
+  },
+  "components": {
+    "checklist_policy_hash": "7d38d2374f69b7734e9096959b155bf3d0ff4cb01ecc46bb7eb3628dde0cdff2",
+    "council_policy_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "writer_component_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "fidelity_judge_component_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "adversarial_judge_component_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "coherence_judge_component_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "arbiter_component_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "rewrite_component_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "quality_critic_component_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+    "polisher_component_hash": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "scenes": [
+    {
+      "scene_id": "scene_1",
+      "scene_ordinal": 1,
+      "final_state": "finalized_original",
+      "checklist_hash": "d15f48ed176d5c90a20180ce3a883f8521a67c0c58f08831e9baef675946f6fa",
+      "render_hashes": [
+        "80d24826b114f5f9e234bb050a8eae4703e25bcea6efd04ee216175d7b76bc18",
+        "9998520d3d51c5b396f544b97035da96e84ce4f6e10884e4f054ff0805158c4c"
+      ],
+      "judge_report_hashes": [
+        "bd6224c9adb98dfc6d9baba7c444a671449f0f29fb236352c986a8641b01f96e"
+      ],
+      "consensus_report_hashes": [
+        "984c441d21829b1a93eab91b1180bf2064e95c51bee3b233b9ab8245cf7df8c2"
+      ],
+      "arbiter_report_hashes": [],
+      "quality_report_hashes": [
+        "ac2f75559420dacc36d362ffa88cf10485bc163edc484c70f88b4337d83a6dce"
+      ],
+      "accepted_render_hash": "9998520d3d51c5b396f544b97035da96e84ce4f6e10884e4f054ff0805158c4c",
+      "rewrite_count": 0,
+      "call_count": 7,
+      "usage": {
+        "input_tokens": 1200,
+        "output_tokens": 600,
+        "total_tokens": 1800
+      },
+      "latency_ms": 3200,
+      "recovered_call_hashes": [],
+      "failure_reason": null
+    }
+  ],
+  "shadow_status": "succeeded",
+  "incomplete_reason": null,
+  "novel_candidate_hash": "f42d18816fd9b5f69ce74e6d020e2442353c51f38473d131afed6dbdac538806"
+}
