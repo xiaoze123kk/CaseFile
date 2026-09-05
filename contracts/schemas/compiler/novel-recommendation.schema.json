@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/novel-recommendation.schema.json",
+  "title": "NovelRecommendation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["concept", "rationale", "chapters", "scenes", "style"],
+  "properties": {
+    "concept": {"type": "string", "minLength": 1, "maxLength": 200},
+    "rationale": {"type": "string", "minLength": 1, "maxLength": 1500},
+    "chapters": {"type": "integer", "minimum": 1, "maximum": 30},
+    "scenes": {"type": "integer", "minimum": 1, "maximum": 120},
+    "style": {"type": "string", "minLength": 1, "maxLength": 2000}
+  }
+}
