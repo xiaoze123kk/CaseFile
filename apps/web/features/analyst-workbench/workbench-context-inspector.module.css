@@ -2,8 +2,8 @@
   display: grid;
   min-width: 0;
   align-content: start;
-  color: #292c2c;
-  background: #f3f1eb;
+  color: var(--ink, #263b47);
+  background: var(--paper-low, #edf2f4);
   font: 13px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
 }
 
@@ -11,8 +11,8 @@
   display: grid;
   min-width: 0;
   gap: 0;
-  padding: 24px 26px 30px;
-  background: #fbfaf6;
+  padding: 20px 20px 26px;
+  background: var(--paper-high, #fff);
 }
 
 .contextEmptyState {
@@ -22,7 +22,7 @@
   justify-items: center;
   gap: 9px;
   padding: 24px;
-  color: #636763;
+  color: var(--ink-muted, #5c707c);
   text-align: center;
 }
 
@@ -30,10 +30,10 @@
   position: relative;
   min-width: 0;
   margin-top: 22px;
-  padding: 28px 0 0;
-  border-top: 1px solid #d6cabb;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--rule, #dbe3e7);
 }
-.sectionOrnament { position: absolute; top: -12px; left: calc(50% - 13px); width: 26px; color: #a92609; background: #fbfaf6; text-align: center; font-size: 18px; }
+.sectionOrnament { display: none; position: absolute; top: -12px; left: calc(50% - 13px); width: 26px; color: var(--primary, #315c73); background: var(--paper-high, #fff); text-align: center; font-size: 18px; }
 
 .overviewRelations > header {
   display: flex;
@@ -46,10 +46,10 @@
 
 .overviewRelations > header h3 {
   margin: 0;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   padding-left: 10px;
-  border-left: 3px solid #a92609;
-  font: 600 clamp(18px, 3cqi, 22px)/1.2 "Noto Serif SC", "STSong", SimSun, serif;
+  border-left: 3px solid var(--primary, #315c73);
+  font: 600 16px/1.2 "Noto Serif SC", "STSong", SimSun, serif;
   letter-spacing: 0.04em;
 }
 .overviewRelations > header small {
@@ -67,16 +67,16 @@
   list-style: none;
 }
 
-.overviewFixtureEvent:focus-visible { outline: 2px solid #c78b3c; outline-offset: 2px; }
+.overviewFixtureEvent:focus-visible { outline: 2px solid var(--primary, #315c73); outline-offset: 2px; }
 
 .overviewFixtureEvent {
   display: grid;
   width: 100%;
   gap: 2px;
   padding: 8px 10px;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   border: 1px solid #e0dbd1;
-  background: #f3f1eb;
+  background: var(--paper-low, #edf2f4);
   text-align: left;
 }
 .overviewFixtureEvent strong { font-size: 12px; }
@@ -87,13 +87,13 @@
   width: 44px;
   height: 44px;
   place-items: center;
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   border: 1px solid rgba(199, 139, 60, 0.5);
   font: 600 11px/1 "Cascadia Mono", Consolas, monospace;
 }
 
 .contextEmptyState strong {
-  color: #292c2c;
+  color: var(--ink, #263b47);
   font: 600 17px/1.3 "Noto Serif SC", "STSong", SimSun, serif;
 }
 
@@ -116,7 +116,7 @@
   grid-template-columns: 38px minmax(0, 1fr);
   gap: 10px;
   padding-bottom: 14px;
-  border-bottom: 2px solid #c78b3c;
+  border-bottom: 2px solid var(--primary, #315c73);
 }
 
 .fixtureIndex {
@@ -124,8 +124,8 @@
   width: 38px;
   height: 38px;
   place-items: center;
-  color: #fbfaf6;
-  background: #292c2c;
+  color: var(--paper-high, #fff);
+  background: var(--ink, #263b47);
   font: 600 17px/1 "Noto Serif SC", "STSong", SimSun, serif;
 }
 
@@ -135,7 +135,7 @@
 
 .fixtureIdentity p {
   margin: 0 0 3px;
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.06em;
@@ -150,7 +150,7 @@
 .fixtureIdentity > span {
   display: block;
   margin-top: 5px;
-  color: #636763;
+  color: var(--ink-muted, #5c707c);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -166,9 +166,9 @@
   min-height: 26px;
   align-items: center;
   padding: 2px 8px;
-  color: #636763;
+  color: var(--ink-muted, #5c707c);
   border: 1px solid #d6d1c5;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -180,7 +180,7 @@
 
 .fixtureBadges [data-tone="confidence"],
 .fixtureBadges [data-tone="revision"] {
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   border-color: rgba(199, 139, 60, 0.5);
 }
 
@@ -188,7 +188,7 @@
   min-width: 0;
   padding: 13px;
   border: 1px solid #d6d1c5;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
 }
 
 .contextSectionHeader {
@@ -202,7 +202,7 @@
 
 .contextSectionHeader h3 {
   margin: 0 auto 0 0;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   font: 600 15px/1.3 "Noto Serif SC", "STSong", SimSun, serif;
 }
 
@@ -243,7 +243,7 @@
 .fixtureFacts dd {
   margin: 0;
   overflow-wrap: anywhere;
-  color: #292c2c;
+  color: var(--ink, #263b47);
 }
 
 .fixtureEvents {
@@ -261,18 +261,18 @@
   grid-template-columns: minmax(96px, 0.8fr) minmax(0, 1.2fr);
   gap: 8px;
   padding: 8px;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   border: 1px solid #e0dbd1;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
   text-align: left;
 }
 
 .fixtureEvents button:hover {
-  border-color: #c78b3c;
+  border-color: var(--primary, #315c73);
 }
 
 .fixtureEvents time {
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   font-size: 11px;
 }
 
@@ -301,7 +301,7 @@
 
 .relationGroupHeader h4 {
   margin: 0 auto 0 0;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   font: 600 13px/1.4 "Noto Serif SC", "STSong", SimSun, serif;
 }
 
@@ -322,7 +322,7 @@
 .relationCluster {
   min-width: 0;
   border: 1px solid #e0dbd1;
-  background: #f3f1eb;
+  background: var(--paper-low, #edf2f4);
 }
 .relationCluster > summary {
   display: grid;
@@ -336,7 +336,7 @@
 }
 .relationCluster > summary::-webkit-details-marker { display: none; }
 .relationCluster > summary::after {
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   content: "+";
   font: 700 15px/1 "Cascadia Mono", Consolas, monospace;
 }
@@ -347,23 +347,23 @@
 .relationCluster > summary em {
   grid-column: 1 / -1;
   overflow-wrap: anywhere;
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   font-size: 11px;
   font-style: normal;
   font-weight: 650;
 }
-.relationCluster > summary:focus-visible { outline: 2px solid #c78b3c; outline-offset: -2px; }
+.relationCluster > summary:focus-visible { outline: 2px solid var(--primary, #315c73); outline-offset: -2px; }
 .relationCluster > ol {
   display: grid;
   gap: 5px;
   margin: 0;
   padding: 8px;
   border-top: 1px solid #e0dbd1;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
   list-style: none;
 }
 .relationCluster > ol .relationItem,
-.relationCluster > ol .incomingItem { background: #f3f1eb; }
+.relationCluster > ol .incomingItem { background: var(--paper-low, #edf2f4); }
 
 .relationList li,
 .incomingList li {
@@ -379,7 +379,7 @@
   align-items: center;
   gap: 14px;
   padding: 18px 0;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   border: 0;
   border-bottom: 1px solid #e5e1d8;
   background: transparent;
@@ -388,14 +388,14 @@
 
 .overviewRelationList li:first-child .relationItem { border-top: 0; }
 .overviewRelationList li { min-width: 0; }
-button.relationItem:focus-visible { outline: 2px solid #a92609; outline-offset: 3px; }
+button.relationItem:focus-visible { outline: 2px solid var(--primary, #315c73); outline-offset: 3px; }
 
 button.relationItem {
   cursor: pointer;
 }
 
 button.relationItem:hover {
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   background: rgba(199, 139, 60, 0.05);
 }
 
@@ -440,9 +440,9 @@ button.relationItem:hover {
   align-content: center;
   gap: 3px;
   padding: 8px 10px;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   border: 1px solid #e0dbd1;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
   text-align: left;
 }
 
@@ -451,7 +451,7 @@ button.incomingItem {
 }
 
 button.incomingItem:hover {
-  border-color: #c78b3c;
+  border-color: var(--primary, #315c73);
 }
 
 .incomingSentence {
@@ -475,7 +475,7 @@ button.incomingItem:hover {
 }
 
 .incomingSentence em {
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   font-size: 11px;
   font-style: normal;
   font-weight: 650;

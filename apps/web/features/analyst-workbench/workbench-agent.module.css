@@ -119,13 +119,13 @@
 .agentTaskSummary p { max-width: 300px; margin: 5px 0 0; line-height: 1.5; }
 
 .agentMessages { display: flex; min-width: 0; flex-direction: column; gap: 28px; padding: 24px clamp(24px, 6vw, 54px); overflow-y: auto; }
-.agentMessage { max-width: var(--agent-reading-width); margin: 0; color: #e8e4db; font: 400 20px/1.75 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agentMessage { max-width: var(--agent-reading-width); margin: 0; color: #e8e4db; font: 400 17px/1.85 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; white-space: pre-wrap; overflow-wrap: anywhere; }
 .agentMessage[data-role="assistant"], .agentMessage[data-role="agent"] { align-self: flex-start; }
 .agentMessage[data-role="user"] { align-self: flex-end; color: #d8d3ca; }
 
 .agentTurn { display: grid; max-width: var(--agent-reading-width); gap: 8px; align-self: flex-start; }
 .agentTurn[data-role="user"] { align-self: flex-end; }
-.agentTurnContent { display: grid; gap: 4px; color: #e8e4db; font: 400 20px/1.75 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; white-space: pre-wrap; }
+.agentTurnContent { display: grid; gap: 4px; color: #e8e4db; font: 400 17px/1.85 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; white-space: pre-wrap; }
 .agentTurnContent strong { color: #f0ede6; font: 600 20px/1.4 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; }
 .agentTurnContent p { margin: 0; }
 .agentResultSummary { display: flex; max-width: var(--agent-reading-width); flex-wrap: wrap; gap: 6px; align-items: flex-start; }
@@ -290,7 +290,7 @@
 .agentPreview { margin: 12px 0; }
 .agentPreview small, .agentPreview summary { color: var(--ink-muted); font: 12px/1.5 system-ui, sans-serif; }
 .agentPreview p,
-.agentTurn > p { margin: 0; font: 400 20px/1.75 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agentTurn > p { margin: 0; font: 400 17px/1.85 "Noto Serif SC", "Source Han Serif SC", "STSong", SimSun, serif; white-space: pre-wrap; overflow-wrap: anywhere; }
 .agentLiveStatus { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; color: var(--ink-muted); font: 12px/1.6 system-ui, sans-serif; }
 .agentLiveStatus button, .agentBackLatest { color: var(--ink); background: var(--paper); border: 1px solid var(--rule); padding: 4px 10px; cursor: pointer; }
 .agentLiveStatus small { flex-basis: 100%; }
@@ -312,9 +312,9 @@
   align-items: center;
   gap: 6px;
   padding: 4px;
-  border: 1px solid #e1d8c5;
-  border-radius: 18px;
-  background: #f5eedc;
+  border: 1px solid var(--agent-rule);
+  border-radius: 10px;
+  background: #f0f4f6;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.64);
 }
 .agentComposer[data-surface="dock"] textarea {
@@ -323,13 +323,13 @@
   padding: 10px 14px;
   color: #3e382f;
   border: 0;
-  border-radius: 14px;
+  border-radius: 7px;
   background: transparent;
   font: 400 14px/1.65 "Noto Serif SC", "STSong", SimSun, serif;
   letter-spacing: 0.025em;
 }
 .agentComposer[data-surface="dock"] textarea::placeholder {
-  color: #9b8568;
+  color: var(--ink-faint);
   opacity: 1;
 }
 .agentComposer[data-surface="dock"] textarea:focus {
@@ -345,11 +345,11 @@
   place-items: center;
   padding: 0;
   color: #fffaf4;
-  border-radius: 14px;
-  background: #c98765;
+  border-radius: 7px;
+  background: var(--agent-accent);
 }
 .agentComposer[data-surface="dock"] .agentComposerRow > button:hover:not(:disabled) {
-  background: #b86f4c;
+  background: var(--agent-accent-hover);
 }
 .agentComposer[data-surface="dock"] .agentComposerRow > button svg {
   width: 19px;
@@ -428,7 +428,7 @@
 .agentMessages {
   gap: 22px;
   padding: 28px clamp(28px, 6vw, 64px);
-  background: rgba(250, 248, 243, 0.72);
+  background: #f5f7f8;
 }
 .agentSurface[data-surface="desk"] .agentMessages {
   padding-top: 28px;
@@ -511,7 +511,7 @@
 .agentSurface[data-surface="desk"] .agentComposer[data-surface="dock"] {
   padding: 8px clamp(28px, 6vw, 64px) 16px clamp(88px, 9vw, 112px);
   border-top: 1px solid var(--agent-rule);
-  background: rgba(252, 251, 248, 0.96);
+  background: #fff;
   box-shadow: 0 -10px 30px rgba(67, 48, 34, 0.045);
 }
 .agentThreadManager[data-placement="toolbar"] { width: 100%; }
@@ -551,7 +551,7 @@
   margin: 0 clamp(28px, 6vw, 64px) 8px;
   padding: 5px 10px;
   border: 1px solid rgba(214, 207, 196, 0.9);
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 254, 251, 0.76);
   backdrop-filter: blur(9px);
   box-shadow: 0 7px 20px rgba(67, 48, 34, 0.07);
@@ -610,7 +610,7 @@
   min-width: 0;
   padding: 8px 12px 16px 84px;
   border-top: 1px solid var(--agent-rule);
-  background: rgba(252, 251, 248, 0.96);
+  background: #fff;
   box-shadow: 0 -10px 30px rgba(67, 48, 34, 0.045);
 }
 .agentSurface[data-surface="center"] .agentComposer {

@@ -4,7 +4,7 @@
   min-width: 0;
   gap: 0;
   padding: 0;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   background: transparent;
   font: 13px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
 }
@@ -13,10 +13,10 @@
   position: relative;
   display: grid;
   min-width: 0;
-  grid-template-columns: clamp(48px, 12cqi, 96px) minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: start;
-  gap: 22px clamp(14px, 4cqi, 30px);
-  padding: 12px 0 26px;
+  gap: 14px;
+  padding: 8px 0 18px;
 }
 
 .objectIndex {
@@ -26,30 +26,30 @@
   aspect-ratio: 1;
   margin-top: 3px;
   place-items: center;
-  border: 4px double #a92609;
+  border: 1px solid var(--rule);
   border-radius: 5px;
-  color: #a92609;
+  color: var(--primary, #315c73);
   background: transparent;
-  font: 500 clamp(30px, 8cqi, 66px)/1 "Noto Serif SC", "STSong", SimSun, serif;
+  font: 500 24px/1 "Noto Serif SC", "STSong", SimSun, serif;
 }
 .objectIndex::before,
-.objectIndex::after { position: absolute; pointer-events: none; content: ""; opacity: 0.22; }
-.objectIndex::before { inset: 0 50%; border-left: 1px dashed #a92609; }
-.objectIndex::after { inset: 50% 0; border-top: 1px dashed #a92609; }
+.objectIndex::after { position: absolute; pointer-events: none; content: ""; opacity: 0; }
+.objectIndex::before { inset: 0 50%; border-left: 1px dashed var(--primary, #315c73); }
+.objectIndex::after { inset: 50% 0; border-top: 1px dashed var(--primary, #315c73); }
 
 .detailIdentity { min-width: 0; }
 .detailIdentity p {
   margin: 0 0 9px;
   padding-right: 56px;
-  color: #a92609;
-  font-size: clamp(12px, 2.5cqi, 16px);
+  color: var(--primary, #315c73);
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.12em;
 }
 .detailIdentity h2 {
   margin: 0;
   overflow-wrap: anywhere;
-  font: 600 clamp(30px, 7.4cqi, 58px)/1.3 "Noto Serif SC", "STSong", SimSun, serif;
+  font: 600 clamp(22px, 5cqi, 30px)/1.3 "Noto Serif SC", "STSong", SimSun, serif;
   letter-spacing: 0.02em;
 }
 .detailDescription {
@@ -68,26 +68,26 @@
   min-height: 32px;
   margin-left: auto;
   padding: 0 8px;
-  color: #636763;
-  border: 1px solid #d6d1c5;
+  color: var(--ink-muted, #5c707c);
+  border: 1px solid var(--rule, #dbe3e7);
   border-radius: 3px;
   background: transparent;
   font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
   white-space: nowrap;
 }
-.editButton:hover { color: #a92609; border-color: #a92609; }
-.footerActions button:not(:disabled):hover { background: #c78b3c; border-color: #c78b3c; }
+.editButton:hover { color: var(--primary, #315c73); border-color: var(--primary, #315c73); }
+.footerActions button:not(:disabled):hover { background: var(--primary, #315c73); border-color: var(--primary, #315c73); }
 
 .detailSection {
-  padding: 24px 0 8px;
+  padding: 18px 0 6px;
   background: transparent;
 }
 
 .quickEdit {
   margin-top: 18px;
   padding: 13px;
-  border: 1px solid #d6d1c5;
-  background: #f3f1eb;
+  border: 1px solid var(--rule, #dbe3e7);
+  background: var(--paper-low, #edf2f4);
 }
 
 .detailSection h3,
@@ -95,12 +95,12 @@
 .associations h3,
 .structureLocks h3 {
   margin: 0 0 10px;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   font: 600 16px/1.3 "Noto Serif SC", "STSong", SimSun, serif;
 }
 .detailSection dl,
 .technicalDetails dl { display: grid; gap: 0; margin: 0; }
-.detailSection h3 { margin-bottom: 12px; padding-left: 10px; border-left: 3px solid #a92609; color: #292c2c; font: 600 clamp(18px, 3cqi, 22px)/1.2 "Noto Serif SC", "STSong", SimSun, serif; letter-spacing: 0.04em; }
+.detailSection h3 { margin-bottom: 12px; padding-left: 10px; border-left: 3px solid var(--primary, #315c73); color: var(--ink, #263b47); font: 600 16px/1.2 "Noto Serif SC", "STSong", SimSun, serif; letter-spacing: 0.04em; }
 .detailSection dl { grid-template-columns: minmax(0, 1fr); gap: 0; }
 .detailSection dl > div { display: grid; min-width: 0; grid-template-columns: minmax(100px, 0.3fr) minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 16px 0; border-bottom: 1px solid #e5e1d8; }
 .detailSection dl > div:last-child { border-bottom: 0; }
@@ -112,7 +112,7 @@
 .summaryStrip { display: flex; flex-wrap: wrap; margin: 0; padding: 13px 0; border: 1px solid #dacdbd; border-radius: 4px; }
 .summaryStrip > div { display: grid; flex: 1 1 0; min-width: 0; grid-template-columns: 24px minmax(0, 1fr); gap: 3px 10px; padding: 0 14px; }
 .summaryStrip > div + div { border-left: 1px solid #e1d6c7; }
-.summaryStrip svg { grid-row: 1 / 3; align-self: center; width: 23px; height: 23px; color: #a92609; }
+.summaryStrip svg { grid-row: 1 / 3; align-self: center; width: 23px; height: 23px; color: var(--primary, #315c73); }
 .summaryStrip dt { margin: 0; color: #777a75; font-size: 11px; }
 .summaryStrip dd { margin: 0; overflow-wrap: anywhere; font-size: 14px; }
 .detailSection dl > div[data-wide="true"],
@@ -129,7 +129,7 @@
 .technicalDetails :is(dt, dd) { margin: 0; min-width: 0; }
 .detailSection dt,
 .technicalDetails dt { color: #777a75; font-size: 12px; }
-.detailSection dd { overflow-wrap: anywhere; color: #292c2c; font-size: 14px; line-height: 1.8; }
+.detailSection dd { overflow-wrap: anywhere; color: var(--ink, #263b47); font-size: 14px; line-height: 1.8; }
 
 .citationChips {
   display: flex;
@@ -141,7 +141,7 @@
 .citationChip {
   min-height: 28px;
   padding: 2px 9px;
-  color: #87561f;
+  color: var(--primary-strong, #234b61);
   border: 1px solid rgba(199, 139, 60, 0.5);
   background: rgba(199, 139, 60, 0.1);
   font: 600 11px/1.4 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
@@ -165,7 +165,7 @@
   border: 1px solid #e5e1d8;
   border-radius: 3px;
   background: #f3f3ed;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   font: inherit;
   text-align: left;
 }
@@ -177,14 +177,14 @@
   gap: 6px;
   padding: 6px 7px;
   border: 1px solid #e0dbd1;
-  background: #f3f1eb;
-  color: #292c2c;
+  background: var(--paper-low, #edf2f4);
+  color: var(--ink, #263b47);
   text-align: left;
 }
 .referenceList button,
 .associationList button { cursor: pointer; }
 .referenceList button:hover,
-.associationList button:hover { border-color: #c78b3c; background: #fbfaf6; }
+.associationList button:hover { border-color: var(--primary, #315c73); background: var(--paper-high, #fff); }
 .referenceList strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
 .associationList strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
 .referenceList small,
@@ -195,7 +195,7 @@
 .moreDetails,
 .technicalDetails {
   border: 0;
-  border-bottom: 1px solid #d6d1c5;
+  border-bottom: 1px solid var(--rule, #dbe3e7);
   background: transparent;
 }
 .moreDetails > summary,
@@ -203,7 +203,7 @@
   min-height: 44px;
   padding: 13px 0;
   cursor: pointer;
-  color: #636763;
+  color: var(--ink-muted, #5c707c);
   font-size: 12px;
   font-weight: 500;
 }
@@ -212,7 +212,7 @@
 .moreDetails > summary::-webkit-details-marker { display: none; }
 .moreDetails > summary > svg { flex: none; width: 22px; height: 22px; color: #777a75; transform: rotate(-90deg); }
 .moreDetails[open] > summary > svg { transform: rotate(0); }
-.moreDetails > summary:focus-visible { outline: 2px solid #a92609; outline-offset: 3px; }
+.moreDetails > summary:focus-visible { outline: 2px solid var(--primary, #315c73); outline-offset: 3px; }
 .moreDetails[open] > summary,
 .technicalDetails[open] > summary { border-bottom: 1px solid #e5e1d8; }
 .moreDetails > .detailSection { margin: 0; padding: 26px clamp(16px, 3.5cqi, 28px); }
@@ -233,25 +233,25 @@
   .moreDetails > .detailSection dt:not(.srOnly) { padding-right: 16px; border-right: 1px solid #e5ded2; }
 }
 .technicalDetails dl { padding: 0 13px 13px; }
-.technicalDetails dd { color: #636763; font: 11px/1.5 "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.technicalDetails dd { color: var(--ink-muted, #5c707c); font: 11px/1.5 "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
 
-.quickEdit { border-top: 3px solid #c78b3c; }
+.quickEdit { border-top: 3px solid var(--primary, #315c73); }
 .quickEdit > header { margin-bottom: 12px; }
 .quickEdit h3 { margin-bottom: 3px; }
-.quickEdit p { margin: 0; color: #636763; font-size: 12px; }
+.quickEdit p { margin: 0; color: var(--ink-muted, #5c707c); font-size: 12px; }
 .objectEditorFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .objectEditorFields label { display: grid; min-width: 0; align-content: start; gap: 5px; }
-.objectEditorFields label > span { color: #636763; font-size: 12px; }
+.objectEditorFields label > span { color: var(--ink-muted, #5c707c); font-size: 12px; }
 .objectEditorFields :is(input, textarea, select) {
   width: 100%;
   min-width: 0;
   min-height: 44px;
   padding: 10px;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   border: 1px solid #bdb8ad;
   border-radius: 0;
   outline-offset: 2px;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
   font: 13px/1.4 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
 }
 .objectEditorFields textarea { min-height: 106px; resize: vertical; }
@@ -260,7 +260,7 @@
 .footerActions button:focus-visible,
 .referenceList button:focus-visible,
 .associationList button:focus-visible,
-.moreDetails > summary:focus-visible { outline: 2px solid #c78b3c; }
+.moreDetails > summary:focus-visible { outline: 2px solid var(--primary, #315c73); }
 .objectEditorWide { grid-column: 1 / -1; }
 .conclusionEditNote {
   grid-column: 1 / -1;
@@ -277,7 +277,7 @@
   display: grid;
   gap: 10px;
   padding: 14px 0 0 16px;
-  border-left: 2px solid #c78b3c;
+  border-left: 2px solid var(--primary, #315c73);
 }
 .associations > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .associations > header h3 { margin: 0; }
@@ -288,10 +288,10 @@
   top: 17px;
   left: -17px;
   width: 15px;
-  border-top: 1px solid #c78b3c;
+  border-top: 1px solid var(--primary, #315c73);
   content: "";
 }
-.associations h4 { margin: 0; color: #87561f; font-size: 12px; font-weight: 650; }
+.associations h4 { margin: 0; color: var(--primary-strong, #234b61); font-size: 12px; font-weight: 650; }
 .associationList { display: grid; gap: 5px; }
 .associations ol { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
 .associations ol button {
@@ -301,23 +301,23 @@
   grid-template-columns: minmax(92px, 0.8fr) minmax(0, 1.2fr);
   gap: 8px;
   padding: 8px;
-  color: #292c2c;
+  color: var(--ink, #263b47);
   border: 1px solid #e0dbd1;
-  background: #fbfaf6;
+  background: var(--paper-high, #fff);
   text-align: left;
 }
-.associations ol button:hover { border-color: #c78b3c; }
-.associations time { color: #87561f; font-size: 11px; }
+.associations ol button:hover { border-color: var(--primary, #315c73); }
+.associations time { color: var(--primary-strong, #234b61); font-size: 11px; }
 .associations ol strong { overflow-wrap: anywhere; font-size: 12px; }
 
-.structureLocks { display: grid; gap: 7px; padding: 13px; border: 1px solid rgba(217, 92, 89, 0.45); background: #fbfaf6; }
+.structureLocks { display: grid; gap: 7px; padding: 13px; border: 1px solid rgba(217, 92, 89, 0.45); background: var(--paper-high, #fff); }
 .structureLocks h3 { margin-bottom: 2px; }
-.structureLocks article { padding: 9px; border-left: 2px solid #d95c59; background: #f3f1eb; }
+.structureLocks article { padding: 9px; border-left: 2px solid #d95c59; background: var(--paper-low, #edf2f4); }
 .structureLocks strong { font-size: 12px; }
-.structureLocks p { margin: 4px 0; color: #636763; font-size: 12px; }
-.structureLocks span { color: #87561f; font: 10px/1.4 "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.structureLocks p { margin: 4px 0; color: var(--ink-muted, #5c707c); font-size: 12px; }
+.structureLocks span { color: var(--primary-strong, #234b61); font: 10px/1.4 "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
 
-.objectEditorNotice { margin: 0; padding: 10px 12px; border-left: 2px solid #c78b3c; background: #fbfaf6; color: #292c2c; font-size: 12px; }
+.objectEditorNotice { margin: 0; padding: 10px 12px; border-left: 2px solid var(--primary, #315c73); background: var(--paper-high, #fff); color: var(--ink, #263b47); font-size: 12px; }
 .editorFooter {
   position: sticky;
   z-index: 1;
@@ -329,17 +329,17 @@
   gap: 10px;
   margin: 0 -16px -16px;
   padding: 7px 16px;
-  border-top: 1px solid #d6d1c5;
-  background: #fbfaf6;
+  border-top: 1px solid var(--rule, #dbe3e7);
+  background: var(--paper-high, #fff);
 }
 .footerActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
-.footerActions button { min-height: 44px; padding: 0 12px; color: #fbfaf6; border: 1px solid #292c2c; background: #292c2c; font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif; }
-.footerActions .cancelButton { color: #292c2c; border-color: #bdb8ad; background: transparent; }
-.footerActions .cancelButton:not(:disabled):hover { color: #292c2c; background: #f3f1eb; border-color: #c78b3c; }
+.footerActions button { min-height: 44px; padding: 0 12px; color: var(--paper-high, #fff); border: 1px solid var(--ink, #263b47); background: var(--ink, #263b47); font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif; }
+.footerActions .cancelButton { color: var(--ink, #263b47); border-color: #bdb8ad; background: transparent; }
+.footerActions .cancelButton:not(:disabled):hover { color: var(--ink, #263b47); background: var(--paper-low, #edf2f4); border-color: var(--primary, #315c73); }
 .footerActions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.emptyState { display: grid; min-height: 180px; place-content: center; justify-items: center; gap: 8px; padding: 24px; color: #636763; text-align: center; }
-.emptyState strong { color: #292c2c; font: 600 17px/1.3 "Noto Serif SC", "STSong", SimSun, serif; }
+.emptyState { display: grid; min-height: 180px; place-content: center; justify-items: center; gap: 8px; padding: 24px; color: var(--ink-muted, #5c707c); text-align: center; }
+.emptyState strong { color: var(--ink, #263b47); font: 600 17px/1.3 "Noto Serif SC", "STSong", SimSun, serif; }
 .emptyState p { max-width: 32ch; margin: 0; font-size: 12px; line-height: 1.7; }
 
 /* Expanded desktop dossier; the same component remains usable in a side panel. */

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { WorkspaceMode } from "./workbench-views";
 import type { SidePanelBase } from "./workbench-collaboration-state";
 import { WorkbenchIcon } from "./workbench-icon";
@@ -6,7 +6,7 @@ import styles from "./analyst-workbench.module.css";
 
 /** A stable pair of base-page slots with an independent temporary-detail slot. */
 export function WorkbenchSidebar({ mode, base, open, hidden = false, agentVisible, hasDetail, objectContent,
-  agentHostRef, detailHostRef, onBaseChange, onClose, history,
+  agentHostRef, detailHostRef, onBaseChange, onClose, history, objectKey,
 }: {
   mode: WorkspaceMode;
   base: SidePanelBase;
@@ -15,23 +15,34 @@ export function WorkbenchSidebar({ mode, base, open, hidden = false, agentVisibl
   agentVisible: boolean;
   hasDetail: boolean;
   objectContent: ReactNode;
+  objectKey?: string | null;
   agentHostRef: (element: HTMLDivElement | null) => void;
   detailHostRef: (element: HTMLDivElement | null) => void;
   onBaseChange: (base: SidePanelBase) => void;
   onClose: () => void;
   history: { backLabel: string; forwardLabel: string; canBack: boolean; canForward: boolean; back: () => void; forward: () => void };
 }) {
+  const objectContentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = objectContentRef.current;
+    if (!open || hidden || agentVisible || hasDetail || !element?.animate || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const animation = element.animate(
+      [{ opacity: 0, transform: "translateX(8px)" }, { opacity: 1, transform: "translateX(0)" }],
+      { duration: 180, easing: "cubic-bezier(.2,.7,.3,1)" },
+    );
+    return () => animation.cancel();
+  }, [objectKey, open, hidden, agentVisible, hasDetail]);
   return <aside aria-label="对象上下文" className={styles.inspector} hidden={hidden}>
     <header className={styles.inspectorHeader}>
       <div>{mode === "analysis" || mode === "compile" ? <div className={styles.sidePanelTabs} role="tablist" aria-label="工作侧栏">
         {(["object", "agent"] as const).map((page) => {
           const label = page === "object" ? "对象详情" : "协作者";
           return <button key={page} type="button" role="tab" aria-label={label} title={label} aria-selected={base === page} onClick={() => onBaseChange(page)}>
-            <span aria-hidden="true" className={styles.sidePanelIcon} data-page={page} />
+            <span aria-hidden="true" className={styles.sidePanelIcon} data-page={page} /><span>{label}</span>
           </button>;
         })}
       </div> : <div aria-label="对象详情" title="对象详情" role="img" className={styles.sidePanelHeading}>
-        <span aria-hidden="true" className={styles.sidePanelIcon} data-page="object" />
+        <span aria-hidden="true" className={styles.sidePanelIcon} data-page="object" /><span>对象详情</span>
       </div>}</div>
       <div className={styles.inspectorHeaderActions}>
         <div aria-label="对象上下文导航历史" className={styles.historyControls} role="group">
@@ -42,7 +53,7 @@ export function WorkbenchSidebar({ mode, base, open, hidden = false, agentVisibl
       </div>
     </header>
     <div className={styles.inspectorContent}>
-      <div hidden={agentVisible || hasDetail}>{objectContent}</div>
+      <div hidden={agentVisible || hasDetail} ref={objectContentRef}>{objectContent}</div>
       <div className={styles.agentSideHost} hidden={!agentVisible || hasDetail} ref={agentHostRef} />
       <div className={styles.sideDetailHost} hidden={!hasDetail} ref={detailHostRef} />
     </div>
