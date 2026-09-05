@@ -2,34 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from casefile.agent_runtime.chat_tools import (
-    CHAT_TOOLSET_V3_VERSION,
-    CHAT_TOOLSET_V4_VERSION,
-    CHAT_TOOLSET_VERSION,
-)
-from casefile.agent_runtime.context import (
-    CHAT_CONTEXT_POLICY_V2_VERSION,
-    CHAT_CONTEXT_POLICY_V3_VERSION,
-    CHAT_CONTEXT_POLICY_V4_VERSION,
-    CHAT_CONTEXT_POLICY_V5_VERSION,
-    CHAT_CONTEXT_POLICY_V6_VERSION,
-    CHAT_CONTEXT_POLICY_VERSION,
-    CHAT_CONTEXT_PROMPT_V2_VERSION,
-    CHAT_CONTEXT_PROMPT_V4_VERSION,
-    CHAT_CONTEXT_PROMPT_V5_VERSION,
-    CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V10_VERSION,
-    CHAT_CONTEXT_PROMPT_VERSION,
-)
 from casefile.agent_runtime.credentials import encrypt_api_key
-from casefile.agent_runtime.goal.policy import GoalRuntimeConfig
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
@@ -37,16 +16,14 @@ from casefile.agent_runtime.models import (
 )
 from casefile.agent_runtime.prompt import (
     COMPONENT_GENERATION_PROMPT_VERSIONS,
-    agent_version_for_task,
 )
-from casefile.agent_runtime.prompt_repository import prompt_version_for_task
-from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.draft_candidates import DraftCandidateService
 from casefile.application.errors import ApplicationError, not_found
 from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
     finalize_task_cancellation,
 )
+from casefile.application.workflow.tasks import new_task, queue_task, require_provider_setting
 from casefile.application.workflow_brief_validation import (
     normalize_author_answer_suggestion_context as _normalize_author_answer_suggestion_context,
 )
@@ -58,7 +35,6 @@ from casefile.application.workflow_common import (
     DEFAULT_BUDGET,
     DEFAULT_PROVIDER,
     _append_event,
-    _chat_context_policy_version,
     _event_view,
     _json_hash,
     _provider_view,
@@ -66,6 +42,7 @@ from casefile.application.workflow_common import (
     _supported_provider,
     _task_view,
     _text_hash,
+    require_owned_project,
 )
 from casefile.application.workflow_views import brief_version_view as _brief_version_view
 from casefile.application.workflow_views import brief_view as _brief_view
@@ -203,7 +180,7 @@ class ContentWorkflowMixin:
         project_id: int,
     ) -> list[dict[str, Any]]:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             rows = self.session.scalars(
                 select(SourceRecord)
                 .where(SourceRecord.project_id == owned.project.id)
@@ -245,7 +222,7 @@ class ContentWorkflowMixin:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             if parent_source_record_id is not None:
                 parent = self.session.scalar(
                     select(SourceRecord).where(
@@ -270,7 +247,7 @@ class ContentWorkflowMixin:
 
     def get_brief(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             brief = self._brief(owned)
             view = _brief_view(brief)
             if brief.current_version_id is not None:
@@ -288,7 +265,7 @@ class ContentWorkflowMixin:
     ) -> dict[str, Any]:
         validated = _validate_brief(content)
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             brief = self._brief(owned, lock=True)
             if brief.draft_revision != expected_revision:
                 raise ApplicationError(
@@ -317,7 +294,7 @@ class ContentWorkflowMixin:
         expected_revision: int,
     ) -> dict[str, Any]:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             brief = self._brief(owned, lock=True)
             if brief.draft_revision != expected_revision:
                 raise ApplicationError(
@@ -372,7 +349,7 @@ class ContentWorkflowMixin:
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             brief = self._brief(owned, lock=True)
             version = self.session.scalar(
                 select(BriefVersion).where(
@@ -408,8 +385,8 @@ class ContentWorkflowMixin:
                 )
                 if existing is not None:
                     return _task_view(existing)
-            setting = self._provider_setting(actor_user_id, provider)
-            task = self._new_task(
+            setting = require_provider_setting(self.session, actor_user_id, provider)
+            task = new_task(
                 owned,
                 actor_user_id=actor_user_id,
                 setting=setting,
@@ -425,7 +402,8 @@ class ContentWorkflowMixin:
                     "strategy_version": CANDIDATE_STRATEGY_VERSION,
                 },
             )
-            return self._queue_task(
+            return queue_task(
+                self.session,
                 task,
                 message="冻结 Brief 的三策略分析任务已进入队列",
             )
@@ -459,7 +437,7 @@ class ContentWorkflowMixin:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             if (
                 owned.draft.id != expected_draft_id
                 or owned.draft.revision != expected_draft_revision
@@ -510,8 +488,8 @@ class ContentWorkflowMixin:
                     candidate_strategy=strategy,
                     candidate_strategy_attempt=candidate_strategy_attempt,
                 )
-            setting = self._provider_setting(actor_user_id, provider)
-            task = self._new_task(
+            setting = require_provider_setting(self.session, actor_user_id, provider)
+            task = new_task(
                 owned,
                 actor_user_id=actor_user_id,
                 setting=setting,
@@ -536,7 +514,8 @@ class ContentWorkflowMixin:
                     },
                 },
             )
-            return self._queue_task(
+            return queue_task(
+                self.session,
                 task,
                 message="Brief → Draft 任务已进入队列",
             )
@@ -633,7 +612,7 @@ class ContentWorkflowMixin:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             source = self.session.scalar(
                 select(SourceRecord).where(
                     SourceRecord.id == source_record_id,
@@ -642,8 +621,8 @@ class ContentWorkflowMixin:
             )
             if source is None:
                 raise not_found("SourceRecord")
-            setting = self._provider_setting(actor_user_id, provider)
-            task = self._new_task(
+            setting = require_provider_setting(self.session, actor_user_id, provider)
+            task = new_task(
                 owned,
                 actor_user_id=actor_user_id,
                 setting=setting,
@@ -658,7 +637,7 @@ class ContentWorkflowMixin:
                     "polish_mode": polish_mode,
                 },
             )
-            return self._queue_task(task, message="Agent 润色候选任务已进入队列")
+            return queue_task(self.session, task, message="Agent 润色候选任务已进入队列")
 
     def create_anchor_extract_task(
         self,
@@ -678,7 +657,7 @@ class ContentWorkflowMixin:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             brief = self._brief(owned, lock=True)
             if brief.draft_revision != expected_brief_revision:
                 raise ApplicationError(
@@ -710,9 +689,9 @@ class ContentWorkflowMixin:
                     "请先填写作者底牌或创作边界，再进行拆解。",
                     status_code=422,
                 )
-            setting = self._provider_setting(actor_user_id, provider)
+            setting = require_provider_setting(self.session, actor_user_id, provider)
             input_hash = _json_hash(task_content)
-            task = self._new_task(
+            task = new_task(
                 owned,
                 actor_user_id=actor_user_id,
                 setting=setting,
@@ -728,7 +707,7 @@ class ContentWorkflowMixin:
                 if mode == "suggest_author_answer"
                 else "作者底牌与创作边界拆解任务已进入队列"
             )
-            return self._queue_task(task, message=message)
+            return queue_task(self.session, task, message=message)
 
     def get_latest_task(
         self,
@@ -752,7 +731,7 @@ class ContentWorkflowMixin:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             task = self.session.scalar(
                 select(TaskRun)
                 .where(
@@ -776,7 +755,7 @@ class ContentWorkflowMixin:
         task_type: str,
     ) -> None:
         with self.session.begin():
-            self._owned(actor_user_id, project_id)
+            require_owned_project(self.projects, actor_user_id, project_id)
             if task_type == "casefile_chat":
                 _reject_casefile_chat_task_route()
 
@@ -800,7 +779,7 @@ class ContentWorkflowMixin:
         """Request cooperative cancellation without discarding frozen task history."""
 
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             task = self.session.scalar(
                 select(TaskRun)
                 .where(
@@ -851,7 +830,7 @@ class ContentWorkflowMixin:
         """Queue a new attempt on one failed v8 generation TaskRun."""
 
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             task = self.session.scalar(
                 select(TaskRun)
                 .where(
@@ -941,149 +920,6 @@ class ContentWorkflowMixin:
             )
             return [_event_view(row) for row in rows]
 
-    def _provider_setting(
-        self,
-        actor_user_id: int,
-        provider: str,
-    ) -> UserProviderSetting:
-        setting = self.session.scalar(
-            select(UserProviderSetting)
-            .where(
-                UserProviderSetting.user_id == actor_user_id,
-                UserProviderSetting.provider == provider,
-            )
-            .with_for_update()
-        )
-        if setting is None or setting.credential_status == "deleted":
-            raise ApplicationError(
-                "provider_setting_required",
-                f"开始任务前请先配置 {provider} API 密钥。",
-                status_code=409,
-                details={"provider": provider},
-            )
-        return setting
-
-    def _new_task(
-        self,
-        owned: OwnedDraft,
-        *,
-        actor_user_id: int,
-        setting: UserProviderSetting,
-        task_type: str,
-        brief_version_id: int | None,
-        input_source_record_id: int | None,
-        input_brief_revision: int | None,
-        input_hash: str,
-        input_jsonb: dict[str, Any],
-        agent_thread_id: int | None = None,
-        input_message_id: int | None = None,
-        output_message_id: int | None = None,
-    ) -> TaskRun:
-        prompt_version = prompt_version_for_task(task_type)
-        policy_version: str | None = None
-        if task_type == "casefile_chat":
-            policy_version = _chat_context_policy_version()
-            if policy_version == CHAT_CONTEXT_POLICY_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_VERSION
-            elif policy_version == CHAT_CONTEXT_POLICY_V2_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V2_VERSION
-            elif policy_version == CHAT_CONTEXT_POLICY_V3_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V4_VERSION
-            elif policy_version == CHAT_CONTEXT_POLICY_V4_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V5_VERSION
-            elif policy_version == CHAT_CONTEXT_POLICY_V5_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V6_VERSION
-            elif policy_version == CHAT_CONTEXT_POLICY_V6_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V10_VERSION
-            else:
-                prompt_version = "casefile-chat-v3"
-            rollout_prompt = os.environ.get("CASEFILE_CHAT_PROMPT_ROLLOUT", "").strip()
-            if rollout_prompt in {
-                "casefile-chat-v13",
-                "casefile-chat-v14",
-                "casefile-chat-v15",
-                "casefile-chat-v16",
-            }:
-                # Explicit immutable override for rollback or controlled evaluation.
-                prompt_version = rollout_prompt
-            goal_rollout = os.environ.get(
-                "CASEFILE_CHAT_GOAL_ROLLOUT", "active"
-            ).strip().lower()
-            if goal_rollout in {"shadow", "active"}:
-                goal_runtime = GoalRuntimeConfig.model_validate({"mode": goal_rollout})
-                input_jsonb = {
-                    **input_jsonb,
-                    "goal_runtime": goal_runtime.model_dump(mode="json"),
-                }
-                input_hash = _json_hash(input_jsonb)
-                prompt_version = "casefile-chat-v21"
-        return TaskRun(
-            project_id=owned.project.id,
-            casefile_id=owned.casefile.id,
-            draft_id=owned.draft.id,
-            brief_version_id=brief_version_id,
-            input_source_record_id=input_source_record_id,
-            input_brief_revision=input_brief_revision,
-            brief_intake_id=None,
-            input_brief_intake_revision=None,
-            base_brief_intake_candidate_id=None,
-            agent_thread_id=agent_thread_id,
-            input_message_id=input_message_id,
-            output_message_id=output_message_id,
-            input_hash=input_hash,
-            input_jsonb=input_jsonb,
-            actor_user_id=actor_user_id,
-            provider_setting_id=setting.id,
-            task_type=task_type,
-            status="queued",
-            stage="queued",
-            input_draft_revision=owned.draft.revision,
-            provider=setting.provider,
-            model_id=setting.model_id,
-            provider_config_version=setting.config_version,
-            schema_version=CASEFILE_SCHEMA_VERSION,
-            agent_version=agent_version_for_task(task_type, prompt_version),
-            prompt_version=prompt_version,
-            toolset_version=(
-                CHAT_TOOLSET_V4_VERSION
-                if task_type == "casefile_chat"
-                and policy_version
-                in {
-                    CHAT_CONTEXT_POLICY_V4_VERSION,
-                    CHAT_CONTEXT_POLICY_V5_VERSION,
-                    CHAT_CONTEXT_POLICY_V6_VERSION,
-                }
-                else (
-                    CHAT_TOOLSET_V3_VERSION
-                    if task_type == "casefile_chat"
-                    and policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
-                    else (CHAT_TOOLSET_VERSION if task_type == "casefile_chat" else TOOLSET_VERSION)
-                )
-            ),
-            budget_jsonb=dict(setting.default_budget_jsonb),
-            usage_jsonb={},
-            attempt_count=0,
-            result_jsonb=None,
-            error_details_jsonb={},
-        )
-
-    def _queue_task(self, task: TaskRun, *, message: str) -> dict[str, Any]:
-        self.session.add(task)
-        self.session.flush()
-        _append_event(
-            self.session,
-            task,
-            "task.queued",
-            "queued",
-            {
-                "message": message,
-                "task_type": task.task_type,
-                "model_id": task.model_id,
-                "input_hash": task.input_hash,
-            },
-        )
-        return _task_view(task)
-
     def _validate_brief_sources(
         self,
         owned: OwnedDraft,
@@ -1107,31 +943,6 @@ class ContentWorkflowMixin:
                 details={"missing_source_record_ids": missing},
             )
 
-    def _owned(self, actor_user_id: int, project_id: int, *, lock: bool = False) -> OwnedDraft:
-        owned = self.projects.get_owned(actor_user_id, project_id, lock=lock)
-        if owned is None:
-            raise not_found("Project")
-        return owned
-
-    @staticmethod
-    def _require_current_draft(
-        owned: OwnedDraft,
-        *,
-        expected_draft_id: int,
-        expected_draft_revision: int,
-    ) -> None:
-        if owned.draft.id == expected_draft_id and owned.draft.revision == expected_draft_revision:
-            return
-        raise ApplicationError(
-            "draft_revision_conflict",
-            "当前工作稿已切换或更新，请刷新后重新提交。",
-            status_code=409,
-            details={
-                "current_draft_id": owned.draft.id,
-                "current_revision": owned.draft.revision,
-            },
-        )
-
     def _brief(self, owned: OwnedDraft, *, lock: bool = False) -> Brief:
         statement = select(Brief).where(Brief.project_id == owned.project.id)
         if lock:
@@ -1142,7 +953,7 @@ class ContentWorkflowMixin:
         return brief
 
     def _task(self, actor_user_id: int, project_id: int, task_run_id: int) -> TaskRun:
-        owned = self._owned(actor_user_id, project_id)
+        owned = require_owned_project(self.projects, actor_user_id, project_id)
         task = self.session.scalar(
             select(TaskRun).where(
                 TaskRun.id == task_run_id,

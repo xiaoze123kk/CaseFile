@@ -58,11 +58,81 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_quality_critic": "prose-quality-critic-v1",
     "prose_quality_pairwise": "prose-quality-pairwise-v1",
     "prose_polisher": "prose-polisher-v2",
-    "general_mutation_planner": "general-mutation-planner-v6",
+    "general_mutation_planner": "general-mutation-planner-v7",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("casefile_chat", "casefile-chat-v22"): {
+        "fragment:router": (
+            "2c87e2d8602aac1a08a02d75dcaa2efaeac9aa3e682b059b4f4e2d71455d3518"
+        ),
+        "fragment:rewrite": (
+            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
+        ),
+        "fragment:evidence": (
+            "a3b9186a6631e691c569edaca48f59667f22f2e6267c70886611bdd7e75415bc"
+        ),
+        "fragment:finalizer": (
+            "6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70"
+        ),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "9e3f5b753d56f5f9b785404c0b6d8a2ec8e1baa2d1b0f40c32117815948bba85"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "9a9df160de21d2a395a34bd2df3f3eca4e3c54ee8db4df7eff18952c324cc1b9"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
+    ("general_mutation_planner", "general-mutation-planner-v7"): {
+        "fragment:planner": (
+            "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
+        ),
+        "fragment:reasons": (
+            "503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"
+        ),
+    },
     ("story_planner_skeleton", "story-planner-skeleton-v1"): {
         "system": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5"
     },
@@ -1274,3 +1344,23 @@ def test_v21_answer_layout_is_frozen_on_every_finalizer() -> None:
     for name, component in definition.package.components.items():
         assert ("answer-layout" in component.instruction_fragments) == name.endswith("_finalizer")
     assert "交付物" in definition.package.fragments["router"].content
+
+
+def test_companion_style_reaches_every_author_finalizer() -> None:
+    package = load_prompt("casefile_chat", "casefile-chat-v22").package
+    assert package is not None
+    for name, component in package.components.items():
+        assert ("answer-layout" in component.instruction_fragments) == name.endswith("_finalizer")
+    style = package.fragments["answer-layout"].content
+    assert "创作搭档" in style
+    assert "不虚构共同经历" in style
+    assert "不强制标题" in style
+    assert "没有应用事实不得说已经改好" in style
+
+
+def test_mutation_reason_guidance_is_injected_into_planner() -> None:
+    package = load_prompt("general_mutation_planner", "general-mutation-planner-v7").package
+    assert package is not None
+    assert "reasons" in package.components["general_mutation_planner"].instruction_fragments
+    assert "实际修改" in package.fragments["reasons"].content
+    assert "标签已存在" in package.fragments["reasons"].content

@@ -79,7 +79,7 @@ def test_changed_planning_fingerprint_rejects_approval_without_fallback():
     with patch("casefile.worker.executors.story_planner._find_reusable") as fallback:
         with pytest.raises(CompilerExecutionError, match="approved_plan_stale"):
             _approved_or_reusable(
-                worker,
+                worker.session_factory,
                 7,
                 "changed_fingerprint",
                 {

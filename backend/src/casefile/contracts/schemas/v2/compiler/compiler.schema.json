@@ -209,6 +209,7 @@
         "profile": {"$ref": "#/$defs/CompilerProfileBinding"},
         "compiler_version": {"$ref": "#/$defs/StableKey"},
         "prose_renderer_shadow": {"type": "boolean", "default": false},
+        "approved_novel_plan": {"$ref": "#/$defs/CompilerArtifactRef"},
         "prose_runtime": {"type": ["object", "null"], "default": null}
       },
       "allOf": [

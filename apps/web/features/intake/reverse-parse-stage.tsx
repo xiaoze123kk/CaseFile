@@ -15,6 +15,7 @@ import {
   type ReverseParseDocumentView,
   type ReverseParseItemView,
 } from "@/features/case-session/case-session-api";
+import { useSessionUiOperation } from "@/features/case-session/use-session-ui-operation";
 import styles from "./reverse-parse-stage.module.css";
 
 type Filter = "all" | "unconfirmed" | "confirmed" | "rejected";
@@ -171,7 +172,10 @@ interface ReverseParseStageProps {
 }
 
 export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) {
-  const { activeProjectId, loadProject } = useCaseSession();
+  const { activeProjectId, loadProject, state } = useCaseSession();
+  const captureOperation = useSessionUiOperation();
+  const hydrating = state.hydration.status === "loading";
+  const [scope, setScope] = useState({ projectId: activeProjectId, hydrating });
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
   const projectId = activeProjectId ?? createdProjectId;
   const [documents, setDocuments] = useState<ReverseParseDocumentView[]>([]);
@@ -186,23 +190,50 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
   const [highlightBlock, setHighlightBlock] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sourcePaneRef = useRef<HTMLElement>(null);
+  const uploadControllerRef = useRef<AbortController | null>(null);
+
+  // Reset before rendering another project's document selection or pending actions.
+  if (scope.projectId !== activeProjectId || scope.hydrating !== hydrating) {
+    setScope({ projectId: activeProjectId, hydrating });
+    if (scope.projectId !== activeProjectId || hydrating) {
+      setCreatedProjectId(null);
+      setDocuments([]);
+      setActiveDoc(null);
+      setItems([]);
+      setLoadedDocId(null);
+      setBlocks([]);
+      setFilter("all");
+      setUploading(false);
+      setForming(false);
+      setError(null);
+      setHighlightBlock(null);
+    }
+  }
+
+  useEffect(() => () => {
+    uploadControllerRef.current?.abort();
+    uploadControllerRef.current = null;
+  }, [activeProjectId, hydrating]);
 
   // ensureProject：复用当前活动项目，否则在首次操作时创建项目。
   const ensureProject = useCallback(async (): Promise<number | null> => {
     if (activeProjectId !== null) return activeProjectId;
     if (createdProjectId !== null) return createdProjectId;
+    const isCurrent = captureOperation();
     const project = await createCaseProject("已有内容反向解析");
+    if (!isCurrent()) return null;
     setCreatedProjectId(project.id);
     return project.id;
-  }, [activeProjectId, createdProjectId]);
+  }, [activeProjectId, createdProjectId, captureOperation]);
 
   useEffect(() => {
-    if (projectId === null) return;
+    if (projectId === null || hydrating) return;
     let cancelled = false;
+    const isCurrent = captureOperation();
     void (async () => {
       try {
         const { documents: docs } = await fetchReverseParseDocuments(projectId);
-        if (cancelled) return;
+        if (cancelled || !isCurrent()) return;
         setDocuments(docs);
         setActiveDoc((current) => {
           if (current) return current;
@@ -211,7 +242,7 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
           );
         });
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && isCurrent()) {
           setError(err instanceof Error ? err.message : "文档列表加载失败。");
         }
       }
@@ -219,31 +250,32 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, captureOperation, hydrating]);
 
   // 当前文档的来源块与抽取条目。
   useEffect(() => {
-    if (projectId === null || activeDoc === null) return;
+    if (projectId === null || activeDoc === null || hydrating) return;
     if (loadedDocId === activeDoc.id) return;
     let cancelled = false;
+    const isCurrent = captureOperation();
     void (async () => {
       try {
         const blockData = await fetchReverseParseBlocks(projectId, activeDoc.id);
-        if (!cancelled) setBlocks(blockData.blocks);
+        if (!cancelled && isCurrent()) setBlocks(blockData.blocks);
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && isCurrent()) {
           setError(err instanceof Error ? err.message : "来源块加载失败。");
         }
       }
-      if (activeDoc.parse_status !== "succeeded") return;
+      if (cancelled || !isCurrent() || activeDoc.parse_status !== "succeeded") return;
       try {
         const detail = await fetchReverseParseDocument(projectId, activeDoc.id);
-        if (!cancelled) {
+        if (!cancelled && isCurrent()) {
           setItems(detail.items);
           setLoadedDocId(activeDoc.id);
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && isCurrent()) {
           setError(err instanceof Error ? err.message : "抽取条目加载失败。");
           setLoadedDocId(activeDoc.id);
         }
@@ -252,26 +284,28 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
     return () => {
       cancelled = true;
     };
-  }, [projectId, activeDoc, loadedDocId]);
+  }, [projectId, activeDoc, loadedDocId, captureOperation, hydrating]);
 
   // 选中正在解析的文档时继续轮询任务，完成后刷新文档详情。
   useEffect(() => {
-    if (projectId === null || activeDoc === null) return;
+    if (projectId === null || activeDoc === null || hydrating) return;
     if (activeDoc.parse_status !== "queued" && activeDoc.parse_status !== "running") {
       return;
     }
     if (activeDoc.current_task_run_id === null) return;
     const taskRunId = activeDoc.current_task_run_id;
+    const controller = new AbortController();
     let cancelled = false;
+    const isCurrent = captureOperation();
     void (async () => {
       try {
-        await waitForTask(projectId, taskRunId);
-        if (cancelled) return;
+        await waitForTask(projectId, taskRunId, undefined, controller.signal);
+        if (cancelled || !isCurrent()) return;
         const [detail, blockData] = await Promise.all([
           fetchReverseParseDocument(projectId, activeDoc.id),
           fetchReverseParseBlocks(projectId, activeDoc.id),
         ]);
-        if (cancelled) return;
+        if (cancelled || !isCurrent()) return;
         setDocuments((prev) =>
           prev.map((doc) => (doc.id === activeDoc.id ? detail.document : doc)),
         );
@@ -280,7 +314,7 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
         setBlocks(blockData.blocks);
         setLoadedDocId(activeDoc.id);
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || !isCurrent()) return;
         setError(err instanceof Error ? err.message : "解析任务未完成。");
         const failed: ReverseParseDocumentView = {
           ...activeDoc,
@@ -294,8 +328,9 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [projectId, activeDoc]);
+  }, [projectId, activeDoc, captureOperation, hydrating]);
 
   const handleFileChange = (event: { target: HTMLInputElement }) => {
     const file = event.target.files?.[0];
@@ -305,22 +340,28 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
 
   // handleUpload：上传文件 → 轮询 task_run → 刷新文档详情与条目。
   async function handleUpload(file: File) {
-    if (uploading) return;
-    const pid = await ensureProject();
-    if (pid === null) return;
+    if (uploading || state.hydration.status === "loading") return;
+    const isCurrent = captureOperation();
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
     setUploading(true);
     setError(null);
     try {
+      const pid = await ensureProject();
+      if (!isCurrent() || pid === null) return;
       const { document, task } = await uploadReverseParseDocument(pid, file);
+      if (!isCurrent()) return;
       setDocuments((prev) => [
         document,
         ...prev.filter((doc) => doc.id !== document.id),
       ]);
-      await waitForTask(pid, task.task_run_id);
+      await waitForTask(pid, task.task_run_id, undefined, controller.signal);
+      if (!isCurrent()) return;
       const [detail, blockData] = await Promise.all([
         fetchReverseParseDocument(pid, document.id),
         fetchReverseParseBlocks(pid, document.id),
       ]);
+      if (!isCurrent()) return;
       setDocuments((prev) =>
         prev.map((doc) => (doc.id === document.id ? detail.document : doc)),
       );
@@ -331,39 +372,46 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
       setHighlightBlock(null);
       setFilter("all");
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "上传解析失败。");
     } finally {
-      setUploading(false);
+      if (uploadControllerRef.current === controller) uploadControllerRef.current = null;
+      if (isCurrent()) setUploading(false);
     }
   }
 
   async function handleRetry() {
-    if (projectId === null || activeDoc === null) return;
+    if (projectId === null || activeDoc === null || state.hydration.status === "loading") return;
+    const isCurrent = captureOperation();
     setError(null);
     try {
       const { task } = await retryReverseParse(projectId, activeDoc.id);
+      if (!isCurrent()) return;
       const running: ReverseParseDocumentView = {
         ...activeDoc,
         parse_status: "running",
         current_task_run_id: task.task_run_id,
       };
-      setLoadedDocId(null);
-      setActiveDoc(running);
+      setActiveDoc((current) => current?.id === running.id ? running : current);
       setDocuments((prev) =>
         prev.map((doc) => (doc.id === activeDoc.id ? running : doc)),
       );
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "重新解析失败。");
     }
   }
 
   async function handleConfirm(itemId: number, action: "confirm" | "reject") {
-    if (projectId === null) return;
+    if (projectId === null || state.hydration.status === "loading") return;
+    const isCurrent = captureOperation();
     setError(null);
     try {
       const updated = await confirmReverseParseItem(projectId, itemId, action);
+      if (!isCurrent()) return;
       setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)));
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "条目操作失败。");
     }
   }
@@ -384,15 +432,21 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
 
   // handleFormBrief：后端 409（高风险未处理）兜底展示错误消息。
   async function handleFormBrief() {
-    if (projectId === null || activeDoc === null || !canFormBrief) return;
+    if (projectId === null || activeDoc === null || !canFormBrief || state.hydration.status === "loading") return;
+    let isCurrent = captureOperation();
     setError(null);
     setForming(true);
     try {
       await formBriefFromReverseParse(projectId, activeDoc.id);
-      await loadProject(projectId);
+      if (!isCurrent()) return;
+      const loading = loadProject(projectId);
+      isCurrent = captureOperation();
+      await loading;
+      if (!isCurrent()) return;
       setForming(false);
       onFormed?.();
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : "形成创作简报失败。");
       setForming(false);
     }

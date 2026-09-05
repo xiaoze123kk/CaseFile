@@ -234,7 +234,15 @@ def task_failure_view(
 ) -> dict[str, Any] | None:
     if error_code is None:
         return None
-    message = (
+    compiler_messages = {
+        "compiler_model_output_truncated": (
+            "模型输出达到长度上限，编译方案被截断。"
+            "请重新编译或缩小单次方案规模。"
+        ),
+        "compiler_model_output_invalid_json": "模型没有返回完整的结构化方案，请重新编译。",
+        "compiler_model_output_incomplete": "模型未完成编译方案输出，请稍后重新编译。",
+    }
+    message = compiler_messages.get(error_code) or (
         _COMPILER_FAILURE_MESSAGE
         if error_code.startswith("compiler_")
         else _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])

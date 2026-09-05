@@ -307,6 +307,7 @@ export interface WorkbenchUnlocatedLocation {
 }
 
 export interface WorkbenchMapModel {
+  investigation?: import("./spatial-map/spatial-investigation-model").SpatialInvestigation;
   availableModes: WorkbenchSpatialMode[];
   defaultMode: WorkbenchSpatialMode | null;
   views: Record<WorkbenchSpatialMode, WorkbenchSpatialView>;

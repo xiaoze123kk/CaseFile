@@ -30,7 +30,8 @@ from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
     finalize_task_cancellation,
 )
-from casefile.application.workflow_common import _append_event, _json_hash
+from casefile.application.task_lease import is_current_task_attempt
+from casefile.application.workflow_common import _append_event, _json_hash, require_owned_project
 from casefile.data_postgres.models import (
     AgentGoalDelivery,
     AgentGoalObligation,
@@ -60,13 +61,12 @@ GOAL_CLARIFICATION_PUBLIC_PREFIX = "继续处理前还需要你补充："
 GOAL_REPLACED_PUBLIC_MESSAGE = "已停止原目标，并按你的替换要求开始新的目标。"
 
 
-class GoalSessionWorkflowMixin:
-    """Goal API behavior mixed into the stable ``WorkflowService`` facade."""
+class GoalSessionService:
+    """Goal aggregate operations sharing the caller's database session."""
 
-    session: Session
-    projects: ProjectRepository
-    _owned: Any
-    _agent_thread: Any
+    def __init__(self, session: Session, projects: ProjectRepository) -> None:
+        self.session = session
+        self.projects = projects
 
     def get_agent_goal(
         self,
@@ -75,9 +75,9 @@ class GoalSessionWorkflowMixin:
         goal_id: int,
     ) -> PublicGoalSession:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             goal = self._goal_session(owned, goal_id)
-            return self._public_goal_session(goal)
+            return self.public_goal_session(goal)
 
     def list_agent_goal_events(
         self,
@@ -94,7 +94,7 @@ class GoalSessionWorkflowMixin:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             goal = self._goal_session(owned, goal_id)
             transitions = self.session.scalars(
                 select(AgentGoalTransition)
@@ -104,7 +104,7 @@ class GoalSessionWorkflowMixin:
                 )
                 .order_by(AgentGoalTransition.sequence_no)
             )
-            current = self._public_goal_session(goal)
+            current = self.public_goal_session(goal)
             return [self._public_goal_event(row, current) for row in transitions]
 
     def list_agent_goal_deliveries(
@@ -114,7 +114,7 @@ class GoalSessionWorkflowMixin:
         goal_id: int,
     ) -> list[PublicGoalDelivery]:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = require_owned_project(self.projects, actor_user_id, project_id)
             goal = self._goal_session(owned, goal_id)
             deliveries = self.session.scalars(
                 select(AgentGoalDelivery)
@@ -145,14 +145,14 @@ class GoalSessionWorkflowMixin:
         goal_id: int,
     ) -> PublicGoalSession:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             goal = self._goal_session(owned, goal_id, lock=True)
             if goal.status in TERMINAL_GOAL_STATUSES:
-                return self._public_goal_session(goal)
-            self._cancel_agent_goal_aggregate(goal, now=datetime.now(UTC))
-            return self._public_goal_session(goal)
+                return self.public_goal_session(goal)
+            self.cancel_agent_goal_aggregate(goal, now=datetime.now(UTC))
+            return self.public_goal_session(goal)
 
-    def _cancel_agent_goal_aggregate(
+    def cancel_agent_goal_aggregate(
         self,
         goal: AgentGoalSession,
         *,
@@ -343,7 +343,7 @@ class GoalSessionWorkflowMixin:
             )
             if task is None or attempt is None or attempt.task_run_id != task.id:
                 raise RuntimeError("Goal clarification TaskRun disappeared")
-            if task.status != "running" or attempt.status != "running":
+            if task.status != "running" or not is_current_task_attempt(task, attempt):
                 raise RuntimeError("Goal clarification no longer owns a running TaskRun")
             goal_id = _task_goal_id(task)
             if goal_id is None:
@@ -606,8 +606,7 @@ class GoalSessionWorkflowMixin:
                 or attempt is None
                 or attempt.task_run_id != task.id
                 or task.status != "running"
-                or attempt.status != "running"
-                or task.leased_by is None
+                or not is_current_task_attempt(task, attempt)
                 or task.lease_expires_at is None
             ):
                 return None
@@ -675,10 +674,8 @@ class GoalSessionWorkflowMixin:
             )
             if task is None or attempt is None:
                 raise RuntimeError("TaskRun or TaskAttempt disappeared at Goal safe point")
-            if task.status != "running" or attempt.status != "running":
+            if task.status != "running" or not is_current_task_attempt(task, attempt):
                 raise RuntimeError("Goal safe point no longer owns a running TaskRun")
-            if attempt.task_run_id != task.id:
-                raise RuntimeError("TaskAttempt does not own the Goal TaskRun")
             goal_id = _task_goal_id(task)
             if goal_id is None:
                 raise RuntimeError("Goal TaskRun has no GoalSession lineage")
@@ -973,7 +970,7 @@ class GoalSessionWorkflowMixin:
                 or attempt is None
                 or attempt.task_run_id != task.id
                 or task.status != "running"
-                or attempt.status != "running"
+                or not is_current_task_attempt(task, attempt)
             ):
                 raise RuntimeError("Replace safe point no longer owns the TaskRun")
             goal_id = _task_goal_id(task)
@@ -1496,7 +1493,7 @@ class GoalSessionWorkflowMixin:
             task_run_id=task.id,
         )
 
-    def _finalize_agent_goal_task_success(
+    def finalize_agent_goal_task_success(
         self,
         task: TaskRun,
         *,
@@ -1584,7 +1581,7 @@ class GoalSessionWorkflowMixin:
             task_run_id=task.id,
         )
 
-    def _goal_for_patch_set(
+    def goal_for_patch_set(
         self,
         patch_set: AgentPatchSet,
         *,
@@ -1598,8 +1595,8 @@ class GoalSessionWorkflowMixin:
             statement = statement.with_for_update()
         return self.session.scalar(statement)
 
-    def _reject_agent_goal_patch(self, patch_set: AgentPatchSet) -> AgentGoalSession | None:
-        goal = self._goal_for_patch_set(patch_set, lock=True)
+    def reject_agent_goal_patch(self, patch_set: AgentPatchSet) -> AgentGoalSession | None:
+        goal = self.goal_for_patch_set(patch_set, lock=True)
         if goal is None or goal.status != "waiting_patch_review":
             return None
         goal.active_patch_set_id = None
@@ -1616,8 +1613,8 @@ class GoalSessionWorkflowMixin:
         )
         return goal
 
-    def _mark_agent_goal_patch_stale(self, patch_set: AgentPatchSet) -> None:
-        goal = self._goal_for_patch_set(patch_set, lock=True)
+    def mark_agent_goal_patch_stale(self, patch_set: AgentPatchSet) -> None:
+        goal = self.goal_for_patch_set(patch_set, lock=True)
         if goal is None or goal.status != "waiting_patch_review":
             return
         patch_set.status = "stale"
@@ -1634,7 +1631,7 @@ class GoalSessionWorkflowMixin:
             task_run_id=patch_set.task_run_id,
         )
 
-    def _queue_post_apply_goal_audit(
+    def queue_post_apply_goal_audit(
         self,
         *,
         owned: OwnedDraft,
@@ -1644,7 +1641,7 @@ class GoalSessionWorkflowMixin:
     ) -> TaskRun | None:
         """Bind the applied Draft as baseline and queue exactly one audit slice."""
 
-        goal = self._goal_for_patch_set(patch_set, lock=True)
+        goal = self.goal_for_patch_set(patch_set, lock=True)
         if goal is None:
             return None
         if goal.status != "waiting_patch_review":
@@ -1817,7 +1814,7 @@ class GoalSessionWorkflowMixin:
         )
         return continuation
 
-    def _resolve_goal_delivery(
+    def resolve_goal_delivery(
         self,
         thread: AgentThread,
         *,
@@ -1942,7 +1939,7 @@ class GoalSessionWorkflowMixin:
             )
         return delivery_mode, goal
 
-    def _create_goal_session(
+    def create_goal_session(
         self,
         owned: OwnedDraft,
         thread: AgentThread,
@@ -1977,7 +1974,7 @@ class GoalSessionWorkflowMixin:
             predecessor_goal_session_id=predecessor_goal_session_id,
         )
 
-    def _queue_goal_delivery(
+    def queue_goal_delivery(
         self,
         goal: AgentGoalSession,
         *,
@@ -2002,7 +1999,7 @@ class GoalSessionWorkflowMixin:
         self.session.flush()
         return delivery
 
-    def _supersede_waiting_goal_for_replace(
+    def supersede_waiting_goal_for_replace(
         self,
         goal: AgentGoalSession,
         *,
@@ -2049,7 +2046,7 @@ class GoalSessionWorkflowMixin:
             source_message_id=delivery.source_message_id,
         )
 
-    def _continue_waiting_goal_delivery(
+    def continue_waiting_goal_delivery(
         self,
         *,
         owned: OwnedDraft,
@@ -2311,7 +2308,7 @@ class GoalSessionWorkflowMixin:
             statement = statement.with_for_update()
         return list(self.session.scalars(statement.order_by(TaskRun.id)))
 
-    def _public_goal_session(self, goal: AgentGoalSession) -> PublicGoalSession:
+    def public_goal_session(self, goal: AgentGoalSession) -> PublicGoalSession:
         active_run_id: int | None = None
         if goal.status not in TERMINAL_GOAL_STATUSES:
             active_run_id = self.session.scalar(
@@ -2502,4 +2499,4 @@ def _goal_state_error(
     )
 
 
-__all__ = ["GoalSessionWorkflowMixin", "public_goal_delivery_view"]
+__all__ = ["GoalSessionService", "public_goal_delivery_view"]

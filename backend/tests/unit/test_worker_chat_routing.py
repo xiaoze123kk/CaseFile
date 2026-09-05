@@ -63,8 +63,8 @@ def test_compaction_failure_redacts_current_api_key() -> None:
         config=ChatRuntimeConfig(),
         events=WorkerEventPorts(
             emit=MagicMock(),
-            emit_after_completion=lambda task_id, event_type, stage, payload: events.append(
-                (task_id, event_type, stage, payload)
+            emit_after_completion=lambda task, event_type, stage, payload: events.append(
+                (task.id, event_type, stage, payload)
             ),
         ),
     )

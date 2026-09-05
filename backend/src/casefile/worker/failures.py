@@ -17,6 +17,12 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 
 
+class CompilerExecutionError(RuntimeError):
+    def __init__(self, error_code: str) -> None:
+        self.error_code = error_code
+        super().__init__(error_code)
+
+
 class TaskCancellationRequested(RuntimeError):
     """Raised when a running Worker observes an accepted cancellation."""
 
@@ -102,6 +108,7 @@ def safe_error_message(error: Exception, sensitive_values: tuple[str, ...]) -> s
 
 
 __all__ = [
+    "CompilerExecutionError",
     "TaskCancellationRequested",
     "error_code",
     "failure_validation_issues",

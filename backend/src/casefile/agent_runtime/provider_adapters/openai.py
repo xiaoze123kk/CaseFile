@@ -504,6 +504,7 @@ class OpenAIAgentsProvider:
             "casefile-chat-v19",
             "casefile-chat-v20",
             "casefile-chat-v21",
+            "casefile-chat-v22",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -620,6 +621,7 @@ class OpenAIAgentsProvider:
                     "casefile-chat-v19",
                     "casefile-chat-v20",
                     "casefile-chat-v21",
+                    "casefile-chat-v22",
                 }:
                     raise
                 request.emit(

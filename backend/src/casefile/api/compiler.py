@@ -5,18 +5,44 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter
+from pydantic import Field
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.api.schemas import (
     CompilerProfileCreateRequest,
     CompilerProfileVersionCreateRequest,
     CompileRunCreateRequest,
+    StrictRequest,
 )
 from casefile.application.compiler import CompilerService
+from casefile.application.compiler.recommendation import recommend_for_draft
+from casefile_contracts import NovelRecommendation
+
+
+class NovelRecommendationRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+    preferences: str = Field(default="", max_length=2000)
 
 
 def compiler_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["narrative-compiler"])
+
+    @router.post("/projects/{project_id}/novel-recommendation", response_model=NovelRecommendation)
+    def recommend(
+        project_id: int,
+        payload: NovelRecommendationRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> NovelRecommendation:
+        return recommend_for_draft(
+            session,
+            actor,
+            project_id,
+            payload.expected_draft_id,
+            payload.expected_draft_revision,
+            payload.preferences,
+        )
 
     @router.post("/projects/{project_id}/compiler-profiles", status_code=201)
     def create_profile(
@@ -89,6 +115,8 @@ def compiler_router() -> APIRouter:
             compiler_profile_version_id=payload.compiler_profile_version_id,
             planner_provider=payload.planner_provider,
             prose_renderer_shadow=payload.prose_renderer_shadow,
+            scene_compiler_shadow=payload.scene_compiler_shadow,
+            approved_plan_run_id=payload.approved_plan_run_id,
         )
 
     @router.get("/projects/{project_id}/compile-runs")

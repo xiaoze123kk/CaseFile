@@ -38,6 +38,8 @@ import {
   type SpatialViewport,
 } from "./spatial-renderer";
 import styles from "./spatial-map.module.css";
+import { spatialJourneys, type SpatialJourney } from "./spatial-investigation-model";
+import { SpatialActivityStrip, SpatialInvestigationPanel } from "./spatial-investigation-panel";
 
 const modeLabels: Record<WorkbenchSpatialMode, string> = {
   geographic: "真实地图",
@@ -229,6 +231,16 @@ export function SpatialMapView({
   onReloadSpatialLocation,
   onSaveSpatialPosition,
 }: SpatialMapViewProps) {
+  const [personId, setPersonId] = useState("");
+  const [journeyId, setJourneyId] = useState<string | null>(null);
+  const investigation = map.investigation;
+  const journeys = useMemo(() => investigation ? spatialJourneys(investigation) : [], [investigation]);
+  const activePersonId = investigation?.people.some((person) => person.id === personId) ? personId : "";
+  const activeJourney = journeys.find((journey) => journey.id === journeyId) ?? null;
+  const highlightedLocationIds = useMemo(() => activeJourney
+    ? [activeJourney.from.refs.locationId, activeJourney.to.refs.locationId].filter((id): id is string => Boolean(id))
+    : investigation?.events.filter((event) => activePersonId && event.refs.participantIds.includes(activePersonId))
+      .flatMap((event) => event.refs.locationId ? [event.refs.locationId] : []) ?? [], [activeJourney, activePersonId, investigation]);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SpatialRenderer | null>(null);
   const viewportsRef = useRef<Partial<Record<WorkbenchSpatialMode, SpatialViewport>>>(
@@ -251,7 +263,7 @@ export function SpatialMapView({
   const [openedSpatialId, setOpenedSpatialId] = useState<string | null>(null);
   const [editSession, setEditSession] = useState<SpatialEditSession | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
-  const [auditDesktopCollapsed, setAuditDesktopCollapsed] = useState(false);
+  const [auditDesktopCollapsed, setAuditDesktopCollapsed] = useState(true);
   const [highlightedUnlocatedId, setHighlightedUnlocatedId] = useState<string | null>(
     null,
   );
@@ -413,8 +425,9 @@ export function SpatialMapView({
       selectedEventId,
       selectedLocationId,
       selectedObjectId,
+      highlightedLocationIds,
     }),
-    [activeSpatialId, selectedEventId, selectedLocationId, selectedObjectId],
+    [activeSpatialId, selectedEventId, selectedLocationId, selectedObjectId, highlightedLocationIds],
   );
   const sceneView = useMemo(() => {
     if (!currentView) return null;
@@ -645,6 +658,8 @@ export function SpatialMapView({
       renderer.focusRegion(pendingRegionFocus);
       pendingRegionFocusRef.current = null;
     }
+    const highlighted = spatialSelectionRef.current?.highlightedLocationIds;
+    if (highlighted?.length) renderer.focusLocations(highlighted);
   }, [editLocationId, layers, mode, sceneBackground, visibleView]);
 
   useEffect(() => {
@@ -661,8 +676,9 @@ export function SpatialMapView({
     if (spatialSelectionRef.current) {
       renderer.updateSelection(spatialSelectionRef.current);
     }
-    if (activeSpatialId) renderer.focusLocation(activeSpatialId);
-  }, [activeSpatialId, mode, selectedEventId, selectedLocationId, selectedObjectId]);
+    if (activeSpatialId && !highlightedLocationIds.length) renderer.focusLocation(activeSpatialId);
+    if (highlightedLocationIds.length) renderer.focusLocations(highlightedLocationIds);
+  }, [activeSpatialId, mode, selectedEventId, selectedLocationId, selectedObjectId, highlightedLocationIds]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1000,11 +1016,38 @@ export function SpatialMapView({
         ? "确认推算位置"
         : "编辑位置";
 
+  function inspectJourney(journey: SpatialJourney) {
+    if (editSession || !onSelectEvent(journey.from.id)) return;
+    setOpenedSpatialId(null);
+    setPersonId(journey.personId);
+    setJourneyId(journey.id);
+    const ids = [journey.from.refs.locationId, journey.to.refs.locationId];
+    const commonMode = map.availableModes.find((candidate) => ids.every((id) =>
+      map.views[candidate].locations.some((location) => location.locationId === id)));
+    if (commonMode) {
+      setRequestedMode(commonMode);
+      const firstLocation = map.views[commonMode].locations.find((location) => location.locationId === ids[0]);
+      const firstScene = firstLocation ? sceneForLocation(firstLocation, map.scenes) : null;
+      if (firstScene) setSceneSelection({ sceneId: firstScene, floorId: null });
+    }
+    setLayersByMode((current) => Object.fromEntries(Object.entries(current).map(([key, value]) =>
+      [key, { ...value, locations: true, events: true, relations: true, unconfirmed: true }])) as Record<WorkbenchSpatialMode, SpatialLayerVisibility>);
+  }
+
+  function selectActivityEvent(eventId: string) {
+    if (blockSearchWhileEditing() || !onSelectEvent(eventId)) return;
+    const location = map.availableModes.flatMap((candidate) => map.views[candidate].locations)
+      .find((candidate) => candidate.events.some((event) => event.eventId === eventId));
+    setOpenedSpatialId(location?.spatialId ?? null);
+    const sceneId = location ? sceneForLocation(location, map.scenes) : null;
+    if (sceneId) setSceneSelection({ sceneId, floorId: location?.position.kind === "planar" ? location.position.floorId ?? null : null });
+  }
+
   return (
-    <section className={styles.spatialView} aria-labelledby="spatial-map-heading">
+    <section className={styles.spatialView} data-investigation={Boolean(investigation)} aria-labelledby="spatial-map-heading">
       <header className={styles.header}>
         <div className={styles.heading}>
-          <span>空间卷宗 · 空间图</span>
+          <span>空间卷宗 · 案发现场与人物行踪</span>
           <h2 id="spatial-map-heading">{title}</h2>
         </div>
         <div className={styles.headerMeta}>
@@ -1157,8 +1200,26 @@ export function SpatialMapView({
         </div>
       </header>
 
-      <SpatialStatusStrip counts={map.counts} />
+      <div className={styles.investigationToolbar}>
+        <span>{map.counts.locations} 个地点 · {investigation?.events.length ?? map.counts.events} 个事件</span>
+        <span>选择地点看现场，选择人物查行踪</span>
+        <button type="button" aria-expanded={!auditDesktopCollapsed} onClick={() => setAuditDesktopCollapsed((value) => !value)}>图层与位置设置</button>
+      </div>
 
+      <div className={styles.investigationWorkspace} data-investigation={Boolean(investigation)}>
+      {investigation ? <SpatialInvestigationPanel model={investigation} journeys={journeys} personId={activePersonId}
+        activeJourneyId={activeJourney?.id ?? null} onPerson={(id) => {
+          if (editSession || !onClearSelection()) return;
+          setOpenedSpatialId(null);
+          setPersonId(id); setJourneyId(null);
+        }} onJourney={inspectJourney} onEvent={selectActivityEvent}
+        onLocation={(id) => {
+          const location = findLocation(map, id, mode);
+          if (location) {
+            const locationMode = map.availableModes.find((candidate) => map.views[candidate].locations.includes(location));
+            if (locationMode) chooseSearchResult({ kind: "location", location, mode: locationMode });
+          } else onOpenLocationDetails(id);
+        }} /> : null}
       <div className={styles.mapFrame} data-mode={mode ?? "empty"}>
         {mode === "scene" && activeScene ? (
           <div className={styles.sceneDock} aria-label="场景与楼层">
@@ -1264,13 +1325,16 @@ export function SpatialMapView({
         {activeLocation ? (
           <SpatialMapPreviewCard
             activeLocation={activeLocation}
+            investigation={investigation}
+            relations={currentView?.relations ?? []}
+            onOpenLocation={onOpenLocationDetails}
             editActionLabel={editActionLabel}
             editSession={editSession}
             onCancelEdit={cancelPositionEdit}
             onClear={clearSelection}
             onReviewLatest={() => void reviewLatestPosition()}
             onSaveEdit={() => void savePositionEdit()}
-            onSelectEvent={onSelectEvent}
+            onSelectEvent={selectActivityEvent}
             onStartEdit={startPositionEdit}
             readOnlyReason={effectiveReadOnlyReason}
             selectedEventId={selectedEventId}
@@ -1278,8 +1342,13 @@ export function SpatialMapView({
           />
         ) : null}
       </div>
+      </div>
+
+      {investigation ? <SpatialActivityStrip model={investigation} personId={activePersonId} selectedEventId={selectedEventId}
+        journey={activeJourney} onResetJourney={() => setJourneyId(null)} onEvent={selectActivityEvent} onLocation={onOpenLocationDetails} /> : null}
 
       <footer className={styles.footer}>
+        <details><summary>坐标来源</summary><SpatialStatusStrip counts={map.counts} /></details>
         <p>{note}</p>
         {map.counts.unlocated ? (
           <button

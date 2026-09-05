@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from casefile_contracts import TaskRun
 from fastapi import APIRouter
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
@@ -133,7 +134,12 @@ def brief_intake_router() -> APIRouter:
             expected_brief_revision=payload.expected_brief_revision,
         )
 
-    @router.post("/projects/{project_id}/tasks/brief-intake-questions", status_code=202)
+    @router.post(
+        "/projects/{project_id}/tasks/brief-intake-questions",
+        status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
+    )
     def create_brief_intake_questions_task(
         project_id: int,
         payload: BriefIntakeQuestionsTaskRequest,
@@ -147,7 +153,12 @@ def brief_intake_router() -> APIRouter:
             provider=payload.provider,
         )
 
-    @router.post("/projects/{project_id}/tasks/brief-intake-synthesize", status_code=202)
+    @router.post(
+        "/projects/{project_id}/tasks/brief-intake-synthesize",
+        status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
+    )
     def create_brief_intake_synthesize_task(
         project_id: int,
         payload: BriefIntakeSynthesizeTaskRequest,

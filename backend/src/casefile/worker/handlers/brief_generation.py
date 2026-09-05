@@ -62,7 +62,7 @@ class BriefGenerationHandler:
         for repair_no in range(repair_limit + 1):
             if repair_no:
                 context.emit(
-                    task.id,
+                    task,
                     "model.repair_started",
                     "repairing",
                     {"repair_no": repair_no, "max_repairs": repair_limit},
@@ -80,7 +80,7 @@ class BriefGenerationHandler:
                 feedback_history.append({"repair_no": repair_no, "issues": error.errors})
                 feedback = tuple(feedback_history[-3:])
                 context.emit(
-                    task.id,
+                    task,
                     "validation.failed",
                     "validating",
                     {
@@ -151,7 +151,7 @@ class BriefGenerationHandler:
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(
-                    task.id, event_type, stage, payload
+                    task, event_type, stage, payload
                 ),
                 network_retries=_network_retries(task),
                 candidate_strategy=candidate_strategy,

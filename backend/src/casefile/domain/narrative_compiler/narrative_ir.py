@@ -9,6 +9,7 @@ from typing import Any
 from casefile_contracts import CaseFile, NarrativeIR
 from pydantic import ValidationError
 
+from casefile.contracts.object_types import COLLECTION_TYPES as COLLECTION_TYPES
 from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
@@ -21,20 +22,6 @@ from casefile.domain.narrative_compiler.source_refs import (
 NARRATIVE_IR_SCHEMA_ID = "compiler.narrative-ir.v1"
 NARRATIVE_IR_PROJECTION_VERSION = "compiler.narrative-ir-projection.v1"
 SOURCE_SCHEMA_ID = "casefile.v2"
-
-COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
-    ("resolution_specs", "resolution_spec"),
-    ("entities", "entity"),
-    ("relationships", "relationship"),
-    ("locations", "location"),
-    ("events", "event"),
-    ("information_units", "information_unit"),
-    ("claims", "claim"),
-    ("hypotheses", "hypothesis"),
-    ("reasoning_paths", "reasoning_path"),
-    ("constraints", "constraint"),
-    ("structure_locks", "structure_lock"),
-)
 
 
 @dataclass(frozen=True, slots=True)

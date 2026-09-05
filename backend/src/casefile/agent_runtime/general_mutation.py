@@ -14,8 +14,8 @@ GENERAL_MUTATION_PLAN_VERSION_V1: Literal["general-mutation-planner-v1"] = (
 GENERAL_MUTATION_PLAN_VERSION: Literal["general-mutation-planner-v2"] = (
     "general-mutation-planner-v2"
 )
-GENERAL_MUTATION_PROMPT_VERSION: Literal["general-mutation-planner-v6"] = (
-    "general-mutation-planner-v6"
+GENERAL_MUTATION_PROMPT_VERSION: Literal["general-mutation-planner-v7"] = (
+    "general-mutation-planner-v7"
 )
 GENERAL_MUTATION_SCHEMA_ID_V1 = "general-mutation-plan-v1"
 GENERAL_MUTATION_SCHEMA_ID = "general-mutation-plan-v2"

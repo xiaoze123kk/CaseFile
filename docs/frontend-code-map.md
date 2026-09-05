@@ -162,3 +162,97 @@
 | `apps/web/e2e/` | 浏览器用户闭环测试。 |
 
 `workbench-agent-conversation.tsx` 的 AgentAnswer 将正式回复和预览中的空行、编号及无序项渲染为段落和语义列表；仅展示文本，不执行 HTML，不推测分点、不更改历史正文。`workbench-agent.module.css` 提供段落与列表间距。
+
+- `apps/web/features/analyst-workbench/workbench-agent-thread-menu.tsx`、`workbench-agent-thread-menu.module.css`：桌面对话切换与管理悬浮面板，通过 body Portal 和视口边界定位脱离顶栏布局；独立蓝灰样式、列表滚动、当前对话操作、点击外部/焦点离开关闭与 Escape 焦点恢复。持久化继续复用 LivePanel 回调。
+
+## 小说编译器接入
+
+- `apps/web/features/novel-workspace/novel-compiler-api.ts`：真实 Compiler Profile v2/CompileRun HTTP 适配，按 Project/Draft 隔离记录，以当前 Draft revision 发起显式正文预览；只读取完整成功 Candidate，核对同次编译已接受 SceneRender 与 NovelPlan 章节及 merged_text 后载入独立初稿。
+- `apps/web/features/novel-workspace/novel-compiler-panel.tsx`、`novel-compiler.module.css`：桌面小说编译配置、后台记录轮询恢复、任务停止、失败与完整结果入口；区分结构与正文状态，不产生模拟进度。默认中文限知第三人称、线性叙述、自动规划披露顺序，使用现有 DeepSeek 配置与服务端校验/润色链路。
+- `novel-workspace.tsx`：真实已采用工作稿由宿主提供 compileScope；导入和编译结果共用本地备份/替换路径，失败不覆盖旧稿。`novel-workspace-panels.tsx` 导出既有原生 Dialog 供编译窗口复用。
+- `apps/web/tests/novel-compiler.test.tsx`：编译请求与版本绑定、工作稿隔离、正文成功门禁、章节保真、任务恢复/停止及读取失败后恢复测试。
+
+本节更新前文“尚未对接完整小说产物”的状态：已接入完整正文编译与显式载入。小说专用对话改写服务仍未提供，不将卷宗 Agent Patch/Apply 当作正文协作接口。
+
+## 空间现场与人物行踪
+
+- `spatial-map/spatial-investigation-model.ts`：从真实卷宗与已排序时间线投影人物、事件、地点和单向通行时间；只做作者侧行程对照，不替代后端验证、不推测未记录位置或路线。明确 exact/range 时间及可追溯到明确锚点的相对时间才计算正向间隔；模糊、未解析相对、重叠与未知时间显示待核对，父子地点不作通行不足判断。
+- `spatial-map/spatial-investigation-panel.tsx`、`spatial-investigation.module.css`：桌面人物筛选、待核对项、地点目录与底部活动记录；事件与地点操作回交现有选择和编辑门禁。
+- `spatial-map/spatial-map-view.tsx`、`spatial-map-preview-card.tsx`：现场事件和参与人物优先，展示单向通行关系，坐标编辑收进次级入口；图层默认折叠、空间关系默认显示。行程选择高亮实际事件地点，不生成行走路径；未知记录仍可从活动带打开。
+- `spatial-map/spatial-renderer.ts`：多地点高亮与视口聚焦，详情占独立桌面空间，不覆盖地图。
+- `apps/web/tests/spatial-investigation.test.tsx` 与现有地图/空间模型测试：明确时间和方向、未知/重叠时间、失效引用、人物与事件操作、图层默认值及坐标编辑回归。
+
+## Agent 推荐小说方案
+
+`novel-compiler-panel.tsx` 将数字配置改为可选阅读偏好、真实 Agent 推荐、章节/场景审阅和显式确认正文。`novel-compiler-api.ts` 消费 NovelRecommendation 生成契约，先启动不含正文的场景规划任务；确认时发送已有 Profile version 与 approved_plan_run_id。`apps/web/features/novel-workspace/novel-plan-preview.tsx` 用冻结 NarrativeIR 的名称投影真实 NovelPlan 的人物、地点、视角、事件和叙事作用，不以地点数代替场景数，不把当前工作稿标签混入历史方案。章节数和场景数只作为方案摘要展示。
+
+`novel-compiler-panel.tsx` 与 `novel-compiler.module.css` 的编译记录按真实 TaskRun 状态展示动效：running 使用逐行书写的纸页与底部流动细线，queued/cancelling 使用轻微呼吸；终态移除指示器。装饰动效对辅助技术隐藏，状态文字保留，prefers-reduced-motion 下显示静态标记，不虚构进度百分比。`novel-compiler.test.tsx` 覆盖六种状态的动效显示边界。
+
+`novel-compiler-panel.tsx` 按服务端 error_code 区分结构方案不完整、模型输出截断、非法JSON和中断；其他失败优先显示服务端公开说明，不再统一让用户检查密钥或工作稿。
+
+## TD-006 / TD-007 传输与测试边界
+
+`apps/web/lib/api-client.ts` 的 Task/Agent SSE 共用 `readSseData` 管理解码和 reader 释放，分别保留原有事件解析、游标及错误语义；`chat-public-api.test.ts` 覆盖正常结束、消费者异常、非法 JSON 和中断。`product-boundary.test.ts` 执行实际 redirects 配置验证路由结果，并保留依赖与存储隔离检查；不再断言移动端断点、具体 CSS/grid 数值或业务内部函数名。重复的 Intake 源码检查合并至该测试；候选采用、链接导航、真实工作稿加载和设置交互继续由已有行为测试覆盖。
+
+## TD-003 任务响应类型
+
+api-client.ts 的 TaskView、TaskType、CandidateStrategy 与任务诊断类型消费 @casefile/contracts；LatestTaskType 单独表示 tasks/latest 原有查询子集，恢复/重试调用方保持该限制。任务结果仍为开放 JSON，在对应能力消费点解释。
+
+## TD-003 Project／Brief 类型
+
+ProjectView／BriefVersionView 复用生成响应模型；BriefContent 通过同态映射复用 Brief 内容类型，仅放宽表单编辑阶段 source_record_ids 的非空限制。BriefView 保留编辑态 content 兼容，其余响应外壳复用生成模型；Anchor、Constraint 与语义枚举从 Brief 索引取得。
+
+## TD-005 加载与任务恢复归属
+
+CaseSessionProvider 的 sessionEpochRef 在加载、清空、恢复暂存和卸载时推进；loadProject 仅将当前代次的 Intake/Brief 与视图一次提交。恢复任务按代次和 TaskRun 去重并校验回调，resume/cancel 完成不得触发旧项目加载；当前恢复后的加载失败仍上报。case-session-hydration.test.tsx 验证跨项目/同项目乱序、旧错误、清空、卸载、暂存、StrictMode、旧任务回调与取消竞争。表单写入/新建项目/新生成任务及失效读取取消仍需后续同TD处理。
+
+## TD-005 失效会话的读取取消
+
+Provider 的 invalidateSession 将推进代次与中止旧读取集中在一起；恢复任务及resumeGeneration等待使用当前会话的AbortSignal。waitForRecoveredTask在本地停止后不追加兜底读取，waitForTask在poll/SSE回调前后检查停止信号，停止客户端读取不发送服务端取消命令。其余新建/表单/生成操作归属仍在TD-005后续范围。
+
+## TD-005 新建与表单写入归属
+
+ensureProjectAndSource、润色/采用原文、版本刷新与问答保存、候选保存/激活/对话修订、Brief确认及作者答案读取在操作入口捕获会话signal；每次await返回后先assertSessionActive再修改ref或提交下一请求，Provider回退回调入口也校验。直接ref赋值的异步结果先放局部变量再提交，避免晚到响应污染新会话。已提交服务端写入不自动回滚。策略/深稿生成/采用Current Draft及页面调用方本地状态仍属后续TD-005范围。
+
+## TD-005 策略、深稿生成与采用归属
+
+analyzeStrategies、generateCandidates全部等待/回调/失败与汇总分支、retryTask后续刷新和adoptCandidate确认结果/Brief刷新均检查发起会话的signal。waitForTask复用会话读取信号，旧回调静默丢弃，旧异步操作停止后续提交。当前会话的取消、失败、Provider回退以及已提交采用的普通刷新失败语义保留。页面自身异步UI状态和加载期间操作入口仍需继续审计。
+
+## TD-005 加载期间入口与并发建案
+
+loadProject在准备期间中止操作信号，保留可读旧表单；全部异步操作入口先assertSessionActive，因此不会向旧Project提交新写入。当前加载成功/失败结束时换发操作信号，不改变epoch归属规则。ensureProjectAndSource通过projectCreationRef共享同一signal下未完成的创建请求；失效清空引用，旧请求finally只清理自己的引用。后续Source写入仍走原版本冲突语义，不做自动事务合并。
+
+## TD-005 页面结果与导航归属
+
+use-session-ui-operation.ts捕获Provider只读getSessionEpoch与组件生命周期，用于候选页结果/错误/导航及Intake历史恢复、Brief重新读取回调。resumeGeneration/cancelGeneration可选onReload在内部加载开始后通知调用页面重新捕获自己的代次，避免误丢当前成功反馈；不影响原无回调调用方或HTTP。DraftCandidatesStage自动分析记录所属操作而非永久boolean，加载期间不触发分析。IntakeCenter现2993行，其余本地async操作需先拆出实际职责再补保护，避免超过3000行约束。
+
+## TD-005 创意候选职责迁移
+
+use-idea-candidates.ts承接原IntakeCenter的5项创意局部状态、批次映射和生成/选择/收藏/淘汰/单项重生成操作；父组件继续持有入口视图和全局错误呈现。resetIdeas保留原4项重置行为。本次仅迁移，10个函数体逐字相等，页面从2993降到2850行，为后续归属修复留空间。
+
+## TD-005 建案页面异步 UI 归属
+
+IntakeCenter剩余A路径操作及useIdeaCandidates的B路径操作复用useSessionUiOperation，await/catch/finally和延迟focus只影响当前组件/会话。clearPendingOperations在明确reset、历史恢复、暂存恢复、Brief重载和B选择触发项目加载时清理旧等待；旧finally不再清理新操作状态。创意hook加载期间不接收新请求，自身select引发load后重新捕获合法代次。新增真实UI回归覆盖跨reset的旧润色/创意失败与新请求并行。页面当前2921行。
+
+反向解析页的上传/项目创建、条目确认、重试及形成Brief操作复用useSessionUiOperation。异步返回与错误展示校验会话/组件归属；形成Brief自身发起loadProject后重新捕获归属，防止旧操作恢复旧项目或关闭新页面。项目加载期间不接受这些写操作，创建项目异常进入原上传错误展示。
+
+工作台的Agent Draft刷新和时间预览409后的权威Draft读取复用useSessionUiOperation，读取返回后校验归属再更新状态/触发loadProject。已有主加载effect继续使用active cleanup；不会由旧会话的迟到读取重新加载旧项目。
+
+generateCandidates每次仅接收一个选中策略，缺失与重新生成条件互斥，因此不存在其他并行策略。删除旧parallelStrategies执行分支，保留原Provider认证回退和同内容候选重试，接口及单策略任务参数不变。
+
+反向解析的文档列表、来源块、条目与解析恢复effect同时校验本地cleanup和会话归属。切换文档/项目或卸载时中止恢复轮询的AbortController，仅释放客户端读取，不取消后台Task；旧来源块返回后不再发起详情读取。上传入口自身的等待生命周期仍单独审计。
+
+反向解析审阅状态在活动项目切换或开始hydration时清空，避免旧文档ID/条目/pending进入新项目；用前一次project/loading边界判断在渲染新项目之前完成本地重置。列表/详情/恢复轮询在loading期间暂停，ready后重读。上传等待独立controller由项目/loading effect cleanup中止，finally仅释放自己的controller；不会取消服务端解析任务。形成Brief自己发起load的合法完成回调保留。
+
+useIdeaCandidates在活动项目变更时清理不属于新项目的创意缓存及pending；previousProjectId只用于检测生命周期边界，不作为请求项目来源。临时创意项目未成为活动项目时，A/B切换仍复用它；采用后活动项目与创意归属相同时保留候选。跨项目新生成采用新的activeProjectId。
+
+反向解析重试返回时始终更新所属文档的列表状态，但只在当前仍选中该文档时更新activeDoc。不清空另一文档的loadedDocId，避免抢回选择或重复加载当前详情；原文档仍选中时继续恢复轮询。
+
+DraftCandidatesStage的采用/修订锁由会话归属predicate持有，失效的旧操作不阻塞新操作，finally仅释放自己的锁且只清理当前pending。项目变更或开始hydration时重置本地展开、提示、错误、pending与修订对话框；已完成内部重载的resume/cancel合法反馈仍保留。
+
+AgentLivePanel的修改预演/应用/撤销/重做在请求开始时捕获项目与Draft生命周期；卸载或身份变化后忽略迟到结果，不调用onDraftChanged、不继续reloadMessages，也不清理新生命周期的pending。它仅依赖现有projectId/draftId props，不引入全局CaseSession依赖。后台已提交写入仍由服务端处理。
+同一Agent面板切换projectId/draftId时同时清理旧patchBusyId与patchError，防止失效操作因不再执行finally而留下阻塞；应用/撤销/重做正常的DTO和请求参数保持原样。
+
+CaseSession的task_updated reducer动作统一生成进度、去重重试、取消、恢复与重试刷新等8处权威Task写入：原子合并latestTasks并从Task派生对应槽位的status/stage/taskRunId/latestTask，保持客户端strategy attempt与调用方错误文案。update_generation_slot仅用于尚无权威Task的本地操作进度，不再接受Task副本；async callback不再用stateRef快照拼latestTasks。hydration仍从服务器整体初始化。
+
+删除无人读取的generation.stage数值及advance_generation动作；可见进度仍来自Task部件步骤/槽位阶段。generation.status保留为跨创建、等待、候选刷新过程的本地操作锁，不能只从单个Task终态推导。

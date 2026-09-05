@@ -13,25 +13,14 @@ from typing import Any, cast
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
+from casefile.contracts.object_types import COLLECTION_OBJECT_TYPES as COLLECTION_OBJECT_TYPES
+
 CASEFILE_SCHEMA_VERSION = "2.0"
 LEGACY_CASEFILE_SCHEMA_VERSIONS = frozenset({"1.0"})
 SUPPORTED_CASEFILE_SCHEMA_VERSIONS = frozenset(
     {CASEFILE_SCHEMA_VERSION, *LEGACY_CASEFILE_SCHEMA_VERSIONS}
 )
 
-COLLECTION_OBJECT_TYPES = {
-    "resolution_specs": "resolution_spec",
-    "entities": "entity",
-    "relationships": "relationship",
-    "locations": "location",
-    "events": "event",
-    "information_units": "information_unit",
-    "claims": "claim",
-    "hypotheses": "hypothesis",
-    "reasoning_paths": "reasoning_path",
-    "constraints": "constraint",
-    "structure_locks": "structure_lock",
-}
 _EXTERNAL_REFERENCE_TYPES = {"source_fragment"}
 _PUBLIC_ISSUE_LIMIT = 20
 _PUBLIC_MESSAGE_LIMIT = 240

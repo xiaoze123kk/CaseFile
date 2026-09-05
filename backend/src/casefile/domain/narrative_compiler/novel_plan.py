@@ -12,6 +12,7 @@ from typing import Any
 from casefile_contracts import NovelPlanCandidate, NovelPlanIR
 from pydantic import ValidationError
 
+from casefile.contracts.object_types import COLLECTION_OBJECT_TYPES as _COLLECTION_TYPE
 from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
@@ -28,19 +29,6 @@ STORY_PLANNER_COMPONENT_VERSION = "compiler.story-planner.v1"
 STORY_PLANNER_REPAIR_VERSION = "compiler.story-plan-mode-repair.v1"
 STORY_PLANNER_STRUCTURAL_REPAIR_VERSION = "compiler.story-plan-structural-patch.v1"
 
-_COLLECTION_TYPE = {
-    "resolution_specs": "resolution_spec",
-    "entities": "entity",
-    "relationships": "relationship",
-    "locations": "location",
-    "events": "event",
-    "information_units": "information_unit",
-    "claims": "claim",
-    "hypotheses": "hypothesis",
-    "reasoning_paths": "reasoning_path",
-    "constraints": "constraint",
-    "structure_locks": "structure_lock",
-}
 _RUNTIME_KEYS = {
     "compile_run_id",
     "task_run_id",

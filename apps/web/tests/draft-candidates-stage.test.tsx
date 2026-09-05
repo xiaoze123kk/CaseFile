@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DraftCandidateView, TaskView } from "@/lib/api-client";
@@ -36,6 +36,22 @@ afterEach(() => {
 });
 
 describe("draft candidate cancellation feedback", () => {
+  it.each(["current", "switched", "unmounted"])("owns adoption navigation when %s", async (mode) => {
+    let epoch = 0;
+    let complete!: (id: number) => void;
+    const pending = new Promise<number>((resolve) => { complete = resolve; });
+    installSession(candidateState(mappedCandidate(null)), {
+      getSessionEpoch: () => epoch,
+      adoptCandidate: vi.fn().mockReturnValue(pending),
+    });
+    const view = render(<DraftCandidatesStage />);
+    fireEvent.click(screen.getByRole("button", { name: "采用为当前工作稿 →" }));
+    if (mode === "switched") epoch += 1;
+    if (mode === "unmounted") view.unmount();
+    await act(async () => { complete(9); await pending; });
+    if (mode === "current") expect(mocks.routerPush).toHaveBeenCalledWith("/workbench?project=7");
+    else expect(mocks.routerPush).not.toHaveBeenCalled();
+  });
   it("shows the complete six-step pipeline while the first component is still pending", () => {
     installSession(generatingState());
 
@@ -235,7 +251,7 @@ describe("draft candidate cancellation feedback", () => {
     const resume = screen.getByRole("button", { name: "从失败阶段恢复" });
     expect(resume).toBeEnabled();
     fireEvent.click(resume);
-    expect(resumeGeneration).toHaveBeenCalledWith("structure_first");
+    expect(resumeGeneration).toHaveBeenCalledWith("structure_first", expect.any(Function));
   });
 
   it.each([
@@ -256,8 +272,13 @@ describe("draft candidate cancellation feedback", () => {
   });
 
   it("reports a raced success and confirms that candidates were refreshed", async () => {
-    const cancelGeneration = vi.fn().mockResolvedValue(generationTask("succeeded"));
-    installSession(generatingState(), { cancelGeneration });
+    let epoch = 0;
+    const cancelGeneration = vi.fn(async (_strategy: CandidateSlotStrategy, onReload?: () => void) => {
+      epoch += 1;
+      onReload?.();
+      return generationTask("succeeded");
+    });
+    installSession(generatingState(), { cancelGeneration, getSessionEpoch: () => epoch });
 
     render(<DraftCandidatesStage />);
     fireEvent.click(screen.getByRole("button", { name: "停止本次生成" }));
@@ -437,6 +458,7 @@ function installSession(
   mocks.useCaseSession.mockReturnValue({
     state,
     activeProjectId: 7,
+    getSessionEpoch: () => 0,
     analyzeStrategies: vi.fn().mockResolvedValue(true),
     selectStrategy: vi.fn(),
     generateCandidates: vi.fn().mockResolvedValue("not_started"),
@@ -655,3 +677,67 @@ function componentStep(
     resumed_from_step_run_id: null,
   };
 }
+
+
+it("starts adoption in a new project without letting the old finally clear its pending state", async () => {
+  let epoch = 0;
+  let finishOld!: (id: number) => void;
+  let finishNew!: (id: number) => void;
+  const adoptCandidate = vi.fn()
+    .mockReturnValueOnce(new Promise<number>((resolve) => { finishOld = resolve; }))
+    .mockReturnValueOnce(new Promise<number>((resolve) => { finishNew = resolve; }));
+  const state = candidateState(mappedCandidate(null));
+  installSession(state, { adoptCandidate, getSessionEpoch: () => epoch });
+  const view = render(<DraftCandidatesStage />);
+  fireEvent.click(screen.getByRole("button", { name: "采用为当前工作稿 →" }));
+  epoch += 1;
+  installSession(state, { adoptCandidate, getSessionEpoch: () => epoch, activeProjectId: 8 });
+  view.rerender(<DraftCandidatesStage />);
+  const button = screen.getByRole("button", { name: "采用为当前工作稿 →" });
+  expect(button).toBeEnabled();
+  fireEvent.click(button);
+  expect(adoptCandidate).toHaveBeenCalledTimes(2);
+  await act(async () => { finishOld(9); });
+  expect(screen.getByRole("button", { name: "正在采用…" })).toBeDisabled();
+  expect(mocks.routerPush).not.toHaveBeenCalled();
+  await act(async () => { finishNew(10); });
+  expect(mocks.routerPush).toHaveBeenCalledExactlyOnceWith("/workbench?project=8");
+});
+
+it("clears an old adoption error on same-project reload", async () => {
+  let epoch = 0;
+  const state = candidateState(mappedCandidate(null));
+  installSession(state, { getSessionEpoch: () => epoch, adoptCandidate: vi.fn().mockRejectedValue(new Error("旧采用失败")) });
+  const view = render(<DraftCandidatesStage />);
+  fireEvent.click(screen.getByRole("button", { name: "采用为当前工作稿 →" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("旧采用失败");
+  epoch += 1;
+  installSession({ ...state, hydration: { status: "loading", error: null } }, { getSessionEpoch: () => epoch });
+  view.rerender(<DraftCandidatesStage />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+
+it("does not release a new project's revision pending when the old revision finishes", async () => {
+  let epoch = 0;
+  let finishOld!: () => void;
+  let finishNew!: () => void;
+  const beginBriefRevision = vi.fn()
+    .mockReturnValueOnce(new Promise<void>((resolve) => { finishOld = resolve; }))
+    .mockReturnValueOnce(new Promise<void>((resolve) => { finishNew = resolve; }));
+  const state = candidateState(mappedCandidate(null));
+  installSession(state, { beginBriefRevision, getSessionEpoch: () => epoch });
+  const view = render(<DraftCandidatesStage />);
+  fireEvent.click(screen.getByRole("button", { name: "修改建案" }));
+  fireEvent.click(screen.getByRole("button", { name: /创建 V/ }));
+  epoch += 1;
+  installSession(state, { beginBriefRevision, getSessionEpoch: () => epoch, activeProjectId: 8 });
+  view.rerender(<DraftCandidatesStage />);
+  fireEvent.click(screen.getByRole("button", { name: "修改建案" }));
+  fireEvent.click(screen.getByRole("button", { name: /创建 V/ }));
+  expect(beginBriefRevision).toHaveBeenCalledTimes(2);
+  await act(async () => { finishOld(); });
+  expect(screen.getByRole("button", { name: "正在建立简报修订…" })).toBeDisabled();
+  await act(async () => { finishNew(); });
+  expect(screen.getByRole("button", { name: "修改建案" })).toBeEnabled();
+});

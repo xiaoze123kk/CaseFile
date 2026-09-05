@@ -171,6 +171,19 @@ export function AgentLivePanel({
   const followedRunIdsRef = useRef(new Set<number>());
   const messagesRequestRef = useRef(0);
   const selectedThreadIdRef = useRef<number | null>(null);
+  const patchScopeRef = useRef({ active: true });
+  const [patchIdentity, setPatchIdentity] = useState({ projectId, draftId });
+  if (patchIdentity.projectId !== projectId || patchIdentity.draftId !== draftId) {
+    setPatchIdentity({ projectId, draftId });
+    setPatchBusyId(null);
+    setPatchError(null);
+  }
+  useEffect(() => {
+    const scope = { active: true };
+    patchScopeRef.current = scope;
+    return () => { scope.active = false; };
+  }, [projectId, draftId]);
+
   const composerThreadId = selectedThreadId ?? 0;
   const composer = composers[composerThreadId] ?? newComposerEntry(focus);
   const draft = composer.text;
@@ -694,6 +707,8 @@ export function AgentLivePanel({
     } = {},
   ) {
     if (patchBusyId !== null) return;
+    const scope = patchScopeRef.current;
+    if (!scope.active) return;
     setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     setMessagesError(null);
@@ -709,6 +724,7 @@ export function AgentLivePanel({
         confirmation.acceptedWarningIds ?? [],
         confirmation.confirmationNote,
       );
+      if (!scope.active) return;
       updatePatchSet(result.patch);
       if (result.goal && selectedThreadId !== null) setGoalHints((previous) => ({ ...previous, [selectedThreadId]: result.goal!.goal_id }));
       if (result.continuation_run && selectedThreadId !== null) startFollow(result.continuation_run, selectedThreadId);
@@ -718,13 +734,15 @@ export function AgentLivePanel({
         [patchSet.patch_id]: result.revision,
       }));
       await onDraftChanged();
+      if (!scope.active) return;
       await reloadMessages();
     } catch (caught) {
+      if (!scope.active) return;
       const message = errorMessage(caught);
       setPatchError(message);
       setMessagesError(message);
     } finally {
-      setPatchBusyId(null);
+      if (scope.active) setPatchBusyId(null);
     }
   }
 
@@ -735,11 +753,13 @@ export function AgentLivePanel({
     confirmationNote?: string,
   ): Promise<PublicPatchReviewResult | null> {
     if (patchBusyId !== null) return null;
+    const scope = patchScopeRef.current;
+    if (!scope.active) return null;
     setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     setMessagesError(null);
     try {
-      return await simulateAgentPatchSet(
+      const result = await simulateAgentPatchSet(
         LOCAL_ACTOR_ID,
         projectId,
         patchSet.patch_id,
@@ -749,18 +769,22 @@ export function AgentLivePanel({
         acceptedWarningIds,
         confirmationNote,
       );
+      return scope.active ? result : null;
     } catch (caught) {
+      if (!scope.active) return null;
       const message = errorMessage(caught);
       setPatchError(message);
       setMessagesError(message);
       return null;
     } finally {
-      setPatchBusyId(null);
+      if (scope.active) setPatchBusyId(null);
     }
   }
 
   async function undoPatchSet(patchSet: PublicPatchSet) {
     if (patchBusyId !== null || !patchSet.actions.can_undo) return;
+    const scope = patchScopeRef.current;
+    if (!scope.active) return;
     setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     setMessagesError(null);
@@ -772,24 +796,29 @@ export function AgentLivePanel({
         draftId,
         revisionByPatch[patchSet.patch_id] ?? draftRevision,
       );
+      if (!scope.active) return;
       updatePatchSet(result.patch);
       setRevisionByPatch((previous) => ({
         ...previous,
         [patchSet.patch_id]: result.revision,
       }));
       await onDraftChanged();
+      if (!scope.active) return;
       await reloadMessages();
     } catch (caught) {
+      if (!scope.active) return;
       const message = errorMessage(caught);
       setPatchError(message);
       setMessagesError(message);
     } finally {
-      setPatchBusyId(null);
+      if (scope.active) setPatchBusyId(null);
     }
   }
 
   async function redoPatchSet(patchSet: PublicPatchSet) {
     if (patchBusyId !== null || !patchSet.actions.can_redo) return;
+    const scope = patchScopeRef.current;
+    if (!scope.active) return;
     setPatchBusyId(patchSet.patch_id);
     setPatchError(null);
     try {
@@ -800,17 +829,20 @@ export function AgentLivePanel({
         draftId,
         revisionByPatch[patchSet.patch_id] ?? draftRevision,
       );
+      if (!scope.active) return;
       updatePatchSet(result.patch);
       setRevisionByPatch((previous) => ({
         ...previous,
         [patchSet.patch_id]: result.revision,
       }));
       await onDraftChanged();
+      if (!scope.active) return;
       await reloadMessages();
     } catch (caught) {
+      if (!scope.active) return;
       setPatchError(errorMessage(caught));
     } finally {
-      setPatchBusyId(null);
+      if (scope.active) setPatchBusyId(null);
     }
   }
 

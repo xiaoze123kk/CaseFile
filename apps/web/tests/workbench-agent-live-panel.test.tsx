@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import type {
@@ -467,6 +467,49 @@ describe("workbench public agent live panel", () => {
     fireEvent.change(composer, { target: { value: "你好" } });
     expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
     threadHost.remove();
+  });
+
+  it.each(["apply", "undo", "redo"] as const)("does not refresh a departed workbench after %s completes", async (operation) => {
+    const initial = patch({ status: operation === "apply" ? "pending" : operation === "undo" ? "applied" : "undone",
+      actions: { can_simulate: operation === "apply", can_undo: operation === "undo", can_redo: operation === "redo" } });
+    mocks.listAgentMessages.mockResolvedValue([message({ patch: initial, response_kind: "patch_proposal" })]);
+    const mutation = operation === "apply" ? mocks.applyAgentPatchSet : operation === "undo" ? mocks.undoAgentPatchSet : mocks.redoAgentPatchSet;
+    let finish!: (result: { patch: PublicPatchSet; revision: number }) => void;
+    mutation.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const onDraftChanged = vi.fn();
+    const view = renderPanel({ onDraftChanged });
+    const review = within(await screen.findByRole("region", { name: "Agent 审阅" }));
+    if (operation === "apply") {
+      mocks.simulateAgentPatchSet.mockResolvedValue({ patch_id: 200, can_apply: true, blockers: [], warnings: [], requires_author_confirmation: false, confirmation_token: null });
+      fireEvent.click(await review.findByRole("button", { name: "检查修改影响" }));
+      await waitFor(() => expect(review.getByRole("button", { name: "应用修改" })).toBeEnabled());
+      fireEvent.click(review.getByRole("button", { name: "应用修改" }));
+      fireEvent.click(review.getByRole("button", { name: "确认应用" }));
+    } else {
+      fireEvent.click(await review.findByRole("button", { name: operation === "undo" ? "撤销应用" : "重做应用" }));
+    }
+    await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
+    const reads = mocks.listAgentMessages.mock.calls.length;
+    view.unmount();
+    await act(async () => { finish({ patch: initial, revision: 5 }); });
+    expect(onDraftChanged).not.toHaveBeenCalled();
+    expect(mocks.listAgentMessages).toHaveBeenCalledTimes(reads);
+  });
+
+  it("releases the departed Draft's pending control while ignoring its late callback", async () => {
+    const applied = patch({ status: "applied", actions: { can_simulate: false, can_undo: true, can_redo: false } });
+    mocks.listAgentMessages.mockResolvedValue([message({ patch: applied, response_kind: "patch_proposal" })]);
+    let finish!: (result: { patch: PublicPatchSet; revision: number }) => void;
+    mocks.undoAgentPatchSet.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const onDraftChanged = vi.fn();
+    const view = renderPanel({ onDraftChanged });
+    const review = within(await screen.findByRole("region", { name: "Agent 审阅" }));
+    fireEvent.click(await review.findByRole("button", { name: "撤销应用" }));
+    await waitFor(() => expect(mocks.undoAgentPatchSet).toHaveBeenCalled());
+    view.rerender(panel({ onDraftChanged, draftId: 10 }));
+    expect(review.getByRole("button", { name: "撤销应用" })).toBeEnabled();
+    await act(async () => { finish({ patch: applied, revision: 5 }); });
+    expect(onDraftChanged).not.toHaveBeenCalled();
   });
 
   it("uses public review/apply/undo/redo DTOs and keeps handles out of the UI", async () => {

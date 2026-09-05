@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.prompt import (
@@ -13,6 +17,7 @@ from casefile.agent_runtime.prompt import (
 )
 from casefile.application.task_cancellation import finalize_task_cancellation
 from casefile.application.task_events import append_task_event
+from casefile.application.task_lease import is_current_task_attempt
 from casefile.application.workflow_service import WorkflowService
 from casefile.application.workflow_views import task_failure_view
 from casefile.data_postgres.models import (
@@ -60,6 +65,47 @@ class TaskFinalizer:
         self.worker_id = worker_id
         self.lease_seconds = lease_seconds
 
+    def _renew_lease(self, task_run_id: int, attempt_id: int) -> bool:
+        with self.session_factory() as session, session.begin():
+            task = session.scalar(
+                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+            )
+            attempt = session.get(TaskAttempt, attempt_id)
+            if (
+                task is None
+                or attempt is None
+                or task.leased_by != self.worker_id
+                or not is_current_task_attempt(task, attempt)
+            ):
+                return False
+            task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.lease_seconds)
+            return True
+
+    @contextmanager
+    def heartbeat(self, task_run_id: int, attempt_id: int) -> Iterator[None]:
+        """Renew the claimed attempt without advancing stages or consuming cancellation."""
+        if not self._renew_lease(task_run_id, attempt_id):
+            raise RuntimeError("TaskRun lease was lost before execution")
+        stop = Event()
+
+        def renew() -> None:
+            while not stop.wait(min(5.0, self.lease_seconds / 3)):
+                try:
+                    if not self._renew_lease(task_run_id, attempt_id):
+                        return
+                except SQLAlchemyError:
+                    # Do not resurrect an expired lease after a database outage.
+                    # Subsequent writes still have to pass the ownership fence.
+                    return
+
+        thread = Thread(target=renew, name="task-lease", daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            thread.join()
+
     def _cancel(
         self,
         task_run_id: int,
@@ -77,7 +123,7 @@ class TaskFinalizer:
             )
             if task is None or attempt is None or task.status != "cancelling":
                 return False
-            if task.leased_by != self.worker_id or attempt.status != "running":
+            if task.leased_by != self.worker_id or not is_current_task_attempt(task, attempt):
                 return False
             if task.input_jsonb.get("prose_renderer_shadow"):
                 from casefile.worker.executors.prose_store import ProseLeaseLost, assert_prose_owner
@@ -133,7 +179,7 @@ class TaskFinalizer:
             if (
                 task.status != "running"
                 or task.leased_by != self.worker_id
-                or attempt.status != "running"
+                or not is_current_task_attempt(task, attempt)
             ):
                 return
             if task.input_jsonb.get("prose_renderer_shadow"):
@@ -287,7 +333,7 @@ class TaskFinalizer:
 
     def _emit_after_completion(
         self,
-        task_run_id: int,
+        snapshot: TaskRun,
         event_type: str,
         stage: str,
         payload: dict[str, Any],
@@ -300,9 +346,23 @@ class TaskFinalizer:
         """
 
         with self.session_factory() as session, session.begin():
-            task = session.get(TaskRun, task_run_id)
-            if task is None:
-                raise RuntimeError("TaskRun disappeared before post-completion event")
+            task = session.scalar(
+                select(TaskRun).where(TaskRun.id == snapshot.id).with_for_update()
+            )
+            attempt = session.scalar(
+                select(TaskAttempt).where(
+                    TaskAttempt.task_run_id == snapshot.id,
+                    TaskAttempt.attempt_no == snapshot.attempt_count,
+                )
+            )
+            if (
+                task is None
+                or attempt is None
+                or task.attempt_count != snapshot.attempt_count
+                or task.status != "succeeded"
+                or attempt.status != "succeeded"
+            ):
+                raise RuntimeError("TaskRun completion is no longer owned by this attempt")
             public_payload = {
                 key: value for key, value in payload.items() if not key.startswith("_")
             }
@@ -310,22 +370,33 @@ class TaskFinalizer:
 
     def _emit(
         self,
-        task_run_id: int,
+        snapshot: TaskRun,
         event_type: str,
         stage: str,
         payload: dict[str, Any],
     ) -> None:
         with self.session_factory() as session, session.begin():
             task = session.scalar(
-                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+                select(TaskRun).where(TaskRun.id == snapshot.id).with_for_update()
             )
-            if task is not None and task.status == "cancelling":
-                raise TaskCancellationRequested
-            if task is None or task.status != "running" or task.leased_by != self.worker_id:
+            attempt = session.scalar(
+                select(TaskAttempt).where(
+                    TaskAttempt.task_run_id == snapshot.id,
+                    TaskAttempt.attempt_no == snapshot.attempt_count,
+                )
+            )
+            if (
+                task is None
+                or attempt is None
+                or task.leased_by != self.worker_id
+                or not is_current_task_attempt(task, attempt)
+            ):
                 raise RuntimeError("TaskRun lease was lost")
+            if task.status == "cancelling":
+                raise TaskCancellationRequested
             task.stage = stage
             task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.lease_seconds)
-            _persist_agent_execution_event(session, task, event_type, payload)
+            _persist_agent_execution_event(session, task, attempt, event_type, payload)
             public_payload = {
                 key: value for key, value in payload.items() if not key.startswith("_")
             }

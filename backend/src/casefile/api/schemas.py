@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Self
 
-from casefile_contracts import PublicRoutingInterpretation
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from casefile.application.commands import ProjectCreate
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
+from casefile_contracts import PublicRoutingInterpretation
 
 
 class StrictRequest(BaseModel):
@@ -515,6 +515,8 @@ class CompilerProfileVersionCreateRequest(StrictRequest):
 
 
 class CompileRunCreateRequest(StrictRequest):
+    scene_compiler_shadow: bool = False
+    approved_plan_run_id: int | None = Field(default=None, ge=1)
     prose_renderer_shadow: bool = False
     mode: Literal["preview", "canonical"]
     expected_draft_id: int = Field(ge=1)

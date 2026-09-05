@@ -343,3 +343,22 @@ describe("candidate generation progress", () => {
     });
   });
 });
+
+
+it("updates generation identity and task history together from an authoritative task", () => {
+  let state = createInitialCaseSessionState();
+  state = caseSessionReducer(state, {
+    type: "update_generation_slot", strategy: "structure_first", status: "running", taskRunId: 100, attempt: 2,
+  });
+  const task = { task_run_id: 101, task_type: "brief_to_draft", candidate_strategy: "structure_first", status: "succeeded", stage: "completed" } as import("@/lib/api-client").TaskView;
+  state = caseSessionReducer(state, { type: "task_updated", task });
+  expect(state.generation.slots.structure_first).toMatchObject({
+    taskRunId: 101, latestTask: task, status: "succeeded", stage: "completed", attempt: 2,
+  });
+  expect(state.latestTasks.brief_to_draft).toBe(task);
+  const polish = { task_run_id: 102, task_type: "brief_polish", status: "succeeded" } as import("@/lib/api-client").TaskView;
+  const next = caseSessionReducer(state, { type: "task_updated", task: polish });
+  expect(next.latestTasks.brief_to_draft).toBe(task);
+  expect(next.latestTasks.brief_polish).toBe(polish);
+  expect(next.generation).toBe(state.generation);
+});

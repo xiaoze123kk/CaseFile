@@ -8,6 +8,8 @@ from collections.abc import Iterator
 from typing import Annotated, Any, Literal, NoReturn
 
 from casefile_contracts import (
+    BriefVersionView,
+    BriefView,
     PublicAgentEvent,
     PublicAgentMessage,
     PublicAgentMessageReceipt,
@@ -18,9 +20,11 @@ from casefile_contracts import (
     PublicPatchResponse,
     PublicPatchReviewResult,
     PublicRoutingFeedbackReceipt,
+    TaskRun,
 )
 from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from pydantic import RootModel
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.api.schemas import (
@@ -118,7 +122,11 @@ def workflow_router() -> APIRouter:
             parent_source_record_id=payload.parent_source_record_id,
         )
 
-    @router.get("/projects/{project_id}/brief")
+    @router.get(
+        "/projects/{project_id}/brief",
+        response_model=None,
+        responses={200: {"model": BriefView}},
+    )
     def get_brief(
         project_id: int,
         actor: ActorDependency,
@@ -126,7 +134,11 @@ def workflow_router() -> APIRouter:
     ) -> dict[str, Any]:
         return WorkflowService(session).get_brief(actor, project_id)
 
-    @router.put("/projects/{project_id}/brief")
+    @router.put(
+        "/projects/{project_id}/brief",
+        response_model=None,
+        responses={200: {"model": BriefView}},
+    )
     def update_brief(
         project_id: int,
         payload: BriefUpdateRequest,
@@ -140,7 +152,12 @@ def workflow_router() -> APIRouter:
             content=payload.content,
         )
 
-    @router.post("/projects/{project_id}/brief/confirm", status_code=201)
+    @router.post(
+        "/projects/{project_id}/brief/confirm",
+        status_code=201,
+        response_model=None,
+        responses={201: {"model": BriefVersionView}},
+    )
     def confirm_brief(
         project_id: int,
         payload: BriefConfirmRequest,
@@ -628,7 +645,12 @@ def workflow_router() -> APIRouter:
         except ContractValidationError:
             _raise_public_patch_contract_error()
 
-    @router.post("/projects/{project_id}/tasks/generate", status_code=202)
+    @router.post(
+        "/projects/{project_id}/tasks/generate",
+        status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
+    )
     def create_generation_task(
         project_id: int,
         payload: GenerateTaskRequest,
@@ -649,6 +671,8 @@ def workflow_router() -> APIRouter:
     @router.post(
         "/projects/{project_id}/tasks/brief-strategy-options",
         status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
     )
     def create_strategy_options_task(
         project_id: int,
@@ -700,7 +724,12 @@ def workflow_router() -> APIRouter:
             expected_current_draft_id=payload.expected_current_draft_id,
         )
 
-    @router.post("/projects/{project_id}/tasks/brief-polish", status_code=202)
+    @router.post(
+        "/projects/{project_id}/tasks/brief-polish",
+        status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
+    )
     def create_polish_task(
         project_id: int,
         payload: BriefPolishTaskRequest,
@@ -718,6 +747,8 @@ def workflow_router() -> APIRouter:
     @router.post(
         "/projects/{project_id}/tasks/brief-anchor-extract",
         status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
     )
     def create_anchor_extract_task(
         project_id: int,
@@ -734,7 +765,11 @@ def workflow_router() -> APIRouter:
             content=payload.content,
         )
 
-    @router.get("/projects/{project_id}/tasks/latest")
+    @router.get(
+        "/projects/{project_id}/tasks/latest",
+        response_model=None,
+        responses={200: {"model": RootModel[TaskRun | None]}},
+    )
     def get_latest_task(
         project_id: int,
         actor: ActorDependency,
@@ -765,7 +800,11 @@ def workflow_router() -> APIRouter:
     ) -> dict[str, Any]:
         return APathMetricsService(session).project_metrics(actor, project_id)
 
-    @router.get("/projects/{project_id}/tasks/{task_run_id}")
+    @router.get(
+        "/projects/{project_id}/tasks/{task_run_id}",
+        response_model=None,
+        responses={200: {"model": TaskRun}},
+    )
     def get_task(
         project_id: int,
         task_run_id: int,
@@ -779,6 +818,8 @@ def workflow_router() -> APIRouter:
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/cancel",
         status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
     )
     def cancel_task(
         project_id: int,
@@ -793,6 +834,8 @@ def workflow_router() -> APIRouter:
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/resume",
         status_code=202,
+        response_model=None,
+        responses={202: {"model": TaskRun}},
     )
     def resume_generation_task(
         project_id: int,

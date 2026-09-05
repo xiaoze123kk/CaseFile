@@ -5,19 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from application_services_test_support import _clear_projects_before_downgrade
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
-from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
@@ -32,8 +27,7 @@ from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
@@ -166,48 +160,12 @@ def _brief(source_record_id: int) -> dict[str, object]:
     }
 
 
-def _database_url() -> str:
-    value = os.getenv("CASEFILE_TEST_DATABASE_URL")
-    if not value:
-        pytest.skip("CASEFILE_TEST_DATABASE_URL is not configured")
-    if not (make_url(value).database or "").endswith("_test"):
-        pytest.fail("CASEFILE_TEST_DATABASE_URL must point to a disposable *_test database")
-    return value
-
-
-def _config(database_url: str) -> Config:
-    config = Config(str(BACKEND_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
-    config.set_main_option("prepend_sys_path", str(BACKEND_ROOT / "src"))
-    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
-    return config
-
-
 @pytest.fixture
-def api_database() -> Iterator[tuple[str, Engine, int, str]]:
-    database_url = _database_url()
-    config = _config(database_url)
-    master_key = generate_master_key()
-    with patch.dict(
-        os.environ,
-        {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
-    ):
-        _clear_projects_before_downgrade(database_url)
-        command.downgrade(config, "base")
-        command.upgrade(config, "head")
-        engine = create_engine(database_url)
-        try:
-            with engine.begin() as connection:
-                actor_id = int(
-                    connection.execute(
-                        text("INSERT INTO users (display_name) VALUES ('API Owner') RETURNING id")
-                    ).scalar_one()
-                )
-            yield database_url, engine, actor_id, master_key
-        finally:
-            engine.dispose()
-            _clear_projects_before_downgrade(database_url)
-            command.downgrade(config, "base")
+def api_database(
+    workflow_database: tuple[Engine, int, str],
+) -> tuple[str, Engine, int, str]:
+    engine, actor_id, master_key = workflow_database
+    return os.environ["CASEFILE_TEST_DATABASE_URL"], engine, actor_id, master_key
 
 
 def _identity(actor_id: int) -> dict[str, str]:
@@ -511,7 +469,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             provider_factory=lambda _task: recoverable_provider,
         )
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ):
             recoverable_queued = client.post(

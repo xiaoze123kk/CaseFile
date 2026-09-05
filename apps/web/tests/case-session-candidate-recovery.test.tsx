@@ -568,6 +568,7 @@ describe("draft candidate project recovery", () => {
       7,
       301,
       expect.any(Function),
+      expect.any(AbortSignal),
     );
     expect(mocks.fetchDraftCandidates).toHaveBeenCalledTimes(2);
   });

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
@@ -19,7 +20,9 @@ from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.scene_compiler import SCENE_COMPILER_PIPELINE_VERSION
 from casefile.agent_runtime.story_planner import (
+    COMPILER_JSON_MAX_OUTPUT_TOKENS,
     STORY_PLANNER_AGENT_VERSION,
+    CompilerProviderOutputError,
     StoryPlannerRequest,
     StoryPlannerRound,
     execute_story_planner,
@@ -31,6 +34,7 @@ from casefile.application.compiler.constants import (
     STORY_PLANNER_COMPONENT_ID,
 )
 from casefile.application.task_events import append_task_event
+from casefile.application.task_lease import is_current_task_attempt
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentStepRun,
@@ -55,12 +59,12 @@ from casefile.domain.narrative_compiler import (
     story_planner_component_fingerprint,
     validate_novel_plan_candidate,
 )
-from casefile.worker.executors.compiler import CompilerExecutionError
-from casefile.worker.failures import TaskCancellationRequested
+from casefile.worker.failures import CompilerExecutionError, TaskCancellationRequested
+from casefile.worker.provider_resolution import ProviderFactory
 
 
 def execute_story_planner_component(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str, provider_factory: ProviderFactory,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -69,12 +73,12 @@ def execute_story_planner_component(
     narrative_ir_json: dict[str, Any],
     narrative_ir_hash: str,
 ) -> tuple[int, str, bool]:
-    if _task_agent_version(worker, task_run_id) in {
+    if _task_agent_version(session_factory, task_run_id) in {
         CONSTRAINT_FIRST_PIPELINE_VERSION,
         SCENE_COMPILER_PIPELINE_VERSION,
     }:
         return _execute_constraint_first_component(
-            worker,
+            session_factory, worker_id, provider_factory,
             task_run_id=task_run_id,
             attempt_id=attempt_id,
             run=run,
@@ -88,11 +92,13 @@ def execute_story_planner_component(
         profile=manifest_json["profile"]["frozen_payload"],
         compile_mode=manifest_json["mode"],
     )
-    task, api_key, prompt_hash, component_hash = _load_context(worker, task_run_id, planner_input)
-    reusable = _find_reusable(worker, run.project_id, component_hash)
+    task, api_key, prompt_hash, component_hash = _load_context(
+        session_factory, task_run_id, planner_input
+    )
+    reusable = _approved_or_reusable(session_factory, run.project_id, component_hash, manifest_json)
     if reusable is not None:
         return _reuse_artifact(
-            worker,
+            session_factory, worker_id,
             task_run_id,
             attempt_id,
             run,
@@ -101,9 +107,11 @@ def execute_story_planner_component(
             narrative_ir_hash,
         )
 
-    recovered = _recover_candidate(worker, task_run_id, component_hash)
+    recovered = _recover_candidate(session_factory, task_run_id, component_hash)
     if recovered is None:
-        step_id = _start_step(worker, task_run_id, attempt_id, component_hash, narrative_ir_hash)
+        step_id = _start_step(
+            session_factory, worker_id, task_run_id, attempt_id, component_hash, narrative_ir_hash
+        )
         request = StoryPlannerRequest(
             task_run_id=task_run_id,
             prompt_version=task.prompt_version,
@@ -115,18 +123,21 @@ def execute_story_planner_component(
             network_retries=int(task.budget_jsonb.get("network_retries", 0)),
         )
         execution = execute_story_planner(
-            worker.provider_factory(task),
+            provider_factory(task),
             request,
             before_call=lambda call_no, _request: _start_call(
-                worker, task, attempt_id, step_id, call_no, prompt_hash, component_hash
+                session_factory, worker_id, task, attempt_id, step_id, call_no,
+                prompt_hash, component_hash,
             ),
-            after_round=lambda round_result: _finish_call(worker, step_id, round_result),
+            after_round=lambda round_result: _finish_call(
+                session_factory, worker_id, step_id, round_result
+            ),
         )
         candidate = execution.candidate
     else:
         recovered_step_id, candidate = recovered
         step_id = _start_step(
-            worker,
+            session_factory, worker_id,
             task_run_id,
             attempt_id,
             component_hash,
@@ -137,7 +148,7 @@ def execute_story_planner_component(
     repair = repair_novel_plan_candidate(candidate, planner_input=planner_input)
     if not repair.before.valid:
         _record_repair_evaluation(
-            worker,
+            session_factory, worker_id,
             task_run_id=task_run_id,
             attempt_id=attempt_id,
             step_id=step_id,
@@ -154,7 +165,7 @@ def execute_story_planner_component(
     )
     content_hash = canonical_json_sha256(novel_plan)
     artifact_id = _commit(
-        worker,
+        session_factory, worker_id,
         task_run_id,
         attempt_id,
         run,
@@ -166,8 +177,8 @@ def execute_story_planner_component(
     return artifact_id, content_hash, False
 
 
-def _task_agent_version(worker: Any, task_run_id: int) -> str | None:
-    with worker.session_factory() as session:
+def _task_agent_version(session_factory: sessionmaker[Session], task_run_id: int) -> str | None:
+    with session_factory() as session:
         return cast(
             str | None,
             session.scalar(select(TaskRun.agent_version).where(TaskRun.id == task_run_id)),
@@ -175,7 +186,7 @@ def _task_agent_version(worker: Any, task_run_id: int) -> str | None:
 
 
 def _execute_constraint_first_component(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str, provider_factory: ProviderFactory,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -192,7 +203,7 @@ def _execute_constraint_first_component(
     )
     model_view = build_planner_model_view_v4(planner_input)
     problem = compile_planning_problem(planner_input)
-    task, api_key = _load_provider_binding(worker, task_run_id)
+    task, api_key = _load_provider_binding(session_factory, task_run_id)
     skeleton_prompt = load_prompt("story_planner_skeleton", SKELETON_PROMPT_VERSION)
     fill_prompt = load_prompt("story_planner_semantic_fill", SEMANTIC_FILL_PROMPT_VERSION)
     fingerprint = planning_component_fingerprint(
@@ -214,11 +225,13 @@ def _execute_constraint_first_component(
             "structural_patch_schema_id": "compiler.story-plan-structural-patch.v1",
         }
     )
+    if task.provider == "deepseek":
+        fingerprint["max_output_tokens"] = COMPILER_JSON_MAX_OUTPUT_TOKENS
     component_hash = canonical_json_sha256(fingerprint)
-    reusable = _find_reusable(worker, run.project_id, component_hash)
+    reusable = _approved_or_reusable(session_factory, run.project_id, component_hash, manifest_json)
     if reusable is not None:
         return _reuse_artifact(
-            worker,
+            session_factory, worker_id,
             task_run_id,
             attempt_id,
             run,
@@ -229,7 +242,7 @@ def _execute_constraint_first_component(
         )
 
     step_id = _start_step(
-        worker,
+        session_factory, worker_id,
         task_run_id,
         attempt_id,
         component_hash,
@@ -247,7 +260,7 @@ def _execute_constraint_first_component(
         ),
     }
     execution = execute_constraint_first_story_planner(
-        worker.provider_factory(task),
+        provider_factory(task),
         ReferencePlanningSolver(),
         task_run_id=task_run_id,
         planner_input=planner_input,
@@ -257,13 +270,13 @@ def _execute_constraint_first_component(
         api_key=api_key,
         network_retries=int(task.budget_jsonb.get("network_retries", 0)),
         recover_stage=lambda stage, input_hash: _recover_constraint_stage(
-            worker,
+            session_factory,
             task_run_id,
             stage,
             input_hash,
         ),
         before_stage=lambda stage, input_hash, prompt_version, schema_id: _start_constraint_call(
-            worker,
+            session_factory, worker_id,
             task,
             attempt_id,
             step_id,
@@ -274,7 +287,9 @@ def _execute_constraint_first_component(
             schema_id,
         ),
         after_stage=lambda stage: (
-            None if stage.recovered else _finish_constraint_call(worker, step_id, stage)
+            None if stage.recovered else _finish_constraint_call(
+                session_factory, worker_id, step_id, stage
+            )
         ),
     )
     novel_plan = canonicalize_novel_plan(
@@ -285,7 +300,7 @@ def _execute_constraint_first_component(
     )
     content_hash = canonical_json_sha256(novel_plan)
     artifact_id = _commit(
-        worker,
+        session_factory, worker_id,
         task_run_id,
         attempt_id,
         run,
@@ -297,8 +312,10 @@ def _execute_constraint_first_component(
     return artifact_id, content_hash, False
 
 
-def _load_provider_binding(worker: Any, task_run_id: int) -> tuple[TaskRun, str]:
-    with worker.session_factory() as session, session.begin():
+def _load_provider_binding(
+    session_factory: sessionmaker[Session], task_run_id: int
+) -> tuple[TaskRun, str]:
+    with session_factory() as session, session.begin():
         task = session.get(TaskRun, task_run_id)
         if (
             task is None
@@ -330,9 +347,9 @@ def _load_provider_binding(worker: Any, task_run_id: int) -> tuple[TaskRun, str]
 
 
 def _load_context(
-    worker: Any, task_run_id: int, planner_input: dict[str, Any]
+    session_factory: sessionmaker[Session], task_run_id: int, planner_input: dict[str, Any]
 ) -> tuple[TaskRun, str, str, str]:
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         task = session.get(TaskRun, task_run_id)
         if (
             task is None
@@ -368,13 +385,46 @@ def _load_context(
             provider=setting.provider,
             key_version=setting.key_version,
         )
+        if task.provider == "deepseek":
+            fingerprint["max_output_tokens"] = COMPILER_JSON_MAX_OUTPUT_TOKENS
         component_hash = canonical_json_sha256(fingerprint)
         session.expunge(task)
         return task, api_key, prompt_hash, component_hash
 
 
-def _find_reusable(worker: Any, project_id: int, component_hash: str) -> CompileArtifact | None:
-    with worker.session_factory() as session:
+def _approved_or_reusable(
+    session_factory: sessionmaker[Session],
+    project_id: int, component_hash: str, manifest: dict[str, Any]
+) -> CompileArtifact | None:
+    approved = manifest.get("approved_novel_plan")
+    if approved is None:
+        return _find_reusable(session_factory, project_id, component_hash)
+    with session_factory() as session:
+        artifact: CompileArtifact | None = session.scalar(
+            select(CompileArtifact)
+            .join(AgentStepRun, AgentStepRun.id == CompileArtifact.agent_step_run_id)
+            .where(
+                CompileArtifact.project_id == project_id,
+                CompileArtifact.artifact_key == NOVEL_PLAN_ARTIFACT_KEY,
+                CompileArtifact.content_hash == approved["content_hash"],
+                AgentStepRun.input_hash == component_hash,
+                AgentStepRun.status.in_(("succeeded", "reused")),
+            )
+            .order_by(CompileArtifact.id.desc())
+        )
+        if (
+            artifact is None
+            or canonical_json_sha256(artifact.content_jsonb) != approved["content_hash"]
+        ):
+            raise CompilerExecutionError("compiler_approved_plan_stale")
+        session.expunge(artifact)
+        return artifact
+
+
+def _find_reusable(
+    session_factory: sessionmaker[Session], project_id: int, component_hash: str
+) -> CompileArtifact | None:
+    with session_factory() as session:
         artifact: CompileArtifact | None = session.scalar(
             select(CompileArtifact)
             .join(AgentStepRun, AgentStepRun.id == CompileArtifact.agent_step_run_id)
@@ -392,7 +442,7 @@ def _find_reusable(worker: Any, project_id: int, component_hash: str) -> Compile
 
 
 def _start_step(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     task_run_id: int,
     attempt_id: int,
     component_hash: str,
@@ -400,8 +450,8 @@ def _start_step(
     resumed_from_step_id: int | None = None,
     component_version: str = STORY_PLANNER_AGENT_VERSION,
 ) -> int:
-    with worker.session_factory() as session, session.begin():
-        task, attempt = _lock_active(session, worker, task_run_id, attempt_id)
+    with session_factory() as session, session.begin():
+        task, attempt = _lock_active(session, worker_id, task_run_id, attempt_id)
         previous = session.scalar(
             select(AgentStepRun)
             .where(
@@ -448,7 +498,7 @@ def _start_step(
 
 
 def _start_call(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     task: TaskRun,
     attempt_id: int,
     step_id: int,
@@ -456,8 +506,8 @@ def _start_call(
     prompt_hash: str,
     component_hash: str,
 ) -> None:
-    with worker.session_factory() as session, session.begin():
-        current, _attempt = _lock_active(session, worker, task.id, attempt_id)
+    with session_factory() as session, session.begin():
+        current, _attempt = _lock_active(session, worker_id, task.id, attempt_id)
         session.add(
             AgentModelCall(
                 project_id=current.project_id,
@@ -479,7 +529,7 @@ def _start_call(
 
 
 def _record_repair_evaluation(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -497,8 +547,8 @@ def _record_repair_evaluation(
             {"code": item.code, "details": item.details} for item in repair.after.violations
         ],
     }
-    with worker.session_factory() as session, session.begin():
-        task, _attempt = _lock_active(session, worker, task_run_id, attempt_id)
+    with session_factory() as session, session.begin():
+        task, _attempt = _lock_active(session, worker_id, task_run_id, attempt_id)
         step = session.scalar(
             select(AgentStepRun).where(AgentStepRun.id == step_id).with_for_update(of=AgentStepRun)
         )
@@ -514,16 +564,19 @@ def _record_repair_evaluation(
         )
 
 
-def _finish_call(worker: Any, step_id: int, result: StoryPlannerRound) -> None:
+def _finish_call(
+    session_factory: sessionmaker[Session], worker_id: str,
+    step_id: int, result: StoryPlannerRound
+) -> None:
     raw = result.raw_output or json.dumps(
         result.candidate, ensure_ascii=False, separators=(",", ":")
     )
     encoded = raw.encode("utf-8")
     bounded = encoded[:262_144].decode("utf-8", errors="ignore")
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         from casefile.worker.executors.prose_store import fence_prose_step
 
-        fence_prose_step(session, worker.config.worker_id, step_id)
+        fence_prose_step(session, worker_id, step_id)
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -545,7 +598,7 @@ def _finish_call(worker: Any, step_id: int, result: StoryPlannerRound) -> None:
 
 
 def _start_constraint_call(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     task: TaskRun,
     attempt_id: int,
     step_id: int,
@@ -556,8 +609,8 @@ def _start_constraint_call(
     schema_id: str,
 ) -> None:
     call_no = 1 if stage == "skeleton_proposal" else 2
-    with worker.session_factory() as session, session.begin():
-        current, _attempt = _lock_active(session, worker, task.id, attempt_id)
+    with session_factory() as session, session.begin():
+        current, _attempt = _lock_active(session, worker_id, task.id, attempt_id)
         session.add(
             AgentModelCall(
                 project_id=current.project_id,
@@ -579,16 +632,16 @@ def _start_constraint_call(
 
 
 def _finish_constraint_call(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     step_id: int,
     stage: ConstraintFirstStage,
 ) -> None:
     raw = json.dumps(stage.output, ensure_ascii=False, separators=(",", ":"))
     encoded = raw.encode("utf-8")
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         from casefile.worker.executors.prose_store import fence_prose_step
 
-        fence_prose_step(session, worker.config.worker_id, step_id)
+        fence_prose_step(session, worker_id, step_id)
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -611,12 +664,12 @@ def _finish_constraint_call(
 
 
 def _recover_constraint_stage(
-    worker: Any,
+    session_factory: sessionmaker[Session],
     task_run_id: int,
     stage: str,
     input_hash: str,
 ) -> dict[str, Any] | None:
-    with worker.session_factory() as session:
+    with session_factory() as session:
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -640,9 +693,9 @@ def _recover_constraint_stage(
 
 
 def _recover_candidate(
-    worker: Any, task_run_id: int, component_hash: str
+    session_factory: sessionmaker[Session], task_run_id: int, component_hash: str
 ) -> tuple[int, dict[str, Any]] | None:
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         call = session.scalar(
             select(AgentModelCall)
             .join(AgentStepRun, AgentStepRun.id == AgentModelCall.agent_step_run_id)
@@ -665,7 +718,7 @@ def _recover_candidate(
 
 
 def _reuse_artifact(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     task_run_id: int,
     attempt_id: int,
     run: CompileRun,
@@ -674,8 +727,8 @@ def _reuse_artifact(
     narrative_ir_hash: str,
     component_version: str = STORY_PLANNER_AGENT_VERSION,
 ) -> tuple[int, str, bool]:
-    with worker.session_factory() as session, session.begin():
-        task, attempt = _lock_active(session, worker, task_run_id, attempt_id)
+    with session_factory() as session, session.begin():
+        task, attempt = _lock_active(session, worker_id, task_run_id, attempt_id)
         now = datetime.now(UTC)
         step = AgentStepRun(
             project_id=task.project_id,
@@ -732,7 +785,7 @@ def _reuse_artifact(
 
 
 def _commit(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     task_run_id: int,
     attempt_id: int,
     run: CompileRun,
@@ -741,8 +794,8 @@ def _commit(
     content: dict[str, Any],
     content_hash: str,
 ) -> int:
-    with worker.session_factory() as session, session.begin():
-        task, _attempt = _lock_active(session, worker, task_run_id, attempt_id)
+    with session_factory() as session, session.begin():
+        task, _attempt = _lock_active(session, worker_id, task_run_id, attempt_id)
         step = session.scalar(
             select(AgentStepRun).where(AgentStepRun.id == step_id).with_for_update(of=AgentStepRun)
         )
@@ -776,7 +829,9 @@ def _commit(
         return artifact.id
 
 
-def _lock_active(session: Any, worker: Any, task_run_id: int, attempt_id: int) -> tuple[Any, Any]:
+def _lock_active(
+    session: Session, worker_id: str, task_run_id: int, attempt_id: int
+) -> tuple[TaskRun, TaskAttempt]:
     task = session.scalar(select(TaskRun).where(TaskRun.id == task_run_id).with_for_update())
     attempt = session.scalar(
         select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
@@ -784,15 +839,15 @@ def _lock_active(session: Any, worker: Any, task_run_id: int, attempt_id: int) -
     if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
         from casefile.worker.executors.prose_store import assert_prose_owner
 
-        assert_prose_owner(task, attempt, worker.config.worker_id)
+        assert_prose_owner(task, attempt, worker_id)
     if task is None or attempt is None:
         raise CompilerExecutionError("compiler_run_task_mismatch")
     if task.status == "cancelling":
         raise TaskCancellationRequested
     if (
         task.status != "running"
-        or task.leased_by != worker.config.worker_id
-        or attempt.status != "running"
+        or task.leased_by != worker_id
+        or not is_current_task_attempt(task, attempt)
         or attempt.task_run_id != task.id
     ):
         raise CompilerExecutionError("compiler_worker_lease_lost")
@@ -800,12 +855,16 @@ def _lock_active(session: Any, worker: Any, task_run_id: int, attempt_id: int) -
 
 
 def fail_story_planner_component(
-    worker: Any, task_run_id: int, attempt_id: int, error_code: str
+    session_factory: sessionmaker[Session], worker_id: str,
+    task_run_id: int,
+    attempt_id: int,
+    error_code: str,
+    provider_failure: CompilerProviderOutputError | None = None,
 ) -> None:
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         current_task = session.get(TaskRun, task_run_id)
         if current_task is not None and current_task.input_jsonb.get("prose_renderer_shadow"):
-            _lock_active(session, worker, task_run_id, attempt_id)
+            _lock_active(session, worker_id, task_run_id, attempt_id)
         task = session.get(TaskRun, task_run_id)
         if task is None:
             return
@@ -833,6 +892,13 @@ def fail_story_planner_component(
             for call in calls:
                 call.status = "failed"
                 call.error_code = error_code
+                if provider_failure is not None:
+                    encoded = provider_failure.raw_output.encode("utf-8")
+                    call.raw_output_text = encoded[:262_144].decode("utf-8", errors="ignore")
+                    call.raw_output_truncated = len(encoded) > 262_144
+                    call.output_size_bytes = len(encoded)
+                    call.parse_status = provider_failure.finish_reason
+                    call.usage_jsonb = provider_failure.usage
                 call.finished_at = now
             step.status = "failed"
             step.finished_at = now

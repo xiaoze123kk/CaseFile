@@ -29,6 +29,7 @@ export type MapTileConfiguration =
     };
 
 export interface SpatialRenderSelection {
+  highlightedLocationIds?: string[];
   selectedLocationId: string | null;
   selectedEventId: string | null;
   selectedObjectId: string | null;
@@ -97,6 +98,7 @@ export interface SpatialRenderer {
   setCallbacks: (callbacks: SpatialRenderCallbacks) => void;
   updateSelection: (selection: SpatialRenderSelection) => void;
   fitAll: () => void;
+  focusLocations: (locationIds: string[]) => void;
   focusLocation: (spatialId: string) => void;
   focusRegion: (regionKey: string) => void;
   zoomIn: () => void;
@@ -278,6 +280,7 @@ function isSelected(
 ): boolean {
   return (
     selection.activeSpatialId === location.spatialId ||
+    Boolean(location.locationId && selection.highlightedLocationIds?.includes(location.locationId)) ||
     selection.selectedLocationId === location.locationId ||
     location.events.some((event) => event.eventId === selection.selectedEventId) ||
     Boolean(
@@ -498,6 +501,8 @@ export function createSpatialRenderer(input: {
   ): boolean {
     const locationId = activeLocationId(selection);
     return Boolean(
+      (selection?.highlightedLocationIds?.includes(relation.fromLocationId)
+        && selection.highlightedLocationIds.includes(relation.toLocationId)) ||
       locationId &&
         (relation.fromLocationId === locationId ||
           relation.toLocationId === locationId),
@@ -1002,6 +1007,15 @@ export function createSpatialRenderer(input: {
       refreshClusters();
     },
     fitAll,
+    focusLocations(locationIds) {
+      const points = [...markerById.entries()].flatMap(([id, marker]) => {
+        const locationId = locationBySpatialId.get(id)?.locationId;
+        return locationId && locationIds.includes(locationId) ? [marker.getLatLng()] : [];
+      });
+      if (points.length) map.fitBounds(L.latLngBounds(points), {
+        animate: false, maxZoom: input.mode === "geographic" ? 15 : 3, padding: [64, 64],
+      });
+    },
     focusLocation(spatialId) {
       const marker = markerById.get(spatialId);
       if (!marker) return;

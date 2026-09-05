@@ -732,7 +732,7 @@ class PostgresBackendReleaseExecutor:
         )
         self._claim_expected(first, task_run_id)
         first._emit(
-            task_run_id,
+            first._load_task_snapshot(task_run_id),
             "worker.interruption_injected",
             "preparing",
             {"fault_id": "worker_interruption"},

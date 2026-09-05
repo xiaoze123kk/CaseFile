@@ -21,6 +21,20 @@ STORY_PLANNER_PROMPT_VERSION = "story-planner-v3"
 STORY_PLANNER_AGENT_VERSION = "compiler.story-planner.v1"
 STORY_PLANNER_TOOLSET_VERSION = "compiler.no-tools.v1"
 STORY_PLANNER_MAX_REPAIRS = 3
+# DeepSeek V4's provider ceiling (384 Ki tokens), not a local short-output cap.
+COMPILER_JSON_MAX_OUTPUT_TOKENS = 393_216
+
+
+class CompilerProviderOutputError(CompilerContractError):
+    """Retain bounded response evidence when a compiler provider cannot finish JSON."""
+
+    def __init__(
+        self, code: str, raw_output: str, usage: dict[str, Any], finish_reason: str
+    ) -> None:
+        super().__init__(code)
+        self.raw_output = raw_output
+        self.usage = usage
+        self.finish_reason = finish_reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,9 +89,7 @@ StoryPlannerCallRequest = StoryPlannerRequest | StoryPlannerPatchRequest
 class StoryPlannerProvider(Protocol):
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult: ...
 
-    def patch_story(
-        self, request: StoryPlannerPatchRequest
-    ) -> StoryPlannerPatchProviderResult: ...
+    def patch_story(self, request: StoryPlannerPatchRequest) -> StoryPlannerPatchProviderResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,9 +126,7 @@ def execute_story_planner(
     previous_patch_errors: tuple[dict[str, Any], ...] = ()
     for call_no in range(1, max_repairs + 2):
         patch_scene_ids = (
-            _purpose_patch_scene_ids(candidate, repair_errors)
-            if candidate is not None
-            else None
+            _purpose_patch_scene_ids(candidate, repair_errors) if candidate is not None else None
         )
         current: StoryPlannerCallRequest
         if patch_scene_ids is None:
@@ -203,9 +213,7 @@ def execute_story_planner(
             after_round(round_result)
         if not candidate_errors and not patch_errors:
             return StoryPlannerExecution(
-                candidate=NovelPlanCandidate.model_validate(candidate).model_dump(
-                    mode="json"
-                ),
+                candidate=NovelPlanCandidate.model_validate(candidate).model_dump(mode="json"),
                 rounds=tuple(rounds),
             )
         repair_errors = candidate_errors

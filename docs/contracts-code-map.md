@@ -90,3 +90,15 @@ CompileInputManifest 增加可选 `prose_renderer_shadow`（缺省 false）和�
 ## B3 公开诊断套件
 
 `fixtures/prose_quality_benchmark/diagnostic_v1/` 保存新写的公开24组偏好对与24个润色场景及确定性生成脚本，八类 focus 各三题、每类 A/B/tie 各一。上下文为明确标注的合成诊断事实，不冒充 N4.4 编译产物；语义接受对象是非独立 Codex 审阅 Gold，不冒充真实 Council 输出。新的完整 Council 结果只写本地运行目录。旧公开集和私有资格包保持不变。
+
+## 小说推荐与方案绑定
+
+`contracts/schemas/compiler/novel-recommendation.schema.json` 是 NovelRecommendation 的唯一源，表达阅读方向、依据、章节/场景建议与文风；`fixtures/compiler/novel_recommendation/v1/basic.json` 为跨语言合成契约样例。CompileInputManifest 兼容增加可选 `approved_novel_plan`（既有 CompilerArtifactRef）；旧 manifest 不补写该字段，继续保持历史 hash。HTTP 创建编译兼容增加 `approved_plan_run_id` 与 `scene_compiler_shadow`，确认方案的请求绑定不可变来源，不允许修改旧产物。
+
+## TD-003 TaskRun 实际响应对齐
+
+task/task.schema.json 的 TaskRun 增补现有 HTTP 字段 goal_id、goal_revision、prompt_version，保留可省略性以兼容历史 Fixture；created_at/updated_at 明确允许 null。生成 Python/TypeScript 与 Task 路由 OpenAPI 共用该定义，不改数据库或历史 Fixture。
+
+## TD-003 资源响应 Schema
+
+project/project.schema.json 定义 ProjectView，brief/brief-views.schema.json 定义 BriefView／BriefVersionView，后者引用已存在的 Brief 内容契约并允许新建时的空对象。新识别的历史可省略字段保持 optional，生成与漂移检查同步覆盖 project 目录。Python 生成器对空对象分支生成较宽的 dict，空态约束由 JSON Schema 回归校验；HTTP 不依赖该宽分支做业务验证。

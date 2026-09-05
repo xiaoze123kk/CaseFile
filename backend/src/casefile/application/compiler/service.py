@@ -4,16 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from casefile_contracts import (
-    CanonBinding,
-    CompileInputManifest,
-    CompileMode,
-    CompilerProfileBinding,
-    ExposureBinding,
-    NovelProfile,
-    NovelProfileV2,
-    SnapshotBinding,
-)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,6 +46,16 @@ from casefile.domain.narrative_compiler import (
     canonical_json_sha256,
     validate_compile_input_manifest,
     validate_novel_profile_v2,
+)
+from casefile_contracts import (
+    CanonBinding,
+    CompileInputManifest,
+    CompileMode,
+    CompilerProfileBinding,
+    ExposureBinding,
+    NovelProfile,
+    NovelProfileV2,
+    SnapshotBinding,
 )
 
 
@@ -179,6 +179,7 @@ class CompilerService:
         planner_provider: str | None = None,
         scene_compiler_shadow: bool = False,
         prose_renderer_shadow: bool = False,
+        approved_plan_run_id: int | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self.projects.get_owned(actor_user_id, project_id, lock=True)
@@ -354,6 +355,18 @@ class CompilerService:
                     status_code=422,
                 ) from error
             manifest_json = manifest.model_dump(mode="json", exclude_unset=True)
+            if approved_plan_run_id is not None:
+                if not prose_renderer_shadow:
+                    raise ApplicationError(
+                        "compiler_approval_mode_invalid",
+                        "确认方案后才能开始正文编译。",
+                        status_code=422,
+                    )
+                manifest_json["approved_novel_plan"] = self._approved_plan_binding(
+                    project_id,
+                    approved_plan_run_id,
+                    manifest_json,
+                )
             if prose_renderer_shadow:
                 manifest_json["prose_renderer_shadow"] = True
                 manifest_json["prose_runtime"] = prose_runtime_binding(
@@ -385,6 +398,7 @@ class CompilerService:
                 model_id=(
                     "deepseek-v4-pro"
                     if prose_renderer_shadow
+                    or (scene_compiler_shadow and planner_provider == "deepseek")
                     else None
                     if setting is None
                     else setting.model_id
@@ -468,6 +482,53 @@ class CompilerService:
             )
             self.session.flush()
             return self._run_view(run, task)
+
+    def _approved_plan_binding(
+        self, project_id: int, source_run_id: int, manifest: dict[str, Any]
+    ) -> dict[str, str]:
+        source = self.compiler.get_run(project_id, source_run_id)
+        task = self.session.get(TaskRun, source.task_run_id) if source else None
+        if source is None or task is None or task.status != "succeeded":
+            raise ApplicationError(
+                "compiler_plan_not_ready", "方案尚未完成，暂不能生成正文。", status_code=409
+            )
+        if any(
+            task.input_jsonb.get(key) != manifest.get(key)
+            for key in (
+                "source_snapshot",
+                "profile",
+                "exposure",
+                "mode",
+                "source_canon",
+                "compiler_version",
+            )
+        ):
+            raise ApplicationError(
+                "compiler_plan_stale",
+                "工作稿或编译设置已变化，请重新推荐方案后确认。",
+                status_code=409,
+            )
+        artifact = next(
+            (
+                item
+                for item in self.compiler.list_artifacts(source.id)
+                if item.schema_id == "compiler.novel-plan.v1"
+            ),
+            None,
+        )
+        if (
+            artifact is None
+            or canonical_json_sha256(artifact.content_jsonb) != artifact.content_hash
+        ):
+            raise ApplicationError(
+                "compiler_plan_not_ready", "方案内容不完整，请重新推荐。", status_code=409
+            )
+        return {
+            "artifact_kind": "novel_plan",
+            "artifact_key": artifact.artifact_key,
+            "schema_id": artifact.schema_id,
+            "content_hash": artifact.content_hash,
+        }
 
     def list_runs(self, actor_user_id: int, project_id: int) -> list[dict[str, Any]]:
         with self.session.begin():

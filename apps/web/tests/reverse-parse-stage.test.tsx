@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -46,7 +47,7 @@ function buildFakeReverseParseBackend() {
       casefile_id: 99,
       draft: { id: 99, revision: 1, schema_version: "v1", status: "open" as const },
     })),
-    uploadReverseParseDocument: vi.fn(async () => {
+    uploadReverseParseDocument: vi.fn<() => Promise<{ document: ReverseParseDocumentView; task: { task_run_id: number } }>>(async () => {
       throw new Error("本用例不执行上传");
     }),
     fetchReverseParseDocuments: vi.fn(async () => ({ documents })),
@@ -74,11 +75,11 @@ function buildFakeReverseParseBackend() {
         throw new Error("item not found");
       },
     ),
-    retryReverseParse: vi.fn(async () => {
+    retryReverseParse: vi.fn<() => Promise<{ task: { task_run_id: number } }>>(async () => {
       throw new Error("本用例不执行重试");
     }),
     formBriefFromReverseParse: vi.fn(async () => ({ stage: "confirmation" })),
-    waitForTask: vi.fn(async () => ({
+    waitForTask: vi.fn<(...args: [number, number, unknown?, AbortSignal?]) => Promise<{ task_run_id: number; status: "succeeded" }>>(async () => ({
       task_run_id: 1,
       status: "succeeded" as const,
     })),
@@ -88,13 +89,20 @@ function buildFakeReverseParseBackend() {
 const fake = vi.hoisted(() => ({
   backend: buildFakeReverseParseBackend(),
   loadProject: vi.fn(),
+  epoch: 0,
+  projectId: 9 as number | null,
+  hydrating: false,
 }));
 
 vi.mock("@/features/case-session/case-session-api", () => fake.backend);
 
+function getSessionEpoch() { return fake.epoch; }
+
 vi.mock("@/features/case-session/case-session-provider", () => ({
   useCaseSession: () => ({
-    activeProjectId: 9,
+    activeProjectId: fake.projectId,
+    getSessionEpoch,
+    state: { hydration: { status: fake.hydrating ? "loading" : "ready" } },
     loadProject: fake.loadProject,
   }),
 }));
@@ -132,6 +140,10 @@ afterEach(() => {
   cleanup();
   fake.backend.reset();
   fake.loadProject.mockReset();
+  fake.epoch = 0;
+  fake.projectId = 9;
+  fake.hydrating = false;
+  vi.clearAllMocks();
 });
 
 describe("reverse parse stage", () => {
@@ -286,4 +298,180 @@ describe("reverse parse stage", () => {
     ).toBeEnabled();
     expect(screen.getByText(/高风险条目已全部处理/u)).toBeInTheDocument();
   });
+});
+
+
+describe("reverse parse operation ownership", () => {
+  it.each(["switched", "unmounted"])("does not reload an old project after forming when %s", async (invalidation) => {
+    fake.backend.setDocuments([makeDoc(1)]);
+    let finish!: (value: { stage: string }) => void;
+    const pending = new Promise<{ stage: string }>((resolve) => { finish = resolve; });
+    fake.backend.formBriefFromReverseParse.mockReturnValueOnce(pending);
+    const onFormed = vi.fn();
+    const view = render(<ReverseParseStage onFormed={onFormed} />);
+    fireEvent.click(await screen.findByRole("button", { name: "形成创作简报" }));
+    if (invalidation === "switched") fake.epoch += 1;
+    else view.unmount();
+    await act(async () => { finish({ stage: "confirmation" }); });
+    expect(fake.loadProject).not.toHaveBeenCalled();
+    expect(onFormed).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("owns its own project reload, unless a later session replaces it (%s)", async (switchAgain) => {
+    fake.backend.setDocuments([makeDoc(1)]);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    fake.loadProject.mockImplementationOnce(() => { fake.epoch += 1; fake.hydrating = true; return pending; });
+    const onFormed = vi.fn();
+    const view = render(<ReverseParseStage onFormed={onFormed} />);
+    fireEvent.click(await screen.findByRole("button", { name: "形成创作简报" }));
+    await waitFor(() => expect(fake.loadProject).toHaveBeenCalledWith(9));
+    view.rerender(<ReverseParseStage onFormed={onFormed} />);
+    if (switchAgain) fake.epoch += 1;
+    fake.hydrating = false;
+    view.rerender(<ReverseParseStage onFormed={onFormed} />);
+    await act(async () => { finish(); });
+    expect(onFormed).toHaveBeenCalledTimes(switchAgain ? 0 : 1);
+  });
+
+  it("does not upload after project creation returns to an unmounted page", async () => {
+    fake.projectId = null;
+    const project = await fake.backend.createCaseProject();
+    let finish!: (value: typeof project) => void;
+    fake.backend.createCaseProject.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const view = render(<ReverseParseStage />);
+    fireEvent.change(screen.getByLabelText("选择要解析的文件"), {
+      target: { files: [new File(["story"], "story.txt", { type: "text/plain" })] },
+    });
+    view.unmount();
+    await act(async () => { finish(project); });
+    expect(fake.backend.uploadReverseParseDocument).not.toHaveBeenCalled();
+  });
+
+  it("shows project creation errors and releases upload pending", async () => {
+    fake.projectId = null;
+    fake.backend.createCaseProject.mockRejectedValueOnce(new Error("项目创建失败"));
+    render(<ReverseParseStage />);
+    fireEvent.change(screen.getByLabelText("选择要解析的文件"), {
+      target: { files: [new File(["story"], "story.txt", { type: "text/plain" })] },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("项目创建失败");
+    expect(screen.getByRole("button", { name: "上传文档并解析" })).toBeEnabled();
+    expect(fake.backend.uploadReverseParseDocument).not.toHaveBeenCalled();
+  });
+
+  it("does not show a late confirmation failure in a new session", async () => {
+    fake.backend.setDocuments([makeDoc(1)]);
+    fake.backend.setItems(1, [makeItem({ id: 21 })]);
+    let fail!: (error: Error) => void;
+    fake.backend.confirmReverseParseItem.mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    render(<ReverseParseStage />);
+    fireEvent.click(await screen.findByRole("button", { name: "确认" }));
+    fake.epoch += 1;
+    await act(async () => { fail(new Error("旧确认失败")); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+});
+
+
+describe("reverse parse read lifetime", () => {
+  it.each(["switch document", "unmount"])("aborts parsing reads on %s", async (change) => {
+    fake.backend.setDocuments([makeDoc(1, { parse_status: "running", current_task_run_id: 7 }), makeDoc(2)]);
+    let finish!: (task: { task_run_id: number; status: "succeeded" }) => void;
+    fake.backend.waitForTask.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const view = render(<ReverseParseStage />);
+    fireEvent.click(await screen.findByRole("button", { name: /doc-1.txt/ }));
+    await waitFor(() => expect(fake.backend.waitForTask).toHaveBeenCalled());
+    const signal = fake.backend.waitForTask.mock.calls[0][3];
+    if (change === "unmount") view.unmount();
+    else fireEvent.click(screen.getByRole("button", { name: /doc-2.txt/ }));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { finish({ task_run_id: 7, status: "succeeded" }); });
+    expect(fake.backend.fetchReverseParseDocument.mock.calls.some(([, id]) => id === 1)).toBe(false);
+  });
+
+  it("does not fetch old item details after its source blocks return to a new session", async () => {
+    fake.backend.setDocuments([makeDoc(1)]);
+    let finish!: (data: { blocks: Array<{ block_no: number; text: string }> }) => void;
+    fake.backend.fetchReverseParseBlocks.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    render(<ReverseParseStage />);
+    await waitFor(() => expect(fake.backend.fetchReverseParseBlocks).toHaveBeenCalled());
+    fake.epoch += 1;
+    await act(async () => { finish({ blocks: [{ block_no: 1, text: "旧来源" }] }); });
+    expect(fake.backend.fetchReverseParseDocument).not.toHaveBeenCalled();
+    expect(screen.queryByText("旧来源")).not.toBeInTheDocument();
+  });
+});
+
+
+describe("reverse parse project state", () => {
+  it("replaces old document selection and items when changing projects", async () => {
+    fake.backend.setDocuments([makeDoc(1)]);
+    fake.backend.setItems(1, [makeItem({ content: { name: "旧项目条目" } })]);
+    const view = render(<ReverseParseStage />);
+    await screen.findByText("旧项目条目");
+    fake.backend.setDocuments([makeDoc(2)]);
+    fake.backend.setItems(2, [makeItem({ id: 2, content: { name: "新项目条目" } })]);
+    fake.projectId = 10;
+    fake.epoch += 1;
+    view.rerender(<ReverseParseStage />);
+    expect(await screen.findByText("新项目条目")).toBeInTheDocument();
+    expect(screen.queryByText("旧项目条目")).not.toBeInTheDocument();
+    expect(screen.queryByText("doc-1.txt")).not.toBeInTheDocument();
+  });
+
+  it.each(["reload", "unmount"])("stops upload waiting on %s without treating it as failure", async (change) => {
+    fake.backend.uploadReverseParseDocument.mockResolvedValueOnce({ document: makeDoc(1), task: { task_run_id: 7 } });
+    let finish!: (task: { task_run_id: number; status: "succeeded" }) => void;
+    fake.backend.waitForTask.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const view = render(<ReverseParseStage />);
+    fireEvent.change(screen.getByLabelText("选择要解析的文件"), {
+      target: { files: [new File(["story"], "story.txt", { type: "text/plain" })] },
+    });
+    await waitFor(() => expect(fake.backend.waitForTask).toHaveBeenCalled());
+    const signal = fake.backend.waitForTask.mock.calls[0][3];
+    if (change === "unmount") view.unmount();
+    else {
+      fake.epoch += 1;
+      fake.hydrating = true;
+      view.rerender(<ReverseParseStage />);
+    }
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { finish({ task_run_id: 7, status: "succeeded" }); });
+    expect(fake.backend.fetchReverseParseDocument).not.toHaveBeenCalled();
+    if (change === "reload") {
+      fake.hydrating = false;
+      view.rerender(<ReverseParseStage />);
+      expect(screen.getByRole("button", { name: "上传文档并解析" })).toBeEnabled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    }
+  });
+});
+
+
+it.each([false, true])("retry preserves the latest selection (switched: %s)", async (switchDocument) => {
+  fake.backend.setDocuments([makeDoc(1, { parse_status: "failed" }), makeDoc(2)]);
+  fake.backend.setItems(2, [makeItem({ content: { name: "正在查看的第二份文档" } })]);
+  let finish!: (result: { task: { task_run_id: number } }) => void;
+  fake.backend.retryReverseParse.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  if (!switchDocument) fake.backend.waitForTask.mockReturnValueOnce(new Promise(() => {}));
+  render(<ReverseParseStage />);
+  await screen.findByText("正在查看的第二份文档");
+  fireEvent.click(screen.getByRole("button", { name: /doc-1.txt/ }));
+  fireEvent.click(screen.getByRole("button", { name: "重新解析" }));
+  if (switchDocument) {
+    fireEvent.click(screen.getByRole("button", { name: /doc-2.txt/ }));
+    await screen.findByText("正在查看的第二份文档");
+  }
+  const reads = fake.backend.fetchReverseParseDocument.mock.calls.length;
+  await act(async () => { finish({ task: { task_run_id: 8 } }); });
+  expect(screen.getByRole("button", { name: /doc-1.txt/ })).toHaveTextContent("解析中");
+  if (switchDocument) {
+    expect(screen.getByText("正在查看的第二份文档")).toBeInTheDocument();
+    expect(fake.backend.fetchReverseParseDocument).toHaveBeenCalledTimes(reads);
+    expect(fake.backend.waitForTask).not.toHaveBeenCalled();
+  } else {
+    expect(fake.backend.waitForTask).toHaveBeenCalledWith(9, 8, undefined, expect.any(AbortSignal));
+  }
 });

@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.prose_runtime import PROSE_RUNTIME_VERSION
+from casefile.application.task_lease import is_current_task_attempt
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentStepRun,
@@ -42,12 +43,7 @@ def assert_prose_owner(
         task is None
         or attempt is None
         or task.leased_by != worker_id
-        or task.status not in {"running", "cancelling"}
-        or task.lease_expires_at is None
-        or task.lease_expires_at <= datetime.now(UTC)
-        or attempt.task_run_id != task.id
-        or attempt.status != "running"
-        or attempt.attempt_no != task.attempt_count
+        or not is_current_task_attempt(task, attempt)
     ):
         raise ProseLeaseLost("compiler_prose_lease_lost")
     if task.status == "cancelling" and not allow_cancel:
@@ -55,12 +51,12 @@ def assert_prose_owner(
 
 
 def fence_prose_step(session: Session, worker_id: str, step_id: int) -> None:
-    """Fence upstream N4.4 callbacks only for a prose-enabled CompileRun."""
+    """Fence upstream Compiler callbacks by the step's original Attempt."""
     step = session.get(AgentStepRun, step_id)
     if step is None:
         return
     task = session.get(TaskRun, step.task_run_id)
-    if task is None or not task.input_jsonb.get("prose_renderer_shadow"):
+    if task is None:
         return
     task = session.scalar(select(TaskRun).where(TaskRun.id == step.task_run_id).with_for_update())
     attempt = session.scalar(

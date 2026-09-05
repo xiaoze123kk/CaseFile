@@ -41,6 +41,7 @@ def _parent_component_id(payload: dict[str, Any], component_id: str) -> str | No
 def persist_agent_execution_event(
     session: Session,
     task: TaskRun,
+    attempt: TaskAttempt,
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
@@ -51,13 +52,6 @@ def persist_agent_execution_event(
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
-        return
-    attempt = session.scalar(
-        select(TaskAttempt)
-        .where(TaskAttempt.task_run_id == task.id, TaskAttempt.status == "running")
-        .order_by(TaskAttempt.attempt_no.desc())
-    )
-    if attempt is None:
         return
     now = datetime.now(UTC)
     if event_type == "agent.step.started":

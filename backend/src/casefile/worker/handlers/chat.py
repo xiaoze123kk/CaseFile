@@ -183,10 +183,10 @@ class ChatHandler:
         )
         if request.route is not None:
             if previous_routing is None:
-                self._chat._emit_chat_routing_events(task.id, request)
+                self._chat._emit_chat_routing_events(task, request)
                 if request.route.route_source == "fallback":
                     context.emit(
-                        task.id,
+                        task,
                         "router.fallback",
                         "routing",
                         route_public_payload(request.route),
@@ -197,7 +197,7 @@ class ChatHandler:
             ):
                 verification_trigger = str(task.input_jsonb.get("verification_trigger", "chat"))
                 context.emit(
-                    task.id,
+                    task,
                     "verification.started",
                     "verification",
                     {
@@ -288,7 +288,7 @@ class ChatHandler:
             )
             checkpoint = GoalExecutionCheckpoint(obligations_hash=frozen.obligations_hash)
             context.emit(
-                task.id,
+                task,
                 "goal.amended",
                 "goal",
                 {
@@ -302,7 +302,7 @@ class ChatHandler:
             checkpoint = GoalExecutionCheckpoint.model_validate(raw_checkpoint)
             frozen = FrozenGoal.model_validate(raw_frozen_goal)
             context.emit(
-                task.id,
+                task,
                 "goal.resumed",
                 "goal",
                 {
@@ -322,7 +322,7 @@ class ChatHandler:
             if not candidate.candidate:
                 return False
             context.emit(
-                task.id,
+                task,
                 "agent.step.started",
                 "goal_understanding",
                 {
@@ -348,7 +348,7 @@ class ChatHandler:
                 if reusable is not None:
                     interpreted = GoalUnderstandingResult(candidate=reused_output, usage={})
                     context.emit(
-                        task.id,
+                        task,
                         "agent.step.reused",
                         "goal_understanding",
                         {
@@ -371,7 +371,7 @@ class ChatHandler:
                 raise
             except Exception as error:
                 context.emit(
-                    task.id,
+                    task,
                     "agent.step.failed",
                     "goal_understanding",
                     {
@@ -384,7 +384,7 @@ class ChatHandler:
                     },
                 )
                 context.emit(
-                    task.id,
+                    task,
                     "goal.qualification_failed",
                     "routing",
                     {
@@ -396,7 +396,7 @@ class ChatHandler:
             if reusable is None:
                 artifact = interpreted.candidate.model_dump(mode="json")
                 context.emit(
-                    task.id,
+                    task,
                     "agent.step.completed",
                     "goal_understanding",
                     {
@@ -411,7 +411,7 @@ class ChatHandler:
                 )
             if not qualification.qualified:
                 context.emit(
-                    task.id,
+                    task,
                     "goal.qualification_failed",
                     "routing",
                     {
@@ -443,7 +443,7 @@ class ChatHandler:
                 and context.chat_config.general_mutation_mode != "suggest"
             ):
                 context.emit(
-                    task.id,
+                    task,
                     "goal.qualification_failed",
                     "routing",
                     {
@@ -459,7 +459,7 @@ class ChatHandler:
             )
             if mutation_preflight_reason is not None:
                 context.emit(
-                    task.id,
+                    task,
                     "goal.qualification_failed",
                     "routing",
                     {
@@ -470,7 +470,7 @@ class ChatHandler:
                 return False
             if runtime.mode == "shadow":
                 context.emit(
-                    task.id,
+                    task,
                     "goal.shadow_evaluated",
                     "routing",
                     {
@@ -485,7 +485,7 @@ class ChatHandler:
             if isinstance(task.input_jsonb.get("goal_session"), dict):
                 self._chat._initialize_goal_task(task.id, frozen)
             context.emit(
-                task.id,
+                task,
                 "goal.started",
                 "goal",
                 {
@@ -509,7 +509,7 @@ class ChatHandler:
             if self._chat._goal_cancelled(task.id):
                 raise TaskCancellationRequested
             context.emit(
-                task.id,
+                task,
                 "goal.capability_started",
                 "goal",
                 {
@@ -523,7 +523,7 @@ class ChatHandler:
                 [task.input_hash, action.model_dump(mode="json"), action_no]
             )
             context.emit(
-                task.id,
+                task,
                 "agent.step.started",
                 "goal_capability",
                 {
@@ -581,7 +581,7 @@ class ChatHandler:
                         provider_operations=0,
                     )
                     context.emit(
-                        task.id,
+                        task,
                         "agent.step.reused",
                         "goal_capability",
                         {
@@ -593,7 +593,7 @@ class ChatHandler:
                         },
                     )
                     context.emit(
-                        task.id,
+                        task,
                         "goal.capability_completed",
                         "goal",
                         {
@@ -643,7 +643,7 @@ class ChatHandler:
                 )
             else:
                 context.emit(
-                    task.id,
+                    task,
                     "agent.model_call.started",
                     "goal_capability",
                     {
@@ -660,7 +660,7 @@ class ChatHandler:
                 ledger_hash = str(ledger.get("ledger_hash") or "") or None
                 evidence_output_hash = ledger_hash or stable_hash(evidence.evidence_summary)
                 context.emit(
-                    task.id,
+                    task,
                     "agent.model_call.completed",
                     "goal_capability",
                     {
@@ -691,7 +691,7 @@ class ChatHandler:
                     provider_operations=1,
                 )
             context.emit(
-                task.id,
+                task,
                 "agent.step.completed",
                 "goal_capability",
                 {
@@ -716,7 +716,7 @@ class ChatHandler:
                 },
             )
             context.emit(
-                task.id,
+                task,
                 "goal.capability_completed",
                 "goal",
                 {
@@ -756,7 +756,7 @@ class ChatHandler:
             )
         except GoalExecutionError as error:
             context.emit(
-                task.id,
+                task,
                 "goal.failed",
                 "goal",
                 {"reason_code": error.code},
@@ -869,7 +869,7 @@ class ChatHandler:
             context.state.usage = execution.usage
             return True
         context.emit(
-            task.id,
+            task,
             "goal.completed",
             "goal",
             {

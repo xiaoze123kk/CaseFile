@@ -22,6 +22,7 @@ from casefile.contracts import (
     validate_casefile,
     validate_casefile_semantics,
 )
+from casefile.contracts.object_types import COLLECTION_BY_TYPE as _COLLECTION_BY_TYPE
 from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
     ClosureIssue,
@@ -50,19 +51,6 @@ LEGACY_SEVERITY_MAP = {"S1": "blocker", "S2": "error", "S3": "warning"}
 MAX_FINDINGS = 100
 MAX_OPERATIONS = 100
 
-_COLLECTION_BY_TYPE = {
-    "resolution_spec": "resolution_specs",
-    "entity": "entities",
-    "relationship": "relationships",
-    "location": "locations",
-    "event": "events",
-    "information_unit": "information_units",
-    "claim": "claims",
-    "hypothesis": "hypotheses",
-    "reasoning_path": "reasoning_paths",
-    "constraint": "constraints",
-    "structure_lock": "structure_locks",
-}
 _STRUCTURAL_REFERENCE_TYPES = frozenset(_COLLECTION_BY_TYPE)
 _MISSING = object()
 

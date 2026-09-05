@@ -54,7 +54,7 @@ def test_provider_credential_deletion_blocks_active_tasks_and_erases_material(
     factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v3",
         ):
             _project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -301,7 +301,7 @@ def test_v11_worker_candidate_adopts_into_workbench_ready_current_draft(
     engine, actor_id, master_key = workflow_database
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -354,7 +354,7 @@ def test_v12_worker_persists_temporal_step_for_workbench_ready_candidate(
     engine, actor_id, master_key = workflow_database
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v12",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -699,7 +699,7 @@ def test_historical_worker_repairs_structural_output_with_actionable_feedback(
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v6",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -751,7 +751,7 @@ def test_historical_worker_exhausts_structural_repairs_without_persisting_candid
     provider = StructuralFailureProvider(failures_before_success=99)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v6",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -808,7 +808,7 @@ def test_v7_worker_does_not_retry_a_whole_invalid_casefile(
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v7",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)

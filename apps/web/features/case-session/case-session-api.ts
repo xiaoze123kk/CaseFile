@@ -25,7 +25,7 @@ import {
   type ProviderName,
   type ProviderSettingView,
   type TaskView,
-  type TaskType,
+  type LatestTaskType,
   type TaskEventView,
   type TimelineTemporalPosition,
   type TimelineTimePreviewView,
@@ -348,7 +348,7 @@ export async function resumeDraftGenerationTask(
   );
 }
 
-export async function fetchLatestTask(projectId: number, taskType: TaskType) {
+export async function fetchLatestTask(projectId: number, taskType: LatestTaskType) {
   return apiRequest<TaskView | null>(
     `/projects/${projectId}/tasks/latest?task_type=${encodeURIComponent(taskType)}`,
     { actorId: LOCAL_ACTOR_ID },
@@ -364,21 +364,24 @@ export async function waitForTask(
 ): Promise<TaskView> {
   const deadline = Date.now() + TASK_WAIT_TIMEOUT_MS;
   let lastEventId = 0;
-
-  while (Date.now() < deadline) {
+  const assertActive = () => {
     if (signal?.aborted) {
       throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
     }
+  };
+
+  while (Date.now() < deadline) {
+    assertActive();
     let task: TaskView;
     try {
       task = await fetchTask(projectId, taskRunId, signal);
     } catch (error) {
-      if (signal?.aborted) {
-        throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
-      }
+      assertActive();
       throw error;
     }
+    assertActive();
     onTick?.(task);
+    assertActive();
     if (TERMINAL_TASK_STATUSES.has(task.status)) {
       if (task.status === "cancelled") {
         throw new TaskCancelledError(task);
@@ -409,7 +412,9 @@ export async function waitForTask(
           while (refreshRequested) {
             refreshRequested = false;
             await Promise.resolve();
+            assertActive();
             const latest = await fetchTask(projectId, taskRunId, signal);
+            assertActive();
             task = latest;
             onTick?.(latest);
           }
@@ -422,8 +427,10 @@ export async function waitForTask(
           `/projects/${projectId}/tasks/${taskRunId}/stream`,
           LOCAL_ACTOR_ID,
           (event) => {
+            if (signal?.aborted) return;
             lastEventId = Math.max(lastEventId, event.sequence_no);
             onEvent?.(event);
+            if (signal?.aborted) return;
             const eventStatus: Partial<Record<string, TaskView["status"]>> = {
               "task.started": "running",
               "task.cancel_requested": "cancelling",
@@ -437,6 +444,7 @@ export async function waitForTask(
               stage: event.stage,
             };
             onTick?.(task);
+            if (signal?.aborted) return;
             if (event.event_type.startsWith("agent.step.")) {
               queueAuthoritativeRefresh();
             }
@@ -450,9 +458,7 @@ export async function waitForTask(
       await authoritativeRefresh;
       if (streamError) throw streamError;
     } catch (error) {
-      if (signal?.aborted) {
-        throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
-      }
+      assertActive();
       if (Date.now() >= deadline) break;
       // A proxy or browser may interrupt SSE. The next loop performs one
       // authoritative poll, then reconnects with Last-Event-ID replay.
@@ -471,12 +477,14 @@ export async function waitForRecoveredTask(
   projectId: number,
   taskRunId: number,
   onTick: (task: TaskView) => void,
+  signal?: AbortSignal,
 ) {
   try {
-    return await waitForTask(projectId, taskRunId, onTick);
+    return await waitForTask(projectId, taskRunId, onTick, signal);
   } catch (error) {
+    if (signal?.aborted) return null;
     if (isTaskCancelledError(error)) return error.task;
-    return fetchTask(projectId, taskRunId).catch(() => null);
+    return fetchTask(projectId, taskRunId, signal).catch(() => null);
   }
 }
 

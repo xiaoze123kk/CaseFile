@@ -7,7 +7,7 @@ import {
 } from "./novel-document";
 import styles from "./novel-workspace.module.css";
 
-function Dialog({
+export function Dialog({
   title,
   onClose,
   children,

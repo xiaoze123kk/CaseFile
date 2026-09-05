@@ -17,6 +17,7 @@ import {
   startStrategyOptionsTask,
   strategyOptionsResult,
   waitForTask,
+  waitForRecoveredTask,
 } from "@/features/case-session/case-session-api";
 
 const { apiRequestMock, streamTaskEventsMock, ApiErrorMock } = vi.hoisted(() => ({
@@ -194,6 +195,65 @@ describe("case session provider fallback", () => {
       failureCode: "task_wait_aborted",
     });
     expect(apiRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("does not recover or poll after its session signal is aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    apiRequestMock.mockResolvedValue(taskView({ status: "succeeded", stage: "completed" }));
+    await expect(waitForRecoveredTask(7, 31, vi.fn(), controller.signal)).resolves.toBeNull();
+    expect(apiRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("does not open SSE when the first callback invalidates its session", async () => {
+    const controller = new AbortController();
+    apiRequestMock.mockResolvedValue(taskView({ status: "running", stage: "generating" }));
+    await expect(waitForTask(7, 31, () => controller.abort(), controller.signal))
+      .rejects.toMatchObject({ failureCode: "task_wait_aborted" });
+    expect(streamTaskEventsMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a task poll that resolves after cancellation", async () => {
+    const controller = new AbortController();
+    const onTick = vi.fn();
+    apiRequestMock.mockImplementation(async () => {
+      controller.abort();
+      return taskView({ status: "succeeded", stage: "completed" });
+    });
+    await expect(waitForTask(7, 31, onTick, controller.signal))
+      .rejects.toMatchObject({ failureCode: "task_wait_aborted" });
+    expect(onTick).not.toHaveBeenCalled();
+  });
+
+  it("does not publish or refresh an event whose consumer stops waiting", async () => {
+    const controller = new AbortController();
+    const onTick = vi.fn();
+    apiRequestMock.mockResolvedValue(taskView({ status: "running", stage: "generating" }));
+    streamTaskEventsMock.mockImplementation(async (_path, _actor, onEvent) => {
+      onEvent({ sequence_no: 1, event_type: "agent.step.started", stage: "generating" });
+    });
+    await expect(waitForTask(7, 31, onTick, controller.signal, () => controller.abort()))
+      .rejects.toMatchObject({ failureCode: "task_wait_aborted" });
+    expect(onTick).toHaveBeenCalledTimes(1);
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts recovered SSE without a fallback poll or server cancellation", async () => {
+    const controller = new AbortController();
+    apiRequestMock.mockResolvedValueOnce(taskView({ status: "running", stage: "generating" }))
+      .mockResolvedValue(taskView({ status: "succeeded", stage: "completed" }));
+    let streamSignal: AbortSignal | undefined;
+    streamTaskEventsMock.mockImplementation(async (_path, _actor, _onEvent, signal) => {
+      streamSignal = signal;
+      controller.abort();
+      throw new DOMException("aborted", "AbortError");
+    });
+    await expect(waitForRecoveredTask(7, 31, vi.fn(), controller.signal)).resolves.toBeNull();
+    expect(streamSignal?.aborted).toBe(true);
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+    expect(apiRequestMock).toHaveBeenCalledWith("/projects/7/tasks/31", expect.objectContaining({
+      signal: controller.signal,
+    }));
   });
 
   it("localizes an abort that happens during the authoritative task poll", async () => {

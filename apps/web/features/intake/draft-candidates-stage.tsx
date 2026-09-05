@@ -7,6 +7,7 @@ import {
   type CandidateSlotStrategy,
   useCaseSession,
 } from "@/features/case-session/case-session-provider";
+import { useSessionUiOperation } from "@/features/case-session/use-session-ui-operation";
 import type { TaskView } from "@/lib/api-client";
 
 import { BriefRevisionDialog } from "./brief-confirmation-feedback";
@@ -60,8 +61,11 @@ const statusLabels = {
   stale: "旧简报",
 } as const;
 
+const INITIAL_NOTICE = "先选择策略，再生成一份完整深稿。";
+
 export function DraftCandidatesStage() {
   const router = useRouter();
+  const captureOperation = useSessionUiOperation();
   const {
     state,
     activeProjectId,
@@ -76,14 +80,27 @@ export function DraftCandidatesStage() {
     candidateStatus,
   } = useCaseSession();
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
-  const [notice, setNotice] = useState("先选择策略，再生成一份完整深稿。");
+  const [notice, setNotice] = useState(INITIAL_NOTICE);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [adoptingCandidateId, setAdoptingCandidateId] = useState<string | null>(null);
   const [revisionPending, setRevisionPending] = useState(false);
   const [revisionDialogOpen, setRevisionDialogOpen] = useState(false);
-  const analysisStartedRef = useRef(false);
-  const adoptionInFlightRef = useRef(false);
-  const revisionInFlightRef = useRef(false);
+  const analysisStartedRef = useRef<(() => boolean) | null>(null);
+  const adoptionInFlightRef = useRef<(() => boolean) | null>(null);
+  const revisionInFlightRef = useRef<(() => boolean) | null>(null);
+  const hydrating = state.hydration.status === "loading";
+  const [scope, setScope] = useState({ projectId: activeProjectId, hydrating });
+  if (scope.projectId !== activeProjectId || scope.hydrating !== hydrating) {
+    setScope({ projectId: activeProjectId, hydrating });
+    if (scope.projectId !== activeProjectId || hydrating) {
+      setExpandedCandidateId(null);
+      setNotice(INITIAL_NOTICE);
+      setGenerationError(null);
+      setAdoptingCandidateId(null);
+      setRevisionPending(false);
+      setRevisionDialogOpen(false);
+    }
+  }
 
   const currentCandidates = useMemo(
     () => state.draftCandidates.filter(
@@ -158,24 +175,30 @@ export function DraftCandidatesStage() {
       .at(-1)?.id ?? null;
 
   useEffect(() => {
-    if (!ready || analysis.status !== "idle" || analysisStartedRef.current) return;
-    analysisStartedRef.current = true;
+    if (!ready || state.hydration.status !== "ready" || analysis.status !== "idle"
+      || analysisStartedRef.current?.()) return;
+    const isCurrent = captureOperation();
+    analysisStartedRef.current = isCurrent;
     void analyzeStrategies().catch(() => {
-      analysisStartedRef.current = false;
+      if (analysisStartedRef.current === isCurrent) analysisStartedRef.current = null;
     });
-  }, [analysis.status, analyzeStrategies, ready]);
+  }, [analysis.status, analyzeStrategies, captureOperation, ready, state.hydration.status]);
 
   async function regenerateStrategyAnalysis() {
+    const isCurrent = captureOperation();
     setGenerationError(null);
     try {
       await analyzeStrategies(true);
+      if (!isCurrent()) return;
       setNotice("策略已经依据当前冻结 Brief 重新分析。");
     } catch (error) {
+      if (!isCurrent()) return;
       setGenerationError(error instanceof Error ? error.message : "策略分析失败");
     }
   }
 
   async function generateSelectedDraft() {
+    const isCurrent = captureOperation();
     if (!state.selectedStrategy) return;
     setGenerationError(null);
     const existingAttempt =
@@ -186,6 +209,7 @@ export function DraftCandidatesStage() {
         state.selectedStrategy,
         requestedAttempt,
       );
+      if (!isCurrent()) return;
       if (outcome === "succeeded") {
         setNotice(
           selectedCandidate
@@ -198,16 +222,19 @@ export function DraftCandidatesStage() {
         setNotice("生成任务未启动，请检查当前槽位后重试。");
       }
     } catch (error) {
+      if (!isCurrent()) return;
       setGenerationError(error instanceof Error ? error.message : "完整深稿生成失败");
     }
   }
 
   async function adopt(candidateId: string) {
-    if (adoptionInFlightRef.current || activeProjectId === null) return;
-    adoptionInFlightRef.current = true;
+    const isCurrent = captureOperation();
+    if (adoptionInFlightRef.current?.() || activeProjectId === null || hydrating) return;
+    adoptionInFlightRef.current = isCurrent;
     setAdoptingCandidateId(candidateId);
     try {
       const adoptedDraftId = await adoptCandidate(candidateId);
+      if (!isCurrent()) return;
       if (!adoptedDraftId) {
         setGenerationError("这份深稿不属于当前冻结的创作简报，请重新生成。");
         return;
@@ -215,10 +242,11 @@ export function DraftCandidatesStage() {
       setNotice(`工作稿 #${adoptedDraftId} 已设为当前稿，正在进入工作台。`);
       router.push(`/workbench?project=${activeProjectId}`);
     } catch (error) {
+      if (!isCurrent()) return;
       setGenerationError(error instanceof Error ? error.message : "采用深稿失败");
     } finally {
-      adoptionInFlightRef.current = false;
-      setAdoptingCandidateId(null);
+      if (adoptionInFlightRef.current === isCurrent) adoptionInFlightRef.current = null;
+      if (isCurrent()) setAdoptingCandidateId(null);
     }
   }
 
@@ -235,21 +263,26 @@ export function DraftCandidatesStage() {
   }
 
   async function resumeFailedDraft() {
+    let isCurrent = captureOperation();
     if (!state.selectedStrategy) return;
     setGenerationError(null);
     try {
-      await resumeGeneration(state.selectedStrategy);
+      await resumeGeneration(state.selectedStrategy, () => { isCurrent = captureOperation(); });
+      if (!isCurrent()) return;
       setNotice("已从失败阶段恢复，输入与上游哈希一致的成功部件已复用。");
     } catch (error) {
+      if (!isCurrent()) return;
       setGenerationError(error instanceof Error ? error.message : "恢复失败");
     }
   }
 
   async function cancelSelectedDraft() {
+    let isCurrent = captureOperation();
     if (!state.selectedStrategy) return;
     setGenerationError(null);
     try {
-      const task = await cancelGeneration(state.selectedStrategy);
+      const task = await cancelGeneration(state.selectedStrategy, () => { isCurrent = captureOperation(); });
+      if (!isCurrent()) return;
       if (!task) return;
       if (task.status === "cancelling") {
         setNotice("已请求安全停止；Worker 会结束当前步骤，Current Draft 不会改变。");
@@ -265,26 +298,30 @@ export function DraftCandidatesStage() {
         setGenerationError(`停止请求返回任务状态“${task.status}”，请刷新后确认。`);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       setGenerationError(error instanceof Error ? error.message : "停止任务失败");
     }
   }
 
   async function beginRevision() {
-    if (revisionInFlightRef.current) return;
-    revisionInFlightRef.current = true;
+    const isCurrent = captureOperation();
+    if (revisionInFlightRef.current?.() || hydrating) return;
+    revisionInFlightRef.current = isCurrent;
     setRevisionDialogOpen(false);
     setRevisionPending(true);
     setGenerationError(null);
     try {
       await beginBriefRevision();
+      if (!isCurrent()) return;
       setNotice("已建立简报修订：回到第 3 步修改，完成后重新提交审阅。");
     } catch (error) {
+      if (!isCurrent()) return;
       setGenerationError(
         error instanceof Error ? error.message : "简报修订未建立，请稍后重试。",
       );
     } finally {
-      revisionInFlightRef.current = false;
-      setRevisionPending(false);
+      if (revisionInFlightRef.current === isCurrent) revisionInFlightRef.current = null;
+      if (isCurrent()) setRevisionPending(false);
     }
   }
 

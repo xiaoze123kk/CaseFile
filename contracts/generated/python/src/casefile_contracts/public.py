@@ -6,6 +6,8 @@ from ._internal import (
     ArtifactKind,
     BriefIntakeQuestion,
     BriefIntakeQuestionSet,
+    BriefVersionView,
+    BriefView,
     CanonBinding,
     CompileInputManifest,
     CompileManifest,
@@ -20,6 +22,7 @@ from ._internal import (
     NovelPlanIR,
     PlanningProblem,
     PlanSkeleton,
+    ProjectView,
     ProseConsensusReport,
     ProseJudgeReport,
     ProseQualityReport,
@@ -63,6 +66,7 @@ from .casefile import Schema as CaseFile
 from .narrative_ir import Schema as NarrativeIR
 from .novel_profile import Schema as NovelProfile
 from .novel_profile_v2 import Schema as NovelProfileV2
+from .novel_recommendation import Schema as NovelRecommendation
 from .patch_candidate import Schema as PatchCandidate
 from .planner_input import Schema as PlannerInputBundle
 from .planner_input_v2 import Schema as PlannerInputBundleV2
@@ -81,6 +85,9 @@ __all__ = [
     "AgentGenerateRequest",
     "AgentGenerateResult",
     "ArtifactKind",
+    "ProjectView",
+    "BriefView",
+    "BriefVersionView",
     "Brief",
     "BriefIntakeCandidate",
     "BriefIntakeQuestion",
@@ -111,6 +118,7 @@ __all__ = [
     "SkeletonProposal",
     "NovelProfile",
     "NovelProfileV2",
+    "NovelRecommendation",
     "ProseJudgeChecklist",
     "SceneRenderCandidate",
     "SceneRender",

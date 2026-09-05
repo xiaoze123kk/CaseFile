@@ -7,6 +7,7 @@ from typing import Any
 
 import networkx as nx
 
+from casefile.contracts.object_types import COLLECTION_BY_TYPE as COLLECTION_BY_TYPE
 from casefile.domain.logical_mutation.models import LogicCycle, LogicEdge
 from casefile.domain.logical_mutation.policy import (
     ACTIVE_APPLY_POLICY,
@@ -14,20 +15,6 @@ from casefile.domain.logical_mutation.policy import (
     relation_policy,
     validate_closure_policy_version,
 )
-
-COLLECTION_BY_TYPE = {
-    "resolution_spec": "resolution_specs",
-    "entity": "entities",
-    "relationship": "relationships",
-    "location": "locations",
-    "event": "events",
-    "information_unit": "information_units",
-    "claim": "claims",
-    "hypothesis": "hypotheses",
-    "reasoning_path": "reasoning_paths",
-    "constraint": "constraints",
-    "structure_lock": "structure_locks",
-}
 
 
 class LogicalGraph:

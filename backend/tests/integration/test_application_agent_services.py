@@ -164,7 +164,7 @@ def test_public_language_second_violation_fails_without_persisting_patch(
         )
 
     assert task is not None
-    assert task.prompt_version == "casefile-chat-v21"
+    assert task.prompt_version == "casefile-chat-v22"
     assert task.status == "failed"
     assert task.error_code == "public_output_policy_failed", task.error_details_jsonb
     assert len(provider.requests) == 2
@@ -1104,7 +1104,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert routed_request.route is not None
         assert routed_request.route.route_source == "llm"
         assert routed_request.route.execution_profile["prompt_component"] == "edit"
-        assert routed_request.prompt_version == "casefile-chat-v21"
+        assert routed_request.prompt_version == "casefile-chat-v22"
         assert routed_request.toolset_version == "casefile-chat-tools-v4"
         assert routed_request.context_policy_version == "casefile-chat-context-v6"
         assert routed_request.task_understanding is not None
@@ -1990,7 +1990,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                     TaskRun.id == first_chat_task_id
                 )
             ).one()
-        assert prompt_version == "casefile-chat-v21"
+        assert prompt_version == "casefile-chat-v22"
         assert toolset_version == "casefile-chat-tools-v4"
 
         chat_claimer = Worker(

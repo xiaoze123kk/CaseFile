@@ -29,6 +29,7 @@ from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile.data_postgres.session import EXPECTED_DATABASE_REVISION, current_database_revision
 from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
@@ -304,11 +305,11 @@ def workflow_database() -> Iterator[tuple[Engine, int, str]]:
         os.environ,
         {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
     ):
-        _clear_projects_before_downgrade(database_url)
-        command.downgrade(config, "base")
-        command.upgrade(config, "head")
         engine = create_engine(database_url)
         try:
+            if current_database_revision(engine) != EXPECTED_DATABASE_REVISION:
+                command.upgrade(config, "head")
+            _clear_workflow_data(engine)
             with engine.begin() as connection:
                 actor_id = int(
                     connection.execute(
@@ -320,9 +321,17 @@ def workflow_database() -> Iterator[tuple[Engine, int, str]]:
                 )
             yield engine, actor_id, master_key
         finally:
-            engine.dispose()
-            _clear_projects_before_downgrade(database_url)
-            command.downgrade(config, "base")
+            try:
+                _clear_workflow_data(engine)
+            finally:
+                engine.dispose()
+
+
+def _clear_workflow_data(engine: Engine) -> None:
+    """Reset committed test data and identities while preserving the migrated schema."""
+    with engine.begin() as connection:
+        if inspect(connection).has_table("users"):
+            connection.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
 
 
 def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:

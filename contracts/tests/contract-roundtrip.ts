@@ -17,6 +17,7 @@ import type {
   NarrativeIR,
   NovelCandidate,
   NovelProfileV2,
+  NovelRecommendation,
   PatchCandidate,
   ProseConsensusReport,
   ProseJudgeChecklist,
@@ -569,6 +570,9 @@ if (
 }
 
 const proseFixtureRoot = resolve(fixtureRoot, "compiler", "prose_rendering", "v1");
+const recommendationValidator = ajv.getSchema("https://casefile.local/schemas/v2/compiler/novel-recommendation.schema.json");
+if (!recommendationValidator) throw new Error("Novel recommendation schema missing");
+assertValid(recommendationValidator, typedRoundTrip(loadJson(resolve(fixtureRoot, "compiler", "novel_recommendation", "v1", "basic.json")) as unknown as NovelRecommendation), "NovelRecommendation");
 const profileV2 = loadJson(resolve(proseFixtureRoot, "profile_v2.json"));
 assertValid(
   profileV2Validator,

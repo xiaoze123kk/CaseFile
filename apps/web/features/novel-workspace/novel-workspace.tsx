@@ -21,6 +21,8 @@ import {
   NovelHistory,
 } from "./novel-workspace-panels";
 import styles from "./novel-workspace.module.css";
+import { NovelCompilerPanel } from "./novel-compiler-panel";
+import type { NovelCompileScope } from "./novel-compiler-api";
 
 const modes = [
   { id: "discuss", label: "讨论", icon: "chat" },
@@ -42,12 +44,14 @@ export function NovelWorkspace({
   onBack,
   manuscript,
   collaborate,
+  compileScope,
 }: {
   seed: WorkbenchSeed;
   scopeKey: string;
   onBack: () => void;
   manuscript?: NovelManuscript;
   collaborate?: NovelCollaborator;
+  compileScope?: NovelCompileScope;
 }) {
   const storageKey = `casefile:novel:v1:${scopeKey}`;
   const [loaded] = useState(() => {
@@ -86,6 +90,7 @@ export function NovelWorkspace({
   const [focus, setFocus] = useState(false);
   const [ratio, setRatio] = useState(46);
   const [importOpen, setImportOpen] = useState(false);
+  const [compilerOpen, setCompilerOpen] = useState(false);
   const [history, setHistory] = useState<NovelDraft[] | null>(null);
   const [original, setOriginal] = useState(false);
   const [wholeBook, setWholeBook] = useState(false);
@@ -141,7 +146,7 @@ export function NovelWorkspace({
         );
       } catch {
         setError("旧稿备份失败，请先导出旧稿，再导入新初稿。");
-        return;
+        return false;
       }
     }
     save(next);
@@ -153,6 +158,7 @@ export function NovelWorkspace({
     setImportOpen(false);
     setHistory(null);
     setError("");
+    return true;
   }
 
   function openHistory() {
@@ -232,6 +238,26 @@ export function NovelWorkspace({
 
   return (
     <main className={styles.workspace} aria-label="小说协作工作台">
+      <div className={styles.entrance} aria-hidden="true">
+        <div className={styles.entranceGlow} />
+        <div className={styles.entranceBook}>
+          <div className={styles.bookBack} />
+          <div className={styles.bookEdges} />
+          <div className={styles.bookPage} />
+          <div className={styles.bookPage} />
+          <div className={styles.bookPage} />
+          <div className={styles.bookCover}>
+            <span className={styles.bookRibbon} />
+            <span className={styles.bookCategory}>小说 · 创作手稿</span>
+            <strong>{seed.caseMeta.title}</strong>
+            <svg className={styles.bookEmblem} viewBox="0 0 64 64" fill="none">
+              <path d="M32 8 48 32 32 56 16 32Z" />
+              <path d="M8 32h48M32 8v48M24 24l16 16m0-16L24 40" />
+              <circle cx="32" cy="32" r="7" />
+            </svg>
+          </div>
+        </div>
+      </div>
       <header className={styles.topbar}>
         <button className={styles.back} onClick={onBack} type="button">
           <Icon name="chevron-left" />
@@ -246,6 +272,9 @@ export function NovelWorkspace({
           {status}
         </span>
         <div className={styles.topActions}>
+          {compileScope ? <button disabled={busy || storageBlocked} onClick={() => setCompilerOpen(true)} type="button">
+            <Icon name="document" />小说编译
+          </button> : null}
           <button
             disabled={busy || storageBlocked}
             onClick={openHistory}
@@ -369,9 +398,9 @@ export function NovelWorkspace({
                     来自当前卷宗 · {seed.caseMeta.revision}
                   </p>
                   {[
-                    { label: "人物与实体", kinds: ["person", "entity"] },
-                    { label: "线索与信息", kinds: ["evidence", "information"] },
-                    { label: "地点", kinds: ["location"] },
+                    { label: "人物与实体", kinds: ["person", "entity"], icon: "entity" as const, tone: "people" },
+                    { label: "线索与信息", kinds: ["evidence", "information"], icon: "search" as const, tone: "clues" },
+                    { label: "地点", kinds: ["location"], icon: "location" as const, tone: "places" },
                   ].map((group) => (
                     <details
                       className={styles.sourceGroup}
@@ -379,7 +408,11 @@ export function NovelWorkspace({
                       open
                     >
                       <summary>
-                        {group.label}
+                        <Icon name="chevron-right" className={styles.sourceChevron} />
+                        <span className={styles.sourceIcon} data-tone={group.tone}>
+                          <Icon name={group.icon} />
+                        </span>
+                        <span>{group.label}</span>
                         <small>
                           {
                             seed.caseObjects.filter((item) =>
@@ -407,7 +440,12 @@ export function NovelWorkspace({
                   ))}
                   <details className={styles.sourceGroup}>
                     <summary>
-                      事实时间线<small>{seed.timelineEvents.length}</small>
+                      <Icon name="chevron-right" className={styles.sourceChevron} />
+                      <span className={styles.sourceIcon} data-tone="timeline">
+                        <Icon name="clock" />
+                      </span>
+                      <span>事实时间线</span>
+                      <small>{seed.timelineEvents.length}</small>
                     </summary>
                     {seed.timelineEvents.map((item) => (
                       <div className={styles.sourceItem} key={item.id}>
@@ -803,6 +841,11 @@ export function NovelWorkspace({
           </section>
         </div>
       </div>
+      {compilerOpen && compileScope ? (
+        <NovelCompilerPanel scope={compileScope} title={seed.caseMeta.title} hasDraft={Boolean(draft)}
+          onClose={() => setCompilerOpen(false)}
+          onLoad={(manuscript) => replaceDraft(createNovelDraft(manuscript))} />
+      ) : null}
       {importOpen ? (
         <NovelImportDialog
           hasDraft={Boolean(draft)}

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type { AgentThreadView } from "@/lib/api-client";
 
-import styles from "./workbench-agent.module.css";
+import { WorkbenchIcon } from "./workbench-icon";
+import styles from "./workbench-agent-thread-menu.module.css";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -40,6 +42,8 @@ export function WorkbenchAgentThreadMenu({
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const popoverRef = useRef<HTMLElement>(null);
+  const [position, setPosition] = useState({ left: 16, top: 64, maxHeight: 560 });
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -61,7 +65,7 @@ export function WorkbenchAgentThreadMenu({
   const visibleThreads = showArchived
     ? orderedThreads
     : orderedThreads.filter((thread) => thread.status === "active");
-  const pinned = visibleThreads.filter((thread) => thread.is_pinned);
+  const pinned = visibleThreads.filter((thread) => thread.is_pinned && thread.status === "active");
   const recent = visibleThreads.filter(
     (thread) => !thread.is_pinned && thread.status === "active",
   );
@@ -90,6 +94,46 @@ export function WorkbenchAgentThreadMenu({
     return () => window.clearTimeout(timeout);
   }, [onSearch, open, query, showArchived]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    function positionMenu() {
+      const anchor = triggerRef.current?.getBoundingClientRect();
+      if (!anchor) return;
+      const width = Math.min(384, window.innerWidth - 32);
+      const below = window.innerHeight - anchor.bottom - 24;
+      const above = anchor.top - 24;
+      const upwards = below < 360 && above > below;
+      const maxHeight = Math.min(560, Math.max(0, upwards ? above : below));
+      const height = Math.min(popoverRef.current?.offsetHeight ?? maxHeight, maxHeight);
+      setPosition({
+        left: Math.max(16, Math.min(anchor.left, window.innerWidth - width - 16)),
+        top: upwards ? Math.max(16, anchor.top - height - 8) : anchor.bottom + 8,
+        maxHeight,
+      });
+    }
+    function dismiss(event: Event) {
+      if (event.target instanceof Node && !popoverRef.current?.contains(event.target) && !triggerRef.current?.contains(event.target)) {
+        setOpen(false);
+        setRenaming(false);
+      }
+    }
+    positionMenu();
+    const observer = new ResizeObserver(positionMenu);
+    if (triggerRef.current) observer.observe(triggerRef.current);
+    if (popoverRef.current) observer.observe(popoverRef.current);
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("focusin", dismiss);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("focusin", dismiss);
+    };
+  }, [open]);
+
   function close() {
     setOpen(false);
     setRenaming(false);
@@ -111,6 +155,7 @@ export function WorkbenchAgentThreadMenu({
   function handleEscape(event: React.KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close();
     }
   }
@@ -118,6 +163,7 @@ export function WorkbenchAgentThreadMenu({
   function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close();
       return;
     }
@@ -143,8 +189,9 @@ export function WorkbenchAgentThreadMenu({
     if (busy) return;
     setBusy(true);
     try {
-      await onCreate();
+      const created = await onCreate();
       await onSearch(query, showArchived);
+      if (created) close();
     } finally {
       setBusy(false);
     }
@@ -182,7 +229,7 @@ export function WorkbenchAgentThreadMenu({
       onKeyDown={handleEscape}
     >
       <button
-        aria-controls="agent-thread-listbox"
+        aria-controls={open ? "agent-thread-dialog" : undefined}
         aria-expanded={open}
         aria-haspopup="dialog"
         className={styles.agentThreadTrigger}
@@ -191,17 +238,29 @@ export function WorkbenchAgentThreadMenu({
         ref={triggerRef}
         type="button"
       >
+        <WorkbenchIcon name="chat" />
         <strong>{activeThread?.title ?? "选择对话"}</strong>
-        <span>{activeThread?.is_pinned ? "已置顶" : "对话"} ▾</span>
+        <span>切换对话</span>
+        <WorkbenchIcon name="chevron" />
       </button>
-      {open ? (
+      {open ? createPortal(
         <section
           aria-label="管理 Agent 对话"
           className={styles.agentThreadPopover}
+          id="agent-thread-dialog"
+          ref={popoverRef}
           role="dialog"
+          style={position}
         >
+          <header className={styles.menuHeader}>
+            <div><h2>对话记录</h2><p>继续调查，或开启新的讨论</p></div>
+            <button aria-label="关闭对话菜单" className={styles.closeButton} onClick={close} type="button"><WorkbenchIcon name="close" /></button>
+          </header>
+          <button className={styles.newThread} disabled={busy} onClick={() => void create()} type="button">
+            <span aria-hidden="true">＋</span> 新对话
+          </button>
           <div className={styles.agentThreadSearch}>
-            <label htmlFor="agent-thread-search">THREADS</label>
+            <WorkbenchIcon name="search" />
             <input
               aria-activedescendant={
                 renderedThreads[safeActiveIndex]
@@ -295,11 +354,9 @@ export function WorkbenchAgentThreadMenu({
             </form>
           ) : null}
           <div aria-label="当前对话操作" className={styles.agentThreadActions}>
-            <button disabled={busy} onClick={() => void create()} type="button">
-              ＋ 新对话
-            </button>
             {activeThread ? (
               <>
+                <div className={styles.currentThread}><span>当前对话</span><strong title={activeThread.title}>{activeThread.title}</strong></div>
                 <button
                   disabled={busy}
                   onClick={() => {
@@ -322,6 +379,7 @@ export function WorkbenchAgentThreadMenu({
                   {activeThread.is_pinned ? "取消置顶" : "置顶"}
                 </button>
                 <button
+                  className={styles.archiveButton}
                   disabled={busy}
                   onClick={() =>
                     void updateCurrent((thread) =>
@@ -335,7 +393,7 @@ export function WorkbenchAgentThreadMenu({
               </>
             ) : null}
           </div>
-        </section>
+        </section>, document.body,
       ) : null}
     </div>
   );
@@ -368,8 +426,9 @@ function ThreadGroup({
           role="option"
           type="button"
         >
-          <strong>{thread.title}</strong>
-          <span>{thread.status === "archived" ? "已归档" : "打开"}</span>
+          <WorkbenchIcon name={thread.status === "archived" ? "archive" : "chat"} />
+          <strong title={thread.title}>{thread.title}</strong>
+          <span>{thread.thread_id === selectedThreadId ? "当前" : thread.status === "archived" ? "已归档" : "打开"}</span>
         </button>
       ))}
     </div>
