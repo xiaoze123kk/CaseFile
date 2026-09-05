@@ -285,6 +285,7 @@ def _resolve_chat_route(
             profile=rule.profile,
             rewrite_strategy=_rewrite_strategy_for_rule(rule),
             route_source=rule.route_source,
+            suggestion_policy=rule.suggestion_policy,
         )
         return replace(
             request,
@@ -309,7 +310,7 @@ def _resolve_chat_route(
             rewrite_strategy=rewrite.rewrite_decision,
         )
         selected_strategy = route_specific_rewrite_strategy(understanding)
-        if selected_strategy in {"MULTI_QUERY", "DECOMPOSE"}:
+        if route.route_source == "llm" and selected_strategy in {"MULTI_QUERY", "DECOMPOSE"}:
             route = replace(route, rewrite_strategy=selected_strategy)
         rewrite = _post_route_rewrite(
             request,
@@ -651,6 +652,11 @@ class ChatMutationRuntime(_ChatComponent):
             else request.task_understanding.primary_intent
         )
         if mode == "off" or intent != "edit_request":
+            return None, {}
+        if (
+            request.route is not None
+            and request.route.execution_profile.get("primary_intent") == "clarify"
+        ):
             return None, {}
 
         def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
@@ -1383,6 +1389,7 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v18",
             "casefile-chat-v19",
             "casefile-chat-v20",
+            "casefile-chat-v21",
         }:
             raise RuntimeError(
                 "Context policy "

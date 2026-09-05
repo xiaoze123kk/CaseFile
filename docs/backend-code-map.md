@@ -256,3 +256,11 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 - 版本与审计：`draft_snapshots`、`canon_versions`、`audit_events`。
 
 新增或删除表必须同步更新 ORM、迁移、两份数据库说明、元数据测试和本文。
+
+`agent_runtime/prompts/casefile_chat/v21/`：继承 v20 的冻结能力与公共语言门禁，新增 answer-layout 片段供全部 Finalizer 使用短段落和分点；Goal 新任务使用 v21，历史任务保留原版本。`chat_intent.py` 将已聚焦问题且明确要求修改建议的 issue_action 在更新能力开启时路由至现有编辑/General Mutation 链，保留只解释与审批门禁。
+
+`backend/src/casefile/agent_runtime/chat_request_signals.py`：无副作用的只读约束、肯定动作和复合请求信号，屏蔽引用/代码并按分句处理否定；供规则路由与 Goal 候选过滤复用，仅提名意图，不授予写入权限。低置信度敏感意图走 clarify，冻结路由复用与预算收紧不变。
+
+`prompt_package.py` 的 chat-edit-v4 为 v21 编辑能力增加验证问题读取，保留 v3 策略。`benchmark/chat_router_eval.py` 的低置信度用例预期改为澄清；指标只在实际选中预期的安全路由时计分，不降低准确率或危险混淆门槛。RouteDecision 历史默认 v2 保留，新策略显式写入 router-v3。
+
+`goal/filter.py` 与 `worker/handlers/chat.py` 对带真实验证问题焦点的复合 issue_action 启用既有有界 Goal 解释；单步或无焦点入口保留单任务路由。解释与修复分别形成义务，资格失败仍回落单任务规则，不绕过 Mutation proof 或审批。

@@ -395,12 +395,28 @@ def test_goal_loop_bounds_observation_summary_without_discarding_proof() -> None
         (SOURCE, "free_text", True),
         ("审计当前时间线。", "free_text", False),
         (SOURCE, "preset", False),
+        ("先解释原因，再给出修复补丁。", "free_text", True),
+        ("先分析，再给出补丁，不要自动应用。", "free_text", True),
+        ("先分析，不要修改。", "free_text", False),
+        ("解释“修改和审计”这个标题。", "free_text", False),
+        ("Explain the issue, then repair it.", "free_text", True),
         ("分析后直接修改并自动应用，不要让我确认。", "free_text", False),
         ("分析一下，然后删掉那个不需要的东西。", "free_text", False),
     ],
 )
 def test_candidate_filter_is_conservative(message: str, entrypoint: str, candidate: bool) -> None:
     assert goal_candidate_filter(message, routing_entrypoint=entrypoint).candidate is candidate
+
+
+def test_composite_issue_action_requires_bound_focus_before_goal_interpretation() -> None:
+    message = "先解释当前问题的原因，再给出可审阅的修复补丁。"
+    assert goal_candidate_filter(
+        message, routing_entrypoint="issue_action", has_issue_focus=True
+    ).candidate
+    assert not goal_candidate_filter(message, routing_entrypoint="issue_action").candidate
+    assert not goal_candidate_filter(
+        "解释当前问题。", routing_entrypoint="issue_action", has_issue_focus=True
+    ).candidate
 
 
 def test_goal_ledger_refs_are_bounded_deduplicated_authority() -> None:

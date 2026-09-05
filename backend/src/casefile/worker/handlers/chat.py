@@ -312,7 +312,13 @@ class ChatHandler:
             )
         else:
             entrypoint = str(request.routing_hint.get("entrypoint") or "free_text")
-            candidate = goal_candidate_filter(request.message, routing_entrypoint=entrypoint)
+            issue_ids = request.focus.get("validation_issue_ids")
+            candidate = goal_candidate_filter(
+                request.message,
+                routing_entrypoint=entrypoint,
+                has_issue_focus=isinstance(issue_ids, list)
+                and any(isinstance(item, str) and item for item in issue_ids),
+            )
             if not candidate.candidate:
                 return False
             context.emit(

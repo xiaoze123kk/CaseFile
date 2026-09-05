@@ -1016,14 +1016,7 @@ class ContentWorkflowMixin:
                     "goal_runtime": goal_runtime.model_dump(mode="json"),
                 }
                 input_hash = _json_hash(input_jsonb)
-                goal_session_rollout = os.environ.get(
-                    "CASEFILE_CHAT_GOAL_SESSION_ROLLOUT", "off"
-                ).strip().lower()
-                prompt_version = (
-                    "casefile-chat-v20"
-                    if goal_session_rollout == "active"
-                    else "casefile-chat-v17"
-                )
+                prompt_version = "casefile-chat-v21"
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,

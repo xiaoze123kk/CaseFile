@@ -4,7 +4,29 @@ import { emptyFeedback, reduceFeedback, activeFeedbackRefs } from "@/features/an
 import { AgentAttentionSurface } from "@/features/analyst-workbench/workbench-agent-attention";
 import { AgentProgress } from "@/features/analyst-workbench/workbench-agent-progress";
 
+import { AgentAnswer } from "@/features/analyst-workbench/workbench-agent-conversation";
+
 afterEach(cleanup);
+describe("assistant answer layout", () => {
+  it("renders paragraphs and ordered actions with their starting priority", () => {
+    const { container } = render(<AgentAnswer text={"先处理时间线。\n\n2. 调整认知范围。\n3. 补充线索。\n\n等待审阅。"} />);
+    expect(container.querySelectorAll("p")).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("list")).toHaveAttribute("start", "2");
+  });
+  it("keeps plain text and untrusted HTML as text", () => {
+    const { container } = render(<AgentAnswer text={"<script>alert(1)</script>\n普通正文"} />);
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelectorAll("p")).toHaveLength(1);
+    expect(screen.queryByRole("list")).toBeNull();
+  });
+  it("handles a list as preview lines arrive", () => {
+    const { rerender } = render(<AgentAnswer text={"- 第一项\n- "} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    rerender(<AgentAnswer text={"- 第一项\n- 第二项"} />);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+});
 describe("in-message progress visibility", () => {
   const feedback = reduceFeedback(emptyFeedback(), {
     event: "run.verification", sequence: 1, verification_status: "blocked",

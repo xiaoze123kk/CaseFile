@@ -160,3 +160,5 @@
 |---|---|
 | `apps/web/tests/` | 原型状态迁移、失败门禁、真实/演示状态边界和前端组件测试。 |
 | `apps/web/e2e/` | 浏览器用户闭环测试。 |
+
+`workbench-agent-conversation.tsx` 的 AgentAnswer 将正式回复和预览中的空行、编号及无序项渲染为段落和语义列表；仅展示文本，不执行 HTML，不推测分点、不更改历史正文。`workbench-agent.module.css` 提供段落与列表间距。

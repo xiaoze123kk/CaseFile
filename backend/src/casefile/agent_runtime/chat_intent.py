@@ -12,6 +12,11 @@ from dataclasses import dataclass, replace
 from itertools import combinations
 from typing import Any
 
+from casefile.agent_runtime.chat_request_signals import (
+    INTENT_ROUTER_VERSION,
+    affirmative_request_contains,
+    request_signals,
+)
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     CaseFileChatResult,
@@ -23,8 +28,6 @@ from casefile.agent_runtime.models import (
 from casefile.agent_runtime.public_language import (
     is_protected_internal_disclosure_request,
 )
-
-INTENT_ROUTER_VERSION = "casefile-chat-router-v2"
 
 _EDIT_FIELD_ALIASES = {
     "/description": ("描述", "description", "简介"),
@@ -124,9 +127,9 @@ def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | No
     message = f" {request.message.casefold()} "
     manifest = build_edit_target_manifest(request)
     explicit_object_ids = _explicit_object_ids(request, message)
-    destructive = any(marker in message for marker in _DESTRUCTIVE_ACTION_MARKERS)
-    creating = any(marker in message for marker in _CREATE_ACTION_MARKERS)
-    updating = any(marker in message for marker in _UPDATE_ACTION_MARKERS)
+    destructive = affirmative_request_contains(request.message, _DESTRUCTIVE_ACTION_MARKERS)
+    creating = affirmative_request_contains(request.message, _CREATE_ACTION_MARKERS)
+    updating = affirmative_request_contains(request.message, _UPDATE_ACTION_MARKERS)
     if destructive and len(explicit_object_ids) != 1:
         return "general_mutation_delete_target_ambiguous"
     if destructive:
@@ -354,6 +357,7 @@ class RuleRoute:
     primary_intent: str
     profile: str
     reason_code: str
+    suggestion_policy: str | None = None
 
 
 def normalize_routing_hint(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -393,7 +397,7 @@ def resolve_rule_route(
             profile="unsupported_action.scope",
             reason_code="rule_safety:protected_internal_disclosure_request",
         )
-    if any(marker in normalized_message for marker in _AUTO_APPLY_BYPASS_MARKERS):
+    if affirmative_request_contains(request.message, _AUTO_APPLY_BYPASS_MARKERS):
         return RuleRoute(
             route_source="rule_safety",
             primary_intent="clarify",
@@ -420,8 +424,18 @@ def resolve_rule_route(
             profile="unsupported_action.scope",
             reason_code="rule_safety:protected_collection_target",
         )
-    destructive_requested = any(
-        marker in normalized_message for marker in _DESTRUCTIVE_ACTION_MARKERS
+    signals = request_signals(request.message)
+    if signals.read_only:
+        audit = "audit" in signals.action_groups
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="logic_audit" if audit else "analysis",
+            profile="logic_audit.full_review" if audit else "analysis.inspect",
+            reason_code="rule_safety:explicit_read_only",
+            suggestion_policy="deny",
+        )
+    destructive_requested = affirmative_request_contains(
+        request.message, _DESTRUCTIVE_ACTION_MARKERS
     )
     abstention_reason = general_mutation_abstention_reason(request)
     if destructive_requested and allow_general_mutation_delete and abstention_reason is not None:
@@ -455,8 +469,8 @@ def resolve_rule_route(
             profile="unsupported_action.scope",
             reason_code="rule_safety:destructive_action",
         )
-    if allow_general_mutation_create and any(
-        marker in normalized_message for marker in _CREATE_ACTION_MARKERS
+    if allow_general_mutation_create and affirmative_request_contains(
+        request.message, _CREATE_ACTION_MARKERS
     ):
         return RuleRoute(
             route_source="rule_capability",
@@ -473,7 +487,7 @@ def resolve_rule_route(
                 reason_code=f"rule_safety:{abstention_reason}",
             )
         manifest = build_edit_target_manifest(request)
-        if manifest.targets and not manifest.ambiguous:
+        if signals.repair_requested and manifest.targets and not manifest.ambiguous:
             return RuleRoute(
                 route_source="rule_capability",
                 primary_intent="edit_request",
@@ -512,6 +526,13 @@ def resolve_rule_route(
             isinstance(item, str) and item for item in issue_ids
         ):
             return None
+        if allow_general_mutation_update and signals.repair_requested:
+            return RuleRoute(
+                route_source="rule_ui",
+                primary_intent="edit_request",
+                profile="edit_request.edit",
+                reason_code="rule_ui:issue_action",
+            )
         return RuleRoute(
             route_source="rule_ui",
             primary_intent="explain_issue",
@@ -575,6 +596,8 @@ def task_understanding_for_rule(rule: RuleRoute) -> ChatTaskUnderstanding:
         risk_level = "high"
     elif rule.primary_intent == "clarify":
         risk_level = "medium"
+    if rule.suggestion_policy == "deny":
+        capabilities["needs_suggestion_generation"] = False
     return ChatTaskUnderstanding(
         primary_intent=rule.primary_intent,
         sub_intents=(rule.profile.removeprefix(f"{rule.primary_intent}."),),
