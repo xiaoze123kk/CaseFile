@@ -1,0 +1,28 @@
+.panel { min-height: 0; overflow: auto; padding: 20px 16px; border-right: 1px solid #d8dcd9; background: #f7f8f5; color: #253936; font: 13px/1.6 "Microsoft YaHei", sans-serif; }
+.panel header > span { color: #59726d; font-size: 11px; letter-spacing: .12em; }
+.panel h3 { margin: 3px 0 8px; font: 700 22px/1.4 "Noto Serif SC", SimSun, serif; }
+.panel header p, .empty { color: #73807b; font-size: 12px; }
+.person { display: grid; gap: 7px; margin: 20px 0; font-weight: 600; }
+.person select { min-width: 0; width: 100%; padding: 9px; border: 1px solid #b9c6c0; background: white; font: inherit; color: inherit; }
+.panel section { margin-top: 22px; }
+.panel h4 { display: flex; justify-content: space-between; margin: 0 0 9px; border-bottom: 1px solid #d8dcd9; padding-bottom: 9px; font-size: 13px; }
+.panel h4 b { font: 13px Consolas, monospace; }
+.concern, .journey { display: grid; width: 100%; gap: 5px; padding: 12px 9px; margin-bottom: 6px; border: 1px solid transparent; background: transparent; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.concern { background: #efeee3; border-left: 3px solid #a58a46; }
+.concern[data-tone="conflict"] { background: #f6eae5; border-left-color: #a92609; }
+.concern strong { font-size: 12px; }
+.concern small, .journey small { color: #68756d; font-size: 11px; }
+.journey { border-bottom: 1px solid #e1e5df; }
+.panel button:hover, .panel button[aria-pressed="true"] { border-color: #678b7f; background: #e6eee8; }
+.panel button:focus-visible, .person select:focus-visible, .activity button:focus-visible { outline: 2px solid #2f5d62; outline-offset: 2px; }
+.activity { min-width: 0; border-top: 1px solid #cdd5d0; background: #f7f8f5; padding: 10px 16px; font: 12px/1.5 "Microsoft YaHei", sans-serif; }
+.activityHeading { display: flex; align-items: center; gap: 14px; }
+.activityHeading small { color: #6a7971; }
+.activityHeading button { margin-left: auto; padding: 4px 8px; border: 1px solid #b9c6c0; color: #2f5d62; background: white; cursor: pointer; }
+.activity ol { display: flex; gap: 8px; overflow: auto; list-style: none; padding: 8px 0 2px; margin: 0; }
+.activity li { flex: 0 0 205px; }
+.activity li button { display: grid; gap: 3px; width: 100%; padding: 8px 10px; text-align: left; border: 1px solid #d4ded7; background: white; color: #253936; cursor: pointer; font: inherit; }
+.activity li button[aria-pressed="true"] { border-color: #2f5d62; background: #e6eee8; }
+.activity time, .activity li span { color: #6a7971; font-size: 11px; }
+.comparison { margin: 5px 0 0; color: #2f5d62; font-size: 12px; }
+.comparison[data-conflict="true"] { color: #a92609; font-weight: 600; }

@@ -295,8 +295,6 @@ class AgentPatchMutationMixin:
     session: Session
     _logical_operations_from_patch = staticmethod(logical_operations_from_patch)
     _inverse_logical_operations_from_patch = staticmethod(inverse_logical_operations_from_patch)
-    _mutation_set_from_patch_operations = staticmethod(mutation_set_from_patch_operations)
-    _mutation_from_document_history = staticmethod(mutation_from_document_history)
 
     @staticmethod
     def _validate_patch_selection(

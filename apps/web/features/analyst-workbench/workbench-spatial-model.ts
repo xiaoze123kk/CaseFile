@@ -1,4 +1,5 @@
 import type { ObjectRef } from "@casefile/contracts";
+import { buildSpatialInvestigation } from "./spatial-map/spatial-investigation-model";
 
 import type { CaseFileDocument } from "@/lib/api-client";
 
@@ -71,6 +72,8 @@ function spatialModelInputKey(
       spatial_position: location.spatial_position,
     })),
     spatial_scenes: caseFile.spatial_scenes ?? [],
+    entities: caseFile.entities,
+    eventRecords: timelineEvents,
     events: timelineEvents.map((event) => ({
       id: event.id,
       label: event.label,
@@ -514,7 +517,7 @@ function relationsForLocations(
 export const defaultSpatialLayerVisibility: SpatialLayerVisibility = {
   locations: true,
   events: true,
-  relations: false,
+  relations: true,
   regions: false,
   unconfirmed: false,
 };
@@ -720,6 +723,7 @@ function buildWorkbenchSpatialModelUncached(
   );
   const unlocatedLocationIdSet = new Set(unlocatedLocationIds);
   return {
+    investigation: buildSpatialInvestigation(caseFile, timelineEvents),
     availableModes,
     defaultMode: availableModes[0] ?? null,
     views,

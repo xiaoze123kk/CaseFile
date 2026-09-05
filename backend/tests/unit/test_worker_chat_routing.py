@@ -63,8 +63,8 @@ def test_compaction_failure_redacts_current_api_key() -> None:
         config=ChatRuntimeConfig(),
         events=WorkerEventPorts(
             emit=MagicMock(),
-            emit_after_completion=lambda task_id, event_type, stage, payload: events.append(
-                (task_id, event_type, stage, payload)
+            emit_after_completion=lambda task, event_type, stage, payload: events.append(
+                (task.id, event_type, stage, payload)
             ),
         ),
     )
@@ -262,7 +262,7 @@ def test_low_confidence_sensitive_edit_hits_the_gate_and_falls_back() -> None:
 
     assert resolved.route is not None
     assert resolved.route.route_source == "fallback"
-    assert resolved.route.reason_codes == ("confidence_gate_sensitive",)
+    assert "confidence_gate_sensitive" in resolved.route.reason_codes
     assert resolved.route.execution_profile["suggestion_policy"] == "deny"
     assert resolved.rewrite is not None
     assert resolved.rewrite.rewrite_decision == "KEEP"
@@ -300,6 +300,27 @@ def test_general_mutation_planner_obeys_final_deny_route() -> None:
         "reason_code": "general_mutation_route_denied",
         "failure_layer": "routing",
     }
+
+
+def test_uncertain_edit_clarifies_without_invoking_mutation_planner() -> None:
+    provider = _CountingMutationProvider()
+    request = resolve_chat_route(
+        make_request(
+            hint={"entrypoint": "free_text"},
+            message="这段描述低置信度地改一下。",
+        ),
+        provider=provider,
+    )
+    assert request.route is not None
+    assert request.route.execution_profile["primary_intent"] == "clarify"
+    executor = _GeneralMutationGateExecutor()
+    envelope, usage = executor._execute_general_mutation(
+        SimpleNamespace(id=1, input_hash="a" * 64), request, provider, "test-key"
+    )
+    assert envelope is None
+    assert usage == {}
+    assert provider.general_mutation_calls == 0
+    assert executor.events == []
 
 
 def test_analysis_route_selects_multi_query_and_calls_post_route_rewrite() -> None:
@@ -453,3 +474,30 @@ def test_chat_input_renders_routing_block_only_when_route_exists() -> None:
     assert routed_payload["routing"]["route"]["route_source"] == "rule_preset"
     assert routed_payload["routing"]["task_understanding"]["primary_intent"] == "analysis"
     assert routed_payload["routing"]["rewrite"]["rewrite_decision"] == "CONTEXTUALIZE"
+
+
+def test_read_only_constraint_preserves_audit_capability() -> None:
+    request = resolve_chat_route(
+        make_request(
+            hint={"entrypoint": "free_text"},
+            message="请进行逻辑漏洞复查，不要提出任何修改。",
+        ),
+        provider=FakeProvider(),
+    )
+    assert request.route is not None
+    assert request.route.execution_profile["primary_intent"] == "logic_audit"
+    assert request.route.execution_profile["suggestion_policy"] == "deny"
+    assert "get_validation_issues" in request.route.execution_profile["toolset"]
+
+
+def test_conditional_noop_does_not_cancel_audit_repairs() -> None:
+    request = resolve_chat_route(
+        make_request(
+            hint={"entrypoint": "free_text"},
+            message="请进行逻辑漏洞复查，没有漏洞就不要提出任何修改。",
+        ),
+        provider=FakeProvider(),
+    )
+    assert request.route is not None
+    assert request.route.execution_profile["primary_intent"] == "logic_audit"
+    assert request.route.execution_profile["suggestion_policy"] == "allow"

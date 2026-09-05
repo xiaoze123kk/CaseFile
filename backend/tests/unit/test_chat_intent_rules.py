@@ -667,3 +667,61 @@ def test_agent_message_request_validates_goal_delivery_concurrency_token() -> No
 
 def test_allowed_preset_ids_match_rule_table() -> None:
     assert ALLOWED_PRESET_IDS == frozenset(PRESET_ROUTE_TABLE)
+
+
+@pytest.mark.parametrize(
+    ("message", "enabled", "expected"),
+    [
+        ("先解释规则失败原因，再给出可逐项审阅的字段修改建议。", True, "edit_request"),
+        ("先解释规则失败原因，再给出可逐项审阅的字段修改建议。", False, "explain_issue"),
+        ("只解释问题，不要给出修改建议。", True, "analysis"),
+        ("为什么这里验证失败？", True, "explain_issue"),
+    ],
+)
+def test_issue_action_explicit_repair_enters_mutation_pipeline(
+    message: str, enabled: bool, expected: str
+) -> None:
+    rule = resolve_rule_route(
+        make_chat_request(
+            message=message,
+            hint={"entrypoint": "issue_action"},
+            focus={"object_ids": ["object:person_1"],
+                   "validation_issue_ids": ["validator:issue-1"]},
+        ),
+        allow_general_mutation_update=enabled,
+    )
+    assert rule is not None
+    assert rule.primary_intent == expected
+    capabilities = task_understanding_for_rule(rule).capabilities
+    assert capabilities["needs_suggestion_generation"] is (expected != "analysis")
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("只解释为什么失败，不要修复。", "analysis"),
+        ("请给出修复补丁，不要自动应用。", "edit_request"),
+        ("不要删除，给出字段修改建议。", "edit_request"),
+        ("不删除，给出字段修改建议。", "edit_request"),
+        ("请解释“删除角色”这个问题。", "explain_issue"),
+        ("为什么需要修改这个问题？", "explain_issue"),
+        ("只解释为什么需要修改这个问题。", "analysis"),
+        ("请修复这个验证问题。", "edit_request"),
+        ("直接应用，不要让我确认。", "clarify"),
+        ("请给出补丁，无需确认。", "clarify"),
+        ("Please repair this issue, do not apply automatically.", "edit_request"),
+    ],
+)
+def test_request_effect_routing_regressions(message: str, expected: str) -> None:
+    rule = resolve_rule_route(
+        make_chat_request(
+            message=message,
+            hint={"entrypoint": "issue_action"},
+            focus={"object_ids": ["object:person_1"],
+                   "validation_issue_ids": ["validator:issue-1"]},
+        ),
+        allow_general_mutation_update=True,
+        allow_general_mutation_delete=True,
+    )
+    assert rule is not None
+    assert rule.primary_intent == expected

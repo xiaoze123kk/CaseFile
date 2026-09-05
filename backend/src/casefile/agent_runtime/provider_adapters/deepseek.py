@@ -161,6 +161,8 @@ from casefile.agent_runtime.scene_compiler import (
 )
 from casefile.agent_runtime.scene_compiler_prompt import render_scene_fill_prompt
 from casefile.agent_runtime.story_planner import (
+    COMPILER_JSON_MAX_OUTPUT_TOKENS,
+    CompilerProviderOutputError,
     StoryPlannerPatchProviderResult,
     StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
@@ -197,9 +199,7 @@ class DeepSeekAgentsProvider:
         )
         return SceneFillBatchResult(proposal, usage, raw_output)
 
-    def propose_skeleton(
-        self, request: SkeletonProposalRequest
-    ) -> SkeletonProposalResult:
+    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
         instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)
@@ -324,6 +324,7 @@ class DeepSeekAgentsProvider:
                     {"role": "user", "content": input_text},
                 ],
                 response_format={"type": "json_object"},
+                max_tokens=COMPILER_JSON_MAX_OUTPUT_TOKENS,
                 temperature=0,
                 extra_body={"thinking": {"type": "disabled"}},
             )
@@ -334,11 +335,6 @@ class DeepSeekAgentsProvider:
         raw_output = response.choices[0].message.content
         if not raw_output:
             raise ProviderProtocolError("DeepSeek Story Planner returned no content")
-        try:
-            parsed = json.loads(raw_output)
-        except json.JSONDecodeError:
-            parsed = {}
-        candidate = parsed if isinstance(parsed, dict) else {}
         response_usage = response.usage
         usage = {
             "requests": 1,
@@ -359,6 +355,23 @@ class DeepSeekAgentsProvider:
                 "usage": usage,
             },
         )
+        finish_reason = getattr(response.choices[0], "finish_reason", "stop")
+        if finish_reason != "stop":
+            raise CompilerProviderOutputError(
+                "compiler_model_output_truncated"
+                if finish_reason == "length"
+                else "compiler_model_output_incomplete",
+                raw_output,
+                usage,
+                str(finish_reason),
+            )
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError:
+            raise CompilerProviderOutputError(
+                "compiler_model_output_invalid_json", raw_output, usage, str(finish_reason)
+            ) from None
+        candidate = parsed if isinstance(parsed, dict) else {}
         return candidate, usage, raw_output
 
     def plan_general_mutation(
@@ -579,6 +592,8 @@ class DeepSeekAgentsProvider:
             "casefile-chat-v18",
             "casefile-chat-v19",
             "casefile-chat-v20",
+            "casefile-chat-v21",
+            "casefile-chat-v22",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -698,6 +713,8 @@ class DeepSeekAgentsProvider:
                     "casefile-chat-v18",
                     "casefile-chat-v19",
                     "casefile-chat-v20",
+                    "casefile-chat-v21",
+                    "casefile-chat-v22",
                 }:
                     raise
                 request.emit(

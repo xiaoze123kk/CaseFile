@@ -1,4 +1,8 @@
 import type {
+  TaskRun,
+  Brief,
+  ProjectView,
+  BriefView as ContractBriefView,
   CaseFile,
   CoreMetadata,
   NarrativeIR,
@@ -53,7 +57,7 @@ export interface ApiErrorBody {
 export interface CompileArtifactContentView {
   artifact_id: number;
   compile_run_id: number;
-  artifact_kind: "input_manifest" | "narrative_ir";
+  artifact_kind: string;
   artifact_key: string;
   schema_id: string;
   content_hash: string;
@@ -76,51 +80,27 @@ export class ApiError extends Error {
 }
 
 export type ProviderName = "openai" | "deepseek";
-export type TaskType =
+export type TaskType = TaskRun["task_type"];
+/** The latest-task query accepts a subset of persisted task types. */
+export type LatestTaskType = Extract<
+  TaskType,
   | "brief_polish"
   | "brief_anchor_extract"
   | "brief_intake_questions"
   | "brief_intake_synthesize"
   | "brief_strategy_options"
   | "brief_to_draft"
-  | "casefile_chat";
-export type ResolutionMode =
-  | "author_anchored"
-  | "agent_proposed"
-  | "open";
-export type ConclusionMode =
-  | "unique"
-  | "finite_multiple"
-  | "optimal"
-  | "probabilistic"
-  | "open_interpretation"
-  | "multiple_endings"
-  | "undetermined";
-export type ConstraintStrength = "hard" | "soft";
+  | "casefile_chat"
+>;
+export type ResolutionMode = Brief["resolution_mode"];
+export type ConclusionMode = Brief["conclusion_mode"];
+export type ConstraintStrength = Brief["creative_constraints"][number]["strength"];
 export type SourceKind =
   | "human_original"
   | "agent_polish_proposal"
   | "human_revision";
 
-export interface ProjectView {
-  id: number;
-  title: string;
-  description?: string | null;
-  profile: Record<string, unknown>;
-  status: string;
-  archived_at: string | null;
-  created_at: string;
-  updated_at: string;
-  casefile_id: number;
-  current_draft_id: number;
-  draft: {
-    id: number;
-    title: string;
-    revision: number;
-    schema_version: string;
-    status: string;
-  };
-}
+export type { ProjectView, BriefVersionView } from "@casefile/contracts";
 
 export interface ProviderSettingView {
   provider: ProviderName;
@@ -134,30 +114,13 @@ export interface ProviderSettingView {
   default_budget: Record<string, unknown>;
 }
 
-export interface BriefView {
-  brief_id: number;
-  public_id: string;
-  draft_revision: number;
+/** Editable Brief state allows an empty source selection before submission. */
+export type BriefContent = {
+  [K in keyof Brief]: K extends "source_record_ids" ? number[] : Brief[K];
+};
+export type BriefView = Omit<ContractBriefView, "content"> & {
   content: BriefContent | Record<string, never>;
-  current_version_id: number | null;
-  current_version_no?: number | null;
-}
-
-export interface BriefContent {
-  source_record_ids: number[];
-  creative_intent: string;
-  reasoning_proposition: string;
-  resolution_mode: ResolutionMode;
-  conclusion_mode: ConclusionMode;
-  author_answer: string | null;
-  author_anchors: BriefAnchor[];
-  boundary_text: string | null;
-  creative_constraints: CreativeConstraint[];
-  core_selling_points?: string[];
-  content_outline?: string[];
-  scope_estimate?: string | null;
-  risk_notes?: string[];
-}
+};
 
 export type BriefIntakeStage =
   | "idea"
@@ -287,16 +250,8 @@ export interface BriefIntakeAdoptionView {
   brief: BriefView;
 }
 
-export interface BriefAnchor {
-  anchor_id: string;
-  statement: string;
-}
-
-export interface CreativeConstraint {
-  constraint_id: string;
-  statement: string;
-  strength: ConstraintStrength;
-}
+export type BriefAnchor = Brief["author_anchors"][number];
+export type CreativeConstraint = Brief["creative_constraints"][number];
 
 export interface SourceRecordView {
   source_record_id: number;
@@ -353,49 +308,12 @@ export interface BriefIntakeSynthesizeResult {
   stale: boolean;
 }
 
-export interface BriefVersionView {
-  brief_version_id: number;
-  version_no: number;
-  content: BriefContent;
-}
-
-export interface TaskFailureIssue {
-  code: string;
-  path: string;
-  message: string;
-}
-
-export interface TaskFailure {
-  code: string;
-  message: string;
-  retryable: boolean;
-  issues: TaskFailureIssue[];
-}
-
-export interface AgentDiagnosticIssue {
-  component_id: string;
-  failure_layer: string;
-  schema_id: string | null;
-  code: string;
-  path: string;
-  message: string;
-}
-
-export interface AgentComponentStepView {
-  step_run_id: number;
-  attempt_no: number;
-  component_id: string;
-  parent_component_id: string | null;
-  execution_no: number;
-  status: "pending" | "running" | "succeeded" | "failed" | "reused" | "skipped";
-  schema_id: string;
-  input_hash: string;
-  output_hash: string | null;
-  failure_layer: string | null;
-  issues: AgentDiagnosticIssue[];
-  recoverable: boolean;
-  resumed_from_step_run_id: number | null;
-}
+export type {
+  TaskFailureIssue,
+  TaskFailure,
+  AgentDiagnosticIssue,
+  AgentComponentStepView,
+} from "@casefile/contracts";
 
 export interface GenerationCandidateSummary {
   candidate_strategy: CandidateStrategy;
@@ -408,55 +326,8 @@ export interface GenerationCandidateSummary {
   constraint_statements: string[];
 }
 
-export type CandidateStrategy =
-  | "balanced"
-  | "structure_first"
-  | "atmosphere_first"
-  | "reasoning_first";
-
-export interface TaskView {
-  task_run_id: number;
-  project_id: number;
-  task_type: TaskType;
-  prompt_version?: string;
-  status:
-    | "queued"
-    | "running"
-    | "cancelling"
-    | "succeeded"
-    | "failed"
-    | "cancelled";
-  stage: string;
-  provider: ProviderName;
-  model_id: string;
-  input_draft_revision: number;
-  input_brief_revision: number | null;
-  input_source_record_id: number | null;
-  input_brief_intake_id: number | null;
-  input_brief_intake_revision: number | null;
-  base_brief_intake_candidate_id: number | null;
-  agent_thread_id: number | null;
-  input_message_id: number | null;
-  output_message_id: number | null;
-  input_hash: string;
-  candidate_strategy: CandidateStrategy | null;
-  attempt_count: number;
-  usage: Record<string, unknown>;
-  result_snapshot_id: number | null;
-  result:
-    | BriefPolishResult
-    | BriefAnchorExtractResult
-    | BriefIntakeQuestionsResult
-    | BriefIntakeSynthesizeResult
-    | BriefStrategyOptionsResult
-    | GenerationCandidateSummary
-    | null;
-  error_code: string | null;
-  failure: TaskFailure | null;
-  component_steps: AgentComponentStepView[];
-  created_at: string | null;
-  updated_at: string | null;
-}
+export type CandidateStrategy = NonNullable<TaskRun["candidate_strategy"]>;
+export type TaskView = TaskRun;
 
 export interface DraftCandidateView extends GenerationCandidateSummary {
   task_run_id: number;
@@ -797,26 +668,7 @@ export async function streamTaskEvents(
   if (!response.ok || !response.body) {
     throw new Error(`SSE 连接失败（HTTP ${response.status}）`);
   }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    buffer += decoder.decode(result.value, { stream: true }).replaceAll("\r\n", "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const frame = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const data = frame
-        .split("\n")
-        .filter((line) => line.startsWith("data: "))
-        .map((line) => line.slice(6))
-        .join("\n");
-      if (data) onEvent(JSON.parse(data) as TaskEventView);
-      boundary = buffer.indexOf("\n\n");
-    }
-  }
+  await readSseData(response.body, (value) => onEvent(value as TaskEventView));
 }
 
 const PUBLIC_AGENT_EVENT_NAMES = new Set<PublicAgentEvent["event"]>([
@@ -891,41 +743,49 @@ async function streamPublicEvents<T extends { sequence: number }>(
   if (!response.ok || !response.body) {
     throw new Error(`Agent 连接失败（HTTP ${response.status}）`);
   }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
   let cursor = lastEventId;
+  await readSseData(response.body, (value) => {
+    const event = parse(value);
+    if (event === null) throw new Error("收到无法识别的 Agent 事件，请重新连接。");
+    if (event.sequence > cursor) {
+      cursor = Math.max(cursor, event.sequence);
+      onEvent(event);
+    }
+  });
+  return cursor;
+}
+
+async function readSseData(
+  body: ReadableStream<Uint8Array>,
+  onData: (value: unknown) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
   let buffer = "";
   try {
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    buffer += decoder.decode(result.value, { stream: true }).replaceAll("\r\n", "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const frame = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const data = frame
-        .split("\n")
-        .filter((line) => line.startsWith("data: "))
-        .map((line) => line.slice(6))
-        .join("\n");
-      if (data) {
-        const event = parse(JSON.parse(data) as unknown);
-        if (event === null) throw new Error("收到无法识别的 Agent 事件，请重新连接。");
-        if (event.sequence > cursor) {
-          cursor = Math.max(cursor, event.sequence);
-          onEvent(event);
-        }
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, { stream: true }).replaceAll("\r\n", "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const data = frame
+          .split("\n")
+          .filter((line) => line.startsWith("data: "))
+          .map((line) => line.slice(6))
+          .join("\n");
+        if (data) onData(JSON.parse(data) as unknown);
+        boundary = buffer.indexOf("\n\n");
       }
-      boundary = buffer.indexOf("\n\n");
     }
-  }
-  return cursor;
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
+
 
 export async function listProjects(actorId: number) {
   return apiRequest<ProjectView[]>("/projects", { actorId });

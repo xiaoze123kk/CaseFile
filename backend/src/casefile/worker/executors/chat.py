@@ -285,6 +285,7 @@ def _resolve_chat_route(
             profile=rule.profile,
             rewrite_strategy=_rewrite_strategy_for_rule(rule),
             route_source=rule.route_source,
+            suggestion_policy=rule.suggestion_policy,
         )
         return replace(
             request,
@@ -309,7 +310,7 @@ def _resolve_chat_route(
             rewrite_strategy=rewrite.rewrite_decision,
         )
         selected_strategy = route_specific_rewrite_strategy(understanding)
-        if selected_strategy in {"MULTI_QUERY", "DECOMPOSE"}:
+        if route.route_source == "llm" and selected_strategy in {"MULTI_QUERY", "DECOMPOSE"}:
             route = replace(route, rewrite_strategy=selected_strategy)
         rewrite = _post_route_rewrite(
             request,
@@ -465,17 +466,17 @@ class _ChatComponent:
         self.config = config
         self._events = events
 
-    def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        self._events.emit(task_run_id, event_type, stage, payload)
+    def _emit(self, task: TaskRun, event_type: str, stage: str, payload: dict[str, Any]) -> None:
+        self._events.emit(task, event_type, stage, payload)
 
     def _emit_after_completion(
         self,
-        task_run_id: int,
+        task: TaskRun,
         event_type: str,
         stage: str,
         payload: dict[str, Any],
     ) -> None:
-        self._events.emit_after_completion(task_run_id, event_type, stage, payload)
+        self._events.emit_after_completion(task, event_type, stage, payload)
 
 
 class ChatRequestRuntime(_ChatComponent):
@@ -588,7 +589,7 @@ class ChatRequestRuntime(_ChatComponent):
             model_id=required_provider_binding(task)[1],
             api_key=api_key,
             max_turns=int(task.budget_jsonb.get("max_turns", 12)),
-            emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
+            emit=lambda event_type, stage, payload: self._emit(task, event_type, stage, payload),
             validation_issues=validation_issues,
             validation=validation,
             focus=focus,
@@ -652,9 +653,14 @@ class ChatMutationRuntime(_ChatComponent):
         )
         if mode == "off" or intent != "edit_request":
             return None, {}
+        if (
+            request.route is not None
+            and request.route.execution_profile.get("primary_intent") == "clarify"
+        ):
+            return None, {}
 
         def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
-            self._emit(task.id, event_type, stage, payload)
+            self._emit(task, event_type, stage, payload)
 
         emit(
             "agent.step.started",
@@ -1006,7 +1012,7 @@ class ChatMutationRuntime(_ChatComponent):
                 api_key=api_key,
                 mode=self.config.closure_repair_mode,
                 emit=lambda event_type, stage, payload: self._emit(
-                    task.id, event_type, stage, payload
+                    task, event_type, stage, payload
                 ),
             )
         elif "bound" in general_mutation_envelope:
@@ -1017,7 +1023,7 @@ class ChatMutationRuntime(_ChatComponent):
                 api_key=api_key,
                 mode=self.config.closure_repair_mode,
                 emit=lambda event_type, stage, payload: self._emit(
-                    task.id, event_type, stage, payload
+                    task, event_type, stage, payload
                 ),
             )
             if (
@@ -1072,7 +1078,7 @@ class ChatMutationRuntime(_ChatComponent):
             provider=provider,
             api_key=api_key,
             mode=self.config.closure_repair_mode,
-            emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
+            emit=lambda event_type, stage, payload: self._emit(task, event_type, stage, payload),
         )
         if (
             self.config.closure_repair_mode == "suggest"
@@ -1154,7 +1160,7 @@ class ChatContextRuntime(_ChatComponent):
 
     def _emit_chat_routing_events(
         self,
-        task_run_id: int,
+        task: TaskRun,
         request: CaseFileChatRequest,
     ) -> None:
         """Emit the R1 deterministic routing audit trail before the model call."""
@@ -1163,19 +1169,19 @@ class ChatContextRuntime(_ChatComponent):
         if route is None:
             return
         self._emit(
-            task_run_id,
+            task,
             "intent.understood",
             "routing",
             _chat_intent_event_payload(request),
         )
         self._emit(
-            task_run_id,
+            task,
             "route.decided",
             "routing",
             route_public_payload(route),
         )
         self._emit(
-            task_run_id,
+            task,
             "query.rewritten",
             "routing",
             _chat_rewrite_event_payload(request),
@@ -1302,7 +1308,7 @@ class ChatContextRuntime(_ChatComponent):
             )
         except ContextEngineError as error:
             self._emit(
-                task_run_id,
+                task,
                 "context.guardrail",
                 "context",
                 {
@@ -1317,7 +1323,7 @@ class ChatContextRuntime(_ChatComponent):
             if not isinstance(violation, dict):
                 continue
             self._emit(
-                task_run_id,
+                task,
                 "context.guardrail",
                 "context",
                 {
@@ -1329,7 +1335,7 @@ class ChatContextRuntime(_ChatComponent):
             )
         if memory_warning is not None:
             self._emit(
-                task_run_id,
+                task,
                 "context.guardrail",
                 "context",
                 {
@@ -1340,7 +1346,7 @@ class ChatContextRuntime(_ChatComponent):
             )
         if result.fallback is not None:
             self._emit(
-                task_run_id,
+                task,
                 "context.guardrail",
                 "context",
                 {
@@ -1349,7 +1355,7 @@ class ChatContextRuntime(_ChatComponent):
                     "detail": result.fallback.detail,
                 },
             )
-        self._emit(task_run_id, "context.built", "context", result.manifest.to_jsonable())
+        self._emit(task, "context.built", "context", result.manifest.to_jsonable())
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
@@ -1383,6 +1389,8 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v18",
             "casefile-chat-v19",
             "casefile-chat-v20",
+            "casefile-chat-v21",
+            "casefile-chat-v22",
         }:
             raise RuntimeError(
                 "Context policy "
@@ -1423,7 +1431,7 @@ class ChatContextRuntime(_ChatComponent):
             stage: str,
             payload: dict[str, Any],
         ) -> None:
-            self._emit_after_completion(task.id, event_type, stage, payload)
+            self._emit_after_completion(task, event_type, stage, payload)
 
         policy_version = task.input_jsonb.get("context_policy_version")
         thread_id = task.agent_thread_id
@@ -1946,10 +1954,10 @@ class ChatTaskExecutor:
 
     def _emit_chat_routing_events(
         self,
-        task_run_id: int,
+        task: TaskRun,
         request: CaseFileChatRequest,
     ) -> None:
-        self._context._emit_chat_routing_events(task_run_id, request)
+        self._context._emit_chat_routing_events(task, request)
 
     def _emit_chat_context_events(
         self,

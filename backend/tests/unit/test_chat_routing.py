@@ -164,7 +164,7 @@ def test_logic_audit_profile_allows_suggestions_and_grants_full_review_budget() 
     assert tightened.execution_profile["max_tool_calls"] == 4
 
 
-def test_low_confidence_logic_audit_falls_back_to_question() -> None:
+def test_low_confidence_logic_audit_requests_clarification() -> None:
     route = route_llm_task(
         ChatTaskUnderstanding(
             primary_intent="logic_audit",
@@ -176,7 +176,7 @@ def test_low_confidence_logic_audit_falls_back_to_question() -> None:
     )
 
     assert route.route_source == "fallback"
-    assert route.execution_profile["primary_intent"] == "question"
+    assert route.execution_profile["primary_intent"] == "clarify"
     assert route_suggestion_policy(route) == "deny"
     assert route_allows_suggestions(route) is False
 
@@ -232,3 +232,15 @@ def test_all_read_route_profiles_expose_the_v2_read_surface() -> None:
             assert toolset == expected_read_tools
         else:
             assert write_tool in toolset
+
+
+def test_ambiguous_high_confidence_edit_still_requires_clarification() -> None:
+    route = route_llm_task(
+        ChatTaskUnderstanding(primary_intent="edit_request", confidence=0.99, ambiguous=True),
+        budget={"max_tool_calls": 1}, rewrite_strategy="CONTEXTUALIZE",
+    )
+    assert route.execution_profile["primary_intent"] == "clarify"
+    assert route.execution_profile["max_tool_calls"] == 0
+    assert route.rewrite_strategy == "KEEP"
+    assert route_hash(route) == route.route_hash
+    assert "intent_ambiguous" in route.reason_codes

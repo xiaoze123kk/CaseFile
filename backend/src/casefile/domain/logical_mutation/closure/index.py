@@ -7,19 +7,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-_COLLECTION_TYPES = {
-    "resolution_specs": "resolution_spec",
-    "entities": "entity",
-    "relationships": "relationship",
-    "locations": "location",
-    "events": "event",
-    "information_units": "information_unit",
-    "claims": "claim",
-    "hypotheses": "hypothesis",
-    "reasoning_paths": "reasoning_path",
-    "constraints": "constraint",
-    "structure_locks": "structure_lock",
-}
+from casefile.contracts.object_types import COLLECTION_OBJECT_TYPES as _COLLECTION_TYPES
 
 _CLAIM_INCOMPATIBLE = {"unsupported", "refuted", "disputed", "unresolved"}
 

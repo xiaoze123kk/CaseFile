@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v7",
+  "previous_version": "general-mutation-planner-v6",
+  "change_summary": "为逐项修改注入具体、可核对且与实际改动一致的作者侧依据要求。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v7",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
+    },
+    "reasons": {
+      "file": "fragments/reasons.md",
+      "sha256": "503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": [
+        "planner",
+        "reasons"
+      ],
+      "input_contract_id": "general-mutation-planner-input-v1",
+      "output_schema_id": "general-mutation-plan-v2",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}

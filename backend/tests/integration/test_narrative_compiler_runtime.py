@@ -46,6 +46,7 @@ from casefile.domain.narrative_compiler import (
     narrative_ir_component_fingerprint,
     project_narrative_ir_json,
 )
+from casefile.worker.executors.compiler_artifacts import materialize_json_artifact_component
 from casefile.worker.failures import TaskCancellationRequested
 from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
@@ -657,7 +658,8 @@ def test_both_compiler_artifacts_are_reused_after_completion_crash(
     component_hash = canonical_json_sha256(fingerprint)
     narrative_json = project_narrative_ir_json(snapshot)
     narrative_hash = canonical_json_sha256(narrative_json)
-    compiler._materialize_json_artifact_component(
+    materialize_json_artifact_component(
+        compiler.session_factory, compiler.config.worker_id,
         task_run_id=task_run_id,
         attempt_id=attempt_id,
         run=detached_run,
@@ -743,7 +745,8 @@ def test_narrative_ir_write_is_rejected_after_cancellation(
         )
 
     with pytest.raises(TaskCancellationRequested):
-        compiler._materialize_json_artifact_component(
+        materialize_json_artifact_component(
+        compiler.session_factory, compiler.config.worker_id,
             task_run_id=task_run_id,
             attempt_id=attempt_id,
             run=detached_run,

@@ -14,6 +14,7 @@ from typing import Any
 
 import rfc8785
 
+from casefile.agent_runtime.chat_request_signals import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.models import (
     ChatTaskUnderstanding,
     RouteDecision,
@@ -115,6 +116,7 @@ EXECUTION_PROFILES: dict[str, dict[str, Any]] = {
             "search_casefile",
             "get_casefile_object",
             "get_related_objects",
+            "get_validation_issues",
             "validate_patch_proposal",
         ],
         "context_tools": [
@@ -227,6 +229,7 @@ def routing_policy(
     )
     reason_codes = tuple(task_understanding.reason_codes)
     route = RouteDecision(
+        router_version=INTENT_ROUTER_VERSION,
         route_source=route_source,
         candidate_routes=candidate_routes,
         routes=routes,
@@ -275,13 +278,28 @@ def route_llm_task(
     """Confidence Gate + policy for one LLM-understood free-text task."""
 
     confidence = float(task_understanding.confidence)
-    if confidence < tau_high:
+    needs_clarification = task_understanding.ambiguous or bool(task_understanding.missing_info)
+    if confidence < tau_high or needs_clarification:
         sensitive = task_understanding.primary_intent in SENSITIVE_INTENTS
-        reason = (
-            "confidence_gate_sensitive"
-            if sensitive
-            else "confidence_gate_below_threshold"
-        )
+        if task_understanding.missing_info:
+            reason = "intent_missing_information"
+        elif task_understanding.ambiguous:
+            reason = "intent_ambiguous"
+        else:
+            reason = "confidence_gate_sensitive" if sensitive else "confidence_gate_below_threshold"
+        if sensitive or needs_clarification:
+            return routing_policy(
+                replace(
+                    task_understanding,
+                    primary_intent="clarify",
+                    ambiguous=True,
+                    reason_codes=(*task_understanding.reason_codes, reason),
+                ),
+                budget=budget,
+                rewrite_strategy="KEEP",
+                route_source="fallback",
+                suggestion_policy="deny",
+            )
         return fallback_route(reason_codes=(reason,))
     return routing_policy(
         task_understanding,

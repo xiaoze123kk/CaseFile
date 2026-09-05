@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from casefile.application.errors import ApplicationError
 from casefile.contracts import validate_casefile
+from casefile.contracts.object_types import COLLECTION_TYPES as COLLECTION_TYPES
 from casefile.data_postgres.models import (
     AuditEvent,
     Brief,
@@ -40,20 +41,6 @@ from casefile.data_postgres.models import (
     StructureLock,
 )
 from casefile.data_postgres.repositories import OwnedDraft
-
-COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
-    ("resolution_specs", "resolution_spec"),
-    ("entities", "entity"),
-    ("relationships", "relationship"),
-    ("locations", "location"),
-    ("events", "event"),
-    ("information_units", "information_unit"),
-    ("claims", "claim"),
-    ("hypotheses", "hypothesis"),
-    ("reasoning_paths", "reasoning_path"),
-    ("constraints", "constraint"),
-    ("structure_locks", "structure_lock"),
-)
 
 KNOWLEDGE_STATE_COUNT_ATTRIBUTE = "_casefile_v1_knowledge_state_count"
 EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE = "_casefile_v1_evidence_assessments_present"

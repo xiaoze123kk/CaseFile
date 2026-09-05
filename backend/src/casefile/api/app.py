@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlsplit
 
+from casefile_contracts import ProjectView
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -283,7 +284,12 @@ def _health_router() -> APIRouter:
 def _api_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["casefile"])
 
-    @router.post("/projects", status_code=201)
+    @router.post(
+        "/projects",
+        status_code=201,
+        response_model=None,
+        responses={201: {"model": ProjectView}},
+    )
     def create_project(
         payload: ProjectCreateRequest,
         actor: ActorDependency,
@@ -291,17 +297,29 @@ def _api_router() -> APIRouter:
     ) -> dict[str, Any]:
         return CaseFileService(session).create_project(actor, payload.command())
 
-    @router.get("/projects")
+    @router.get(
+        "/projects",
+        response_model=None,
+        responses={200: {"model": list[ProjectView]}},
+    )
     def list_projects(actor: ActorDependency, session: SessionDependency) -> list[dict[str, Any]]:
         return CaseFileService(session).list_projects(actor)
 
-    @router.get("/projects/{project_id}")
+    @router.get(
+        "/projects/{project_id}",
+        response_model=None,
+        responses={200: {"model": ProjectView}},
+    )
     def get_project(
         project_id: int, actor: ActorDependency, session: SessionDependency
     ) -> dict[str, Any]:
         return CaseFileService(session).get_project(actor, project_id)
 
-    @router.patch("/projects/{project_id}")
+    @router.patch(
+        "/projects/{project_id}",
+        response_model=None,
+        responses={200: {"model": ProjectView}},
+    )
     def update_project(
         project_id: int,
         payload: ProjectUpdateRequest,
@@ -311,13 +329,21 @@ def _api_router() -> APIRouter:
         changes = payload.model_dump(exclude_unset=True)
         return CaseFileService(session).update_project(actor, project_id, changes)
 
-    @router.post("/projects/{project_id}/archive")
+    @router.post(
+        "/projects/{project_id}/archive",
+        response_model=None,
+        responses={200: {"model": ProjectView}},
+    )
     def archive_project(
         project_id: int, actor: ActorDependency, session: SessionDependency
     ) -> dict[str, Any]:
         return CaseFileService(session).archive_project(actor, project_id)
 
-    @router.post("/projects/{project_id}/unarchive")
+    @router.post(
+        "/projects/{project_id}/unarchive",
+        response_model=None,
+        responses={200: {"model": ProjectView}},
+    )
     def unarchive_project(
         project_id: int, actor: ActorDependency, session: SessionDependency
     ) -> dict[str, Any]:

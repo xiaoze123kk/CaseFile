@@ -70,13 +70,14 @@ def test_fixtures_are_legal_and_cover_dangerous_confusions() -> None:
                 "validate_request",
                 "analysis",
                 "question",
+                "clarify",
             }
             assert fixture.expected_primary_intent == fixture.dangerous_pair[0]
     dangerous_pairs = {fixture.dangerous_pair for fixture in fixtures}
     assert ("unsupported_action", "edit_request") in dangerous_pairs
     assert ("validate_request", "analysis") in dangerous_pairs
     assert ("validate_request", "logic_audit") in dangerous_pairs
-    assert ("question", "logic_audit") in dangerous_pairs
+    assert ("clarify", "logic_audit") in dangerous_pairs
 
 
 def test_eval_requests_follow_the_current_context_prompt_package() -> None:

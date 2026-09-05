@@ -118,7 +118,9 @@ def _providers(
     )
 
 
-def _prepare(database: tuple[Engine, int, str]) -> tuple[Any, int, dict[str, Any], dict[str, Any]]:
+def _prepare(
+    database: tuple[Engine, int, str], *, planning_only: bool = False
+) -> tuple[Any, int, dict[str, Any], dict[str, Any]]:
     engine, actor, key = database
     factory, project, draft_id, _ = _prepare_compilable_project(engine, actor, key)
     profile = json.loads(
@@ -150,7 +152,8 @@ def _prepare(database: tuple[Engine, int, str]) -> tuple[Any, int, dict[str, Any
         "expected_draft_revision": draft["revision"],
         "compiler_profile_version_id": saved["current_version_id"],
         "planner_provider": "deepseek",
-        "prose_renderer_shadow": True,
+        "prose_renderer_shadow": not planning_only,
+        "scene_compiler_shadow": planning_only,
     }
     with TestClient(create_app(engine.url.render_as_string(hide_password=False))) as client:
         response = client.post(

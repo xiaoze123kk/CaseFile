@@ -31,6 +31,7 @@ from casefile.application.casefile_v1 import (
 )
 from casefile.application.reverse_parse_service import ReverseParseService
 from casefile.application.task_events import append_task_event
+from casefile.application.task_lease import is_current_task_attempt
 from casefile.application.workflow_views import source_view
 from casefile.data_postgres.models import (
     Brief,
@@ -58,8 +59,8 @@ class CompletionExecutor:
         self.worker_id = worker_id
         self._event_emitter = emit
 
-    def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        self._event_emitter(task_run_id, event_type, stage, payload)
+    def _emit(self, task: TaskRun, event_type: str, stage: str, payload: dict[str, Any]) -> None:
+        self._event_emitter(task, event_type, stage, payload)
 
     def _complete_polish(
         self,
@@ -231,15 +232,13 @@ class CompletionExecutor:
         if expected_task_type == "novel_compile" and task.input_jsonb.get("prose_renderer_shadow"):
             from casefile.worker.executors.prose_store import ProseLeaseLost
 
-            if (
-                attempt.task_run_id != task.id
-                or attempt.status != "running"
-                or attempt.attempt_no != task.attempt_count
-                or task.lease_expires_at is None
-                or task.lease_expires_at <= datetime.now(UTC)
-            ):
+            if not is_current_task_attempt(task, attempt):
                 raise ProseLeaseLost("compiler_prose_completion_lease_lost")
-        if task.leased_by != self.worker_id or task.status != "running":
+        if (
+            task.leased_by != self.worker_id
+            or task.status != "running"
+            or not is_current_task_attempt(task, attempt)
+        ):
             raise RuntimeError("TaskRun lease was lost before the final write")
         return task, attempt
 
@@ -287,8 +286,13 @@ class CompletionExecutor:
         result: GenerationResult,
         validation_errors: list[dict[str, Any]],
     ) -> None:
+        with self.session_factory() as session, session.begin():
+            task, _attempt = self._locked_completion_rows(
+                session, task_run_id, attempt_id, expected_task_type="brief_to_draft"
+            )
+            session.expunge(task)
         self._emit(
-            task_run_id,
+            task,
             "validation.started",
             "validating",
             {"layers": ["schema", "id", "refs", "db_mapping", "revision"]},

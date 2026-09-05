@@ -1,5 +1,6 @@
 import type { CaseFile, CoreMetadata } from "@casefile/contracts";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -20,6 +21,8 @@ import {
 } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({
+  epoch: 0,
+  testRefresh: false,
   activateDraft: vi.fn(),
   adoptCandidate: vi.fn(),
   candidateStatus: vi.fn(),
@@ -49,6 +52,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
 vi.mock("@/features/case-session/case-session-provider", () => ({
   useCaseSession: () => ({
     activeProjectId: null,
+    getSessionEpoch: () => mocks.epoch,
     activeCandidate: null,
     adoptCandidate: mocks.adoptCandidate,
     candidateStatus: mocks.candidateStatus,
@@ -64,6 +68,14 @@ vi.mock("@/features/case-session/case-session-api", () => ({
   previewCaseDraftEventTime: mocks.previewCaseDraftEventTime,
   putExposurePlan: mocks.putExposurePlan,
 }));
+
+vi.mock("@/features/analyst-workbench/workbench-agent-live-panel", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/analyst-workbench/workbench-agent-live-panel")>();
+  return { ...actual, AgentLivePanel: (props: Parameters<typeof actual.AgentLivePanel>[0]) =>
+    mocks.testRefresh
+      ? <button onClick={() => void props.onDraftChanged()}>测试 Agent 工作稿刷新</button>
+      : <actual.AgentLivePanel {...props} /> };
+});
 
 function metadata(description: string): CoreMetadata {
   return {
@@ -546,6 +558,8 @@ function makeContext(
 }
 
 beforeEach(() => {
+  mocks.epoch = 0;
+  mocks.testRefresh = false;
   mocks.activateDraft.mockReset();
   mocks.adoptCandidate.mockReset().mockResolvedValue(false);
   mocks.candidateStatus.mockReset();
@@ -2055,5 +2069,24 @@ describe("production analyst workbench", () => {
     expect(
       screen.getByRole("button", { name: "保存修改" }),
     ).toBeEnabled();
+  });
+});
+
+
+describe("workbench refresh ownership", () => {
+  it.each(["current", "switched", "unmounted"])("refresh belongs to the initiating session: %s", async (ownership) => {
+    mocks.testRefresh = true;
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const view = render(<AnalystWorkbench requestedProjectId={42} />);
+    fireEvent.click(await screen.findByRole("button", { name: /与 Agent 讨论/ }));
+    const button = await screen.findByRole("button", { name: "测试 Agent 工作稿刷新" });
+    let finish!: (draft: DraftView) => void;
+    mocks.fetchCaseDraft.mockReturnValueOnce(new Promise<DraftView>((resolve) => { finish = resolve; }));
+    mocks.loadProject.mockClear();
+    fireEvent.click(button);
+    if (ownership === "switched") mocks.epoch += 1;
+    if (ownership === "unmounted") view.unmount();
+    await act(async () => { finish(makeDraft(8)); });
+    expect(mocks.loadProject).toHaveBeenCalledTimes(ownership === "current" ? 1 : 0);
   });
 });

@@ -58,7 +58,31 @@
 .header :is(button, a, summary):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
 
-.identity { display: flex; min-width: 0; align-items: baseline; gap: 12px; flex: 1; }
-.identity > span { color: var(--ink-faint); font-size: 11px; white-space: nowrap; }
-.identity > strong { overflow: hidden; color: var(--ink); font: 600 17px/1.4 "Noto Serif SC", "STSong", SimSun, serif; text-overflow: ellipsis; white-space: nowrap; }
-.identity > small { color: var(--ink-faint); font: 10px Consolas, monospace; white-space: nowrap; }
+.header .identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  grid-template-columns: minmax(0, max-content) max-content;
+  grid-template-rows: 25px;
+  align-items: center;
+  column-gap: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--rule);
+}
+.identity > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font: 600 19px/25px "Noto Serif SC", "STSong", SimSun, serif;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.identity > small {
+  padding: 1px 0 1px 10px;
+  border-left: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font: 11px/14px Consolas, monospace;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}

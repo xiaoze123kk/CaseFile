@@ -254,24 +254,24 @@ def build_eval_fixtures() -> tuple[ChatRouterFixture, ...]:
         free(
             "free-low-confidence-edit",
             "这段描述低置信度地改一下。",
-            "question",
-            "chat",
-            dangerous_pair=("question", "edit_request"),
+            "clarify",
+            "clarify",
+            dangerous_pair=("clarify", "edit_request"),
         ),
         # 23: mid-confidence sensitive audit also falls back before any patch.
         free(
             "free-low-confidence-audit",
             "随便查查全案逻辑漏洞，能修的就改一下。",
-            "question",
-            "chat",
-            dangerous_pair=("question", "logic_audit"),
+            "clarify",
+            "clarify",
+            dangerous_pair=("clarify", "logic_audit"),
         ),
         # 24: mid-confidence non-sensitive clarify also falls back safely.
         free(
             "free-clarify-fallback",
             "我拿不准下一步怎么做。",
-            "question",
-            "chat",
+            "clarify",
+            "clarify",
         ),
         # 25–27: analysis rewrite strategies.
         free("free-compare-multi", "对比一下候选解释。", "analysis", "analysis"),
@@ -412,18 +412,19 @@ def evaluate_chat_router(
                 intent_hits += 1
                 route_hits += 1
         else:
-            # A fallback route always executes the safe question.chat profile;
-            # when the fixture expects that safe question outcome, count it as
-            # intent/route hit instead of penalizing the raw LLM label.
-            safe_question_fallback = (
-                fixture.expected_primary_intent == "question"
+            # Score the expected safe outcome of a gated route, while retaining
+            # the model's original semantic label for ordinary intent scoring.
+            safe_expected_fallback = (
+                fixture.expected_primary_intent in {"question", "clarify"}
                 and route is not None
                 and route.route_source == "fallback"
+                and route.execution_profile.get("primary_intent")
+                == fixture.expected_primary_intent
             )
-            if actual_intent == fixture.expected_primary_intent or safe_question_fallback:
+            if actual_intent == fixture.expected_primary_intent or safe_expected_fallback:
                 intent_hits += 1
             if (
-                actual_intent == fixture.expected_primary_intent or safe_question_fallback
+                actual_intent == fixture.expected_primary_intent or safe_expected_fallback
             ) and actual_component == fixture.expected_prompt_component:
                 route_hits += 1
         if fixture.dangerous_pair is not None:

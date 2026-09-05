@@ -305,6 +305,18 @@ TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
                 "retrieve_thread_evidence",
             }
         ),
+        "chat-edit-v4": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "get_validation_issues",
+                "validate_patch_proposal",
+                "retrieve_thread_evidence",
+                "request_thread_compaction",
+            }
+        ),
         "closure-repair-no-tools-v1": frozenset(),
     }
 )
@@ -347,6 +359,10 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ),
         (
             "general-mutation-planner-agent-v6",
+            "general-mutation-planner-no-tools-v1",
+        ),
+        (
+            "general-mutation-planner-agent-v7",
             "general-mutation-planner-no-tools-v1",
         ),
     }

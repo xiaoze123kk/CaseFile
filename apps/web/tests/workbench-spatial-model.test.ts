@@ -425,6 +425,10 @@ describe("workbench spatial model", () => {
 
     expect(second).toBe(first);
     expect(changed).not.toBe(first);
+    const updatedTime = { ...events[0], start: "2026-09-05T21:00", end: "2026-09-05T21:10" };
+    const timeChanged = buildWorkbenchSpatialModel(file, [updatedTime]);
+    expect(timeChanged).not.toBe(first);
+    expect(timeChanged.investigation?.events[0].end).toBe("2026-09-05T21:10");
   });
 
   it("binds schematic locations to case scenes and exposes floors and regions", () => {

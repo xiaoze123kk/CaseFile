@@ -36,10 +36,11 @@ def _persist_usage_probe(
     task_run_id: int,
     usage: dict[str, int],
 ) -> None:
+    snapshot = worker._load_task_snapshot(task_run_id)
     component_id = "usage_probe"
     schema_id = "usage-probe-v1"
     worker._emit(
-        task_run_id,
+        snapshot,
         "agent.step.started",
         "planning",
         {
@@ -50,7 +51,7 @@ def _persist_usage_probe(
         },
     )
     worker._emit(
-        task_run_id,
+        snapshot,
         "agent.model_call.started",
         "planning",
         {
@@ -62,7 +63,7 @@ def _persist_usage_probe(
         },
     )
     worker._emit(
-        task_run_id,
+        snapshot,
         "agent.model_call.completed",
         "planning",
         {
@@ -76,7 +77,7 @@ def _persist_usage_probe(
         },
     )
     worker._emit(
-        task_run_id,
+        snapshot,
         "agent.step.completed",
         "planning",
         {
@@ -373,7 +374,7 @@ def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
     with (
         patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
         patch(
-            "casefile.application.workflow.content.prompt_version_for_task",
+            "casefile.application.workflow.tasks.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ),
         patch.object(

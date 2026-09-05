@@ -29,6 +29,7 @@ import {
   type WorkbenchContextView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
+import { useSessionUiOperation } from "@/features/case-session/use-session-ui-operation";
 
 import {
   defaultWorkbenchSeed,
@@ -277,6 +278,7 @@ export function AnalystWorkbench({
     candidateStatus,
     loadProject,
   } = useCaseSession();
+  const captureOperation = useSessionUiOperation();
   const fixtureMode = requestedProjectId === undefined;
   const projectId = fixtureMode ? null : requestedProjectId;
   const previewTaskRunId = fixtureMode ? null : requestedPreviewTaskRunId;
@@ -616,6 +618,7 @@ export function AnalystWorkbench({
     eventId: string,
     proposedTime: TimelineTemporalPosition,
   ): Promise<TimelineTimePreviewView> {
+    const isCurrent = captureOperation();
     try {
       return await previewCaseDraftEventTime(
         loadedProjectId,
@@ -625,11 +628,13 @@ export function AnalystWorkbench({
         proposedTime,
       );
     } catch (caught) {
+      if (!isCurrent()) throw caught;
       if (
         caught instanceof ApiError &&
         (caught.status === 409 || caught.body.code === "draft_revision_conflict")
       ) {
         const latest = await fetchCaseDraft(loadedProjectId);
+        if (!isCurrent()) throw caught;
         setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
         refreshContext();
         throw new Error("当前工作稿已更新，请基于最新时间轴重新预览。");
@@ -646,7 +651,10 @@ export function AnalystWorkbench({
   }
 
   async function handleCurrentDraftChanged() {
-    await handleDraftActivated(await fetchCaseDraft(loadedProjectId));
+    const isCurrent = captureOperation();
+    const latest = await fetchCaseDraft(loadedProjectId);
+    if (!isCurrent()) return;
+    await handleDraftActivated(latest);
   }
 
   return (
@@ -1585,7 +1593,9 @@ function AnalystWorkbenchSurface({
   ) : null;
 
   if (novelOpen) {
-    return <NovelWorkspace key={canvasLayoutScope} scopeKey={canvasLayoutScope} seed={seed} onBack={() => setNovelOpen(false)} />;
+    return <NovelWorkspace key={canvasLayoutScope} scopeKey={canvasLayoutScope} seed={seed} onBack={() => setNovelOpen(false)}
+      compileScope={realData && projectId !== null && currentDraft && !previewCandidate
+        ? { projectId, draftId: currentDraft.draft_id, revision: currentDraft.revision } : undefined} />;
   }
 
   return (
@@ -1641,7 +1651,7 @@ function AnalystWorkbenchSurface({
           </div>
         ) : null}
         {projectId !== null ? <div className={headerStyles.identity}>
-          <span>当前卷宗</span><strong title={seed.caseMeta.title}>{seed.caseMeta.title}</strong>
+          <strong title={seed.caseMeta.title}>{seed.caseMeta.title}</strong>
           <small>{seed.caseMeta.revision}</small>
         </div> : null}
         <button className={headerStyles.search} onClick={() => setPaletteOpen(true)} ref={commandTriggerRef} type="button">

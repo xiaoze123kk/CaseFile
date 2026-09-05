@@ -281,6 +281,13 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 
 新增或删除表必须同步更新 ORM、迁移、两份数据库说明、元数据测试和本文。
 
+`agent_runtime/prompts/casefile_chat/v21/`：继承 v20 的冻结能力与公共语言门禁，新增 answer-layout 片段供全部 Finalizer 使用短段落和分点；Goal 新任务使用 v21，历史任务保留原版本。`chat_intent.py` 将已聚焦问题且明确要求修改建议的 issue_action 在更新能力开启时路由至现有编辑/General Mutation 链，保留只解释与审批门禁。
+
+`backend/src/casefile/agent_runtime/chat_request_signals.py`：无副作用的只读约束、肯定动作和复合请求信号，屏蔽引用/代码并按分句处理否定；供规则路由与 Goal 候选过滤复用，仅提名意图，不授予写入权限。低置信度敏感意图走 clarify，冻结路由复用与预算收紧不变。
+
+`prompt_package.py` 的 chat-edit-v4 为 v21 编辑能力增加验证问题读取，保留 v3 策略。`benchmark/chat_router_eval.py` 的低置信度用例预期改为澄清；指标只在实际选中预期的安全路由时计分，不降低准确率或危险混淆门槛。RouteDecision 历史默认 v2 保留，新策略显式写入 router-v3。
+
+`goal/filter.py` 与 `worker/handlers/chat.py` 对带真实验证问题焦点的复合 issue_action 启用既有有界 Goal 解释；单步或无焦点入口保留单任务路由。解释与修复分别形成义务，资格失败仍回落单任务规则，不绕过 Mutation proof 或审批。
 ## N4.5-07 Shadow 运行时
 
 - `backend/src/casefile/agent_runtime/prose_runtime.py`：冻结正文运行时版本、双 Council policy、活动 Prompt/Schema/model 指纹、Scene 数与结构性调用上限；提供无数据库组件观察端口。
@@ -305,3 +312,62 @@ CompileRun 开关在创建时冻结并不可变；主编译成功由已提交的
 - `benchmark/prose_quality_rescore.py`：只读加载完整公开诊断的72份已通过Preservation候选，验证哈希、完整Council、原稿绑定及旧Flash判断；在任何Live调用前比较新旧匿名输入/Prompt/Schema，复用审计执行144次Pro Pairwise并报告逐轮采用、镜像和决策迁移。不重新生成正文或改写来源产物，不赋予资格。
 
 - 合并 main 后，`benchmark/chat_public_language_qualification.py` 的公开泄漏检测按严格公共 DTO 识别消息上下文快照及活动事件的 `draft_revision`；仅契约允许的位置例外，其他内部字段、正文规则与敏感值检查不变。
+
+`agent_runtime/prompts/casefile_chat/v22/` 将创作搭档语气、按任务控制密度和真实状态注入全部普通/Goal Finalizer；`general_mutation_planner/v7/` 独立注入逐项 reason 的具体依据、实际新旧值一致性要求。保留 v21/v6 不可变；新 Goal 与 Planner 默认使用 v22/v7。
+
+## 小说方案推荐与确认
+
+- `backend/src/casefile/agent_runtime/novel_recommendation.py`：单请求 DeepSeek Pro 编辑建议端口，按完整卷宗与可选偏好产生严格 NovelRecommendation；输入/输出有界、禁隐藏重试和 Fake fallback，模型只推荐配置，不写卷宗。
+- `backend/src/casefile/application/compiler/recommendation.py`：所有者与 Draft revision 门禁、读取已加密 Provider 设置、释放数据库事务后调用推荐端口，回来再检查 revision 并追加审计。
+- `api/compiler.py`：推荐 HTTP 转换与规划/正文模式传递；`application/compiler/service.py` 用精确 Snapshot/Profile/Exposure 校验已审阅的来源 CompileRun，并把不可变 ArtifactRef 纳入 manifest hash。
+- `worker/executors/story_planner.py`：确认过的方案必须命中完整组件 fingerprint 和指定内容 hash；条件变化则失败，不重新规划替换用户已确认内容。
+- `backend/tests/unit/test_novel_recommendation.py`、`backend/tests/integration/test_novel_plan_review.py`：真实推荐端口边界、失败无模拟回退、归属与版本冲突、先方案后正文的 API/Worker 集成和已审阅方案不重规划测试。
+
+## 编译长输出修复
+
+`agent_runtime/story_planner.py` 定义 DeepSeek V4 编译 JSON 输出额度（提供方上限 393216 tokens）与携带响应证据的 CompilerProviderOutputError；`provider_adapters/deepseek.py` 的规划/场景 JSON 调用显式传递该额度，并拒绝 length、非正常结束和非法 JSON，不再把截断响应转换成空候选。`worker/executors/story_planner.py` 与 `scene_compiler.py` 将额度纳入组件 fingerprint；前者在失败事务中保留有界原始输出、实际用量及结束原因，失败响应不参与恢复。`worker/executors/compiler.py` 传递该失败证据，`application/workflow_views.py` 提供准确的作者侧失败说明。
+
+`backend/tests/unit/test_compiler_output_limits.py` 覆盖额度传递、完整/截断/非法 JSON 与非正常结束；`backend/tests/integration/test_novel_plan_review.py` 增加截断响应失败持久化与不可恢复验证。本机真实36场输入修复前在8192 tokens以length结束，修复后11212 tokens以stop结束并通过Schema与ReferencePlanningSolver；这些诊断只在var/debug保存，不作为整体小说质量资格结论。
+
+## TD-001 Worker Attempt 写入隔离
+
+`backend/src/casefile/application/task_lease.py` 统一活动 TaskAttempt 的归属、执行序号和有效 lease 判定；调用方在 TaskRun 行锁内检查。`worker/finalization.py` 的短事务 heartbeat 只续租当前执行，不推进 stage、不消费取消或 Goal control；内部事件端口携带领取时的 TaskRun 快照，观测记录绑定通过校验的 Attempt。普通完成、Chat 完成和 Compiler 回调同样拒绝过期/旧 Attempt，正文既有异常协议保留。`backend/tests/unit/test_worker_attempt_fencing.py` 与 `backend/tests/integration/test_worker_fencing.py` 覆盖过期拒写、同 Worker ID 接管、取消和长调用续租；不改变公共 DTO、事件 payload 或数据库结构。
+
+本轮额外发现但未处理：`initialize_agent_goal_task` 与 `initialize_waiting_goal_amendment_task` 只接收 TaskRun ID，未显式绑定调用 Attempt。前者还被测试用于 queued 初始化；应另行界定初始化用例与 Worker 回调的所有权协议，不在 TD-001 通用完成/事件修复中更改其调用语义。
+
+## TD-002 集成测试数据隔离
+
+`backend/tests/integration/application_services_test_support.py` 的函数级 `workflow_database` 只在数据库不处于当前 revision 时执行 Alembic upgrade；每次测试前后从 users 根表 TRUNCATE CASCADE 并重置 identity，保留 schema/触发器/Alembic 版本。`test_api_vertical_slice.py` 复用该 fixture；专门迁移测试仍走原升降级路径。`backend/tests/integration/test_workflow_database_isolation.py` 验证独立 Worker 提交的数据清理、全部业务表空态、身份重置、数据库对象身份稳定以及第二次 fixture 不重放迁移。测试库仍要求显式 `_test` URL，不支持多个并行进程共享同一测试库。
+
+## TD-008 对象集合事实源
+
+`contracts/object_types.py` 维护对象注册表的有序集合／类型名称对，供契约校验、编辑、逻辑修复和小说编译共享。原模块导出名保留；不包含非注册对象的 spatial_scenes、根 CaseFile 或外部 SourceFragment。契约测试核对 v1/v2 ObjectRef 类型及集合引用，避免名称与机器 Schema 漂移。
+
+## TD-003 任务响应契约
+
+Task HTTP 路由在 OpenAPI 中引用生成的 TaskRun；latest 保持七类型查询限制和可空响应。保留 dict 序列化以维持原始时间字符串，不引入 Pydantic 响应转换。test_task_http_contract.py 覆盖实际投影的 v2 Schema/Python 校验、HTTP JSON 保持和路由契约发布。
+
+## TD-003 Project／Brief 响应
+
+Project 六个读写路由与 Brief 读取、更新、确认路由的 OpenAPI 使用生成 ProjectView／BriefView／BriefVersionView；保留既有 dict 与 datetime 序列化。test_resource_http_contract.py 校验空 Brief、确认版本、归档/活跃项目的真实投影、原始 HTTP JSON 和公开响应模型。
+
+TD-004首个叶子边界：Apply/Undo/Redo直接导入agent_patch_mutation中已有的mutation_set_from_patch_operations与mutation_from_document_history纯函数，删除两项私有staticmethod转发及Redo对应type-ignore。函数实现/事务/锁与WorkflowService公共方法不变；其余_owned/_agent_patch_set/_patch_set_view依赖另行处理。
+
+TD-004 Patch读取边界：workflow/patches.py接收显式Session与OwnedDraft，负责PatchSet归属查询/可选行锁和含操作、finding链接、对象标签、validator提示的既有投影。Agent审阅/Apply/Undo与Redo直接使用，旧_agent_patch_set/_patch_set_view私有方法及Redo对应type-ignore删除。调用方仍拥有事务；不改SQL条件、锁顺序、错误码或公开DTO。
+
+TD-004 Workflow归属与Redo叶子：workflow_common.require_owned_project显式接收同一个ProjectRepository，复用get_owned并保留Project 404；Content/Agent/Goal/Redo共30个调用不再依赖Content._owned及Any声明。mutation_history.redo_agent_patch_set现在显式接收Session/ProjectRepository，旧Mixin删除；WorkflowService保留原redo_agent_patch_set公共签名并委派，事务仍在叶子函数。其他服务自有_owned不在本次范围。
+
+TD-004 Task创建边界：workflow/tasks.py拥有require_provider_setting的凭据行锁、new_task的冻结输入/原Prompt和Goal rollout分支以及queue_task的持久化和task.queued事件；Content与Agent显式调用。workflow_common.require_current_draft拥有既有身份/revision检查。删除Content对应四个私有方法与Agent四条Any声明；事务仍由具体用例持有。历史版本测试patch目标随工厂迁至tasks.prompt_version_for_task，不恢复旧兼容转发。
+
+TD-004 Goal组件边界：GoalSessionService仅持有共享Session/ProjectRepository，负责Goal生命周期与Task切片；Agent通过goals类型化组件调用12个协作操作，不再依赖Goal Mixin注入Any方法。WorkflowService显式构造服务，保留13个原公开Goal方法签名并委派。原31个Goal方法体、事务与Agent业务体原样保留；_agent_thread:Any仅是无调用的旧声明，删除而不搬动查询。Content/Agent/Goal不存在未声明的self方法依赖；Agent已有明确的PatchMutation基类helper保留。
+
+
+## TD-009 Compiler failure boundary
+
+`worker/failures.py` owns `CompilerExecutionError`; Story Planner and Scene Compiler import the shared failure directly. `worker/executors/compiler.py` retains its existing export for compatibility. Error codes and normalization are unchanged.
+
+
+TD-009 Story Planner依赖边界：worker/executors/story_planner.py的19个现有函数按需显式接收sessionmaker[Session]、worker_id与ProviderFactory，不持有Compiler对象或配置对象；_lock_active使用Session及TaskRun/TaskAttempt类型。Compiler只在两个入口传入依赖。AgentProvider补齐三个实际adapter已有的patch_story声明，运行时实现不变。
+
+
+TD-009 SceneCompiler与Artifact边界：worker/executors/compiler_artifacts.py拥有原有materialize_json_artifact_component事务，Compiler和SceneCompiler直接调用同一函数；输入产物/IR/ScenePlan的事件、哈希比较、复用与Attempt fencing不变。scene_compiler.py的9函数按需接收sessionmaker[Session]、worker_id、ProviderFactory，禁止向Compiler回调私有方法；原_materialize_json_artifact_component已在生产与测试调用迁移后删除。

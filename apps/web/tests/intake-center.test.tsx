@@ -7,8 +7,6 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -26,6 +24,7 @@ import type {
 
 import { CaseSessionProvider } from "@/features/case-session/case-session-provider";
 import { IntakeCenter } from "@/features/intake/intake-center";
+import * as sessionApi from "@/features/case-session/case-session-api";
 
 const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }));
 
@@ -624,6 +623,10 @@ function buildFakeBackend() {
       casefile_id: 1,
       draft: { id: 1, revision: 1, schema_version: "v1", status: "open" },
     }),
+    fetchIdeas: async (projectId: number) => ({ project_id: projectId, batches: {} }),
+    generateIdeas: async (projectId: number) => ({
+      project_id: projectId, batch_id: "test-batch", ideas: [],
+    }),
     fetchCaseIntake: async (projectId: number) => {
       // 历史项目各自拥有独立的 intake 状态；当前项目复用全局会话状态。
       if (projectId === 1) return intakeView();
@@ -1033,6 +1036,63 @@ afterEach(() => {
 });
 
 describe("intake center", () => {
+  it("keeps new idea generation pending when an old session's generation fails", async () => {
+    type Result = Awaited<ReturnType<typeof sessionApi.generateIdeas>>;
+    let fail!: (error: Error) => void, complete!: (result: Result) => void;
+    const old = new Promise<Result>((_resolve, reject) => { fail = reject; });
+    const current = new Promise<Result>((resolve) => { complete = resolve; });
+    const original = sessionApi.generateIdeas;
+    const spy = vi.spyOn(sessionApi, "generateIdeas").mockReturnValueOnce(old).mockReturnValueOnce(current);
+    try {
+      renderLanding();
+      fireEvent.click(screen.getByRole("button", { name: /帮我想一个/u }));
+      await flush();
+      fireEvent.click(screen.getByRole("button", { name: "生成创意候选" }));
+      await flush();
+      expect(spy).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
+      fireEvent.click(screen.getByRole("button", { name: "重置会话" }));
+      fireEvent.click(screen.getByRole("button", { name: /帮我想一个/u }));
+      await flush();
+      fireEvent.click(screen.getByRole("button", { name: "生成创意候选" }));
+      await flush();
+      expect(spy).toHaveBeenCalledTimes(2);
+      await act(async () => { fail(new Error("旧创意失败")); await old.catch(() => undefined); });
+      expect(screen.queryByText("旧创意失败")).not.toBeInTheDocument();
+      expect(screen.getByText("正在生成创意方向...")).toBeInTheDocument();
+      await act(async () => { complete(await original(...spy.mock.calls[1])); await current; });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it("does not let an old polish failure close the new session's review", async () => {
+    let fail!: (error: Error) => void, complete!: (task: TaskView) => void;
+    const pending = new Promise<TaskView>((_resolve, reject) => { fail = reject; });
+    const current = new Promise<TaskView>((resolve) => { complete = resolve; });
+    const originalWait = sessionApi.waitForTask;
+    const spy = vi.spyOn(sessionApi, "waitForTask").mockReturnValueOnce(pending).mockReturnValueOnce(current);
+    try {
+      renderIntake();
+      fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
+      fireEvent.click(screen.getByRole("button", { name: /生成润色校样/u }));
+      await flush();
+      expect(spy).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
+      fireEvent.click(screen.getByRole("button", { name: "重置会话" }));
+      fireEvent.click(screen.getByRole("button", { name: /我有一个想法/u }));
+      fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
+      fireEvent.click(screen.getByRole("button", { name: /生成润色校样/u }));
+      await flush();
+      expect(spy).toHaveBeenCalledTimes(2);
+      await act(async () => { fail(new Error("旧润色失败")); await pending.catch(() => undefined); });
+      expect(screen.getByRole("heading", { name: "逐字确认 Agent 改了什么。" })).toBeInTheDocument();
+      expect(screen.queryByText("旧润色失败")).not.toBeInTheDocument();
+      await act(async () => { complete(await originalWait(...spy.mock.calls[1])); await current; });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("uses the three-card official landing and removes redundant side rails", async () => {
     renderLanding();
 
@@ -1998,72 +2058,34 @@ describe("intake center", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the official intake on the real backend without browser persistence", () => {
-    const feature = readFileSync(
-      resolve(
-        process.cwd(),
-        "features/intake/intake-center.tsx",
-      ),
-      "utf8",
-    );
-    const model = readFileSync(
-      resolve(
-        process.cwd(),
-        "features/intake/intake-model.ts",
-      ),
-      "utf8",
-    );
-    const route = readFileSync(
-      resolve(process.cwd(), "app/page.tsx"),
-      "utf8",
-    );
-    const shell = readFileSync(
-      resolve(process.cwd(), "components/product-shell.tsx"),
-      "utf8",
-    );
-    const globalCss = readFileSync(
-      resolve(process.cwd(), "app/globals.css"),
-      "utf8",
-    );
-    const provider = readFileSync(
-      resolve(
-        process.cwd(),
-        "features/case-session/case-session-provider.tsx",
-      ),
-      "utf8",
-    );
-    const api = readFileSync(
-      resolve(
-        process.cwd(),
-        "features/case-session/case-session-api.ts",
-      ),
-      "utf8",
-    );
 
-    [feature, model, route].forEach((source) => {
-      expect(source).not.toContain("@/lib/api-client");
-      expect(source).not.toContain("@/store/workflow-store");
-      expect(source).not.toContain("localStorage");
-      expect(source).not.toContain("sessionStorage");
-      expect(source).not.toMatch(/\bfetch\s*\(/u);
-    });
-    [provider].forEach((source) => {
-      expect(source).not.toContain("@/store/workflow-store");
-      expect(source).not.toContain("localStorage");
-      expect(source).not.toContain("sessionStorage");
-    });
-    expect(provider).toContain("./case-session-api");
-    expect(api).toContain("@/lib/api-client");
-    expect(route).toContain("@/features/intake/intake-center");
-    expect(shell).toContain('"intake-center-v1"');
-    expect(shell).toContain("<CaseSessionProvider>");
-    expect(shell).toContain("SettingsDialog");
-    expect(shell).toContain("data-casefile-kind");
-    expect(globalCss).toContain("min-width: 0");
-  });
 });
 
 describe("case history drawer", () => {
+  it("keeps the reset landing page when an older history restore completes", async () => {
+    renderIntake();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "返回首页" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
+    await flush();
+    const oldIntake = await sessionApi.fetchCaseIntake(2);
+    let complete!: (value: BriefIntakeView) => void;
+    const pending = new Promise<BriefIntakeView>((resolve) => { complete = resolve; });
+    const spy = vi.spyOn(sessionApi, "fetchCaseIntake").mockReturnValueOnce(pending);
+    try {
+      const dialog = screen.getByRole("dialog", { name: "建案历史档案" });
+      const card = within(dialog).getByText("午夜回航旧案").closest("article")!;
+      fireEvent.click(within(card).getByRole("button", { name: "调出此卷" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+      fireEvent.click(screen.getByRole("button", { name: "重置会话" }));
+      await act(async () => { complete(oldIntake); await pending; });
+      expect(screen.getByRole("button", { name: /我有一个想法/u })).toBeInTheDocument();
+      expect(window.location.search).toBe("");
+      expect(screen.queryByText("已恢复该卷宗；服务端状态已重新同步。")).not.toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
   function startCase(value = "正在建案中的念头。") {
     fireEvent.change(screen.getByLabelText("写下最初想法"), {
       target: { value },

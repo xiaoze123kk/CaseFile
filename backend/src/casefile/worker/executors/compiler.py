@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.scene_compiler import SCENE_COMPILER_PIPELINE_VERSION
+from casefile.agent_runtime.story_planner import CompilerProviderOutputError
 from casefile.application.compiler.constants import (
     INPUT_FREEZE_COMPONENT_ID,
     INPUT_FREEZE_COMPONENT_VERSION,
@@ -31,6 +32,7 @@ from casefile.application.compiler.constants import (
     STORY_PLANNER_COMPONENT_ID,
 )
 from casefile.application.task_events import append_task_event
+from casefile.application.task_lease import is_current_task_attempt
 from casefile.data_postgres.compiler_repository import CompilerRepository
 from casefile.data_postgres.models import (
     AgentModelCall,
@@ -51,16 +53,11 @@ from casefile.domain.narrative_compiler import (
     scene_plan_component_fingerprint,
     validate_compile_input_manifest,
 )
+from casefile.worker.executors.compiler_artifacts import materialize_json_artifact_component
 from casefile.worker.executors.completion import CompletionExecutor
 from casefile.worker.executors.prose_store import ProseLeaseLost, assert_prose_owner
-from casefile.worker.failures import TaskCancellationRequested
+from casefile.worker.failures import CompilerExecutionError, TaskCancellationRequested
 from casefile.worker.provider_resolution import ProviderFactory
-
-
-class CompilerExecutionError(RuntimeError):
-    def __init__(self, error_code: str) -> None:
-        self.error_code = error_code
-        super().__init__(error_code)
 
 
 def _normalize_compiler_error(error: Exception, *, fallback_code: str) -> CompilerExecutionError:
@@ -172,7 +169,8 @@ class CompilerExecutor:
             upstream_hashes = {"source_snapshot": fingerprint["source_content_hash"]}
             narrative_ir_json = project_narrative_ir_json(snapshot_json)
             narrative_ir_hash = canonical_json_sha256(narrative_ir_json)
-            narrative_artifact_id, narrative_reused = self._materialize_json_artifact_component(
+            narrative_artifact_id, narrative_reused = materialize_json_artifact_component(
+                self.session_factory, self.config.worker_id,
                 task_run_id=task_run_id,
                 attempt_id=attempt_id,
                 run=run,
@@ -232,7 +230,7 @@ class CompilerExecutor:
             try:
                 novel_plan_artifact_id, novel_plan_hash, planner_reused = (
                     execute_story_planner_component(
-                        self,
+                        self.session_factory, self.config.worker_id, self.provider_factory,
                         task_run_id=task_run_id,
                         attempt_id=attempt_id,
                         run=run,
@@ -247,7 +245,15 @@ class CompilerExecutor:
                 normalized = _normalize_compiler_error(
                     error, fallback_code="compiler_story_planner_failed"
                 )
-                fail_story_planner_component(self, task_run_id, attempt_id, normalized.error_code)
+                fail_story_planner_component(
+                    self.session_factory, self.config.worker_id,
+                    task_run_id,
+                    attempt_id,
+                    normalized.error_code,
+                    provider_failure=error
+                    if isinstance(error, CompilerProviderOutputError)
+                    else None,
+                )
                 if normalized is error:
                     raise
                 raise normalized from error
@@ -274,7 +280,7 @@ class CompilerExecutor:
 
                     scene_plan_artifact_id, scene_plan_hash, scene_plan_reused = (
                         execute_scene_compiler_component(
-                            self,
+                            self.session_factory, self.config.worker_id, self.provider_factory,
                             task_run_id=task_run_id,
                             attempt_id=attempt_id,
                             run=run,
@@ -291,7 +297,8 @@ class CompilerExecutor:
                     scene_plan_json = compile_scene_plan_json(novel_plan_json)
                     scene_plan_hash = canonical_json_sha256(scene_plan_json)
                     scene_plan_artifact_id, scene_plan_reused = (
-                        self._materialize_json_artifact_component(
+                        materialize_json_artifact_component(
+                            self.session_factory, self.config.worker_id,
                             task_run_id=task_run_id,
                             attempt_id=attempt_id,
                             run=run,
@@ -320,7 +327,8 @@ class CompilerExecutor:
                     )
 
                     fail_scene_compiler_component(
-                        self, task_run_id, attempt_id, normalized.error_code
+                        self.session_factory, self.config.worker_id,
+                        task_run_id, attempt_id, normalized.error_code,
                     )
                 self._record_compile_failure_step(
                     task_run_id,
@@ -542,7 +550,8 @@ class CompilerExecutor:
         run: CompileRun,
         manifest_json: dict[str, Any],
     ) -> tuple[int, bool]:
-        return self._materialize_json_artifact_component(
+        return materialize_json_artifact_component(
+            self.session_factory, self.config.worker_id,
             task_run_id=task_run_id,
             attempt_id=attempt_id,
             run=run,
@@ -558,143 +567,6 @@ class CompilerExecutor:
             event_prefix="compiler.input_freeze",
             parent_component_id=None,
         )
-
-    def _materialize_json_artifact_component(
-        self,
-        *,
-        task_run_id: int,
-        attempt_id: int,
-        run: CompileRun,
-        component_id: str,
-        component_version: str,
-        component_input_hash: str,
-        upstream_hashes: dict[str, str],
-        artifact_kind: str,
-        artifact_key: str,
-        schema_id: str,
-        content_hash: str,
-        content_json: dict[str, Any],
-        event_prefix: str,
-        parent_component_id: str | None,
-    ) -> tuple[int, bool]:
-        with self.session_factory() as session, session.begin():
-            task = session.scalar(
-                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
-            )
-            attempt = session.scalar(
-                select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
-            )
-            if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
-                assert_prose_owner(task, attempt, self.config.worker_id)
-            if task is None or attempt is None:
-                raise CompilerExecutionError("compiler_run_task_mismatch")
-            if task.status == "cancelling" and task.leased_by == self.config.worker_id:
-                raise TaskCancellationRequested
-            if (
-                task.status != "running"
-                or task.leased_by != self.config.worker_id
-                or attempt.status != "running"
-                or attempt.task_run_id != task.id
-            ):
-                raise CompilerExecutionError("compiler_worker_lease_lost")
-            append_task_event(
-                session,
-                task,
-                f"{event_prefix}.started",
-                component_id,
-                {"compile_run_id": run.id, "input_hash": component_input_hash},
-            )
-            existing = session.scalar(
-                select(CompileArtifact).where(
-                    CompileArtifact.compile_run_id == run.id,
-                    CompileArtifact.artifact_key == artifact_key,
-                )
-            )
-            now = datetime.now(UTC)
-            if existing is not None:
-                if (
-                    existing.task_run_id != task.id
-                    or existing.artifact_kind != artifact_kind
-                    or existing.content_hash != content_hash
-                    or existing.schema_id != schema_id
-                    or existing.content_jsonb != content_json
-                ):
-                    raise CompilerExecutionError("compiler_artifact_hash_conflict")
-                step = AgentStepRun(
-                    project_id=task.project_id,
-                    task_run_id=task.id,
-                    task_attempt_id=attempt.id,
-                    component_id=component_id,
-                    parent_component_id=parent_component_id,
-                    execution_no=1,
-                    status="reused",
-                    input_hash=component_input_hash,
-                    upstream_hashes_jsonb=upstream_hashes,
-                    output_hash=content_hash,
-                    ir_schema_id=schema_id,
-                    component_version=component_version,
-                    output_jsonb=None,
-                    diagnostic_jsonb={},
-                    usage_jsonb={},
-                    resumed_from_step_run_id=existing.agent_step_run_id,
-                    started_at=now,
-                    finished_at=now,
-                )
-                session.add(step)
-                session.flush()
-                append_task_event(
-                    session,
-                    task,
-                    f"{event_prefix}.reused",
-                    component_id,
-                    {"compile_run_id": run.id, "artifact_id": existing.id},
-                )
-                return existing.id, True
-
-            step = AgentStepRun(
-                project_id=task.project_id,
-                task_run_id=task.id,
-                task_attempt_id=attempt.id,
-                component_id=component_id,
-                parent_component_id=parent_component_id,
-                execution_no=1,
-                status="succeeded",
-                input_hash=component_input_hash,
-                upstream_hashes_jsonb=upstream_hashes,
-                output_hash=content_hash,
-                ir_schema_id=schema_id,
-                component_version=component_version,
-                output_jsonb=None,
-                diagnostic_jsonb={},
-                usage_jsonb={},
-                resumed_from_step_run_id=None,
-                started_at=now,
-                finished_at=now,
-            )
-            session.add(step)
-            session.flush()
-            artifact = CompileArtifact(
-                project_id=run.project_id,
-                casefile_id=run.casefile_id,
-                compile_run_id=run.id,
-                task_run_id=task.id,
-                agent_step_run_id=step.id,
-                artifact_kind=artifact_kind,
-                artifact_key=artifact_key,
-                schema_id=schema_id,
-                content_hash=content_hash,
-                content_jsonb=content_json,
-            )
-            session.add(artifact)
-            session.flush()
-            append_task_event(
-                session,
-                task,
-                f"{event_prefix}.completed",
-                component_id,
-                {"compile_run_id": run.id, "artifact_id": artifact.id},
-            )
-            return artifact.id, False
 
     def _record_compile_failure_step(
         self,
@@ -727,7 +599,7 @@ class CompilerExecutor:
                 or attempt is None
                 or task.status != "running"
                 or task.leased_by != self.config.worker_id
-                or attempt.status != "running"
+                or not is_current_task_attempt(task, attempt)
             ):
                 return
             existing = session.scalar(

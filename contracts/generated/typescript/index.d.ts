@@ -363,8 +363,12 @@ export type StringSet = string[];
  * Code-generation aggregate for the CaseFile editing loop.
  */
 export interface EditingContracts {
+  novel_recommendation: NovelRecommendation;
   casefile: CaseFile;
   brief: Brief;
+  project_view?: ProjectView;
+  brief_view?: BriefView;
+  brief_version_view?: BriefVersionView;
   brief_intake_candidate: BriefIntakeCandidate;
   brief_intake_question_set: BriefIntakeQuestionSet;
   validation_issue: ValidationIssue;
@@ -403,6 +407,13 @@ export interface EditingContracts {
   prose_quality_report: ProseQualityReport;
   novel_candidate: NovelCandidate;
   compile_manifest: CompileManifest;
+}
+export interface NovelRecommendation {
+  concept: string;
+  rationale: string;
+  chapters: number;
+  scenes: number;
+  style: string;
 }
 export interface CaseFile {
   schema_version: "2.0";
@@ -557,6 +568,45 @@ export interface Items {
 }
 export interface Extensions {
   [k: string]: unknown;
+}
+export interface ProjectView {
+  id: number;
+  title: string;
+  description?: string | null;
+  profile: {
+    [k: string]: unknown;
+  };
+  status: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  casefile_id: number;
+  current_draft_id: number;
+  draft: {
+    id: number;
+    title: string;
+    revision: number;
+    schema_version: string;
+    status: string;
+  };
+}
+export interface BriefView {
+  brief_id: number;
+  public_id: string;
+  draft_revision: number;
+  content: Brief | {};
+  current_version_id: number | null;
+  current_version_no?: number | null;
+  updated_at?: string | null;
+}
+export interface BriefVersionView {
+  brief_version_id: number;
+  brief_id?: number;
+  public_id?: string;
+  version_no: number;
+  content: Brief;
+  content_hash?: string;
+  confirmed_at?: string | null;
 }
 export interface BriefIntakeConstraint {
   constraint_key: string;
@@ -925,6 +975,9 @@ export interface PublicPatchResponse {
 }
 export interface TaskRun {
   task_run_id: number;
+  goal_id?: number | null;
+  goal_revision?: number | null;
+  prompt_version?: string;
   project_id: number;
   task_type:
     | "brief_polish"
@@ -963,8 +1016,8 @@ export interface TaskRun {
   error_code?: string | null;
   failure: TaskFailure | null;
   component_steps: AgentComponentStepView[];
-  created_at?: string;
-  updated_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 export interface TaskFailure {
   code: string;

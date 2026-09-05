@@ -90,9 +90,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Project Api V1 Projects Post"
+                  "$ref": "#/components/schemas/ProjectView"
                 }
               }
             }
@@ -141,10 +139,9 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object",
-                    "additionalProperties": true
+                    "$ref": "#/components/schemas/ProjectView"
                   },
-                  "title": "Response List Projects Api V1 Projects Get"
+                  "title": "Response 200 List Projects Api V1 Projects Get"
                 }
               }
             }
@@ -202,9 +199,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Get Project Api V1 Projects  Project Id  Get"
+                  "$ref": "#/components/schemas/ProjectView"
                 }
               }
             }
@@ -270,9 +265,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Update Project Api V1 Projects  Project Id  Patch"
+                  "$ref": "#/components/schemas/ProjectView"
                 }
               }
             }
@@ -330,9 +323,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Archive Project Api V1 Projects  Project Id  Archive Post"
+                  "$ref": "#/components/schemas/ProjectView"
                 }
               }
             }
@@ -390,9 +381,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Unarchive Project Api V1 Projects  Project Id  Unarchive Post"
+                  "$ref": "#/components/schemas/ProjectView"
                 }
               }
             }
@@ -2225,9 +2214,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Brief Intake Questions Task Api V1 Projects  Project Id  Tasks Brief Intake Questions Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -2295,9 +2282,75 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Brief Intake Synthesize Task Api V1 Projects  Project Id  Tasks Brief Intake Synthesize Post"
+                  "$ref": "#/components/schemas/TaskRun"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novel-recommendation": {
+      "post": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Recommend",
+        "operationId": "recommend_api_v1_projects__project_id__novel_recommendation_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelRecommendationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/casefile_contracts__novel_recommendation__Schema"
                 }
               }
             }
@@ -4124,9 +4177,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Get Brief Api V1 Projects  Project Id  Brief Get"
+                  "$ref": "#/components/schemas/BriefView"
                 }
               }
             }
@@ -4192,9 +4243,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Update Brief Api V1 Projects  Project Id  Brief Put"
+                  "$ref": "#/components/schemas/BriefView"
                 }
               }
             }
@@ -4262,9 +4311,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Confirm Brief Api V1 Projects  Project Id  Brief Confirm Post"
+                  "$ref": "#/components/schemas/BriefVersionView"
                 }
               }
             }
@@ -5805,9 +5852,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Generation Task Api V1 Projects  Project Id  Tasks Generate Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -5875,9 +5920,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Strategy Options Task Api V1 Projects  Project Id  Tasks Brief Strategy Options Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -6156,9 +6199,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Polish Task Api V1 Projects  Project Id  Tasks Brief Polish Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -6226,9 +6267,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Create Anchor Extract Task Api V1 Projects  Project Id  Tasks Brief Anchor Extract Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -6304,16 +6343,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "additionalProperties": true
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "title": "Response Get Latest Task Api V1 Projects  Project Id  Tasks Latest Get"
+                  "$ref": "#/components/schemas/RootModel_Union_TaskRun__NoneType__"
                 }
               }
             }
@@ -6440,9 +6470,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Get Task Api V1 Projects  Project Id  Tasks  Task Run Id  Get"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -6509,9 +6537,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Cancel Task Api V1 Projects  Project Id  Tasks  Task Run Id  Cancel Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -6588,9 +6614,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Resume Generation Task Api V1 Projects  Project Id  Tasks  Task Run Id  Resume Post"
+                  "$ref": "#/components/schemas/TaskRun"
                 }
               }
             }
@@ -7243,6 +7267,170 @@
         "type": "object",
         "title": "AgentChatRoutingHint"
       },
+      "AgentComponentStepView": {
+        "properties": {
+          "step_run_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Step Run Id"
+          },
+          "attempt_no": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Attempt No"
+          },
+          "component_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Component Id"
+          },
+          "parent_component_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Component Id"
+          },
+          "execution_no": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Execution No"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status10"
+          },
+          "schema_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Schema Id"
+          },
+          "input_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Input Hash"
+          },
+          "output_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Hash"
+          },
+          "failure_layer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Layer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/AgentDiagnosticIssue"
+            },
+            "type": "array",
+            "title": "Issues"
+          },
+          "recoverable": {
+            "type": "boolean",
+            "title": "Recoverable"
+          },
+          "resumed_from_step_run_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumed From Step Run Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_run_id",
+          "attempt_no",
+          "component_id",
+          "parent_component_id",
+          "execution_no",
+          "status",
+          "schema_id",
+          "input_hash",
+          "output_hash",
+          "failure_layer",
+          "issues",
+          "recoverable",
+          "resumed_from_step_run_id"
+        ],
+        "title": "AgentComponentStepView"
+      },
+      "AgentDiagnosticIssue": {
+        "properties": {
+          "component_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Component Id"
+          },
+          "failure_layer": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Failure Layer"
+          },
+          "schema_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Id"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Code"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 512,
+            "title": "Path"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "component_id",
+          "failure_layer",
+          "schema_id",
+          "code",
+          "path",
+          "message"
+        ],
+        "title": "AgentDiagnosticIssue"
+      },
       "AgentMessageCreateRequest": {
         "properties": {
           "expected_draft_id": {
@@ -7571,6 +7759,11 @@
         ],
         "title": "AgentThreadCreateRequest"
       },
+      "AgentThreadId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "AgentThreadId"
+      },
       "AgentThreadUpdateRequest": {
         "properties": {
           "expected_draft_id": {
@@ -7627,6 +7820,37 @@
         ],
         "title": "AgentThreadUpdateRequest"
       },
+      "AuthorAnchor": {
+        "properties": {
+          "anchor_id": {
+            "type": "string",
+            "pattern": "^anchor_[a-z0-9][a-z0-9_]{0,55}$",
+            "title": "Anchor Id"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Statement"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "anchor_id",
+          "statement"
+        ],
+        "title": "AuthorAnchor"
+      },
+      "AuthorAnswer": {
+        "type": "string",
+        "minLength": 1,
+        "title": "AuthorAnswer"
+      },
+      "BaseBriefIntakeCandidateId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "BaseBriefIntakeCandidateId"
+      },
       "BasisRefCoverageObligationRequest": {
         "properties": {
           "kind": {
@@ -7680,6 +7904,11 @@
           "file"
         ],
         "title": "Body_upload_document_api_v1_projects__project_id__reverse_parse_documents_post"
+      },
+      "BoundaryText": {
+        "type": "string",
+        "minLength": 1,
+        "title": "BoundaryText"
       },
       "BriefAnchorExtractTaskRequest": {
         "properties": {
@@ -8056,6 +8285,164 @@
         ],
         "title": "BriefUpdateRequest"
       },
+      "BriefVersionView": {
+        "properties": {
+          "brief_version_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Brief Version Id"
+          },
+          "brief_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brief Id"
+          },
+          "public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Id"
+          },
+          "version_no": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version No"
+          },
+          "content": {
+            "$ref": "#/components/schemas/casefile_contracts__brief__Schema"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "brief_version_id",
+          "version_no",
+          "content"
+        ],
+        "title": "BriefVersionView"
+      },
+      "BriefView": {
+        "properties": {
+          "brief_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Brief Id"
+          },
+          "public_id": {
+            "type": "string",
+            "title": "Public Id"
+          },
+          "draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Draft Revision"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/casefile_contracts__brief__Schema"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ],
+            "title": "Content"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "current_version_no": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version No"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "brief_id",
+          "public_id",
+          "draft_revision",
+          "content",
+          "current_version_id"
+        ],
+        "title": "BriefView"
+      },
+      "CandidateStrategy": {
+        "type": "string",
+        "enum": [
+          "structure_first",
+          "atmosphere_first",
+          "reasoning_first",
+          "balanced"
+        ],
+        "title": "CandidateStrategy"
+      },
       "Category1": {
         "type": "string",
         "enum": [
@@ -8067,6 +8454,23 @@
       },
       "CompileRunCreateRequest": {
         "properties": {
+          "scene_compiler_shadow": {
+            "type": "boolean",
+            "title": "Scene Compiler Shadow",
+            "default": false
+          },
+          "approved_plan_run_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Plan Run Id"
+          },
           "prose_renderer_shadow": {
             "type": "boolean",
             "title": "Prose Renderer Shadow",
@@ -8209,6 +8613,33 @@
         ],
         "title": "CompilerProfileVersionCreateRequest"
       },
+      "ConclusionMode": {
+        "type": "string",
+        "enum": [
+          "unique",
+          "finite_multiple",
+          "optimal",
+          "probabilistic",
+          "open_interpretation",
+          "multiple_endings",
+          "undetermined"
+        ],
+        "title": "ConclusionMode"
+      },
+      "ContentOutline": {
+        "items": {
+          "$ref": "#/components/schemas/ContentOutlineItem"
+        },
+        "type": "array",
+        "maxItems": 16,
+        "title": "ContentOutline"
+      },
+      "ContentOutlineItem": {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1,
+        "title": "ContentOutlineItem"
+      },
       "ContextState": {
         "type": "string",
         "enum": [
@@ -8217,6 +8648,81 @@
           "compacted"
         ],
         "title": "ContextState"
+      },
+      "CoreSellingPoint": {
+        "type": "string",
+        "maxLength": 500,
+        "minLength": 1,
+        "title": "CoreSellingPoint"
+      },
+      "CoreSellingPoints": {
+        "items": {
+          "$ref": "#/components/schemas/CoreSellingPoint"
+        },
+        "type": "array",
+        "maxItems": 8,
+        "title": "CoreSellingPoints"
+      },
+      "CreativeConstraint": {
+        "properties": {
+          "constraint_id": {
+            "type": "string",
+            "pattern": "^constraint_[a-z0-9][a-z0-9_]{0,51}$",
+            "title": "Constraint Id"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Statement"
+          },
+          "strength": {
+            "$ref": "#/components/schemas/Strength"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "constraint_id",
+          "statement",
+          "strength"
+        ],
+        "title": "CreativeConstraint"
+      },
+      "Draft": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          },
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "revision",
+          "schema_version",
+          "status"
+        ],
+        "title": "Draft"
       },
       "DraftActivateRequest": {
         "properties": {
@@ -8533,6 +9039,31 @@
         "title": "IdeaGenerateBody",
         "description": "可选的创作偏好：时代、场景、氛围与自由关键词（均为软约束）。"
       },
+      "InputBriefIntakeId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "InputBriefIntakeId"
+      },
+      "InputBriefIntakeRevision": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "InputBriefIntakeRevision"
+      },
+      "InputBriefRevision": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "InputBriefRevision"
+      },
+      "InputMessageId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "InputMessageId"
+      },
+      "InputSourceRecordId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "InputSourceRecordId"
+      },
       "ItemActionRequest": {
         "properties": {
           "action": {
@@ -8803,6 +9334,11 @@
         ],
         "title": "Mode"
       },
+      "ModelId": {
+        "type": "string",
+        "minLength": 1,
+        "title": "ModelId"
+      },
       "MutationCreateOperationRequest": {
         "properties": {
           "operation_type": {
@@ -8924,6 +9460,33 @@
         ],
         "title": "MutationUpdateOperationRequest"
       },
+      "NovelRecommendationRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Revision"
+          },
+          "preferences": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Preferences",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_draft_revision"
+        ],
+        "title": "NovelRecommendationRequest"
+      },
       "ObjectId": {
         "type": "string",
         "maxLength": 128,
@@ -8957,6 +9520,11 @@
           "changes"
         ],
         "title": "ObjectPatchRequest"
+      },
+      "OutputMessageId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "OutputMessageId"
       },
       "ParticipantCoverageObligationRequest": {
         "properties": {
@@ -9079,6 +9647,97 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ProjectUpdateRequest"
+      },
+      "ProjectView": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "profile": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Profile"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "casefile_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Casefile Id"
+          },
+          "current_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Current Draft Id"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/Draft"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "profile",
+          "status",
+          "archived_at",
+          "created_at",
+          "updated_at",
+          "casefile_id",
+          "current_draft_id",
+          "draft"
+        ],
+        "title": "ProjectView"
+      },
+      "Provider": {
+        "type": "string",
+        "enum": [
+          "openai",
+          "deepseek"
+        ],
+        "title": "Provider"
       },
       "ProviderSettingRequest": {
         "properties": {
@@ -10580,6 +11239,40 @@
         ],
         "title": "PublicRoutingInterpretation"
       },
+      "QualityRequirements": {
+        "properties": {
+          "temporal_time_kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TemporalTimeKind"
+                },
+                "type": "array",
+                "maxItems": 5,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temporal Time Kinds"
+          },
+          "spatial_scene_topology": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spatial Scene Topology"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "QualityRequirements"
+      },
       "Relationship1": {
         "type": "string",
         "enum": [
@@ -10608,6 +11301,15 @@
           "expected_revision"
         ],
         "title": "ResolutionConclusionActionRequest"
+      },
+      "ResolutionMode": {
+        "type": "string",
+        "enum": [
+          "author_anchored",
+          "agent_proposed",
+          "open"
+        ],
+        "title": "ResolutionMode"
       },
       "ResponseKind": {
         "type": "string",
@@ -10657,6 +11359,20 @@
         ],
         "title": "ReviewRule"
       },
+      "RiskNote": {
+        "type": "string",
+        "maxLength": 500,
+        "minLength": 1,
+        "title": "RiskNote"
+      },
+      "RiskNotes": {
+        "items": {
+          "$ref": "#/components/schemas/RiskNote"
+        },
+        "type": "array",
+        "maxItems": 12,
+        "title": "RiskNotes"
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -10664,6 +11380,23 @@
           "assistant"
         ],
         "title": "Role"
+      },
+      "RootModel_Union_TaskRun__NoneType__": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/TaskRun"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "RootModel[Union[TaskRun, NoneType]]"
+      },
+      "ScopeEstimate": {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1,
+        "title": "ScopeEstimate"
       },
       "Severity": {
         "type": "string",
@@ -10709,6 +11442,23 @@
           "content_text"
         ],
         "title": "SourceRecordCreateRequest"
+      },
+      "SourceRecordId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "SourceRecordId"
+      },
+      "Status10": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "reused",
+          "skipped"
+        ],
+        "title": "Status10"
       },
       "Status2": {
         "type": "string",
@@ -10791,6 +11541,410 @@
           "failed"
         ],
         "title": "Status8"
+      },
+      "Status9": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "cancelling",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "Status9"
+      },
+      "Strength": {
+        "type": "string",
+        "enum": [
+          "hard",
+          "soft"
+        ],
+        "title": "Strength"
+      },
+      "TaskFailure": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/TaskFailureIssue"
+            },
+            "type": "array",
+            "title": "Issues"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "issues"
+        ],
+        "title": "TaskFailure"
+      },
+      "TaskFailureIssue": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Code"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 512,
+            "title": "Path"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "path",
+          "message"
+        ],
+        "title": "TaskFailureIssue"
+      },
+      "TaskRun": {
+        "properties": {
+          "task_run_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Task Run Id"
+          },
+          "goal_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Id"
+          },
+          "goal_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Revision"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "project_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Project Id"
+          },
+          "task_type": {
+            "$ref": "#/components/schemas/TaskType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status9"
+          },
+          "stage": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Stage"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Provider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Input Draft Revision"
+          },
+          "input_brief_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputBriefRevision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_source_record_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputSourceRecordId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_brief_intake_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputBriefIntakeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_brief_intake_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputBriefIntakeRevision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_brief_intake_candidate_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BaseBriefIntakeCandidateId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "agent_thread_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentThreadId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_message_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputMessageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "output_message_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutputMessageId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Input Hash"
+          },
+          "candidate_strategy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateStrategy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attempt Count"
+          },
+          "usage": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Usage"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "result_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Snapshot Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "component_steps": {
+            "items": {
+              "$ref": "#/components/schemas/AgentComponentStepView"
+            },
+            "type": "array",
+            "title": "Component Steps"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "task_run_id",
+          "project_id",
+          "task_type",
+          "status",
+          "stage",
+          "provider",
+          "model_id",
+          "input_draft_revision",
+          "input_brief_revision",
+          "input_source_record_id",
+          "input_brief_intake_id",
+          "input_brief_intake_revision",
+          "base_brief_intake_candidate_id",
+          "agent_thread_id",
+          "input_message_id",
+          "output_message_id",
+          "input_hash",
+          "candidate_strategy",
+          "attempt_count",
+          "usage",
+          "result",
+          "failure",
+          "component_steps"
+        ],
+        "title": "TaskRun"
+      },
+      "TaskType": {
+        "type": "string",
+        "enum": [
+          "brief_polish",
+          "brief_anchor_extract",
+          "brief_intake_questions",
+          "brief_intake_synthesize",
+          "brief_strategy_options",
+          "brief_to_draft",
+          "casefile_chat",
+          "reverse_parse",
+          "novel_compile",
+          "idea_generation"
+        ],
+        "title": "TaskType"
+      },
+      "TemporalTimeKind": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "approximate",
+          "range",
+          "relative",
+          "unknown"
+        ],
+        "title": "TemporalTimeKind"
       },
       "TimelineTimePreviewRequest": {
         "properties": {
@@ -10946,6 +12100,176 @@
           "stale"
         ],
         "title": "WaitingFor"
+      },
+      "casefile_contracts__brief__Schema": {
+        "properties": {
+          "source_record_ids": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRecordId"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Source Record Ids"
+          },
+          "creative_intent": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Creative Intent"
+          },
+          "reasoning_proposition": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reasoning Proposition"
+          },
+          "resolution_mode": {
+            "$ref": "#/components/schemas/ResolutionMode"
+          },
+          "conclusion_mode": {
+            "$ref": "#/components/schemas/ConclusionMode"
+          },
+          "author_answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author_anchors": {
+            "items": {
+              "$ref": "#/components/schemas/AuthorAnchor"
+            },
+            "type": "array",
+            "title": "Author Anchors"
+          },
+          "boundary_text": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundaryText"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "creative_constraints": {
+            "items": {
+              "$ref": "#/components/schemas/CreativeConstraint"
+            },
+            "type": "array",
+            "title": "Creative Constraints"
+          },
+          "core_selling_points": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoreSellingPoints"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content_outline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContentOutline"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope_estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScopeEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "risk_notes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskNotes"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quality_requirements": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QualityRequirements"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_record_ids",
+          "creative_intent",
+          "reasoning_proposition",
+          "resolution_mode",
+          "conclusion_mode",
+          "author_answer",
+          "author_anchors",
+          "boundary_text",
+          "creative_constraints"
+        ],
+        "title": "Schema"
+      },
+      "casefile_contracts__novel_recommendation__Schema": {
+        "properties": {
+          "concept": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Concept"
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Rationale"
+          },
+          "chapters": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Chapters"
+          },
+          "scenes": {
+            "type": "integer",
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Scenes"
+          },
+          "style": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Style"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "concept",
+          "rationale",
+          "chapters",
+          "scenes",
+          "style"
+        ],
+        "title": "Schema"
       }
     }
   }

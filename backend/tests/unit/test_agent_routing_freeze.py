@@ -50,4 +50,4 @@ def test_input_hash_covers_routing_hint_and_router_version() -> None:
 
 
 def test_router_version_constant_is_frozen() -> None:
-    assert INTENT_ROUTER_VERSION == "casefile-chat-router-v2"
+    assert INTENT_ROUTER_VERSION == "casefile-chat-router-v3"

@@ -60,6 +60,8 @@ from casefile.agent_runtime.scene_compiler import (
     SceneFillBatchResult,
 )
 from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
 )
@@ -79,6 +81,8 @@ class AgentProvider(GenerationProvider, Protocol):
     def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult: ...
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult: ...
+
+    def patch_story(self, request: StoryPlannerPatchRequest) -> StoryPlannerPatchProviderResult: ...
 
     def plan_general_mutation(
         self,

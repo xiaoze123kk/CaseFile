@@ -13,7 +13,7 @@ from casefile.data_postgres.models import TaskRun
 
 ProviderRequirement = Literal["required", "none"]
 ChatRolloutMode = Literal["off", "shadow", "suggest"]
-EventEmitter = Callable[[int, str, str, dict[str, Any]], None]
+EventEmitter = Callable[[TaskRun, str, str, dict[str, Any]], None]
 GoalSafePointObserver = Callable[[int, int, str], None]
 
 

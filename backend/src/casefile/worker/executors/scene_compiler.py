@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.prompt_repository import load_prompt
@@ -16,6 +17,7 @@ from casefile.agent_runtime.scene_compiler import (
     SceneFillStage,
     execute_scene_semantic_fill,
 )
+from casefile.agent_runtime.story_planner import COMPILER_JSON_MAX_OUTPUT_TOKENS
 from casefile.application.compiler.constants import (
     SCENE_FILL_COMPONENT_ID,
     SCENE_PLAN_ARTIFACT_KEY,
@@ -25,6 +27,7 @@ from casefile.application.compiler.constants import (
     STORY_PLANNER_COMPONENT_ID,
 )
 from casefile.application.task_events import append_task_event
+from casefile.application.task_lease import is_current_task_attempt
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentStepRun,
@@ -41,12 +44,13 @@ from casefile.domain.narrative_compiler import (
     canonical_json_sha256,
     compile_scene_plan_v2,
 )
-from casefile.worker.executors.compiler import CompilerExecutionError
-from casefile.worker.failures import TaskCancellationRequested
+from casefile.worker.executors.compiler_artifacts import materialize_json_artifact_component
+from casefile.worker.failures import CompilerExecutionError, TaskCancellationRequested
+from casefile.worker.provider_resolution import ProviderFactory
 
 
 def execute_scene_compiler_component(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str, provider_factory: ProviderFactory,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -57,7 +61,7 @@ def execute_scene_compiler_component(
     narrative_ir_json: dict[str, Any],
     narrative_ir_hash: str,
 ) -> tuple[int, str, bool]:
-    task, api_key = _load_provider_binding(worker, task_run_id)
+    task, api_key = _load_provider_binding(session_factory, task_run_id)
     bundle = build_scene_compiler_input_v2(
         novel_plan=novel_plan_json,
         narrative_ir=narrative_ir_json,
@@ -82,8 +86,11 @@ def execute_scene_compiler_component(
         "state_engine_version": SCENE_STATE_ENGINE_VERSION,
     }
     component_hash = canonical_json_sha256(fingerprint)
+    if task.provider == "deepseek":
+        fingerprint["max_output_tokens"] = COMPILER_JSON_MAX_OUTPUT_TOKENS
+        component_hash = canonical_json_sha256(fingerprint)
     step_id = _start_step(
-        worker,
+        session_factory, worker_id,
         task_run_id=task_run_id,
         attempt_id=attempt_id,
         component_hash=component_hash,
@@ -92,7 +99,7 @@ def execute_scene_compiler_component(
         batch_count=len(model_view["batches"]),
     )
     execution = execute_scene_semantic_fill(
-        worker.provider_factory(task),
+        provider_factory(task),
         task_run_id=task_run_id,
         model_view=model_view,
         component_hash=component_hash,
@@ -100,10 +107,10 @@ def execute_scene_compiler_component(
         api_key=api_key,
         network_retries=int(task.budget_jsonb.get("network_retries", 0)),
         recover_stage=lambda batch_id, input_hash: _recover_stage(
-            worker, task_run_id, batch_id, input_hash
+            session_factory, task_run_id, batch_id, input_hash
         ),
         before_stage=lambda batch_id, ordinal, input_hash, prompt_version, schema_id: _start_call(
-            worker,
+            session_factory, worker_id,
             task,
             attempt_id,
             step_id,
@@ -114,13 +121,16 @@ def execute_scene_compiler_component(
             prompt.system_prompt_sha256,
             schema_id,
         ),
-        after_stage=lambda stage: None if stage.recovered else _finish_call(worker, step_id, stage),
+        after_stage=lambda stage: None if stage.recovered else _finish_call(
+            session_factory, worker_id, step_id, stage
+        ),
     )
     proposals = list(execution.proposals)
     scene_plan = compile_scene_plan_v2(scene_compiler_input=bundle, semantic_fills=proposals)
     scene_plan_hash = canonical_json_sha256(scene_plan)
-    _finish_step(worker, step_id, execution.stages, proposals)
-    artifact_id, reused = worker._materialize_json_artifact_component(
+    _finish_step(session_factory, worker_id, step_id, execution.stages, proposals)
+    artifact_id, reused = materialize_json_artifact_component(
+        session_factory, worker_id,
         task_run_id=task_run_id,
         attempt_id=attempt_id,
         run=run,
@@ -145,12 +155,13 @@ def execute_scene_compiler_component(
 
 
 def fail_scene_compiler_component(
-    worker: Any, task_run_id: int, attempt_id: int, error_code: str
+    session_factory: sessionmaker[Session], worker_id: str,
+    task_run_id: int, attempt_id: int, error_code: str
 ) -> None:
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         current_task = session.get(TaskRun, task_run_id)
         if current_task is not None and current_task.input_jsonb.get("prose_renderer_shadow"):
-            _lock_active(session, worker, task_run_id, attempt_id)
+            _lock_active(session, worker_id, task_run_id, attempt_id)
         steps = list(
             session.scalars(
                 select(AgentStepRun)
@@ -187,8 +198,10 @@ def fail_scene_compiler_component(
             }
 
 
-def _load_provider_binding(worker: Any, task_run_id: int) -> tuple[TaskRun, str]:
-    with worker.session_factory() as session, session.begin():
+def _load_provider_binding(
+    session_factory: sessionmaker[Session], task_run_id: int
+) -> tuple[TaskRun, str]:
+    with session_factory() as session, session.begin():
         task = session.get(TaskRun, task_run_id)
         if (
             task is None
@@ -221,7 +234,7 @@ def _load_provider_binding(worker: Any, task_run_id: int) -> tuple[TaskRun, str]
 
 
 def _start_step(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -230,8 +243,8 @@ def _start_step(
     narrative_ir_hash: str,
     batch_count: int,
 ) -> int:
-    with worker.session_factory() as session, session.begin():
-        task, attempt = _lock_active(session, worker, task_run_id, attempt_id)
+    with session_factory() as session, session.begin():
+        task, attempt = _lock_active(session, worker_id, task_run_id, attempt_id)
         previous = session.scalar(
             select(AgentStepRun)
             .where(
@@ -278,7 +291,7 @@ def _start_step(
 
 
 def _start_call(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     task: TaskRun,
     attempt_id: int,
     step_id: int,
@@ -289,8 +302,8 @@ def _start_call(
     prompt_hash: str,
     schema_id: str,
 ) -> None:
-    with worker.session_factory() as session, session.begin():
-        current, _attempt = _lock_active(session, worker, task.id, attempt_id)
+    with session_factory() as session, session.begin():
+        current, _attempt = _lock_active(session, worker_id, task.id, attempt_id)
         session.add(
             AgentModelCall(
                 project_id=current.project_id,
@@ -312,14 +325,16 @@ def _start_call(
         )
 
 
-def _finish_call(worker: Any, step_id: int, stage: SceneFillStage) -> None:
+def _finish_call(
+    session_factory: sessionmaker[Session], worker_id: str, step_id: int, stage: SceneFillStage
+) -> None:
     raw = stage.raw_output or json.dumps(stage.output, ensure_ascii=False, separators=(",", ":"))
     encoded = raw.encode("utf-8")
     bounded = encoded[:262_144].decode("utf-8", errors="ignore")
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         from casefile.worker.executors.prose_store import fence_prose_step
 
-        fence_prose_step(session, worker.config.worker_id, step_id)
+        fence_prose_step(session, worker_id, step_id)
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -341,9 +356,9 @@ def _finish_call(worker: Any, step_id: int, stage: SceneFillStage) -> None:
 
 
 def _recover_stage(
-    worker: Any, task_run_id: int, batch_id: str, input_hash: str
+    session_factory: sessionmaker[Session], task_run_id: int, batch_id: str, input_hash: str
 ) -> dict[str, Any] | None:
-    with worker.session_factory() as session:
+    with session_factory() as session:
         call = session.scalar(
             select(AgentModelCall)
             .where(
@@ -364,7 +379,7 @@ def _recover_stage(
 
 
 def _finish_step(
-    worker: Any,
+    session_factory: sessionmaker[Session], worker_id: str,
     step_id: int,
     stages: tuple[SceneFillStage, ...],
     proposals: list[dict[str, Any]],
@@ -374,10 +389,10 @@ def _finish_step(
         for key, value in stage.usage.items():
             if isinstance(value, (int, float)):
                 usage[key] = usage.get(key, 0.0) + float(value)
-    with worker.session_factory() as session, session.begin():
+    with session_factory() as session, session.begin():
         from casefile.worker.executors.prose_store import fence_prose_step
 
-        fence_prose_step(session, worker.config.worker_id, step_id)
+        fence_prose_step(session, worker_id, step_id)
         step = session.scalar(
             select(AgentStepRun).where(AgentStepRun.id == step_id).with_for_update(of=AgentStepRun)
         )
@@ -403,7 +418,7 @@ def _finish_step(
 
 
 def _lock_active(
-    session: Any, worker: Any, task_run_id: int, attempt_id: int
+    session: Session, worker_id: str, task_run_id: int, attempt_id: int
 ) -> tuple[TaskRun, TaskAttempt]:
     task = session.scalar(select(TaskRun).where(TaskRun.id == task_run_id).with_for_update())
     attempt = session.scalar(
@@ -412,20 +427,20 @@ def _lock_active(
     if task is not None and task.input_jsonb.get("prose_renderer_shadow"):
         from casefile.worker.executors.prose_store import assert_prose_owner
 
-        assert_prose_owner(task, attempt, worker.config.worker_id)
+        assert_prose_owner(task, attempt, worker_id)
     if (
         task is not None
         and task.status == "cancelling"
-        and task.leased_by == worker.config.worker_id
+        and task.leased_by == worker_id
     ):
         raise TaskCancellationRequested
     if (
         task is None
         or attempt is None
         or task.status != "running"
-        or task.leased_by != worker.config.worker_id
+        or task.leased_by != worker_id
         or attempt.task_run_id != task.id
-        or attempt.status != "running"
+        or not is_current_task_attempt(task, attempt)
     ):
         raise CompilerExecutionError("compiler_worker_lease_lost")
     return task, attempt

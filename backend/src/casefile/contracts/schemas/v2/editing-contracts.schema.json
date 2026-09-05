@@ -16,11 +16,15 @@
     "story_plan_structural_patch", "constraint_first_planner", "novel_plan_candidate",
     "novel_plan", "prose_judge_checklist", "scene_render_candidate", "scene_render",
     "prose_judge_report", "prose_consensus_report", "prose_quality_report",
-    "novel_candidate", "compile_manifest"
+    "novel_candidate", "compile_manifest", "novel_recommendation"
   ],
   "properties": {
+    "novel_recommendation": {"$ref": "compiler/novel-recommendation.schema.json"},
     "casefile": {"$ref": "casefile/casefile.schema.json"},
     "brief": {"$ref": "brief/brief.schema.json"},
+    "project_view": {"$ref": "project/project.schema.json#/$defs/ProjectView"},
+    "brief_view": {"$ref": "brief/brief-views.schema.json#/$defs/BriefView"},
+    "brief_version_view": {"$ref": "brief/brief-views.schema.json#/$defs/BriefVersionView"},
     "brief_intake_candidate": {
       "$ref": "brief-intake/brief-intake.schema.json"
     },

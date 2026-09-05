@@ -306,6 +306,7 @@ beforeEach(() => {
         if (reportTileError && mode === "geographic") callbacks.onTileError();
       }),
       fitAll: vi.fn(),
+      focusLocations: vi.fn(),
       focusLocation: vi.fn(),
       focusRegion: vi.fn(),
       zoomIn: vi.fn(),
@@ -553,11 +554,10 @@ describe("spatial map view", () => {
 
     expect(screen.getByRole("checkbox", { name: /地点明确坐标/u })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /事件地点聚合/u })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /空间关系只读核对/u })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /空间关系只读核对/u })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /待确认位置推算与未定位/u })).not.toBeChecked();
     expect(screen.getByText("真实坐标").parentElement).toHaveTextContent("2");
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /空间关系只读核对/u }));
     expect(
       screen.getByText(/虚线与相邻关系不代表实际路线/u),
     ).toBeInTheDocument();
@@ -591,6 +591,8 @@ describe("spatial map view", () => {
     renderMap();
 
     const toggle = screen.getByRole("button", { name: "空间核验" });
+    expect(screen.getByRole("button", { name: "图层与位置设置" })).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "图层与位置设置" }));
     const panel = screen.getByRole("complementary", { name: "空间核验工具" });
     expect(panel).toHaveAttribute("data-collapsed", "false");
 

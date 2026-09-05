@@ -57,7 +57,7 @@ class BriefIntakeHandler:
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(
-                    task.id, event_type, stage, payload
+                    task, event_type, stage, payload
                 ),
                 network_retries=_network_retries(task),
             )
@@ -83,7 +83,7 @@ class BriefIntakeHandler:
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(
-                    task.id, event_type, stage, payload
+                    task, event_type, stage, payload
                 ),
                 network_retries=_network_retries(task),
             )

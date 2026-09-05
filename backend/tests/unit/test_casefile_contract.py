@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from importlib.resources import files
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,10 +18,30 @@ from casefile.contracts import (
     public_validation_issues,
     validate_casefile,
 )
+from casefile.contracts.object_types import COLLECTION_TYPES
 from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE_ROOT = REPO_ROOT / "fixtures" / "casefiles"
+
+
+@pytest.mark.parametrize("version", ["1.0", "2.0"])
+def test_object_collections_match_versioned_reference_contract(version: str) -> None:
+    schema = load_casefile_schema(version)
+    common = json.loads(
+        files("casefile.contracts.schemas")
+        .joinpath(f"v{version[0]}", "casefile", "common.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    reference_types = common["$defs"]["ObjectRef"]["properties"]["object_type"]["enum"]
+    assert [kind for _, kind in COLLECTION_TYPES] == [
+        kind for kind in reference_types if kind not in {"casefile", "source_fragment"}
+    ]
+    for collection, kind in COLLECTION_TYPES:
+        definition = "".join(part.title() for part in kind.split("_"))
+        assert schema["properties"][collection]["items"]["$ref"] == (
+            f"objects.schema.json#/$defs/{definition}"
+        )
 
 
 def _load(name: str) -> dict[str, Any]:

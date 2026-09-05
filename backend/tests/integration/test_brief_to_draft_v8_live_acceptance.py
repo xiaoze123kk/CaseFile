@@ -530,7 +530,7 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
             )
             with (
                 patch(
-                    "casefile.application.workflow.content.prompt_version_for_task",
+                    "casefile.application.workflow.tasks.prompt_version_for_task",
                     return_value=config.prompt_version,
                 ),
                 TestClient(app) as client,

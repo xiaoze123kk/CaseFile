@@ -21,12 +21,37 @@ function thread(overrides: Partial<AgentThreadView> = {}): AgentThreadView {
 }
 
 describe("WorkbenchAgentThreadMenu", () => {
+  it("clamps the floating panel at the viewport edge and closes after creating a thread", async () => {
+    const first = thread();
+    const onCreate = vi.fn().mockResolvedValue(first);
+    render(<WorkbenchAgentThreadMenu
+      threads={[first]} selectedThreadId={first.thread_id}
+      onCreate={onCreate} onSelect={vi.fn()}
+      onRename={vi.fn().mockResolvedValue(undefined)}
+      onSearch={vi.fn().mockResolvedValue(undefined)}
+      onSetPinned={vi.fn().mockResolvedValue(undefined)}
+      onSetArchived={vi.fn().mockResolvedValue(undefined)}
+    />);
+    const trigger = screen.getByRole("button", { name: /时间线冲突排查/ });
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+      x: window.innerWidth - 200, y: 60, left: window.innerWidth - 200,
+      right: window.innerWidth, top: 60, bottom: 100, width: 200, height: 40,
+      toJSON: () => ({}),
+    });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog")).toHaveStyle({ left: `${window.innerWidth - 400}px`, top: "108px" });
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(onCreate).toHaveBeenCalledOnce();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it("supports combobox keyboard selection and restores focus after Escape", async () => {
     const first = thread();
     const second = thread({ thread_id: 2, title: "证据链复核" });
     const onSelect = vi.fn();
 
-    render(
+    const { container } = render(
       <WorkbenchAgentThreadMenu
         onCreate={vi.fn().mockResolvedValue(second)}
         onRename={vi.fn().mockResolvedValue(undefined)}
@@ -41,6 +66,8 @@ describe("WorkbenchAgentThreadMenu", () => {
 
     const trigger = screen.getByRole("button", { name: /时间线冲突排查/ });
     fireEvent.click(trigger);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(screen.getByRole("dialog")).toHaveAttribute("id", trigger.getAttribute("aria-controls"));
     const search = screen.getByPlaceholderText("搜索对话…");
     fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter" });
@@ -51,11 +78,17 @@ describe("WorkbenchAgentThreadMenu", () => {
       key: "Escape",
     });
     await waitFor(() => expect(trigger).toHaveFocus());
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "关闭对话菜单" }));
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("exposes thread actions and archived filtering through the existing callbacks", async () => {
     const first = thread({ is_pinned: true });
-    const archived = thread({ thread_id: 3, title: "旧调查", status: "archived" });
+    const archived = thread({ thread_id: 3, title: "旧调查", status: "archived", is_pinned: true });
     const onRename = vi.fn().mockResolvedValue(undefined);
     const onSetPinned = vi.fn().mockResolvedValue(undefined);
     const onSetArchived = vi.fn().mockResolvedValue(undefined);
@@ -78,6 +111,7 @@ describe("WorkbenchAgentThreadMenu", () => {
     expect(screen.getByRole("group", { name: "置顶" })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("显示已归档"));
     expect((await screen.findAllByText("旧调查")).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("option")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "重命名" }));
     fireEvent.change(screen.getByRole("textbox", { name: "对话标题" }), {

@@ -196,18 +196,19 @@ class Worker:
                 provider = resolved.provider
                 api_key = resolved.api_key
                 state.sensitive_values = (api_key,)
-            handler.execute(
-                TaskExecutionContext(
-                    task=task,
-                    attempt_id=attempt_id,
-                    session_factory=self.session_factory,
-                    chat_config=self._chat_config,
-                    emit=self._emit,
-                    state=state,
-                    provider=provider,
-                    api_key=api_key,
+            with self._finalizer.heartbeat(task_run_id, attempt_id):
+                handler.execute(
+                    TaskExecutionContext(
+                        task=task,
+                        attempt_id=attempt_id,
+                        session_factory=self.session_factory,
+                        chat_config=self._chat_config,
+                        emit=self._emit,
+                        state=state,
+                        provider=provider,
+                        api_key=api_key,
+                    )
                 )
-            )
         except TaskCancellationRequested:
             self._cancel(
                 task_run_id,
@@ -289,21 +290,21 @@ class Worker:
 
     def _emit(
         self,
-        task_run_id: int,
+        snapshot: TaskRun,
         event_type: str,
         stage: str,
         payload: dict[str, Any],
     ) -> None:
-        self._finalizer._emit(task_run_id, event_type, stage, payload)
+        self._finalizer._emit(snapshot, event_type, stage, payload)
 
     def _emit_after_completion(
         self,
-        task_run_id: int,
+        snapshot: TaskRun,
         event_type: str,
         stage: str,
         payload: dict[str, Any],
     ) -> None:
-        self._finalizer._emit_after_completion(task_run_id, event_type, stage, payload)
+        self._finalizer._emit_after_completion(snapshot, event_type, stage, payload)
 
     def _complete_chat(self, *args: Any, **kwargs: Any) -> None:
         self._chat._complete_chat(*args, **kwargs)

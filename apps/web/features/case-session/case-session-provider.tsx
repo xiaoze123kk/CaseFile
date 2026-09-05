@@ -20,6 +20,7 @@ import type {
   CandidateStrategy,
   ProviderName,
   TaskType,
+  LatestTaskType,
   TaskView,
 } from "@/lib/api-client";
 import {
@@ -180,7 +181,6 @@ export interface CaseSessionState {
   frozenBriefVersion: number | null;
   generation: {
     status: GenerationStatus;
-    stage: number;
     slots: Record<CandidateSlotStrategy, CandidateSlot>;
   };
   strategyAnalysis: {
@@ -201,6 +201,7 @@ type CaseSessionAction =
   | { type: "patch"; patch: Partial<CaseSessionState> }
   | { type: "confirm_brief"; review: BriefReview; versionNo: number }
   | { type: "start_generation"; strategies: CandidateSlotStrategy[] }
+  | { type: "task_updated"; task: TaskView; strategy?: CandidateSlotStrategy; error?: string | null }
   | {
       type: "update_generation_slot";
       strategy: CandidateSlotStrategy;
@@ -209,10 +210,8 @@ type CaseSessionAction =
       taskRunId?: number | null;
       attempt?: number;
       error?: string | null;
-      task?: TaskView | null;
     }
-  | { type: "advance_generation"; stage: number }
-  | { type: "end_generation"; status: "idle" | "ready"; stage: number }
+  | { type: "end_generation"; status: "idle" | "ready" }
   | {
       type: "strategy_analysis_ready";
       options: BriefStrategyOption[];
@@ -241,7 +240,7 @@ export function createInitialCaseSessionState(): CaseSessionState {
     review: null,
     workingBriefVersion: 1,
     frozenBriefVersion: null,
-    generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+    generation: { status: "idle", slots: createCandidateSlots() },
     strategyAnalysis: {
       status: "idle",
       options: [],
@@ -262,6 +261,30 @@ export function caseSessionReducer(
   action: CaseSessionAction,
 ): CaseSessionState {
   if (action.type === "patch") return { ...state, ...action.patch };
+  if (action.type === "task_updated") {
+    const task = action.task;
+    const strategy = task.task_type === "brief_to_draft"
+      ? action.strategy ?? CANDIDATE_SLOT_STRATEGIES.find((value) => value === task.candidate_strategy)
+      : undefined;
+    return {
+      ...state,
+      latestTasks: { ...state.latestTasks, [task.task_type]: task },
+      generation: strategy ? {
+        ...state.generation,
+        slots: {
+          ...state.generation.slots,
+          [strategy]: {
+            ...state.generation.slots[strategy],
+            status: candidateSlotStatusFromTask(task),
+            stage: candidateTaskStageFromTask(task),
+            taskRunId: task.task_run_id,
+            error: action.error ?? null,
+            latestTask: task,
+          },
+        },
+      } : state.generation,
+    };
+  }
   if (action.type === "confirm_brief") {
     return {
       ...state,
@@ -283,7 +306,7 @@ export function caseSessionReducer(
         latestTask: null,
       };
     }
-    return { ...state, generation: { status: "generating", stage: 1, slots } };
+    return { ...state, generation: { status: "generating", slots } };
   }
   if (action.type === "update_generation_slot") {
     const previous = state.generation.slots[action.strategy];
@@ -299,27 +322,16 @@ export function caseSessionReducer(
             taskRunId: action.taskRunId ?? previous.taskRunId,
             attempt: action.attempt ?? previous.attempt,
             error: action.error ?? null,
-            latestTask: action.task ?? previous.latestTask,
+            latestTask: previous.latestTask,
           },
         },
-      },
-    };
-  }
-  if (action.type === "advance_generation") {
-    if (state.generation.status !== "generating") return state;
-    return {
-      ...state,
-      generation: {
-        ...state.generation,
-        status: "generating",
-        stage: action.stage,
       },
     };
   }
   if (action.type === "end_generation") {
     return {
       ...state,
-      generation: { ...state.generation, status: action.status, stage: action.stage },
+      generation: { ...state.generation, status: action.status },
     };
   }
   if (action.type === "strategy_analysis_ready") {
@@ -340,7 +352,7 @@ export function caseSessionReducer(
   if (action.type === "complete_generation") {
     return {
       ...state,
-      generation: { ...state.generation, status: "ready", stage: 3 },
+      generation: { ...state.generation, status: "ready" },
       draftCandidates: [
         ...state.draftCandidates.filter(
           (existing) => !action.candidates.some((candidate) => candidate.id === existing.id),
@@ -391,7 +403,7 @@ export function caseSessionReducer(
       workingBriefVersion: state.workingBriefVersion + 1,
       frozenBriefVersion: null,
       review: null,
-      generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+      generation: { status: "idle", slots: createCandidateSlots() },
       strategyAnalysis: {
         status: "idle",
         options: [],
@@ -449,8 +461,8 @@ interface CaseSessionContextValue {
     strategy?: CandidateSlotStrategy,
     attempt?: number,
   ) => Promise<CandidateGenerationOutcome>;
-  resumeGeneration: (strategy: CandidateSlotStrategy) => Promise<boolean>;
-  cancelGeneration: (strategy: CandidateSlotStrategy) => Promise<TaskView | null>;
+  resumeGeneration: (strategy: CandidateSlotStrategy, onReload?: () => void) => Promise<boolean>;
+  cancelGeneration: (strategy: CandidateSlotStrategy, onReload?: () => void) => Promise<TaskView | null>;
   retryTask: (taskType: TaskType) => Promise<PolishResult | null>;
   analyzeStrategies: (refresh?: boolean) => Promise<boolean>;
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
@@ -462,6 +474,7 @@ interface CaseSessionContextValue {
   ) => WorkbenchCandidateStatus;
   resetSession: () => void;
   loadProject: (projectId: number) => Promise<void>;
+  getSessionEpoch: () => number;
   stashCurrentSession: () => void;
   restoreStashedSession: () => void;
   hasStashedSession: boolean;
@@ -486,7 +499,7 @@ const CaseSessionContext = createContext<CaseSessionContextValue | null>(
   null,
 );
 
-const RECOVERABLE_TASK_TYPES: readonly TaskType[] = [
+const RECOVERABLE_TASK_TYPES: readonly LatestTaskType[] = [
   "brief_polish",
   "brief_anchor_extract",
   "brief_intake_questions",
@@ -501,6 +514,12 @@ const ACTIVE_TASK_STATUSES = new Set<TaskView["status"]>([
   "cancelling",
 ]);
 
+function assertSessionActive(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new CaseSessionError("会话已切换，已停止旧操作。", "session_changed");
+  }
+}
+
 export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
     caseSessionReducer,
@@ -510,14 +529,20 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const stateRef = useRef(state);
   const projectIdRef = useRef<number | null>(null);
+  const sessionEpochRef = useRef(0);
+  const sessionReadControllerRef = useRef(new AbortController());
   const intakeRef = useRef<Awaited<ReturnType<typeof fetchCaseIntake>> | null>(
     null,
   );
   const briefRef = useRef<Awaited<ReturnType<typeof fetchBrief>> | null>(
     null,
   );
-  const recoveringTaskIdsRef = useRef(new Set<number>());
+  const recoveringTaskIdsRef = useRef(new Set<string>());
   const initialProjectLoadRef = useRef(false);
+  const projectCreationRef = useRef<{
+    signal: AbortSignal;
+    promise: ReturnType<typeof createCaseProject>;
+  } | null>(null);
 
   const syncProjectPointer = useCallback((projectId: number | null) => {
     if (typeof window === "undefined") return;
@@ -538,29 +563,58 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
+  const invalidateSession = useCallback(() => {
+    const epoch = ++sessionEpochRef.current;
+    sessionReadControllerRef.current.abort();
+    projectCreationRef.current = null;
+    sessionReadControllerRef.current = new AbortController();
+    return epoch;
+  }, []);
+
+  useEffect(() => () => { invalidateSession(); }, [invalidateSession]);
+
   const ensureProjectAndSource = useCallback(async (
     text: string,
   ): Promise<Awaited<ReturnType<typeof fetchCaseIntake>>> => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const normalized = text.trim();
     if (!normalized) throw new CaseSessionError("请先写下最初想法。");
+    let projectId = projectIdRef.current;
     let intake = intakeRef.current;
-    if (projectIdRef.current === null) {
-      const project = await createCaseProject(text);
-      projectIdRef.current = project.id;
+    if (projectId === null) {
+      const creation = projectCreationRef.current?.signal === signal
+        ? projectCreationRef.current
+        : { signal, promise: createCaseProject(text) };
+      projectCreationRef.current = creation;
+      let project: Awaited<ReturnType<typeof createCaseProject>>;
+      try {
+        project = await creation.promise;
+      } finally {
+        if (projectCreationRef.current === creation) projectCreationRef.current = null;
+      }
+      assertSessionActive(signal);
+      projectId = project.id;
+      projectIdRef.current = projectId;
       setActiveProjectId(project.id);
       syncProjectPointer(project.id);
       intake = await fetchCaseIntake(project.id);
+      assertSessionActive(signal);
       intakeRef.current = intake;
     } else if (!intake) {
-      intake = await fetchCaseIntake(projectIdRef.current);
+      const existingProjectId = projectId;
+      intake = await fetchCaseIntake(existingProjectId);
+      assertSessionActive(signal);
       intakeRef.current = intake;
     }
     if (intake.current_source?.content_text !== normalized) {
+      const revision = intake.revision;
       intake = await persistCaseSource(
-        projectIdRef.current,
-        intake.revision,
+        projectId,
+        revision,
         normalized,
       );
+      assertSessionActive(signal);
       intakeRef.current = intake;
     }
     return intake;
@@ -572,21 +626,28 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
 
   const submitPolish = useCallback(
     async (mode: IntakePolishMode): Promise<PolishResult> => {
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
       const current = stateRef.current;
       const intake = await ensureProjectAndSource(current.sourceText);
+      assertSessionActive(signal);
+      const projectId = intake.project_id;
       const sourceRecordId = intake.current_source?.source_record_id;
       if (!sourceRecordId) throw new CaseSessionError("起案原文尚未保存。");
       const { result: done } = await runTaskWithProviderFallback(
         async (provider) => {
+          assertSessionActive(signal);
           const task = await startPolishTask(
-            projectIdRef.current!,
+            projectId,
             sourceRecordId,
             provider,
             mode,
           );
-          return waitForTask(projectIdRef.current!, task.task_run_id);
+          assertSessionActive(signal);
+          return waitForTask(projectId, task.task_run_id, undefined, signal);
         },
       );
+      assertSessionActive(signal);
       const result = done.result as BriefPolishResult | null;
       if (!result) throw new CaseSessionError("润色任务没有返回结果。");
       return {
@@ -604,32 +665,43 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
 
   const adoptPolish = useCallback(
     async (draft: string, parentSourceRecordId: number | null) => {
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
+      const projectId = projectIdRef.current;
       const intake = intakeRef.current;
-      if (projectIdRef.current === null || !intake) {
+      if (projectId === null || !intake) {
         throw new CaseSessionError("当前会话尚未建案。");
       }
-      intakeRef.current = await persistCaseSource(
-        projectIdRef.current,
+      const updatedIntake = await persistCaseSource(
+        projectId,
         intake.revision,
         draft.trim(),
         parentSourceRecordId,
       );
+      assertSessionActive(signal);
+      intakeRef.current = updatedIntake;
     },
     [],
   );
 
   const startWithFreshIntakeRevision = useCallback(
     async <T,>(operation: (revision: number) => Promise<T>): Promise<T> => {
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
       const projectId = projectIdRef.current;
       if (projectId === null) {
         throw new CaseSessionError("当前会话尚未建案。");
       }
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const fresh = await fetchCaseIntake(projectId);
+        assertSessionActive(signal);
         intakeRef.current = fresh;
         try {
-          return await operation(fresh.revision);
+          const result = await operation(fresh.revision);
+          assertSessionActive(signal);
+          return result;
         } catch (error) {
+          assertSessionActive(signal);
           if (!isBriefIntakeRevisionConflict(error)) throw error;
           if (attempt === 1) {
             throw new CaseSessionError(
@@ -645,8 +717,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const persistCurrentAnswers = useCallback(async () => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     return startWithFreshIntakeRevision(async () => {
+      assertSessionActive(signal);
       const projectId = projectIdRef.current;
       if (projectId === null || !intakeRef.current) {
         throw new CaseSessionError("当前会话尚未建案。");
@@ -673,6 +748,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           question.question_key,
           input,
         );
+        assertSessionActive(signal);
       }
       intakeRef.current = intake;
       return intake;
@@ -680,26 +756,35 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, [startWithFreshIntakeRevision]);
 
   const requestQuestions = useCallback(async (forceGeneration: boolean) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     let intake = await ensureProjectAndSource(current.sourceText);
+    assertSessionActive(signal);
+    const projectId = intake.project_id;
     const hadExistingQuestions = intake.questions.length > 0;
     if (forceGeneration) {
       // “再生成一些问题”必须先把页面上尚未落库的回答写入服务端：
       // 追加任务要带着已有问答去避开重复，完成后的服务端映射也不会清空本地回答。
       intake = await persistCurrentAnswers();
+      assertSessionActive(signal);
     }
     if (forceGeneration || intake.questions.length === 0) {
       await runTaskWithProviderFallback(async (provider) => {
+        assertSessionActive(signal);
         const task = await startWithFreshIntakeRevision((revision) =>
           startQuestionsTask(
-            projectIdRef.current!,
+            projectId,
             revision,
             provider,
           ),
         );
-        return waitForTask(projectIdRef.current!, task.task_run_id);
+        assertSessionActive(signal);
+        return waitForTask(projectId, task.task_run_id, undefined, signal);
       });
-      intake = await fetchCaseIntake(projectIdRef.current!);
+      assertSessionActive(signal);
+      intake = await fetchCaseIntake(projectId);
+      assertSessionActive(signal);
       intakeRef.current = intake;
     }
     const mapped = mapIntakeToSessionState(intake);
@@ -733,9 +818,13 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const generateBriefFromAnswers = useCallback(async () => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     let intake =
       intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
+    assertSessionActive(signal);
+    const projectId = intake.project_id;
     const baseCandidateId = intake.current_candidate_id;
     for (const question of intake.questions) {
       const answer = current.answers[question.question_key];
@@ -753,17 +842,19 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         input = { mode: "answer", text: answer.text };
       }
       intake = await answerQuestion(
-        projectIdRef.current!,
+        projectId,
         intake.revision,
         question.question_key,
         input,
       );
+      assertSessionActive(signal);
       intakeRef.current = intake;
     }
     await runTaskWithProviderFallback(async (provider) => {
+      assertSessionActive(signal);
       const task = await startWithFreshIntakeRevision((revision) =>
         startSynthesizeTask(
-          projectIdRef.current!,
+          projectId,
           revision,
           provider,
           baseCandidateId,
@@ -772,9 +863,13 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             : "根据最新起案与关键问答重新整理简报；保留当前候选中未受影响的作者修改。",
         ),
       );
-      return waitForTask(projectIdRef.current!, task.task_run_id);
+      assertSessionActive(signal);
+      return waitForTask(projectId, task.task_run_id, undefined, signal);
     });
-    intakeRef.current = await fetchCaseIntake(projectIdRef.current!);
+    assertSessionActive(signal);
+    const updatedIntake = await fetchCaseIntake(projectId);
+    assertSessionActive(signal);
+    intakeRef.current = updatedIntake;
     const mapped = mapIntakeToSessionState(intakeRef.current);
     dispatch({
       type: "patch",
@@ -788,25 +883,33 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, [ensureProjectAndSource, startWithFreshIntakeRevision]);
 
   const saveCandidateAsNew = useCallback(async () => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
+    const projectId = projectIdRef.current;
     const current = stateRef.current;
     const intake = intakeRef.current;
-    if (projectIdRef.current === null || !intake) {
+    if (projectId === null || !intake) {
       throw new CaseSessionError("当前会话尚未建案。");
     }
-    intakeRef.current = await createBriefCandidate(
-      projectIdRef.current,
+    const updatedIntake = await createBriefCandidate(
+      projectId,
       intake.revision,
       mapBriefToCandidateContent(current.brief),
       intake.current_candidate_id,
     );
+    assertSessionActive(signal);
+    intakeRef.current = updatedIntake;
     const mapped = mapIntakeToSessionState(intakeRef.current);
     dispatch({ type: "patch", patch: { ...mapped, brief: current.brief } });
   }, []);
 
   const createDialogueRevision = useCallback(async (instruction: string) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
+    const projectId = projectIdRef.current;
     const current = stateRef.current;
     const intake = intakeRef.current;
-    if (projectIdRef.current === null || !intake) {
+    if (projectId === null || !intake) {
       throw new CaseSessionError("当前会话尚未建案。");
     }
     if (intake.current_candidate_id === null) {
@@ -819,17 +922,23 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       )?.brief ?? current.brief;
     await runTaskWithProviderFallback(async (provider) => {
       // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
-      const fresh = await fetchCaseIntake(projectIdRef.current!);
+      assertSessionActive(signal);
+      const fresh = await fetchCaseIntake(projectId);
+      assertSessionActive(signal);
       const task = await startSynthesizeTask(
-        projectIdRef.current!,
+        projectId,
         fresh.revision,
         provider,
         baseCandidateId,
         instruction,
       );
-      return waitForTask(projectIdRef.current!, task.task_run_id);
+      assertSessionActive(signal);
+      return waitForTask(projectId, task.task_run_id, undefined, signal);
     });
-    intakeRef.current = await fetchCaseIntake(projectIdRef.current);
+    assertSessionActive(signal);
+    const updatedIntake = await fetchCaseIntake(projectId);
+    assertSessionActive(signal);
+    intakeRef.current = updatedIntake;
     const mapped = mapIntakeToSessionState(intakeRef.current);
     const candidate = mapped.briefCandidates.find(
       (item) => item.id === mapped.currentBriefCandidateId,
@@ -845,15 +954,20 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const saveCandidateBookmark = useCallback(async (candidateId: number) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
+    const projectId = projectIdRef.current;
     const intake = intakeRef.current;
-    if (projectIdRef.current === null || !intake) {
+    if (projectId === null || !intake) {
       throw new CaseSessionError("当前会话尚未建案。");
     }
-    intakeRef.current = await saveBriefCandidate(
-      projectIdRef.current,
+    const updatedIntake = await saveBriefCandidate(
+      projectId,
       intake.revision,
       candidateId,
     );
+    assertSessionActive(signal);
+    intakeRef.current = updatedIntake;
     const mapped = mapIntakeToSessionState(intakeRef.current);
     dispatch({
       type: "patch",
@@ -862,15 +976,20 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const activateCandidate = useCallback(async (candidateId: number) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
+    const projectId = projectIdRef.current;
     const intake = intakeRef.current;
-    if (projectIdRef.current === null || !intake) {
+    if (projectId === null || !intake) {
       throw new CaseSessionError("当前会话尚未建案。");
     }
-    intakeRef.current = await activateBriefCandidate(
-      projectIdRef.current,
+    const updatedIntake = await activateBriefCandidate(
+      projectId,
       intake.revision,
       candidateId,
     );
+    assertSessionActive(signal);
+    intakeRef.current = updatedIntake;
     const mapped = mapIntakeToSessionState(intakeRef.current);
     dispatch({
       type: "patch",
@@ -883,6 +1002,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
 
   const confirmBriefAndContinue = useCallback(
     async (draftOverride?: IntakeBrief) => {
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
       const current = stateRef.current;
       const draft = draftOverride ?? current.brief;
       const projectId = projectIdRef.current;
@@ -896,6 +1017,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       // 每次从权威 Intake 开始。上次确认即使只完成了采用或写回，
       // 也能从 brief_review 状态继续，而不会重复创建不可变版本。
       let intake = await fetchCaseIntake(projectId);
+      assertSessionActive(signal);
       intakeRef.current = intake;
       let candidate = currentIntakeCandidate(intake);
 
@@ -904,6 +1026,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         (!candidate || !briefsMatch(draft, candidate.content))
       ) {
         intake = await beginBriefRevisionRequest(projectId);
+        assertSessionActive(signal);
         intakeRef.current = intake;
         candidate = currentIntakeCandidate(intake);
       }
@@ -915,6 +1038,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         briefsMatch(draft, candidate.content)
       ) {
         adoptedBrief = await fetchBrief(projectId);
+        assertSessionActive(signal);
       } else {
         let candidateId = intake.current_candidate_id;
         if (
@@ -928,6 +1052,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             mapBriefToCandidateContent(draft),
             candidateId,
           );
+          assertSessionActive(signal);
           intakeRef.current = intake;
           candidateId = intake.current_candidate_id;
         }
@@ -940,6 +1065,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           candidateId,
           intake.brief.draft_revision,
         );
+        assertSessionActive(signal);
         intakeRef.current = adopted.intake;
         adoptedBrief = adopted.brief;
       }
@@ -958,11 +1084,16 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         adoptedBrief.draft_revision,
         content,
       );
+      assertSessionActive(signal);
       briefRef.current = savedBrief;
       const version = await confirmBrief(projectId, savedBrief.draft_revision);
+      assertSessionActive(signal);
       try {
-        briefRef.current = await fetchBrief(projectId);
+        const refreshedBrief = await fetchBrief(projectId);
+        assertSessionActive(signal);
+        briefRef.current = refreshedBrief;
       } catch {
+        assertSessionActive(signal);
         // 冻结已经持久化。后续策略分析会按需重新读取 Brief。
         briefRef.current = null;
       }
@@ -978,11 +1109,15 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       mode: "extract" | "suggest_author_answer",
       content?: BriefContent,
     ) => {
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
       const projectId = projectIdRef.current;
       if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
       const brief = briefRef.current ?? (await fetchBrief(projectId));
+      assertSessionActive(signal);
       const { result: done } = await runTaskWithProviderFallback(
         async (provider) => {
+          assertSessionActive(signal);
           const task = await startAnchorExtractTask(
             projectId,
             brief.draft_revision,
@@ -990,9 +1125,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             mode,
             content,
           );
-          return waitForTask(projectId, task.task_run_id);
+          assertSessionActive(signal);
+          return waitForTask(projectId, task.task_run_id, undefined, signal);
         },
       );
+      assertSessionActive(signal);
       const result = done.result as
         | {
             suggested_author_answer?: string;
@@ -1010,11 +1147,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const generateAuthorAnswer = useCallback(async (draftOverride?: IntakeBrief) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     const draft = draftOverride ?? current.brief;
     const projectId = projectIdRef.current;
     if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
     const brief = briefRef.current ?? (await fetchBrief(projectId));
+    assertSessionActive(signal);
     // 答案候选必须反映作者此刻看到的表单，即使会话中仍保留旧的
     // review 读模型；后端会把它作为临时上下文，而不是可冻结 Brief 校验。
     const content = mapIntakeBriefToAnchorContent(
@@ -1023,6 +1163,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       intakeRef.current?.current_source?.source_record_id ?? null,
     );
     const result = await runAnchorExtract("suggest_author_answer", content);
+    assertSessionActive(signal);
     const suggestion = result.suggested_author_answer?.trim();
     if (!suggestion) {
       throw new CaseSessionError("Agent 没有形成可审阅的作者答案候选，请直接填写你的结论。");
@@ -1031,6 +1172,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, [runAnchorExtract]);
 
   const analyzeStrategies = useCallback(async (refresh = false) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     if (current.strategyAnalysis.status === "analyzing") return false;
     const projectId = projectIdRef.current;
@@ -1047,20 +1190,24 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     });
     try {
       const brief = briefRef.current ?? (await fetchBrief(projectId));
+      assertSessionActive(signal);
       if (!brief.current_version_id) {
         throw new CaseSessionError("请先冻结当前创作简报。");
       }
       const { result: done } = await runTaskWithProviderFallback(
         async (provider) => {
+          assertSessionActive(signal);
           const task = await startStrategyOptionsTask(
             projectId,
             brief.current_version_id!,
             provider,
             refresh,
           );
-          return waitForTask(projectId, task.task_run_id);
+          assertSessionActive(signal);
+          return waitForTask(projectId, task.task_run_id, undefined, signal);
         },
       );
+      assertSessionActive(signal);
       const result = strategyOptionsResult(done);
       if (!result || result.options.length !== 3) {
         throw new CaseSessionError("策略分析任务没有返回完整的三个方向。");
@@ -1073,6 +1220,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       });
       return true;
     } catch (error) {
+      assertSessionActive(signal);
       const latest = stateRef.current.strategyAnalysis;
       dispatch({
         type: "patch",
@@ -1097,6 +1245,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       requestedStrategy?: CandidateSlotStrategy,
       requestedAttempt = 1,
     ) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     const selectedStrategy = requestedStrategy ?? current.selectedStrategy;
     if (
@@ -1111,10 +1261,12 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     if (projectId === null) return "not_started";
     try {
       const brief = briefRef.current ?? (await fetchBrief(projectId));
+      assertSessionActive(signal);
       if (!brief.current_version_id) {
         throw new CaseSessionError("请先冻结当前创作简报。");
       }
       const existingCandidates = await fetchDraftCandidates(projectId);
+      assertSessionActive(signal);
       const currentOnes = existingCandidates.filter(
         (candidate) => candidate.is_current_brief,
       );
@@ -1144,16 +1296,18 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         });
       }
       const draft = await fetchCaseDraft(projectId);
+      assertSessionActive(signal);
       dispatch({ type: "start_generation", strategies: strategiesToRun });
       let workingProvider: ProviderName | null = null;
 
       if (strategiesToRun.length > 0) {
-        // 首个待运行槽位负责 Provider 认证回退；成功后复用于其余槽位。
+        // 当前选中策略负责 Provider 认证回退；成功后供候选去重重试复用。
         const firstStrategy = strategiesToRun.includes("structure_first")
           ? "structure_first"
           : strategiesToRun[0];
         const fallbackResult = await runTaskWithProviderFallback(
           async (provider) => {
+            assertSessionActive(signal);
             let taskRunId: number | null = null;
             try {
               const task = await startDraftGenerationTask(
@@ -1165,6 +1319,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 firstStrategy,
                 selectedStrategy === firstStrategy ? requestedAttempt : 1,
               );
+              assertSessionActive(signal);
               taskRunId = task.task_run_id;
               dispatch({
                 type: "update_generation_slot",
@@ -1175,23 +1330,23 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                   selectedStrategy === firstStrategy ? requestedAttempt : 1,
               });
               await waitForTask(projectId, task.task_run_id, (latestTask) => {
+                if (signal.aborted) return;
                 dispatch({
-                  type: "update_generation_slot",
+                  type: "task_updated",
                   strategy: firstStrategy,
-                  status: candidateSlotStatusFromTask(latestTask),
-                  stage: candidateTaskStageFromTask(latestTask),
                   task: latestTask,
                 });
-              });
+              }, signal);
+              assertSessionActive(signal);
               dispatch({
                 type: "update_generation_slot",
                 strategy: firstStrategy,
                 status: "succeeded",
                 stage: "completed",
               });
-              dispatch({ type: "advance_generation", stage: 2 });
               return provider;
             } catch (error) {
+              assertSessionActive(signal);
               dispatch({
                 type: "update_generation_slot",
                 strategy: firstStrategy,
@@ -1204,63 +1359,12 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             }
           },
         );
+        assertSessionActive(signal);
         workingProvider = fallbackResult.provider;
-
-        const parallelStrategies = strategiesToRun.filter(
-          (strategy) => strategy !== firstStrategy,
-        );
-        await Promise.allSettled(
-          parallelStrategies.map(async (strategy) => {
-            let taskRunId: number | null = null;
-            try {
-              const task = await startDraftGenerationTask(
-                projectId,
-                brief.current_version_id!,
-                draft.draft_id,
-                draft.revision,
-                workingProvider!,
-                strategy,
-                1,
-              );
-              taskRunId = task.task_run_id;
-              dispatch({
-                type: "update_generation_slot",
-                strategy,
-                status: "running",
-                stage: "queued",
-                taskRunId,
-              });
-              await waitForTask(projectId, task.task_run_id, (latestTask) => {
-                dispatch({
-                  type: "update_generation_slot",
-                  strategy,
-                  status: candidateSlotStatusFromTask(latestTask),
-                  stage: candidateTaskStageFromTask(latestTask),
-                  task: latestTask,
-                });
-              });
-              dispatch({
-                type: "update_generation_slot",
-                strategy,
-                status: "succeeded",
-                stage: "completed",
-              });
-              dispatch({ type: "advance_generation", stage: 3 });
-            } catch (error) {
-              dispatch({
-                type: "update_generation_slot",
-                strategy,
-                status: "failed",
-                stage: "failed",
-                taskRunId,
-                error: error instanceof Error ? error.message : "生成失败",
-              });
-            }
-          }),
-        );
       }
 
       const candidates = await fetchDraftCandidates(projectId);
+      assertSessionActive(signal);
       let refreshedCurrentOnes = candidates.filter(
         (candidate) => candidate.is_current_brief,
       );
@@ -1297,6 +1401,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       if (workingProvider && duplicateRetryStrategies.length > 0) {
         await Promise.allSettled(
           duplicateRetryStrategies.map(async (strategy) => {
+            assertSessionActive(signal);
             let taskRunId: number | null = null;
             dispatch({
               type: "update_generation_slot",
@@ -1315,6 +1420,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 strategy,
                 2,
               );
+              assertSessionActive(signal);
               taskRunId = task.task_run_id;
               dispatch({
                 type: "update_generation_slot",
@@ -1325,14 +1431,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 attempt: 2,
               });
               await waitForTask(projectId, task.task_run_id, (latestTask) => {
+                if (signal.aborted) return;
                 dispatch({
-                  type: "update_generation_slot",
+                  type: "task_updated",
                   strategy,
-                  status: candidateSlotStatusFromTask(latestTask),
-                  stage: candidateTaskStageFromTask(latestTask),
                   task: latestTask,
                 });
-              });
+              }, signal);
+              assertSessionActive(signal);
               dispatch({
                 type: "update_generation_slot",
                 strategy,
@@ -1341,6 +1447,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 attempt: 2,
               });
             } catch (error) {
+              assertSessionActive(signal);
               dispatch({
                 type: "update_generation_slot",
                 strategy,
@@ -1353,9 +1460,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             }
           }),
         );
+        assertSessionActive(signal);
         refreshedCurrentOnes = (await fetchDraftCandidates(projectId)).filter(
           (candidate) => candidate.is_current_brief,
         );
+        assertSessionActive(signal);
       }
       const mapped = mapCurrentBriefDraftCandidates(
         refreshedCurrentOnes,
@@ -1369,19 +1478,18 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         ? "succeeded"
         : "not_started";
     } catch (error) {
+      assertSessionActive(signal);
       if (isTaskCancelledError(error)) {
         dispatch({
-          type: "update_generation_slot",
+          type: "task_updated",
           strategy: selectedStrategy,
-          status: "cancelled",
-          stage: "cancelled",
           task: error.task,
           error: null,
         });
-        dispatch({ type: "end_generation", status: "idle", stage: 0 });
+        dispatch({ type: "end_generation", status: "idle" });
         return "cancelled";
       }
-      dispatch({ type: "end_generation", status: "idle", stage: 0 });
+      dispatch({ type: "end_generation", status: "idle" });
       throw error;
     }
     },
@@ -1394,46 +1502,51 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
 
   const retryTask = useCallback(
     async (taskType: TaskType): Promise<PolishResult | null> => {
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
+      const projectId = projectIdRef.current;
       const current = stateRef.current;
-      const refreshLatest = async () => {
-        const projectId = projectIdRef.current;
+      const refreshLatest = async (taskType: LatestTaskType) => {
+        assertSessionActive(signal);
         if (projectId === null) return;
         let latest: TaskView | null = null;
         try {
           latest = await fetchLatestTask(projectId, taskType);
+          assertSessionActive(signal);
         } catch {
           // The retry request has already been submitted; a refresh failure should not
           // turn a successful retry into a false error state in the UI.
+          assertSessionActive(signal);
           return;
         }
         if (!latest) return;
-        dispatch({
-          type: "patch",
-          patch: {
-            latestTasks: {
-              ...stateRef.current.latestTasks,
-              [taskType]: latest,
-            },
-          },
-        });
+        dispatch({ type: "task_updated", task: latest });
       };
       switch (taskType) {
         case "brief_polish": {
           const result = await submitPolish(current.polishMode);
-          await refreshLatest();
+          assertSessionActive(signal);
+          await refreshLatest(taskType);
+          assertSessionActive(signal);
           return result;
         }
         case "brief_intake_questions":
           await requestQuestions(true);
-          await refreshLatest();
+          assertSessionActive(signal);
+          await refreshLatest(taskType);
+          assertSessionActive(signal);
           return null;
         case "brief_intake_synthesize":
           await generateBriefFromAnswers();
-          await refreshLatest();
+          assertSessionActive(signal);
+          await refreshLatest(taskType);
+          assertSessionActive(signal);
           return null;
         case "brief_strategy_options":
           await analyzeStrategies(true);
-          await refreshLatest();
+          assertSessionActive(signal);
+          await refreshLatest(taskType);
+          assertSessionActive(signal);
           return null;
         case "brief_to_draft": {
           if (!current.selectedStrategy) {
@@ -1444,7 +1557,9 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             current.selectedStrategy,
             (previousTask?.attempt_count ?? 1) + 1,
           );
-          await refreshLatest();
+          assertSessionActive(signal);
+          await refreshLatest(taskType);
+          assertSessionActive(signal);
           return null;
         }
         default:
@@ -1461,6 +1576,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const adoptCandidate = useCallback(async (candidateId: string) => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const current = stateRef.current;
     const candidate = current.draftCandidates.find(
       (item) => item.id === candidateId,
@@ -1475,11 +1592,13 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const taskRunId = Number(candidateId.replace(/^draft-/, ""));
     if (!Number.isInteger(taskRunId)) return false;
     const draft = await fetchCaseDraft(projectId);
+    assertSessionActive(signal);
     const outcome = await adoptDraftCandidateWithReconciliation(
       projectId,
       taskRunId,
       draft.draft_id,
     );
+    assertSessionActive(signal);
     let reconciled = false;
     if (outcome.facts) {
       const latest = stateRef.current;
@@ -1498,8 +1617,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     if (outcome.error) throw outcome.error;
     if (!reconciled) dispatch({ type: "adopt_candidate", candidateId });
     try {
-      briefRef.current = await fetchBrief(projectId);
+      const refreshedBrief = await fetchBrief(projectId);
+      assertSessionActive(signal);
+      briefRef.current = refreshedBrief;
     } catch {
+      assertSessionActive(signal);
       // Candidate adoption is already durable. A Brief refresh failure must not
       // turn the successful write into an author-facing adoption failure.
     }
@@ -1507,6 +1629,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const beginBriefRevision = useCallback(async () => {
+    const signal = sessionReadControllerRef.current.signal;
+    assertSessionActive(signal);
     const projectId = projectIdRef.current;
     if (projectId === null) {
       throw new CaseSessionError("当前会话尚未建案。");
@@ -1514,6 +1638,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     // 先持久化“建立简报修订”：服务端把 Intake 从 brief_review 重开为
     // confirmation，后续第 3 步的保存/采用请求才会被状态机接受。
     const intake = await beginBriefRevisionRequest(projectId);
+    assertSessionActive(signal);
     intakeRef.current = intake;
     dispatch({ type: "begin_revision" });
   }, []);
@@ -1525,13 +1650,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const resetSession = useCallback(() => {
+    invalidateSession();
     projectIdRef.current = null;
     intakeRef.current = null;
     briefRef.current = null;
     setActiveProjectId(null);
     syncProjectPointer(null);
     dispatch({ type: "reset" });
-  }, [syncProjectPointer]);
+  }, [invalidateSession, syncProjectPointer]);
 
   const stashRef = useRef<StashedSession | null>(null);
   const [stashAvailable, setStashAvailable] = useState(false);
@@ -1558,6 +1684,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const restoreStashedSession = useCallback(() => {
     const stashed = stashRef.current;
     if (!stashed) return;
+    invalidateSession();
     projectIdRef.current = stashed.projectId;
     intakeRef.current = stashed.intake;
     briefRef.current = stashed.brief;
@@ -1566,66 +1693,58 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     setStashAvailable(false);
     syncProjectPointer(stashed.projectId);
     dispatch({ type: "patch", patch: stashed.state });
-  }, [syncProjectPointer]);
+  }, [invalidateSession, syncProjectPointer]);
 
   const resumeTask = useCallback(async (
     projectId: number,
     task: TaskView,
     recoveryReview: BriefReview | null,
   ) => {
+    const epoch = sessionEpochRef.current;
+    const recoveryKey = `${epoch}:${task.task_run_id}`;
     if (!ACTIVE_TASK_STATUSES.has(task.status)) return;
-    if (recoveringTaskIdsRef.current.has(task.task_run_id)) return;
-    recoveringTaskIdsRef.current.add(task.task_run_id);
+    if (recoveringTaskIdsRef.current.has(recoveryKey)) return;
+    recoveringTaskIdsRef.current.add(recoveryKey);
     const update = (latest: TaskView) => {
-      if (projectIdRef.current !== projectId) return;
+      if (sessionEpochRef.current !== epoch || projectIdRef.current !== projectId) return;
       dispatch({
-        type: "patch",
-        patch: {
-          latestTasks: {
-            ...stateRef.current.latestTasks,
-            [latest.task_type]: latest,
-          },
-        },
-      });
-      if (latest.task_type !== "brief_to_draft") return;
-      const strategy = CANDIDATE_SLOT_STRATEGIES.find(
-        (candidateStrategy) => candidateStrategy === latest.candidate_strategy,
-      );
-      if (!strategy) return;
-      dispatch({
-        type: "update_generation_slot",
-        strategy,
-        status: candidateSlotStatusFromTask(latest),
-        stage: candidateTaskStageFromTask(latest),
+        type: "task_updated",
         task: latest,
         error:
           latest.status === "failed"
             ? latest.failure?.message ?? "生成任务失败，Current Draft 未被修改。"
             : null,
       });
+      if (latest.task_type !== "brief_to_draft") return;
+      const strategy = CANDIDATE_SLOT_STRATEGIES.find(
+        (candidateStrategy) => candidateStrategy === latest.candidate_strategy,
+      );
+      if (!strategy) return;
       if (!ACTIVE_TASK_STATUSES.has(latest.status)) {
         dispatch({
           type: "end_generation",
           status: latest.status === "cancelled" ? "idle" : "ready",
-          stage: latest.status === "succeeded" ? 3 : 0,
         });
       }
     };
     let terminalTask: TaskView | null = null;
     try {
-      terminalTask = await waitForRecoveredTask(projectId, task.task_run_id, update);
+      terminalTask = await waitForRecoveredTask(
+        projectId, task.task_run_id, update, sessionReadControllerRef.current.signal,
+      );
       if (terminalTask) update(terminalTask);
     } finally {
-      recoveringTaskIdsRef.current.delete(task.task_run_id);
+      recoveringTaskIdsRef.current.delete(recoveryKey);
     }
     if (
+      sessionEpochRef.current === epoch &&
       task.task_type === "brief_to_draft" &&
       terminalTask &&
       !ACTIVE_TASK_STATUSES.has(terminalTask.status)
     ) {
       try {
         const candidates = await fetchDraftCandidates(projectId);
-        if (projectIdRef.current === projectId && recoveryReview) {
+        if (sessionEpochRef.current === epoch && projectIdRef.current === projectId && recoveryReview) {
           dispatch({
             type: "patch",
             patch: mapAuthoritativeDraftCandidateState(
@@ -1642,13 +1761,16 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadProject = useCallback(async (projectId: number) => {
+    const epoch = invalidateSession();
+    // Keep the previous form readable, but do not accept its operations while loading.
+    sessionReadControllerRef.current.abort();
     dispatch({
       type: "patch",
       patch: { hydration: { status: "loading", error: null } },
     });
     try {
     const intake = await fetchCaseIntake(projectId);
-    intakeRef.current = intake;
+    if (sessionEpochRef.current !== epoch) return;
     const mapped = mapIntakeToSessionState(intake);
     const pendingDecisions = intake.pending_decisions.map(
       (decision) => decision.prompt,
@@ -1673,6 +1795,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         }
       }),
     );
+    if (sessionEpochRef.current !== epoch) return;
     if (intake.stage === "questions") {
       step = "questions";
       furthestStep = 1;
@@ -1681,7 +1804,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       furthestStep = 2;
     } else if (intake.stage === "brief_review") {
       brief = await fetchBrief(projectId);
-      briefRef.current = brief;
+      if (sessionEpochRef.current !== epoch) return;
       review = mapBriefContentToReview(brief.content, pendingDecisions);
       const frozenVersionNo = brief.current_version_no ?? null;
       if (brief.current_version_id !== null && frozenVersionNo !== null) {
@@ -1701,6 +1824,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         furthestStep = 2;
       }
     }
+    if (sessionEpochRef.current !== epoch) return;
+    sessionReadControllerRef.current = new AbortController();
+    intakeRef.current = intake;
+    briefRef.current = brief;
     projectIdRef.current = projectId;
     setActiveProjectId(projectId);
     const generationSlots = createCandidateSlots();
@@ -1743,7 +1870,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
               : latestGenerationTask
                 ? "ready"
                 : "idle",
-          stage: latestGenerationTask ? 1 : 0,
           slots: generationSlots,
         },
         strategyAnalysis: {
@@ -1760,14 +1886,17 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         brief: mapped.brief ?? createEmptyBrief(sourceText),
       },
     });
-    projectIdRef.current = projectId;
     syncProjectPointer(projectId);
     for (const task of Object.values(latestTasks)) {
       if (task) void resumeTask(projectId, task, review);
     }
     } catch (error) {
+      if (sessionEpochRef.current !== epoch) return;
+      sessionReadControllerRef.current = new AbortController();
       const message = error instanceof Error ? error.message : "项目恢复失败，请重试。";
       projectIdRef.current = null;
+      intakeRef.current = null;
+      briefRef.current = null;
       setActiveProjectId(null);
       syncProjectPointer(null);
       dispatch({
@@ -1776,17 +1905,22 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       });
       throw error;
     }
-  }, [resumeTask, syncProjectPointer]);
+  }, [invalidateSession, resumeTask, syncProjectPointer]);
 
   const resumeGeneration = useCallback(
-    async (strategy: CandidateSlotStrategy) => {
+    async (strategy: CandidateSlotStrategy, onReload?: () => void) => {
+      const epoch = sessionEpochRef.current;
+      const signal = sessionReadControllerRef.current.signal;
+      assertSessionActive(signal);
       const projectId = projectIdRef.current;
       const slot = stateRef.current.generation.slots[strategy];
       if (projectId === null || slot.taskRunId === null || !slot.latestTask) {
         return false;
       }
       const brief = briefRef.current ?? (await fetchBrief(projectId));
+      if (sessionEpochRef.current !== epoch) return false;
       const draft = await fetchCaseDraft(projectId);
+      if (sessionEpochRef.current !== epoch) return false;
       const resumed = await resumeDraftGenerationTask(
         projectId,
         slot.taskRunId,
@@ -1794,27 +1928,31 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         draft.revision,
         brief.draft_revision,
       );
+      if (sessionEpochRef.current !== epoch) return false;
       dispatch({
-        type: "update_generation_slot",
+        type: "task_updated",
         strategy,
-        status: "running",
-        stage: "queued",
         task: resumed,
         error: null,
       });
+      let reloadEpoch: number | null = null;
       try {
         await waitForTask(projectId, resumed.task_run_id, (task) => {
+          if (sessionEpochRef.current !== epoch) return;
           dispatch({
-            type: "update_generation_slot",
+            type: "task_updated",
             strategy,
-            status: candidateSlotStatusFromTask(task),
-            stage: candidateTaskStageFromTask(task),
             task,
           });
-        });
-        await loadProject(projectId);
-        return true;
+        }, signal);
+        if (sessionEpochRef.current !== epoch) return false;
+        const loading = loadProject(projectId);
+        reloadEpoch = sessionEpochRef.current;
+        onReload?.();
+        await loading;
+        return sessionEpochRef.current === reloadEpoch;
       } catch (error) {
+        if (sessionEpochRef.current !== (reloadEpoch ?? epoch)) return false;
         dispatch({
           type: "update_generation_slot",
           strategy,
@@ -1829,7 +1967,9 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   );
 
   const cancelGeneration = useCallback(
-    async (strategy: CandidateSlotStrategy) => {
+    async (strategy: CandidateSlotStrategy, onReload?: () => void) => {
+      assertSessionActive(sessionReadControllerRef.current.signal);
+      const epoch = sessionEpochRef.current;
       const projectId = projectIdRef.current;
       const slot = stateRef.current.generation.slots[strategy];
       if (
@@ -1841,11 +1981,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         return null;
       }
       const task = await cancelTask(projectId, slot.taskRunId);
+      if (sessionEpochRef.current !== epoch) return null;
       dispatch({
-        type: "update_generation_slot",
+        type: "task_updated",
         strategy,
-        status: candidateSlotStatusFromTask(task),
-        stage: candidateTaskStageFromTask(task),
         task,
         error:
           task.status === "failed"
@@ -1853,9 +1992,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             : null,
       });
       if (task.status === "succeeded") {
-        await loadProject(projectId);
+        const loading = loadProject(projectId);
+        onReload?.();
+        await loading;
       } else if (task.status === "cancelled" || task.status === "failed") {
-        dispatch({ type: "end_generation", status: "idle", stage: 0 });
+        dispatch({ type: "end_generation", status: "idle" });
       }
       return task;
     },
@@ -1887,10 +2028,15 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       syncProjectPointer(null);
       return;
     }
+    const epoch = sessionEpochRef.current;
     const recoveryTimer = window.setTimeout(() => {
+      if (sessionEpochRef.current !== epoch) return;
       void loadProject(projectId).catch(() => undefined);
     }, 0);
-    return () => window.clearTimeout(recoveryTimer);
+    return () => {
+      window.clearTimeout(recoveryTimer);
+      initialProjectLoadRef.current = false;
+    };
   }, [loadProject, syncProjectPointer]);
 
   const activeCandidate = useMemo(() => {
@@ -1900,6 +2046,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       null
     );
   }, [state.adoptedCandidateId, state.draftCandidates, state.previewCandidateId]);
+
+  const getSessionEpoch = useCallback(() => sessionEpochRef.current, []);
 
   const value = useMemo<CaseSessionContextValue>(
     () => ({
@@ -1920,6 +2068,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       candidateStatus,
       resetSession,
       loadProject,
+      getSessionEpoch,
       stashCurrentSession,
       restoreStashedSession,
       hasStashedSession: stashAvailable,
@@ -1954,6 +2103,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       generateAuthorAnswer,
       retryTask,
       loadProject,
+      getSessionEpoch,
       patchState,
       previewCandidate,
       resetSession,

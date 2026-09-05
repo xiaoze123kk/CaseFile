@@ -21,7 +21,7 @@ from casefile.agent_runtime.context import (
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
 )
-from casefile.application.errors import ApplicationError
+from casefile.application.errors import ApplicationError, not_found
 from casefile.application.task_events import append_task_event
 from casefile.application.workflow_views import (
     event_view,
@@ -33,6 +33,36 @@ from casefile.application.workflow_views import (
 from casefile.data_postgres.models import (
     AgentThreadContextState,
 )
+from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+
+
+def require_owned_project(
+    projects: ProjectRepository, actor_user_id: int, project_id: int, *, lock: bool = False,
+) -> OwnedDraft:
+    owned = projects.get_owned(actor_user_id, project_id, lock=lock)
+    if owned is None:
+        raise not_found("Project")
+    return owned
+
+
+def require_current_draft(
+    owned: OwnedDraft,
+    *,
+    expected_draft_id: int,
+    expected_draft_revision: int,
+) -> None:
+    if owned.draft.id == expected_draft_id and owned.draft.revision == expected_draft_revision:
+        return
+    raise ApplicationError(
+        "draft_revision_conflict",
+        "当前工作稿已切换或更新，请刷新后重新提交。",
+        status_code=409,
+        details={
+            "current_draft_id": owned.draft.id,
+            "current_revision": owned.draft.revision,
+        },
+    )
+
 
 DEFAULT_PROVIDER = "openai"
 
@@ -184,4 +214,6 @@ __all__ = [
     "SUPPORTED_CHAT_VIEWS",
     "SUPPORTED_PROVIDERS",
     "chat_context_policy_version",
+    "require_owned_project",
+    "require_current_draft",
 ]

@@ -9,6 +9,7 @@ import {
   sendAgentRoutingFeedback,
   simulateAgentPatchSet,
   streamAgentRunEvents,
+  streamTaskEvents,
 } from "@/lib/api-client";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -21,6 +22,74 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe("chat public API client", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it.each(["task", "public"] as const)(
+    "%s stream releases its reader when the consumer throws",
+    async (kind) => {
+      const cancel = vi.fn();
+      const data = kind === "task"
+        ? { sequence_no: 1, event_type: "task.started", stage: "running" }
+        : { sequence: 1, event: "run.activity", activity: "reading" };
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
+        },
+        cancel,
+      });
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(body)));
+      const failure = new Error("consumer failure");
+      const onEvent = () => { throw failure; };
+      const signal = new AbortController().signal;
+      const stream = kind === "task"
+        ? streamTaskEvents("/task/stream", 1, onEvent, signal)
+        : streamAgentRunEvents(1, 2, 3, onEvent, signal);
+      await expect(stream).rejects.toBe(failure);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(body.locked).toBe(false);
+    },
+  );
+
+  it.each([
+    ["task", "complete"], ["public", "complete"],
+    ["task", "malformed"], ["public", "malformed"],
+    ["task", "abort"], ["public", "abort"],
+  ] as const)("%s stream releases its reader after %s", async (kind, ending) => {
+    const abort = new AbortController();
+    const failure = new DOMException("stopped", "AbortError");
+    const cancel = vi.fn();
+    const data = kind === "task"
+      ? { sequence_no: 1, event_type: "task.started", stage: "running" }
+      : { sequence: 1, event: "run.activity", activity: "reading" };
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (ending === "abort") {
+          abort.signal.addEventListener("abort", () => controller.error(failure), { once: true });
+          return;
+        }
+        controller.enqueue(new TextEncoder().encode(
+          `data: ${ending === "malformed" ? "{" : JSON.stringify(data)}\n\n`,
+        ));
+        if (ending === "complete") controller.close();
+      },
+      cancel,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body)));
+    const onEvent = vi.fn();
+    const stream = kind === "task"
+      ? streamTaskEvents("/task/stream", 1, onEvent, abort.signal)
+      : streamAgentRunEvents(1, 2, 3, onEvent, abort.signal);
+    if (ending === "abort") {
+      abort.abort();
+      await expect(stream).rejects.toBe(failure);
+    } else if (ending === "malformed") {
+      await expect(stream).rejects.toBeInstanceOf(SyntaxError);
+      expect(cancel).toHaveBeenCalledOnce();
+    } else {
+      await stream;
+      expect(onEvent).toHaveBeenCalledExactlyOnceWith(data);
+    }
+    expect(body.locked).toBe(false);
   });
 
   it("uses public message, run and event endpoints", async () => {

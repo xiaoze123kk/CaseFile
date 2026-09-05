@@ -13,6 +13,49 @@ import { AgentProgress } from "./workbench-agent-progress";
 import type { RunFeedback } from "./workbench-agent-feedback";
 import { AgentPatchCard } from "./workbench-agent-patch-card";
 
+export function AgentAnswer({ text }: { text: string }) {
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let items: string[] = [];
+  let ordered = false;
+  let start = 1;
+  const flushParagraph = () => {
+    if (paragraph.length) blocks.push(<p key={blocks.length}>{paragraph.join("\n")}</p>);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (items.length) {
+      const children = items.map((item, index) => <li key={index}>{item}</li>);
+      blocks.push(ordered
+        ? <ol key={blocks.length} start={start}>{children}</ol>
+        : <ul key={blocks.length}>{children}</ul>);
+    }
+    items = [];
+  };
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^\s*(?:(\d+)[.)、]|([-*•]))\s+(.+)$/u.exec(line);
+    if (match) {
+      flushParagraph();
+      const nextOrdered = Boolean(match[1]);
+      if (items.length && ordered !== nextOrdered) flushList();
+      if (!items.length) start = Number(match[1] ?? 1);
+      ordered = nextOrdered;
+      items.push(match[3]);
+    } else if (!line.trim()) {
+      flushParagraph();
+      flushList();
+    } else if (items.length && /^\s+/u.test(line)) {
+      items[items.length - 1] += `\n${line.trim()}`;
+    } else {
+      flushList();
+      paragraph.push(line);
+    }
+  }
+  flushParagraph();
+  flushList();
+  return <div className={styles.agentAnswer}>{blocks}</div>;
+}
+
 export function agentAuditFindingsFor(
   message: PublicAgentMessage,
 ): PublicFinding[] {
@@ -105,13 +148,13 @@ export function WorkbenchAgentConversation({
               controls={message.message_id === latestAssistantId ? taskControls : null} /> : null}
             {message.body !== null && !(run?.status === "failed" && message.body === run.failure?.message) ? (
               <div className={styles.agentTurnContent}>
-                <p>{message.body}</p>
+                {message.role === "assistant" ? <AgentAnswer text={message.body} /> : <p>{message.body}</p>}
               </div>
             ) : null}
             {message.body === null && previewText ? unfinished ? <details className={styles.agentPreview}>
-              <summary>未形成正式结论 · 查看未完成预览</summary><p>{previewText}</p>
+              <summary>未形成正式结论 · 查看未完成预览</summary><AgentAnswer text={previewText} />
             </details> : <div className={styles.agentPreview} aria-live="off">
-              <small>{run?.status === "succeeded" ? "正在同步结果" : preview?.ready ? "正在确认结果，尚未完成校验" : "生成中，尚未完成校验"}</small><p>{previewText}</p>
+              <small>{run?.status === "succeeded" ? "正在同步结果" : preview?.ready ? "正在确认结果，尚未完成校验" : "生成中，尚未完成校验"}</small><AgentAnswer text={previewText} />
             </div> : null}
             {message.patch ? renderPatch ? renderPatch(message) : <AgentPatchCard patchSet={message.patch}
               onDetails={onFocusPatch ? () => onFocusPatch(message.patch!.patch_id) : undefined} /> : null}

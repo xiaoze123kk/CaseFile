@@ -9,17 +9,10 @@ import {
   useState,
 } from "react";
 
+import { useSessionUiOperation } from "@/features/case-session/use-session-ui-operation";
 import { useCaseSession } from "@/features/case-session/case-session-provider";
 import {
-  generateIdeas,
-  fetchIdeas,
-  selectIdea,
-  bookmarkIdea,
-  archiveIdea,
-  regenerateIdea,
-  createCaseProject,
   isBriefConfirmationRevisionConflict,
-  type IdeaGenerationPreferences,
 } from "@/features/case-session/case-session-api";
 
 import {
@@ -45,7 +38,6 @@ import {
   type ConclusionMode,
   type ResolutionMode,
   type IntakeStep,
-  type IdeaCandidateView,
 } from "./intake-model";
 import {
   CaseHistoryDrawer,
@@ -54,6 +46,7 @@ import {
 } from "./case-history-drawer";
 import { DraftCandidatesStage } from "./draft-candidates-stage";
 import IdeaCandidatesStage from "./idea-candidates-stage";
+import { useIdeaCandidates } from "./use-idea-candidates";
 import { FieldShell, SourceBadge } from "./intake-field-shell";
 import { Glyph } from "./intake-glyph";
 import { IntakeLanding } from "./intake-landing";
@@ -81,7 +74,6 @@ type BriefTextField =
   | "scopeEstimate"
   | "riskNotes";
 
-type RawIdeaRecord = Record<string, unknown>;
 
 type BriefConfirmationPhase =
   | "idle"
@@ -265,6 +257,7 @@ function describeBriefRevision(
 }
 
 export function IntakeCenter() {
+  const captureOperation = useSessionUiOperation();
   const {
     state,
     patchState,
@@ -371,14 +364,18 @@ export function IntakeCenter() {
 
   // ── Path B: Idea Generation ───────────────────────────────────────────
   const [showIdeaGeneration, setShowIdeaGeneration] = useState(false);
-  const [ideaProjectId, setIdeaProjectId] = useState<number | null>(null);
-  const [ideaCandidates, setIdeaCandidates] = useState<IdeaCandidateView[]>([]);
-  const [pastBatches, setPastBatches] = useState<Record<string, IdeaCandidateView[]>>({});
-  const [ideaGenerating, setIdeaGenerating] = useState(false);
-  const [regeneratingIds, setRegeneratingIds] = useState<number[]>([]);
 
   // ── Path C: Reverse Parse ────────────────────────────────────────────
   const [showReverseParse, setShowReverseParse] = useState(false);
+  const {
+    ideaCandidates, pastBatches, ideaGenerating, regeneratingIds,
+    enterPathB, generateAll, handleSelectIdea, handleBookmarkIdea,
+    handleArchiveIdea, handleRegenerateIdea, resetIdeas, clearIdeaPending,
+  } = useIdeaCandidates({
+    activeProjectId, hydrating: hydration.status === "loading",
+    loadProject: (projectId) => { clearPendingOperations(); return loadProject(projectId); },
+    setActivePath, setShowIdeaGeneration, setShowReverseParse, setError,
+  });
 
   useEffect(() => {
     if (!showLanding) return;
@@ -398,139 +395,6 @@ export function IntakeCenter() {
     };
   }, [showLanding]);
 
-  const ideaFromRecord = (idea: RawIdeaRecord): IdeaCandidateView => ({
-    id: idea.id as number,
-    batch_id: idea.batch_id as string,
-    ordinal: idea.ordinal as number,
-    content: idea.content as IdeaCandidateView["content"],
-    status: (idea.status ?? "active") as IdeaCandidateView["status"],
-    bookmarked: (idea.bookmarked ?? false) as boolean,
-    created_at: (idea.created_at ?? null) as string | null,
-  });
-
-  const pastBatchesFromRecord = (
-    batches: Record<string, unknown>,
-  ): Record<string, IdeaCandidateView[]> => {
-    const pastMap: Record<string, IdeaCandidateView[]> = {};
-    for (const [key, val] of Object.entries(batches)) {
-      pastMap[key] = (val as RawIdeaRecord[]).map(ideaFromRecord);
-    }
-    return pastMap;
-  };
-
-  // 进入路径 B：只恢复已有创意，不自动重新生成；生成由用户显式触发。
-  const enterPathB = async () => {
-    if (ideaGenerating) return;
-    setActivePath("B");
-    setShowIdeaGeneration(true);
-    setShowReverseParse(false);
-    setError(null);
-    try {
-      // 优先复用已有 ideaProjectId，避免“切回 A 再切回 B”时误建新项目，
-      // 导致界面上的候选归属到另一个项目，收藏/淘汰/重新生成全部失效。
-      const project = ideaProjectId !== null
-        ? { id: ideaProjectId }
-        : activeProjectId
-          ? { id: activeProjectId }
-          : await createCaseProject("帮我想一个");
-      setIdeaProjectId(project.id);
-
-      // 恢复历史创意批次；已有创意时直接展示最近一批，不重新生成。
-      try {
-        const past = await fetchIdeas(project.id);
-        const pastMap = pastBatchesFromRecord(past.batches ?? {});
-        setPastBatches(pastMap);
-        if (ideaCandidates.length === 0) {
-          const batchIds = Object.keys(pastMap).sort();
-          const latestBatchId = batchIds[batchIds.length - 1];
-          if (latestBatchId) setIdeaCandidates(pastMap[latestBatchId] ?? []);
-        }
-      } catch { /* silently ignore */ }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "打开创意方向失败。");
-    }
-  };
-
-  // 显式“生成创意候选”：每次点击都重新生成一批，并把偏好传给后端。
-  const generateAll = async (preferences?: IdeaGenerationPreferences) => {
-    if (ideaGenerating) return;
-    setError(null);
-    setIdeaGenerating(true);
-    try {
-      const project = ideaProjectId !== null
-        ? { id: ideaProjectId }
-        : activeProjectId
-          ? { id: activeProjectId }
-          : await createCaseProject("帮我想一个");
-      setIdeaProjectId(project.id);
-      const result = await generateIdeas(project.id, preferences);
-      setIdeaCandidates((result.ideas ?? []).map(ideaFromRecord));
-      await refetchIdeasForProject(project.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "生成创意失败。");
-    } finally {
-      setIdeaGenerating(false);
-    }
-  };
-
-  const handleSelectIdea = async (ideaId: number) => {
-    if (!ideaProjectId) return;
-    try {
-      await selectIdea(ideaProjectId, ideaId);
-      setIdeaCandidates((prev) =>
-        prev.map((i) => (i.id === ideaId ? { ...i, status: "selected" as const } : i)),
-      );
-      await loadProject(ideaProjectId);
-      setShowIdeaGeneration(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "选择失败。");
-    }
-  };
-
-  const refetchIdeasForProject = async (projectId: number) => {
-    try {
-      const past = await fetchIdeas(projectId);
-      const all = pastBatchesFromRecord(past.batches ?? {});
-      setPastBatches(all);
-      setIdeaCandidates((prev) => {
-        const latestBatchId = prev[0]?.batch_id;
-        return latestBatchId ? (all[latestBatchId] ?? prev) : prev;
-      });
-    } catch { /* noop */ }
-  };
-
-  const refetchIdeas = async () => {
-    if (!ideaProjectId) return;
-    await refetchIdeasForProject(ideaProjectId);
-  };
-
-  const handleBookmarkIdea = async (ideaId: number) => {
-    if (!ideaProjectId) return;
-    try {
-      await bookmarkIdea(ideaProjectId, ideaId);
-      await refetchIdeas();
-    } catch { /* noop */ }
-  };
-
-  const handleArchiveIdea = async (ideaId: number) => {
-    if (!ideaProjectId) return;
-    try {
-      await archiveIdea(ideaProjectId, ideaId);
-      await refetchIdeas();
-    } catch { /* noop */ }
-  };
-
-  const handleRegenerateIdea = async (ideaId: number) => {
-    if (!ideaProjectId) return;
-    if (regeneratingIds.includes(ideaId)) return;
-    setRegeneratingIds((prev) => [...prev, ideaId]);
-    try {
-      await regenerateIdea(ideaProjectId, ideaId);
-      await refetchIdeas();
-    } catch { /* noop */ } finally {
-      setRegeneratingIds((prev) => prev.filter((id) => id !== ideaId));
-    }
-  };
 
   useEffect(() => {
     if (!briefDirty) return;
@@ -813,6 +677,7 @@ export function IntakeCenter() {
   }
 
   async function startPolishReview() {
+    const isCurrent = captureOperation();
     if (!sourceText.trim()) {
       setError("先写下一句最初想法，再生成润色校样。");
       return;
@@ -825,6 +690,7 @@ export function IntakeCenter() {
     setError(null);
     try {
       const result = await submitPolish(polishMode);
+      if (!isCurrent()) return;
       setPolishDraft(result.text);
       setPolishNotes(result.notes);
       setIntroducedDetails(result.introducedDetails);
@@ -832,14 +698,18 @@ export function IntakeCenter() {
       setSourceDirty(false);
       announce("润色校样已形成，原文仍保持不变。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setPolishReviewOpen(false);
       setError(caught instanceof Error ? caught.message : "润色任务未完成。");
     } finally {
-      setPolishPending(false);
+      if (isCurrent()) {
+        setPolishPending(false);
+      }
     }
   }
 
   async function adoptPolish() {
+    const isCurrent = captureOperation();
     if (!polishDraft.trim()) return;
     setError(null);
     try {
@@ -847,17 +717,20 @@ export function IntakeCenter() {
         polishDraft.trim(),
         polishParentSourceRecordId,
       );
+      if (!isCurrent()) return;
       setSourceText(polishDraft.trim());
       setSourceDirty(false);
       markSourceDependenciesStale();
       setPolishReviewOpen(false);
       announce("已采用润色稿，原始版本仍可在来源记录中追溯。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "采用润色稿失败。");
     }
   }
 
   async function continueToQuestions() {
+    const isCurrent = captureOperation();
     if (!sourceText.trim()) {
       setError("请先写下最初想法。");
       return;
@@ -875,8 +748,10 @@ export function IntakeCenter() {
     try {
       if (isDependencyRefresh) {
         await requestMoreQuestions();
+        if (!isCurrent()) return;
       } else {
         await proceedToQuestions();
+        if (!isCurrent()) return;
       }
       setSourceDirty(false);
       setAnswersDirty(false);
@@ -893,20 +768,25 @@ export function IntakeCenter() {
         announce("起案原文已记录，进入关键追问。");
       }
     } catch (caught) {
+      if (!isCurrent()) return;
       setQuestionGenerationFailed(true);
       setError(caught instanceof Error ? caught.message : "追问任务未完成。");
     } finally {
-      setQuestionGenerationMode(null);
+      if (isCurrent()) {
+        setQuestionGenerationMode(null);
+      }
     }
   }
 
   async function generateMoreQuestions() {
+    const isCurrent = captureOperation();
     if (questionsPending) return;
     setError(null);
     setQuestionGenerationMode("additional");
     const firstNewQuestionIndex = nextQuestionBatchStartIndex;
     try {
       await requestMoreQuestions();
+      if (!isCurrent()) return;
       // 已回答的旧题只作为上下文；未完成的必答题继续保留在可见批次中。
       setQuestionBatchStartIndex(firstNewQuestionIndex);
       setQuestionPageIndex(0);
@@ -915,9 +795,12 @@ export function IntakeCenter() {
         ? "补充研查已完成；当前只显示本轮新增问题，已有回答保持不变。"
         : "补充研查已完成；请先完成保留的必答问题，已有回答保持不变。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "补充追问任务未完成。");
     } finally {
-      setQuestionGenerationMode(null);
+      if (isCurrent()) {
+        setQuestionGenerationMode(null);
+      }
     }
   }
 
@@ -950,6 +833,7 @@ export function IntakeCenter() {
   }
 
   async function generateBrief() {
+    const isCurrent = captureOperation();
     if (!hardQuestionsResolved) {
       setError("必须先回答关键问题，才能形成创作简报。");
       return;
@@ -965,15 +849,19 @@ export function IntakeCenter() {
     setStep("confirmation");
     try {
       await synthesizeBriefFromServer();
+      if (!isCurrent()) return;
       setAnswersDirty(false);
       setBriefDirty(false);
       clearDependencyInvalidation();
       announce("创作简报候选已形成，请逐项校核后采用。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setStep("questions");
       setError(caught instanceof Error ? caught.message : "创作简报生成未完成。");
     } finally {
-      setBriefGenerationPending(false);
+      if (isCurrent()) {
+        setBriefGenerationPending(false);
+      }
     }
   }
 
@@ -1015,22 +903,27 @@ export function IntakeCenter() {
   }
 
   async function generateAuthorAnswerSuggestion() {
+    const isCurrent = captureOperation();
     setAuthorAnswerPending(true);
     setAuthorAnswerSuggestion(null);
     setAuthorAnswerError(null);
     setError(null);
     try {
       const suggestion = await generateAuthorAnswer(brief);
+      if (!isCurrent()) return;
       setAuthorAnswerSuggestion(suggestion);
       announce("Agent 只提供了一版答案候选；你可以采用、改写，或直接写自己的结论。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setAuthorAnswerError(
         caught instanceof Error
           ? caught.message
           : "答案候选生成未完成，请直接填写你的结论。",
       );
     } finally {
-      setAuthorAnswerPending(false);
+      if (isCurrent()) {
+        setAuthorAnswerPending(false);
+      }
     }
   }
 
@@ -1071,6 +964,7 @@ export function IntakeCenter() {
   }
 
   async function saveCandidate() {
+    const isCurrent = captureOperation();
     if (candidateSavePending) return;
     if (missingFields.length) {
       setError("保存前请补齐：" + missingFields.join("、") + "。");
@@ -1080,16 +974,21 @@ export function IntakeCenter() {
     setError(null);
     try {
       await saveCandidateToServer();
+      if (!isCurrent()) return;
       setBriefDirty(false);
       announce("已保存为新的独立候选，旧版本没有被覆盖。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "候选保存失败。");
     } finally {
-      setCandidateSavePending(false);
+      if (isCurrent()) {
+        setCandidateSavePending(false);
+      }
     }
   }
 
   async function createDialogueRevision() {
+    const isCurrent = captureOperation();
     if (dialogueRevisionPending) return;
     const instruction = revisionInstruction.trim();
     if (!instruction) {
@@ -1101,6 +1000,7 @@ export function IntakeCenter() {
     setError(null);
     try {
       const result = await createDialogueRevisionFromServer(instruction);
+      if (!isCurrent()) return;
       const changes = describeBriefRevision(
         result.baseBrief,
         result.candidate.brief,
@@ -1121,24 +1021,31 @@ export function IntakeCenter() {
           : "Agent 已形成修改候选；未发现字段内容变化。",
       );
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "对话修改未完成。");
     } finally {
-      setDialogueRevisionPending(false);
+      if (isCurrent()) {
+        setDialogueRevisionPending(false);
+      }
     }
   }
 
   async function restoreCandidate(candidate: BriefCandidate) {
+    const isCurrent = captureOperation();
     setError(null);
     try {
       await activateCandidate(candidate.id);
+      if (!isCurrent()) return;
       setBriefDirty(false);
       announce("已恢复" + candidate.label + "。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "候选恢复失败。");
     }
   }
 
   function focusBriefField(field: BriefConfirmationField) {
+    const isCurrent = captureOperation();
     const selectors: Record<BriefConfirmationField, string> = {
       concept: '[aria-label="一句话概念"]',
       reasoningGoal: '[aria-label="推理目标"]',
@@ -1146,11 +1053,13 @@ export function IntakeCenter() {
       authorAnswer: '[aria-label="作者答案"]',
     };
     window.setTimeout(() => {
+      if (!isCurrent()) return;
       document.querySelector<HTMLElement>(selectors[field])?.focus();
     }, 0);
   }
 
   async function runBriefConfirmation(draft: IntakeBrief) {
+    const isCurrent = captureOperation();
     if (briefConfirmationInFlight.current) return;
     briefConfirmationInFlight.current = true;
     setBriefConfirmationPhase("processing");
@@ -1159,19 +1068,23 @@ export function IntakeCenter() {
     setError(null);
     try {
       await confirmBriefAndContinue(draft);
+      if (!isCurrent()) return;
       setBriefDirty(false);
       setAuthorAnswerPending(false);
       setAuthorAnswerSuggestion(null);
       setAuthorAnswerError(null);
       setBriefConfirmationPhase("success");
     } catch (caught) {
+      if (!isCurrent()) return;
       setBriefConfirmationPhase("failed");
       setConfirmationRevisionConflict(
         isBriefConfirmationRevisionConflict(caught),
       );
       setError(caught instanceof Error ? caught.message : "建案确认失败，请重试。");
     } finally {
-      briefConfirmationInFlight.current = false;
+      if (isCurrent()) {
+        briefConfirmationInFlight.current = false;
+      }
     }
   }
 
@@ -1208,11 +1121,13 @@ export function IntakeCenter() {
   }
 
   async function reopenFrozenBrief() {
+    const isCurrent = captureOperation();
     if (briefRevisionPending) return;
     setBriefRevisionDialogOpen(false);
     setBriefRevisionPending(true);
     try {
       await beginBriefRevision();
+      if (!isCurrent()) return;
       setBriefConfirmationPhase("idle");
       setBriefConfirmationIssue(null);
       setResolutionDecision(null);
@@ -1221,16 +1136,23 @@ export function IntakeCenter() {
       setError(null);
       announce("已从冻结版本建立新的可编辑简报修订。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "建立简报修订失败。");
     } finally {
-      setBriefRevisionPending(false);
+      if (isCurrent()) {
+        setBriefRevisionPending(false);
+      }
     }
   }
 
   async function reloadLatestBrief() {
     if (activeProjectId === null) return;
+    clearPendingOperations();
+    const loading = loadProject(activeProjectId);
+    const isCurrent = captureOperation();
     try {
-      await loadProject(activeProjectId);
+      await loading;
+      if (!isCurrent()) return;
       setBriefDirty(false);
       setBriefConfirmationPhase("idle");
       setBriefConfirmationIssue(null);
@@ -1238,19 +1160,31 @@ export function IntakeCenter() {
       setError(null);
       announce("已载入服务端最新的创作简报。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "载入最新版本失败。");
     }
   }
 
+  function clearPendingOperations() {
+    setPolishPending(false);
+    setQuestionGenerationMode(null);
+    setBriefGenerationPending(false);
+    setAuthorAnswerPending(false);
+    setCandidateSavePending(false);
+    setDialogueRevisionPending(false);
+    setBriefRevisionPending(false);
+    setRetryingTaskType(null);
+    briefConfirmationInFlight.current = false;
+    clearIdeaPending();
+  }
+
   function resetSession() {
+    clearPendingOperations();
     resetSessionState();
     setPolishReviewOpen(false);
-    setQuestionGenerationMode(null);
     setQuestionPageIndex(0);
     setQuestionBatchStartIndex(0);
     setQuestionGenerationFailed(false);
-    setBriefGenerationPending(false);
-    setAuthorAnswerPending(false);
     setAuthorAnswerSuggestion(null);
     setAuthorAnswerError(null);
     setPolishDraft("");
@@ -1263,30 +1197,24 @@ export function IntakeCenter() {
     setSourceDirty(false);
     setAnswersDirty(false);
     setBriefDirty(false);
-    setCandidateSavePending(false);
-    setDialogueRevisionPending(false);
     setBriefConfirmationPhase("idle");
     setBriefConfirmationIssue(null);
     setResolutionDecision(null);
     setConfirmationRevisionConflict(false);
     setConfirmReturnToIdea(false);
     setBriefRevisionDialogOpen(false);
-    setBriefRevisionPending(false);
-    briefConfirmationInFlight.current = false;
     setConfirmingExample(false);
     setActivePath("A");
     setShowLanding(true);
     setShowIdeaGeneration(false);
     setShowReverseParse(false);
-    setIdeaProjectId(null);
-    setIdeaCandidates([]);
-    setPastBatches({});
-    setRegeneratingIds([]);
+    resetIdeas();
     setError(null);
     announce("已恢复未建案状态；后续操作将创建新项目。");
   }
 
   async function restoreProject(projectId: number) {
+    clearPendingOperations();
     stashCurrentSession();
     // 历史恢复统一回到路径 A 的步骤视图，退出 B/C 入口界面。
     setActivePath("A");
@@ -1294,8 +1222,11 @@ export function IntakeCenter() {
     setShowReverseParse(false);
     setQuestionBatchStartIndex(0);
     setQuestionPageIndex(0);
+    const loading = loadProject(projectId);
+    const isCurrent = captureOperation();
     try {
-      await loadProject(projectId);
+      await loading;
+      if (!isCurrent()) return;
       setSourceDirty(false);
       setAnswersDirty(false);
       setBriefDirty(false);
@@ -1314,6 +1245,7 @@ export function IntakeCenter() {
       setError(null);
       announce("已恢复该卷宗；服务端状态已重新同步。");
     } catch (caught) {
+      if (!isCurrent()) return;
       resetSession();
       setHistoryDrawerOpen(false);
       setError(caught instanceof Error ? caught.message : "卷宗恢复失败，请重试。");
@@ -1321,11 +1253,13 @@ export function IntakeCenter() {
   }
 
   async function retryLatestTask(taskType: Parameters<typeof retryTask>[0]) {
+    const isCurrent = captureOperation();
     if (retryingTaskType) return;
     setRetryingTaskType(taskType);
     setError(null);
     try {
       const polished = await retryTask(taskType);
+      if (!isCurrent()) return;
       if (polished) {
         setPolishDraft(polished.text);
         setPolishNotes(polished.notes);
@@ -1335,13 +1269,17 @@ export function IntakeCenter() {
       }
       announce("任务已重新提交；页面会继续显示最新执行状态。");
     } catch (caught) {
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "任务重试失败，请稍后再试。");
     } finally {
-      setRetryingTaskType(null);
+      if (isCurrent()) {
+        setRetryingTaskType(null);
+      }
     }
   }
 
   function restoreStashed() {
+    clearPendingOperations();
     restoreStashedSession();
     setLandingEntranceActive(false);
     setShowLanding(false);

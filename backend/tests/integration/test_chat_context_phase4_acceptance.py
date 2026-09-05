@@ -451,13 +451,13 @@ def test_phase4_v6_rollout_binds_v17_v4_toolset_and_hardened_router(
                 first_row.error_code,
                 first_row.error_details_jsonb,
             )
-            assert first_row.prompt_version == "casefile-chat-v17"
+            assert first_row.prompt_version == "casefile-chat-v22"
             assert first_row.toolset_version == CHAT_TOOLSET_V4_VERSION
             assert first_row.input_jsonb.get("context_policy_version") == ROLLOUT_V6
 
         assert len(provider.requests) == 1
         request = provider.requests[0]
-        assert request.prompt_version == "casefile-chat-v17"
+        assert request.prompt_version == "casefile-chat-v22"
         assert request.toolset_version == CHAT_TOOLSET_V4_VERSION
         assert request.context_policy_version == ROLLOUT_V6
         execution_profile = request.route.execution_profile

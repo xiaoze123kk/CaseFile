@@ -135,6 +135,9 @@
       ],
       "properties": {
         "task_run_id": {"type": "integer", "minimum": 1},
+        "goal_id": {"type": ["integer", "null"], "minimum": 1},
+        "goal_revision": {"type": ["integer", "null"], "minimum": 1},
+        "prompt_version": {"type": "string"},
         "project_id": {"type": "integer", "minimum": 1},
         "task_type": {
           "type": "string",
@@ -247,8 +250,8 @@
           "type": "array",
           "items": {"$ref": "#/$defs/AgentComponentStepView"}
         },
-        "created_at": {"type": "string", "format": "date-time"},
-        "updated_at": {"type": "string", "format": "date-time"}
+        "created_at": {"type": ["string", "null"], "format": "date-time"},
+        "updated_at": {"type": ["string", "null"], "format": "date-time"}
       }
     },
     "TaskEvent": {

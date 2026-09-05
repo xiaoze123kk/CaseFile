@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel, con
 
 from . import brief as brief_1
 from . import novel_profile as novel_profile_1
+from . import novel_recommendation as novel_recommendation_1
 
 
 class QuestionType(StrEnum):
@@ -799,6 +800,64 @@ class StructureLock(CoreMetadata):
     object_ref: ObjectRef
     field_paths: Annotated[list[JsonPointer], Field(min_length=1)]
     reason: Annotated[str, Field(min_length=1)]
+
+
+class Draft(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    id: Annotated[int, Field(ge=1)]
+    title: str
+    revision: Annotated[int, Field(ge=1)]
+    schema_version: str
+    status: str
+
+
+class ProjectView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    id: Annotated[int, Field(ge=1)]
+    title: str
+    description: str | None = None
+    profile: dict[str, Any]
+    status: str
+    archived_at: AwareDatetime | None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    casefile_id: Annotated[int, Field(ge=1)]
+    current_draft_id: Annotated[int, Field(ge=1)]
+    draft: Draft
+
+
+class BriefView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    brief_id: Annotated[int, Field(ge=1)]
+    public_id: str
+    draft_revision: Annotated[int, Field(ge=1)]
+    content: brief_1.Schema | dict[str, Any]
+    current_version_id: Annotated[int | None, Field(ge=1)]
+    current_version_no: Annotated[int | None, Field(ge=1)] = None
+    updated_at: AwareDatetime | None = None
+
+
+class BriefVersionView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    brief_version_id: Annotated[int, Field(ge=1)]
+    brief_id: Annotated[int | None, Field(ge=1)] = None
+    public_id: str | None = None
+    version_no: Annotated[int, Field(ge=1)]
+    content: brief_1.Schema
+    content_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')] = None
+    confirmed_at: AwareDatetime | None = None
 
 
 class BriefIntakeFieldSource(StrEnum):
@@ -1666,6 +1725,9 @@ class TaskRun(BaseModel):
         populate_by_name=True,
     )
     task_run_id: Annotated[int, Field(ge=1)]
+    goal_id: Annotated[int | None, Field(ge=1)] = None
+    goal_revision: Annotated[int | None, Field(ge=1)] = None
+    prompt_version: str | None = None
     project_id: Annotated[int, Field(ge=1)]
     task_type: TaskType
     status: Status9
@@ -1914,6 +1976,7 @@ class CompileInputManifest(BaseModel):
         ),
     ]
     prose_renderer_shadow: bool = False
+    approved_novel_plan: CompilerArtifactRef | None = None
     prose_runtime: dict[str, Any] | None = None
 
 
@@ -4195,8 +4258,12 @@ class EditingContracts(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    novel_recommendation: novel_recommendation_1.Schema
     casefile: Schema_1
     brief: brief_1.Schema
+    project_view: ProjectView | None = None
+    brief_view: BriefView | None = None
+    brief_version_view: BriefVersionView | None = None
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
     validation_issue: Schema_16
