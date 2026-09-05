@@ -42,6 +42,8 @@ describe("draft candidate cancellation feedback", () => {
     render(<DraftCandidatesStage />);
 
     const pipeline = screen.getByLabelText("深稿生成部件进度");
+    expect(pipeline).toHaveAttribute("data-active", "true");
+    expect(within(pipeline).getByTestId("pipeline-signal")).toBeInTheDocument();
     expect(within(pipeline).getByText("六步生成流水线")).toBeInTheDocument();
     expect(within(pipeline).getAllByText("正在创建任务")).toHaveLength(2);
     expect(within(pipeline).getByText("已完成 0 / 6 步")).toBeInTheDocument();
@@ -364,6 +366,31 @@ describe("strategy analysis feedback", () => {
     expect(status).toHaveTextContent("正在拆读冻结的创作简报");
     expect(status).toHaveTextContent("完成后由你选择");
     expect(screen.getByTestId("strategy-analysis-loader")).toBeInTheDocument();
+  });
+
+  it("stops pipeline motion and relabels a stale running step after cancellation", () => {
+    const state = generatingState();
+    const task = generationTask("cancelled");
+    task.component_steps = [componentStep("context_pack_builder", "running", 1)];
+    state.generation.status = "idle";
+    state.generation.slots.structure_first = {
+      status: "cancelled",
+      stage: "cancelled",
+      taskRunId: task.task_run_id,
+      attempt: 1,
+      error: null,
+      latestTask: task,
+    };
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    const pipeline = screen.getByLabelText("深稿生成部件进度");
+    expect(pipeline).not.toHaveAttribute("data-active");
+    expect(within(pipeline).getByText("本次生成已停止")).toBeInTheDocument();
+    expect(within(pipeline).getByText("已停止")).toBeInTheDocument();
+    expect(pipeline.querySelector('[data-status="stopped"]')).toBeInTheDocument();
+    expect(within(pipeline).getByRole("progressbar").firstElementChild).not.toHaveAttribute("data-active");
   });
 
   it("selects a strategy from its detail area or the keyboard", () => {

@@ -65,15 +65,114 @@
   width: 100%;
   height: 100%;
   min-height: 0;
-  background:
-    radial-gradient(circle at center, rgba(142, 150, 148, 0.1), transparent 44%),
-    linear-gradient(rgba(41, 44, 44, 0.038) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(41, 44, 44, 0.038) 1px, transparent 1px),
-    var(--paper);
-  background-size: auto, 22px 22px, 22px 22px, auto;
+  background: var(--workspace-backdrop, #f7f6f2);
 }
-.canvasKernel[data-scene="reasoning"] { background: linear-gradient(rgba(199, 139, 60, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(199, 139, 60, 0.045) 1px, transparent 1px), var(--paper); background-size: 22px 22px; }
-.canvasKernel[data-scene="matrix"] { background: linear-gradient(rgba(47, 111, 178, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(47, 111, 178, 0.04) 1px, transparent 1px), var(--paper); background-size: 22px 22px; }
+.canvasKernel[data-scene="reasoning"] {
+  background: var(--workspace-backdrop, #f7f6f2);
+}
+.canvasKernel[data-scene="matrix"] {
+  background: var(--workspace-backdrop, #f7f6f2);
+}
+.canvasKernelShell[data-scene="relations"] {
+  color: #e7edf5;
+  background: #090b0f;
+}
+.canvasKernel[data-scene="relations"] {
+  background:
+    radial-gradient(ellipse at 48% 56%, rgba(69, 79, 137, 0.2), transparent 58%),
+    radial-gradient(ellipse at 72% 34%, rgba(27, 104, 96, 0.12), transparent 48%),
+    #0b0f16;
+}
+.canvasKernelShell[data-scene="relations"] .graphNode {
+  align-items: center;
+  padding: 0;
+  color: #eef3fb;
+  border: 1px solid color-mix(in srgb, var(--canvas-node-accent) 76%, white 24%);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.56), transparent 36%),
+    radial-gradient(circle at 40% 35%, var(--canvas-node-accent) 20%, color-mix(in srgb, var(--canvas-node-accent) 55%, #172336) 100%);
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--canvas-node-accent) 12%, transparent),
+    0 0 18px color-mix(in srgb, var(--canvas-node-accent) 64%, transparent),
+    inset 0 -7px 12px rgba(4, 7, 14, 0.28);
+  text-align: center;
+  transition: border-color 140ms ease, box-shadow 140ms ease, filter 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+.canvasKernelShell[data-scene="relations"] .graphNode[data-dimmed="true"] {
+  filter: saturate(0.38) brightness(0.58);
+  opacity: 0.18;
+}
+.canvasKernelShell[data-scene="relations"] .graphNode[data-dimmed="true"] strong {
+  color: #687284;
+}
+.canvasKernelShell[data-scene="relations"] .graphNode::before {
+  inset: -18px;
+  width: auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--canvas-node-accent) 28%, transparent), transparent 70%);
+  pointer-events: none;
+  animation: relationshipBreath 6.8s ease-in-out infinite;
+  animation-delay: var(--canvas-breath-delay, 0s);
+}
+.canvasKernelShell[data-scene="relations"] .graphNode::after {
+  position: absolute;
+  inset: -7px;
+  border: 1px solid color-mix(in srgb, var(--canvas-node-accent) 32%, transparent);
+  border-radius: 50%;
+  content: "";
+  opacity: 0.4;
+  pointer-events: none;
+  transition: inset 280ms ease, opacity 280ms ease;
+}
+.canvasKernelShell[data-scene="relations"] .graphNode:is(:hover, :focus-visible, [data-related="true"])::after {
+  inset: -12px;
+  opacity: 0.9;
+}
+.canvasKernelShell[data-scene="relations"] .graphNode small { display: none; }
+.canvasKernelShell[data-scene="relations"] .graphNode strong {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 50%;
+  width: max-content;
+  max-width: 148px;
+  margin: 0;
+  color: #dce4ef;
+  filter: drop-shadow(0 1px 2px #050608);
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: normal;
+  transform: translateX(-50%);
+}
+.canvasKernelShell[data-scene="relations"] .graphNode:hover,
+.canvasKernelShell[data-scene="relations"] .graphNode[data-related="true"] {
+  border-color: #f8fbff;
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--canvas-node-accent) 18%, transparent),
+    0 0 26px color-mix(in srgb, var(--canvas-node-accent) 88%, transparent),
+    inset 0 -7px 12px rgba(4, 7, 14, 0.24);
+}
+.canvasKernelShell[data-scene="relations"] .graphNode[data-selected="true"],
+.canvasKernelShell[data-scene="relations"] .graphNode[aria-pressed="true"] {
+  color: #fff;
+  border: 2px solid #fff;
+  background:
+    radial-gradient(circle at 36% 30%, rgba(255, 255, 255, 0.58), transparent 24%),
+    var(--canvas-node-accent);
+  box-shadow:
+    0 0 0 7px color-mix(in srgb, var(--canvas-node-accent) 24%, transparent),
+    0 0 32px color-mix(in srgb, var(--canvas-node-accent) 96%, transparent),
+    inset 0 -7px 12px rgba(4, 7, 14, 0.22);
+  transform: scale(1.08);
+}
+.canvasKernelShell[data-scene="relations"] .graphNode[data-selected="true"] strong,
+.canvasKernelShell[data-scene="relations"] .graphNode[aria-pressed="true"] strong {
+  color: #fff;
+}
 .canvasKernel :global(.react-flow__pane) { cursor: crosshair; }
 .canvasKernel[data-tool="pan"] :global(.react-flow__pane),
 .canvasKernel[data-tool="pan"] :global(.react-flow__node) { cursor: grab; }
@@ -86,6 +185,52 @@
 .canvasEdge,
 .canvasEdgeActive { transition: opacity 120ms ease; }
 .canvasEdgeActive { opacity: 1; }
+.relationshipFlow {
+  stroke-dasharray: 3 97;
+  stroke-linecap: round;
+  opacity: 0.85;
+  pointer-events: none;
+  animation: relationshipCurrent 3.6s linear infinite;
+}
+.relationshipMotionToggle {
+  position: absolute;
+  z-index: 4;
+  top: 18px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(11, 15, 22, 0.65);
+  color: #9baabd;
+  font: 11px/1.5 "Microsoft YaHei UI", sans-serif;
+  cursor: pointer;
+}
+.relationshipMotionToggle span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #7caea9;
+  box-shadow: 0 0 8px #7caea955;
+}
+.relationshipMotionToggle[aria-pressed="false"] span { background: #687284; box-shadow: none; }
+.relationshipMotionToggle:hover { color: #eef3fb; border-color: #344154; }
+.relationshipMotionToggle:focus-visible { outline: 2px solid #818cf8; outline-offset: 3px; }
+.canvasKernelShell[data-motion="paused"] .graphNode::before,
+.canvasKernelShell[data-motion="paused"] .relationshipFlow { animation-play-state: paused; }
+.canvasKernelShell[data-motion="paused"] .relationshipFlow { opacity: 0; }
+.canvasKernelShell[data-scene="relations"] :global(.react-flow__node.dragging) .graphNode::before,
+.canvasKernelShell[data-scene="relations"] .graphNode[data-dimmed="true"]::before { animation-play-state: paused; }
+@keyframes relationshipBreath {
+  0%, 100% { transform: scale(0.88); opacity: 0.38; }
+  50% { transform: scale(1.28); opacity: 0.9; }
+}
+@keyframes relationshipCurrent {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
 .canvasHandle { width: 1px !important; height: 1px !important; opacity: 0; pointer-events: none; }
 
 .canvasOverlayControls {
@@ -125,6 +270,72 @@
 .canvasLegend > span[data-kind="contradicts"]::before { border-top-color: var(--issue); border-top-style: dashed; }
 .canvasLegend > span[data-kind="neutral"]::before { border-top-color: #277a83; }
 .canvasLegend > span[data-kind="unassessed"]::before { border-top-color: #8a8f8d; border-top-style: dashed; }
+.canvasKernelShell[data-scene="relations"] .canvasTypeLegend,
+.canvasKernelShell[data-scene="relations"] .canvasLegend {
+  color: #aab4c2;
+  border-color: rgba(148, 163, 184, 0.18);
+  border-radius: 9px;
+  background: rgba(13, 16, 22, 0.9);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+}
+.canvasKernelShell[data-scene="relations"] .canvasTypeLegend {
+  top: auto;
+  bottom: 14px;
+  left: 14px;
+  max-width: 260px;
+  max-height: 190px;
+  align-content: flex-start;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  overflow: auto;
+  pointer-events: auto;
+}
+.canvasKernelShell[data-scene="relations"] .canvasTypeLegend::before {
+  margin-bottom: 2px;
+  color: #697386;
+  content: "实体类型";
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+.canvasKernelShell[data-scene="relations"] .canvasTypeLegendItem {
+  width: fit-content;
+  min-width: 66px;
+  justify-content: center;
+  padding: 3px 9px;
+  color: #f8fafc;
+  border: 1px solid color-mix(in srgb, var(--canvas-node-accent) 78%, white 22%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--canvas-node-accent) 82%, #10141c 18%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--canvas-node-accent) 25%, transparent);
+}
+.canvasKernelShell[data-scene="relations"] .canvasTypeLegendItem::before { display: none; }
+.canvasKernelShell[data-scene="relations"] .canvasLegend {
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  width: 178px;
+  max-width: 178px;
+  gap: 7px;
+  padding: 10px 11px;
+}
+.canvasKernelShell[data-scene="relations"] .canvasLegend > b {
+  color: #697386;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+.canvasKernelShell[data-scene="relations"] .canvasLegend > span {
+  gap: 8px;
+  color: #c5cfdb;
+  letter-spacing: 0;
+}
+.canvasKernelShell[data-scene="relations"] .canvasLegend > span[data-kind="relationship"]::before {
+  width: 18px;
+  border-top-color: var(--canvas-edge-accent, #60a5fa);
+  box-shadow: 0 0 7px var(--canvas-edge-accent, #60a5fa);
+}
 .canvasEdgeCell {
   display: inline-flex;
   min-height: 18px;
@@ -177,6 +388,44 @@
 .canvasTools button,
 .canvasActionTools button,
 .zoomControls button { position: relative; }
+.canvasKernelShell[data-scene="relations"] .canvasOverlayControls {
+  top: 12px;
+  right: 12px;
+  min-width: 0;
+  flex-direction: row;
+  gap: 5px;
+  padding: 5px;
+  border-color: rgba(148, 163, 184, 0.17);
+  border-radius: 8px;
+  background: rgba(13, 16, 22, 0.9);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}
+.canvasKernelShell[data-scene="relations"] .canvasOverlayControls .canvasTools,
+.canvasKernelShell[data-scene="relations"] .canvasOverlayControls .zoomControls,
+.canvasKernelShell[data-scene="relations"] .canvasOverlayControls .canvasActionTools {
+  align-self: center;
+}
+.canvasKernelShell[data-scene="relations"] .canvasTools button,
+.canvasKernelShell[data-scene="relations"] .canvasActionTools button,
+.canvasKernelShell[data-scene="relations"] .zoomControls button {
+  color: #9aa5b5;
+  border-color: rgba(148, 163, 184, 0.16);
+  background: #11151c;
+}
+.canvasKernelShell[data-scene="relations"] .canvasTools button:hover,
+.canvasKernelShell[data-scene="relations"] .zoomControls button:hover:not(:disabled),
+.canvasKernelShell[data-scene="relations"] .canvasActionTools button:hover:not(:disabled) {
+  color: #f8fafc;
+  border-color: rgba(96, 165, 250, 0.64);
+  background: #182131;
+}
+.canvasKernelShell[data-scene="relations"] .canvasTools button[aria-pressed="true"] {
+  color: #fff;
+  border-color: #6675ff;
+  background: #5362db;
+  box-shadow: 0 0 14px rgba(102, 117, 255, 0.36);
+}
 .canvasTools button::after,
 .canvasActionTools button::after,
 .zoomControls button::after { position: absolute; z-index: 8; top: 50%; right: calc(100% + 8px); width: max-content; max-width: 180px; padding: 5px 7px; color: #f5f0e6; content: attr(data-tooltip); border: 1px solid rgba(199, 139, 60, 0.42); background: #292c2c; box-shadow: 0 4px 10px rgba(41, 44, 44, 0.2); font: 500 9px/1.35 "Microsoft YaHei UI", sans-serif; text-align: left; white-space: normal; opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(3px); transition: opacity 120ms ease, transform 120ms ease; }
@@ -201,6 +450,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .canvasKernelShell[data-scene="relations"] .graphNode::before,
+  .relationshipFlow { animation: none; }
+  .relationshipFlow { display: none; }
+  .relationshipMotionToggle { display: none; }
+  .canvasKernelShell[data-scene="relations"] .graphNode,
+  .canvasKernelShell[data-scene="relations"] .graphNode::after { transition: none; }
   .canvasEdge,
   .canvasEdgeActive,
   .canvasTools button::after,

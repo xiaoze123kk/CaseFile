@@ -19,6 +19,7 @@ from casefile_contracts import Status as ClaimStatus
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
+from casefile.agent_runtime.chat_preview import AnswerPreview
 from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
     ChatToolMetrics,
@@ -132,6 +133,7 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _bind_safe_patch_registry,
     _validate_generated_descriptions,
 )
+from casefile.agent_runtime.public_language import is_protected_internal_disclosure_request
 from casefile.agent_runtime.scene_compiler import (
     SceneFillBatchRequest,
     SceneFillBatchResult,
@@ -463,9 +465,7 @@ class FakeProvider:
                     {
                         "local_key": local_key,
                         "kind": obligation["kind"],
-                        "directive": (
-                            f"执行 {obligation['obligation_key']} 并推进场景目标。"
-                        ),
+                        "directive": (f"执行 {obligation['obligation_key']} 并推进场景目标。"),
                         "actor_refs": scene["participant_refs"][:1],
                         "target_refs": target_refs,
                         "basis_refs": obligation["basis_refs"],
@@ -496,9 +496,7 @@ class FakeProvider:
             usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
         )
 
-    def propose_skeleton(
-        self, request: SkeletonProposalRequest
-    ) -> SkeletonProposalResult:
+    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult:
         basis = request.planning_problem["object_refs"][0]
         proposal = {
             "schema_id": "compiler.skeleton-proposal.v1",
@@ -1234,6 +1232,7 @@ class FakeProvider:
         )
         usage = _zero_usage()
         serialized_output = candidate.model_dump_json().encode("utf-8")
+        _fake_answer_preview(request, candidate)
         request.emit(
             "agent.model_call.completed",
             "finalizing",
@@ -1412,6 +1411,7 @@ class FakeProvider:
             audit_findings=[],
         )
         usage = _zero_usage()
+        _fake_answer_preview(request.chat, candidate)
         request.chat.emit(
             "agent.model_call.started",
             "goal_finalizing",
@@ -2252,6 +2252,18 @@ def _first_ref(values: list[dict[str, Any]]) -> dict[str, str] | None:
     if not values:
         return None
     return cast(dict[str, str], values[0]["object_ref"])
+
+
+def _fake_answer_preview(request: CaseFileChatRequest, candidate: BaseModel) -> None:
+    if request.feedback is None or "answer" not in type(candidate).model_fields:
+        return
+    if is_protected_internal_disclosure_request(request.message):
+        return
+    preview = AnswerPreview(request.feedback, sensitive_values=(request.api_key or "",))
+    raw = candidate.model_dump_json()
+    for offset in range(0, len(raw), 64):
+        preview.feed(raw[offset : offset + 64])
+    preview.finish()
 
 
 __all__ = ["FakeProvider"]

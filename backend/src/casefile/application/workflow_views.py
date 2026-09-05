@@ -112,6 +112,7 @@ def agent_message_view(
     *,
     task: TaskRun | None = None,
     patch_set: dict[str, Any] | None = None,
+    context_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "message_id": message.id,
@@ -120,6 +121,7 @@ def agent_message_view(
         "role": message.role,
         "status": message.status,
         "content": message.content_text,
+        "context_snapshot": context_snapshot,
         "task": None if task is None else task_view(task),
         "referenced_object_ids": (
             []

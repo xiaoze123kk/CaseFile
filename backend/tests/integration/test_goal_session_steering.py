@@ -113,9 +113,7 @@ def _finish() -> GoalDecisionOutput:
     )
 
 
-def _prepare_draft(
-    engine: Engine, actor_id: int
-) -> tuple[sessionmaker, int, int]:  # type: ignore[type-arg]
+def _prepare_draft(engine: Engine, actor_id: int) -> tuple[sessionmaker, int, int]:  # type: ignore[type-arg]
     factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     project_id, generation_task_id = _prepare_task(engine, actor_id)
     assert Worker(
@@ -168,9 +166,7 @@ def test_waiting_steer_uses_current_amendment_and_stable_obligation_keys(
         },
     ):
         factory, project_id, draft_id = _prepare_draft(engine, actor_id)
-        thread_id, goal_id, _ = _create_goal(
-            factory, actor_id, project_id, draft_id
-        )
+        thread_id, goal_id, _ = _create_goal(factory, actor_id, project_id, draft_id)
         assert Worker(
             factory,
             config=WorkerConfig(worker_id="m38-05-ambiguous"),
@@ -186,6 +182,7 @@ def test_waiting_steer_uses_current_amendment_and_stable_obligation_keys(
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
                 content="补充：目标是第一个事件对象。",
+                focus={"view": "relations"},
                 delivery_mode="steer",
                 expected_goal_id=goal_id,
                 expected_goal_revision=1,
@@ -232,6 +229,11 @@ def test_waiting_steer_uses_current_amendment_and_stable_obligation_keys(
             assert goal.revision_count == 2
             assert delivery is not None and delivery.status == "consumed"
             assert continuation is not None and continuation.prompt_version == "casefile-chat-v20"
+            assert continuation.input_jsonb["focus"]["view"] == "relations"
+            assert (
+                continuation.input_jsonb["context_snapshot"]
+                == steered["user_message"]["context_snapshot"]
+            )
             assert [row.amendment_kind for row in revisions] == ["initial", "refine"]
             assert revisions[0].obligations_hash == revisions[1].obligations_hash
             assert amendment_calls == 1
@@ -262,6 +264,7 @@ def test_running_replace_is_fifo_and_preserves_supersede_lineage(
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
                 content="替换为新目标：先分析时间线，再审计矛盾。",
+                focus={"view": "reasoning"},
                 delivery_mode="replace",
                 expected_goal_id=goal_id,
                 expected_goal_revision=1,
@@ -270,9 +273,7 @@ def test_running_replace_is_fifo_and_preserves_supersede_lineage(
         assert Worker(
             factory,
             config=WorkerConfig(worker_id="m38-05-replace"),
-            provider_factory=lambda _task: FakeProvider(
-                goal_understanding=_understanding()
-            ),
+            provider_factory=lambda _task: FakeProvider(goal_understanding=_understanding()),
         ).run_once()
         with factory() as session:
             old_goal = session.get(AgentGoalSession, goal_id)
@@ -299,8 +300,26 @@ def test_running_replace_is_fifo_and_preserves_supersede_lineage(
             )
             assert successor is not None and successor.status == "running"
             assert successor.predecessor_goal_session_id == old_goal.id
+            successor_id = successor.id
             assert delivery is not None and delivery.status == "consumed"
             assert active_runs == 1
+            continuation = session.scalar(
+                select(TaskRun).where(
+                    TaskRun.input_message_id == queued["user_message"]["message_id"]
+                )
+            )
+            assert continuation is not None
+            assert continuation.input_jsonb["focus"]["view"] == "reasoning"
+            assert (
+                continuation.input_jsonb["context_snapshot"]
+                == queued["user_message"]["context_snapshot"]
+            )
+        with factory() as session:
+            public_deliveries = WorkflowService(session).list_agent_goal_deliveries(
+                actor_id, project_id, goal_id
+            )
+            assert public_deliveries[0].status.value == "consumed"
+            assert public_deliveries[0].successor_goal_id == successor_id
 
 
 def test_follow_up_requires_completed_predecessor_and_creates_successor(
@@ -351,6 +370,7 @@ def test_follow_up_requires_completed_predecessor_and_creates_successor(
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
                 content="完成后继续检查证据。",
+                focus={"view": "evidence"},
                 delivery_mode="follow_up",
                 expected_goal_id=goal_id,
                 expected_goal_revision=1,
@@ -358,6 +378,13 @@ def test_follow_up_requires_completed_predecessor_and_creates_successor(
             successor_id = int(follow_up["goal"].goal_id)
             assert follow_up["task"] is not None
             assert follow_up["delivery"].status.value == "consumed"
+            task = session.get(TaskRun, int(follow_up["task"]["task_run_id"]))
+            assert task is not None
+            assert task.input_jsonb["focus"]["view"] == "evidence"
+            assert (
+                task.input_jsonb["context_snapshot"]
+                == follow_up["user_message"]["context_snapshot"]
+            )
         with factory() as session:
             predecessor = session.get(AgentGoalSession, goal_id)
             successor = session.get(AgentGoalSession, successor_id)

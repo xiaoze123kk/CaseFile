@@ -30,7 +30,6 @@ ComponentCall = Callable[
 ]
 
 
-
 def _request_repair_issues(request: GenerationRequest) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -199,6 +198,97 @@ def _v15_blueprint_path_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any
     return issues
 
 
+def _v16_blueprint_relationship_coverage_issues(
+    blueprint: CaseBlueprintV1,
+) -> list[dict[str, Any]]:
+    """Require the plan itself to reserve every semantic entity edge."""
+
+    entity_keys = {item.local_key for item in blueprint.entities}
+    if len(entity_keys) < 2:
+        return []
+
+    issues: list[dict[str, Any]] = []
+    planned_pairs: set[tuple[str, str]] = set()
+    generic_terms = ("有关联", "关联关系", "共同参与", "同场出现", "事件关联")
+    for relationship in blueprint.relationships:
+        endpoints = sorted(set(relationship.dependency_keys) & entity_keys)
+        if len(endpoints) != 2:
+            issues.append(
+                {
+                    "code": "relationship_endpoint_plan_invalid",
+                    "path": f"/relationships/{relationship.local_key}/dependency_keys",
+                    "message": (
+                        "每个 relationship 蓝图对象必须在 dependency_keys 中逐字列出"
+                        "恰好两个实体端点，Story 才能据此生成 from_key 与 to_key。"
+                    ),
+                    "component_id": "case_blueprint_planner",
+                    "failure_layer": "relationship_coverage",
+                    "schema_id": "case-blueprint-v1",
+                    "ir_path": f"/relationships/{relationship.local_key}",
+                }
+            )
+        else:
+            planned_pairs.add((endpoints[0], endpoints[1]))
+        normalized_title = "".join(relationship.title.split())
+        if any(term in normalized_title for term in generic_terms):
+            issues.append(
+                {
+                    "code": "generic_relationship_plan_title",
+                    "path": f"/relationships/{relationship.local_key}/title",
+                    "message": (
+                        "relationship 的 title 必须是调查、操控、加害、盟友、亲属、"
+                        "雇佣、成员等具体语义，不得使用泛化“有关联”或事件描述。"
+                    ),
+                    "component_id": "case_blueprint_planner",
+                    "failure_layer": "relationship_coverage",
+                    "schema_id": "case-blueprint-v1",
+                    "ir_path": f"/relationships/{relationship.local_key}",
+                }
+            )
+
+    required_pairs: set[tuple[str, str]] = set()
+    for event in blueprint.events:
+        participants = sorted(set(event.dependency_keys) & entity_keys)
+        for left_index, left_key in enumerate(participants):
+            required_pairs.update(
+                (left_key, right_key) for right_key in participants[left_index + 1 :]
+            )
+    for left_key, right_key in sorted(required_pairs - planned_pairs):
+        issues.append(
+            {
+                "code": "relationship_plan_missing",
+                "path": "/relationships",
+                "message": (
+                    f"关键事件中的实体 {left_key!r} 与 {right_key!r} 缺少 relationship "
+                    "蓝图对象。请规划一条有剧情依据的具体语义关系，并把这两个 local_key "
+                    "作为其 dependency_keys。"
+                ),
+                "component_id": "case_blueprint_planner",
+                "failure_layer": "relationship_coverage",
+                "schema_id": "case-blueprint-v1",
+                "ir_path": "/relationships",
+            }
+        )
+
+    connected_keys = {key for pair in planned_pairs for key in pair}
+    for entity_key in sorted(entity_keys - connected_keys):
+        issues.append(
+            {
+                "code": "isolated_entity_relationship_plan",
+                "path": "/relationships",
+                "message": (
+                    f"实体 {entity_key!r} 在关系蓝图中完全孤立。请依据 Brief 中的身份、"
+                    "目标、秘密或事件互动，为它规划至少一条具体实体关系。"
+                ),
+                "component_id": "case_blueprint_planner",
+                "failure_layer": "relationship_coverage",
+                "schema_id": "case-blueprint-v1",
+                "ir_path": f"/entities/{entity_key}",
+            }
+        )
+    return issues
+
+
 def _blueprint_has_hypothesis_path(blueprint: CaseBlueprintV1 | None, hypothesis_key: str) -> bool:
     if blueprint is None:
         return True
@@ -280,14 +370,10 @@ def _normalize_competing_hypothesis_closure(
 
     groups: dict[str, list[str]] = {}
     for hypothesis in evidence.hypotheses:
-        groups.setdefault(hypothesis.target_resolution_key, []).append(
-            hypothesis.local_key
-        )
+        groups.setdefault(hypothesis.target_resolution_key, []).append(hypothesis.local_key)
     for hypothesis in evidence.hypotheses:
         expected = [
-            key
-            for key in groups[hypothesis.target_resolution_key]
-            if key != hypothesis.local_key
+            key for key in groups[hypothesis.target_resolution_key] if key != hypothesis.local_key
         ]
         if hypothesis.competing_hypothesis_keys != expected:
             hypothesis.competing_hypothesis_keys = expected
@@ -534,6 +620,95 @@ def _v15_story_person_name_issues(
     return issues
 
 
+def _v16_story_relationship_coverage_issues(
+    story: StoryWorldIRV3,
+) -> list[dict[str, Any]]:
+    """Require explicit semantic edges for meaningful entity interactions."""
+
+    entity_keys = {entity.local_key for entity in story.entities}
+    if len(entity_keys) < 2:
+        return []
+
+    existing_pairs = {
+        tuple(sorted((relationship.from_key, relationship.to_key)))
+        for relationship in story.relationships
+        if relationship.from_key in entity_keys and relationship.to_key in entity_keys
+    }
+    required_pairs: set[tuple[str, str]] = set()
+    for event in story.events:
+        participants = sorted(set(event.participant_keys) & entity_keys)
+        for left_index, left_key in enumerate(participants):
+            required_pairs.update(
+                (left_key, right_key) for right_key in participants[left_index + 1 :]
+            )
+
+    issues: list[dict[str, Any]] = []
+    generic_terms = ("有关联", "关联关系", "共同参与", "同场出现", "事件关联")
+    event_titles = {"".join(event.title.split()) for event in story.events}
+    for relationship in story.relationships:
+        normalized_title = "".join(relationship.title.split())
+        if not (
+            any(term in normalized_title for term in generic_terms)
+            or normalized_title in event_titles
+        ):
+            continue
+        issues.append(
+            {
+                "code": "generic_relationship_title",
+                "path": f"/relationships/{relationship.local_key}/title",
+                "message": (
+                    f"关系 {relationship.local_key!r} 的 title 只描述了泛化关联或复用了事件标题。"
+                    "请改为可直接展示在关系线上的具体语义，例如“调查”“操控”“加害”"
+                    "“盟友”“父女”“雇佣”或“成员”；同时让 relationship_type 与之对应。"
+                ),
+                "component_id": "story_world",
+                "failure_layer": "relationship_coverage",
+                "schema_id": "story-world-ir-v3",
+                "ir_path": f"/relationships/{relationship.local_key}",
+            }
+        )
+
+    missing_pairs = sorted(required_pairs - existing_pairs)
+    for from_key, to_key in missing_pairs:
+        issues.append(
+            {
+                "code": "missing_semantic_relationship",
+                "path": "/relationships",
+                "message": (
+                    f"实体 {from_key!r} 与 {to_key!r} 在同一关键事件中发生互动，"
+                    "但缺少显式语义关系。请新增一条 RelationshipIR，from_key 与 to_key "
+                    "逐字使用这两个 local_key；title 必须直接说明二者是什么关系"
+                    "（例如调查、操控、加害、盟友、亲属、雇佣），不得使用“有关联”"
+                    "“共同参与”或事件标题代替；relationship_type 使用对应的小写机器标识。"
+                ),
+                "component_id": "story_world",
+                "failure_layer": "relationship_coverage",
+                "schema_id": "story-world-ir-v3",
+                "ir_path": "/relationships",
+            }
+        )
+
+    connected_keys = {key for pair in existing_pairs for key in pair}
+    required_keys = {key for pair in required_pairs for key in pair}
+    for entity_key in sorted(entity_keys - connected_keys - required_keys):
+        issues.append(
+            {
+                "code": "isolated_story_entity",
+                "path": "/relationships",
+                "message": (
+                    f"核心实体 {entity_key!r} 在关系图中完全孤立。请依据 Brief、Blueprint、"
+                    "实体目标或秘密，新增至少一条连接它与另一实体的具体语义关系；"
+                    "不得虚构无依据事实，也不得使用“有关联”作为 title。"
+                ),
+                "component_id": "story_world",
+                "failure_layer": "relationship_coverage",
+                "schema_id": "story-world-ir-v3",
+                "ir_path": "/relationships",
+            }
+        )
+    return issues
+
+
 def _v11_story_issues(
     story: StoryWorldIRV2,
     allowed_wgs84_coordinates: list[CoordinatePairV1],
@@ -736,6 +911,7 @@ def _diagnostic_issue(issue: dict[str, Any]) -> dict[str, Any]:
         "message": issue.get("message", "候选未通过质量门禁。"),
     }
 
+
 __all__ = [
     "_request_repair_issues",
     "_repair_issues_for_component",
@@ -743,6 +919,7 @@ __all__ = [
     "_blueprint_competition_groups",
     "_v11_blueprint_issues",
     "_v15_blueprint_path_issues",
+    "_v16_blueprint_relationship_coverage_issues",
     "_blueprint_has_hypothesis_path",
     "_blueprint_has_explicit_target_path",
     "_evidence_assessment_issues",
@@ -755,6 +932,7 @@ __all__ = [
     "_evidence_graph_reference_issues",
     "_matrix_cell_issues",
     "_v15_story_person_name_issues",
+    "_v16_story_relationship_coverage_issues",
     "_v11_story_issues",
     "_extract_allowed_wgs84_coordinates",
 ]

@@ -1,29 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   PublicAgentEvent,
   PublicAgentMessage,
   PublicAgentRun,
-  PublicContextState,
   PublicPatchReviewResult,
   PublicPatchSet,
-  PublicRoutingInterpretation,
-  PublicVerificationStatus,
+  PublicGoalSession,
 } from "@casefile/contracts";
 
 import {
   applyAgentPatchSet,
-  cancelAgentRun,
   createAgentThread,
   errorMessage,
   getAgentRun,
+  cancelAgentRun,
+  cancelAgentGoal,
+  listAgentRunFeedback,
   listAgentMessages,
   listAgentThreads,
   redoAgentPatchSet,
   sendAgentMessage,
-  sendAgentRoutingFeedback,
   simulateAgentPatchSet,
   streamAgentRunEvents,
   undoAgentPatchSet,
@@ -34,18 +33,25 @@ import {
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
-import styles from "./workbench-agent.module.css";
 import { WorkbenchAgentComposer } from "./workbench-agent-composer";
 import {
   WorkbenchAgentConversation,
   agentAuditFindingsFor,
 } from "./workbench-agent-conversation";
 import { WorkbenchAgentDesk } from "./workbench-agent-desk";
-import { agentPromptPresets } from "./workbench-agent-presets";
-import type { AgentSurface } from "./workbench-agent-surface";
-import { WorkbenchAgentTaskStrip } from "./workbench-agent-task-strip";
+import {
+  WorkbenchAgentSurface,
+  type AgentSurface,
+} from "./workbench-agent-surface";
 import { WorkbenchAgentThreadMenu } from "./workbench-agent-thread-menu";
-import { WorkbenchAgentInspector } from "./workbench-agent-inspector";
+import { WorkbenchAgentInspector, type PatchReviewState } from "./workbench-agent-inspector";
+import { AgentMessagePatch } from "./workbench-agent-message-patch";
+import { WorkbenchAgentDetailPortals, type AgentDetailNavigation } from "./workbench-agent-detail-portals";
+import { WorkbenchAgentPortal } from "./workbench-agent-portal";
+import { composerReducer, composerFocus, newComposerEntry } from "./workbench-agent-context";
+import { emptyFeedback, reduceFeedback, activeFeedbackRefs, goalLabel, type RunFeedback } from "./workbench-agent-feedback";
+import { useAgentGoalFeedback } from "./use-agent-goal-feedback";
+import styles from "./workbench-agent.module.css";
 
 const ACTIVE_RUN_STATUSES = new Set<PublicAgentRun["status"]>([
   "queued",
@@ -58,24 +64,6 @@ const TERMINAL_RUN_STATUSES = new Set<PublicAgentRun["status"]>([
   "failed",
   "cancelled",
 ]);
-
-const interpretationLabels: Record<PublicRoutingInterpretation, string> = {
-  conversation: "交流问答",
-  analysis: "分析",
-  logic_review: "逻辑复查",
-  change_request: "修改卷宗",
-  clarification: "补充说明",
-};
-
-const focusViewLabels: Record<string, string> = {
-  timeline: "时间线",
-  relations: "关系图",
-  reasoning: "推理分析",
-  map: "地图",
-  export: "导出预览",
-  compile: "编译中心",
-  evidence: "证据对比",
-};
 
 function mergeMessages(
   previous: PublicAgentMessage[],
@@ -105,19 +93,22 @@ export function AgentLivePanel({
   draftRevision,
   focus,
   kickoff,
-  referenceLabels,
   onLocateObject,
-  onLocateEvent,
   onFocusPatch = () => undefined,
-  onFocusFinding = () => undefined,
+  onFocusFinding,
   focusPatchSetId,
   focusFindingId,
   inspectorHost,
+  threadHost,
+  presentationHost,
   onDraftChanged,
+  disabled = false,
   onClose,
-  surface = "desk",
+  surface = "center",
   onContinueInDesk = () => undefined,
   focusRequest = 0,
+  details,
+  onAgentFocus,
 }: {
   projectId: number;
   draftId: number;
@@ -136,11 +127,16 @@ export function AgentLivePanel({
   focusPatchSetId?: number | null;
   focusFindingId?: string | null;
   inspectorHost?: HTMLElement | null;
+  threadHost?: HTMLElement | null;
+  presentationHost?: HTMLElement | null;
   onDraftChanged: () => Promise<void>;
+  disabled?: boolean;
   onClose: () => void;
   surface?: AgentSurface;
   onContinueInDesk?: () => void;
   focusRequest?: number;
+  details?: AgentDetailNavigation;
+  onAgentFocus?: (ids: string[]) => void;
 }) {
   const [threads, setThreads] = useState<AgentThreadView[]>([]);
   const [threadMenuRows, setThreadMenuRows] = useState<AgentThreadView[]>([]);
@@ -150,31 +146,47 @@ export function AgentLivePanel({
   const [messages, setMessages] = useState<PublicAgentMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [composers, dispatchComposer] = useReducer(composerReducer, {});
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [liveRuns, setLiveRuns] = useState<Record<number, PublicAgentRun>>({});
+  const [feedback, setFeedback] = useState<Record<number, RunFeedback>>({});
+  const [runConnections, setRunConnections] = useState<Record<number, boolean>>({});
+  const [goalHints, setGoalHints] = useState<Record<number, number>>({});
+  const [deliveryMode, setDeliveryMode] = useState<"steer" | "replace">("steer");
+  const [resumeAcknowledgement, setResumeAcknowledgement] = useState("");
+  const [sendingText, setSendingText] = useState<{ threadId: number; text: string } | null>(null);
+  const [sendError, setSendError] = useState<{ threadId: number; message: string } | null>(null);
+  const feedbackRef = useRef<Record<number, RunFeedback>>({});
   const [creatingThread, setCreatingThread] = useState(false);
   const [patchBusyId, setPatchBusyId] = useState<number | null>(null);
   const [patchError, setPatchError] = useState<string | null>(null);
   const [localFocusPatchSetId, setLocalFocusPatchSetId] = useState<number | null>(null);
   const [localFocusFindingId, setLocalFocusFindingId] = useState<string | null>(null);
-  const [feedbackByMessage, setFeedbackByMessage] = useState<
-    Record<number, PublicRoutingInterpretation>
-  >({});
-  const [contextByRun, setContextByRun] = useState<
-    Record<number, PublicContextState | null>
-  >({});
-  const [verificationByRun, setVerificationByRun] = useState<
-    Record<number, { status: PublicVerificationStatus; summary: string }>
-  >({});
   const [revisionByPatch, setRevisionByPatch] = useState<Record<number, number>>({});
+  const [patchReviews, setPatchReviews] = useState<Record<string, PatchReviewState>>({});
+  const [patchFocusRequest, setPatchFocusRequest] = useState(0);
 
   const followsRef = useRef(new Map<number, AbortController>());
   const followedRunIdsRef = useRef(new Set<number>());
   const messagesRequestRef = useRef(0);
   const selectedThreadIdRef = useRef<number | null>(null);
+  const composerThreadId = selectedThreadId ?? 0;
+  const composer = composers[composerThreadId] ?? newComposerEntry(focus);
+  const draft = composer.text;
+  const setDraft = (text: string) => dispatchComposer({ type: "text", threadId: composerThreadId, candidate: focus, text });
+  const previousFocus = useRef(focus);
+  useEffect(() => {
+    // Switching threads restores its own candidate; only a new workspace selection updates it.
+    if (JSON.stringify(previousFocus.current) !== JSON.stringify(focus)) {
+      previousFocus.current = focus;
+      dispatchComposer({ type: "candidate", threadId: selectedThreadId ?? 0, candidate: focus });
+    }
+  }, [focus, selectedThreadId]);
 
   useEffect(() => {
     selectedThreadIdRef.current = selectedThreadId;
+    if (selectedThreadId !== null) dispatchComposer({ type: "initialize", threadId: selectedThreadId, candidate: previousFocus.current });
   }, [selectedThreadId]);
 
   useEffect(
@@ -185,7 +197,7 @@ export function AgentLivePanel({
   );
 
   useEffect(() => {
-    if (surface !== "quick") return;
+    if (surface === "dock" || details) return;
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -193,7 +205,7 @@ export function AgentLivePanel({
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose, surface]);
+  }, [onClose, surface, details]);
 
   const refreshThreads = useCallback(
     async (options: { query?: string; includeArchived?: boolean } = {}) => {
@@ -212,8 +224,8 @@ export function AgentLivePanel({
     [projectId],
   );
 
-  const reloadMessages = useCallback(async () => {
-    const threadId = selectedThreadIdRef.current;
+  const reloadMessages = useCallback(async (requestedThreadId?: number) => {
+    const threadId = requestedThreadId ?? selectedThreadIdRef.current;
     if (threadId === null) return;
     const requestId = ++messagesRequestRef.current;
     setMessagesLoading(true);
@@ -252,7 +264,6 @@ export function AgentLivePanel({
       }
       setThreads(rows);
       setThreadMenuRows(rows);
-      setMessagesLoading(true);
       setSelectedThreadId((current) =>
         current !== null && rows.some((row) => row.thread_id === current)
           ? current
@@ -300,7 +311,7 @@ export function AgentLivePanel({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [projectId, selectedThreadId]);
+  }, [draftId, draftRevision, projectId, selectedThreadId]);
 
   const startFollow = useCallback(
     (initialRun: PublicAgentRun, threadId: number) => {
@@ -312,29 +323,19 @@ export function AgentLivePanel({
       followsRef.current.set(runId, controller);
 
       function receiveEvent(event: PublicAgentEvent) {
-        if (event.event === "run.context") {
-          setContextByRun((previous) => ({
-            ...previous,
-            [runId]: event.context_state,
-          }));
-          return;
-        }
-        if (event.event === "run.verification") {
-          setVerificationByRun((previous) => ({
-            ...previous,
-            [runId]: {
-              status: event.verification_status,
-              summary: event.summary,
-            },
-          }));
-          return;
-        }
+        if (controller.signal.aborted) return;
+        setRunConnections((previous) => ({ ...previous, [runId]: true }));
+        const next = reduceFeedback(feedbackRef.current[runId] ?? emptyFeedback(), event);
+        feedbackRef.current[runId] = next;
+        setFeedback((previous) => ({ ...previous, [runId]: next }));
+        if (next.gap) throw new Error("回复片段需要重新同步");
+        if (event.event === "run.context" || event.event === "run.verification" || event.event.startsWith("message.")) return;
         setLiveRuns((previous) => {
           const current = previous[runId] ?? initialRun;
           if (event.event === "run.accepted" || event.event === "run.completed") {
             return { ...previous, [runId]: event.run };
           }
-          if (event.event === "run.activity") {
+          if (event.event === "run.activity" || event.event === "run.activity_detail") {
             return {
               ...previous,
               [runId]: { ...current, status: "running", activity: event.activity },
@@ -352,6 +353,7 @@ export function AgentLivePanel({
               },
             };
           }
+          if (event.event !== "run.cancelled") return previous;
           return {
             ...previous,
             [runId]: {
@@ -369,19 +371,25 @@ export function AgentLivePanel({
         let cursor = 0;
         let reconnectDelay = 250;
         try {
+          feedbackRef.current[runId] = emptyFeedback();
           while (!controller.signal.aborted) {
             try {
               cursor = await streamAgentRunEvents(
                 LOCAL_ACTOR_ID,
                 projectId,
                 runId,
-                receiveEvent,
+                (event) => { receiveEvent(event); cursor = event.sequence; },
                 controller.signal,
                 cursor,
               );
               reconnectDelay = 250;
             } catch {
+              setRunConnections((previous) => ({ ...previous, [runId]: false }));
               if (controller.signal.aborted) break;
+              if (feedbackRef.current[runId]?.gap) {
+                feedbackRef.current[runId] = emptyFeedback();
+                cursor = 0;
+              }
             }
             try {
               const current = await getAgentRun(LOCAL_ACTOR_ID, projectId, runId);
@@ -403,8 +411,12 @@ export function AgentLivePanel({
             });
             reconnectDelay = Math.min(reconnectDelay * 2, 2_000);
           }
+        } catch {
+          if (!controller.signal.aborted) setMessagesError("工作过程同步失败，请重新连接。");
         } finally {
           followsRef.current.delete(runId);
+          followedRunIdsRef.current.delete(runId);
+          setRunConnections((previous) => ({ ...previous, [runId]: false }));
           await refreshThreads();
           if (selectedThreadIdRef.current === threadId) {
             await reloadMessages();
@@ -415,11 +427,48 @@ export function AgentLivePanel({
     [projectId, refreshThreads, reloadMessages],
   );
 
+  const goalScope = `${projectId}:${draftId}:${draftRevision}:${selectedThreadId}`;
+  const latestGoalId = goalHints[selectedThreadId ?? 0] ?? [...messages].reverse().find((message) => message.run?.goal_id)?.run?.goal_id ?? null;
+  const lastGoalSignature = useRef("");
+  const onGoalChange = useCallback((current: PublicGoalSession) => {
+    const signature = `${current.goal_id}:${current.revision}:${current.status}:${current.active_run_id}`;
+    if (lastGoalSignature.current !== signature) {
+      lastGoalSignature.current = signature;
+      void reloadMessages();
+    }
+    if (current.active_run_id && selectedThreadId !== null) {
+      void getAgentRun(LOCAL_ACTOR_ID, projectId, current.active_run_id).then((run) => {
+        if (selectedThreadIdRef.current === selectedThreadId && ACTIVE_RUN_STATUSES.has(run.status)) startFollow(run, selectedThreadId);
+      }).catch(() => undefined);
+    }
+  }, [projectId, reloadMessages, selectedThreadId, startFollow]);
+  const goalFeedback = useAgentGoalFeedback(projectId, goalScope, latestGoalId, onGoalChange,
+    (id) => { if (selectedThreadId !== null) setGoalHints((previous) => ({ ...previous, [selectedThreadId]: id })); });
+  const goal = goalFeedback.goal;
+  const refreshGoal = goalFeedback.refresh;
+  const canIntervene = Boolean(goalFeedback.connected && goal && (deliveryMode === "replace" ? goal.can_replace : goal.can_steer));
+  const canFollowUp = Boolean(goalFeedback.connected && goal?.can_follow_up);
+
   useEffect(() => {
     const pending = pendingAssistantRun(messages);
     if (pending === null || selectedThreadId === null) return;
     startFollow(pending.run, selectedThreadId);
   }, [messages, selectedThreadId, startFollow]);
+
+  useEffect(() => {
+    let active = true;
+    for (const message of messages) {
+      const run = message.run;
+      if (!run || !TERMINAL_RUN_STATUSES.has(run.status) || feedbackRef.current[run.run_id]) continue;
+      void listAgentRunFeedback(LOCAL_ACTOR_ID, projectId, run.run_id).then((events) => {
+        if (!active || feedbackRef.current[run.run_id]) return;
+        const restored = events.reduce(reduceFeedback, emptyFeedback());
+        feedbackRef.current[run.run_id] = restored;
+        setFeedback((previous) => ({ ...previous, [run.run_id]: restored }));
+      }).catch(() => undefined);
+    }
+    return () => { active = false; };
+  }, [messages, projectId]);
 
   const pendingEntry = pendingAssistantRun(messages);
   const pendingLiveRun =
@@ -428,15 +477,25 @@ export function AgentLivePanel({
       : (liveRuns[pendingEntry.run.run_id] ?? pendingEntry.run);
   const busy =
     pendingLiveRun !== null && ACTIVE_RUN_STATUSES.has(pendingLiveRun.status);
+  const attentionIds = pendingLiveRun && busy && runConnections[pendingLiveRun.run_id] &&
+    (!goal || (goalFeedback.connected && ["running", "interpreting"].includes(goal.status)))
+    ? activeFeedbackRefs(feedback[pendingLiveRun.run_id], draftId, draftRevision) : [];
+  const attentionKey = JSON.stringify(attentionIds);
+  useEffect(() => {
+    onAgentFocus?.(JSON.parse(attentionKey) as string[]);
+    return () => onAgentFocus?.([]);
+  }, [attentionKey, onAgentFocus, selectedThreadId, draftId, draftRevision]);
   const finishing =
     pendingLiveRun !== null && TERMINAL_RUN_STATUSES.has(pendingLiveRun.status);
 
   const inputDisabled =
     selectedThreadId === null ||
+    (latestGoalId !== null && !goalFeedback.connected) ||
     threadsLoading ||
-    messagesLoading ||
-    busy ||
-    finishing ||
+    (busy && !canIntervene) || sending ||
+    (finishing && !canIntervene && !canFollowUp) ||
+    (goal !== null && !["completed", "cancelled", "failed", "superseded"].includes(goal.status) && !canIntervene) ||
+    (goal?.status === "stale" && deliveryMode !== "replace" && resumeAcknowledgement !== goalScope) ||
     creatingThread ||
     threads.find((thread) => thread.thread_id === selectedThreadId)?.status ===
       "archived";
@@ -466,6 +525,7 @@ export function AgentLivePanel({
       upsertThread(created);
       setMessagesLoading(true);
       setSelectedThreadId(created.thread_id);
+      onContinueInDesk();
       return created;
     } catch (caught) {
       setMessagesError(errorMessage(caught));
@@ -519,8 +579,12 @@ export function AgentLivePanel({
     async (prompt: string, routingHint?: AgentChatRoutingHint) => {
       const content = prompt.trim();
       const threadId = selectedThreadId;
-      if (!content || busy || finishing || threadId === null) return;
-      setDraft("");
+      if (!content || inputDisabled || threadId === null || sendingRef.current) return;
+      const frozenFocus = composerFocus(composers[threadId] ?? newComposerEntry(focus));
+      sendingRef.current = true;
+      setSending(true);
+      setSendingText({ threadId, text: content });
+      setSendError(null);
       setMessagesError(null);
       try {
         const result = await sendAgentMessage(
@@ -531,9 +595,16 @@ export function AgentLivePanel({
           draftRevision,
           content,
           "deepseek",
-          focus,
+          frozenFocus,
           routingHint ?? { entrypoint: "free_text" },
+          goal && (canIntervene || canFollowUp) ? {
+            delivery_mode: canFollowUp && !canIntervene ? "follow_up" : deliveryMode,
+            expected_goal_id: goal.goal_id, expected_goal_revision: goal.revision,
+          } : undefined,
         );
+        if (result.goal) setGoalHints((previous) => ({ ...previous, [threadId]: result.goal!.goal_id }));
+        refreshGoal();
+        dispatchComposer({ type: "sent", threadId, candidate: focus, text: prompt });
         if (selectedThreadIdRef.current === threadId) {
           messagesRequestRef.current += 1;
           setMessages((previous) =>
@@ -548,14 +619,18 @@ export function AgentLivePanel({
           startFollow(result.assistant_message.run, threadId);
         }
       } catch (caught) {
-        setMessagesError(errorMessage(caught));
+        setSendError({ threadId, message: errorMessage(caught) });
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
+        setSendingText(null);
       }
     },
     [
-      busy,
+      inputDisabled, goal, canIntervene, canFollowUp, deliveryMode, refreshGoal,
+      composers,
       draftId,
       draftRevision,
-      finishing,
       focus,
       projectId,
       refreshThreads,
@@ -566,11 +641,14 @@ export function AgentLivePanel({
 
   const handledKickoffRef = useRef<number | null>(null);
   useEffect(() => {
-    if (kickoff === null || handledKickoffRef.current === kickoff.id) return;
+    if (kickoff === null) { handledKickoffRef.current = null; return; }
+    if (handledKickoffRef.current === kickoff.id) return;
     if (selectedThreadId === null || busy || finishing || threadsLoading) return;
-    handledKickoffRef.current = kickoff.id;
     const timer = window.setTimeout(
-      () => void send(kickoff.prompt, kickoff.routingHint),
+      () => {
+        handledKickoffRef.current = kickoff.id;
+        void send(kickoff.prompt, kickoff.routingHint);
+      },
       0,
     );
     return () => window.clearTimeout(timer);
@@ -583,24 +661,6 @@ export function AgentLivePanel({
     threadsLoading,
   ]);
 
-  async function cancelCurrentRun() {
-    if (pendingEntry === null) return;
-    setMessagesError(null);
-    try {
-      const run = await cancelAgentRun(
-        LOCAL_ACTOR_ID,
-        projectId,
-        pendingEntry.run.run_id,
-      );
-      setLiveRuns((previous) => ({
-        ...previous,
-        [run.run_id]: run,
-      }));
-    } catch (caught) {
-      setMessagesError(errorMessage(caught));
-    }
-  }
-
   function retryMessage(message: PublicAgentMessage) {
     const previousUser = [...messages]
       .sort((a, b) => b.sequence - a.sequence)
@@ -612,30 +672,6 @@ export function AgentLivePanel({
           candidate.body !== null,
       );
     if (previousUser?.body) void send(previousUser.body);
-  }
-
-  async function submitRoutingFeedback(
-    message: PublicAgentMessage,
-    interpretation: PublicRoutingInterpretation,
-  ) {
-    if (selectedThreadId === null) return;
-    setMessagesError(null);
-    try {
-      await sendAgentRoutingFeedback(
-        LOCAL_ACTOR_ID,
-        projectId,
-        selectedThreadId,
-        message.message_id,
-        interpretation,
-      );
-      setFeedbackByMessage((previous) => ({
-        ...previous,
-        [message.message_id]: interpretation,
-      }));
-    } catch (caught) {
-      setMessagesError(errorMessage(caught));
-      throw caught;
-    }
   }
 
   function updatePatchSet(patchSet: PublicPatchSet) {
@@ -674,6 +710,9 @@ export function AgentLivePanel({
         confirmation.confirmationNote,
       );
       updatePatchSet(result.patch);
+      if (result.goal && selectedThreadId !== null) setGoalHints((previous) => ({ ...previous, [selectedThreadId]: result.goal!.goal_id }));
+      if (result.continuation_run && selectedThreadId !== null) startFollow(result.continuation_run, selectedThreadId);
+      refreshGoal();
       setRevisionByPatch((previous) => ({
         ...previous,
         [patchSet.patch_id]: result.revision,
@@ -775,39 +814,12 @@ export function AgentLivePanel({
     }
   }
 
-  const promptsDisabled = inputDisabled || creatingThread;
-
   const selectedThread = useMemo(
     () =>
       threads.find((thread) => thread.thread_id === selectedThreadId) ?? null,
     [selectedThreadId, threads],
   );
-  const contextChips = useMemo(() => {
-    const chips: string[] = [];
-    const objectId = focus.object_ids[0];
-    const eventId = focus.event_ids[0];
-    const issueId = focus.validation_issue_ids[0];
-    if (objectId) chips.push(referenceLabels.objects[objectId] ?? objectId);
-    if (eventId) chips.push(referenceLabels.events[eventId] ?? eventId);
-    if (issueId) chips.push(referenceLabels.issues[issueId] ?? issueId);
-    if (focus.view && focusViewLabels[focus.view]) {
-      chips.push(focusViewLabels[focus.view]);
-    }
-    return chips;
-  }, [focus, referenceLabels]);
 
-  const latestRun = useMemo(
-    () =>
-      [...messages]
-        .sort((left, right) => right.sequence - left.sequence)
-        .find((message) => message.run !== null)?.run ?? null,
-    [messages],
-  );
-  const runForStrip =
-    pendingLiveRun ??
-    (latestRun === null
-      ? null
-      : (liveRuns[latestRun.run_id] ?? latestRun));
   const searchThreads = useCallback(
     async (query: string, includeArchived: boolean) => {
       await refreshThreads({ query, includeArchived });
@@ -854,118 +866,36 @@ export function AgentLivePanel({
     onRedo: (patchSet: PublicPatchSet) => void redoPatchSet(patchSet),
     patches: inspectorPatches,
   };
-  const inspectorPortal = inspectorHost
-    ? createPortal(
-        <WorkbenchAgentInspector
-          {...inspectorProps}
-          onFocusPatch={(id) => { setLocalFocusPatchSetId(id); setLocalFocusFindingId(null); onFocusPatch(id); }}
-        />,
-        inspectorHost,
-      )
-    : null;
+  const inspectorHasContent = inspectorPatches.length > 0 ||
+    inspectorFindings.length > 0 || Boolean(patchError);
   const focusPatch = (id: number) => {
     setLocalFocusPatchSetId(id);
     setLocalFocusFindingId(null);
     onFocusPatch(id);
   };
-  const focusFinding = (id: string) => {
-    setLocalFocusFindingId(id);
-    setLocalFocusPatchSetId(null);
-    onFocusFinding(id);
-  };
-
-  if (surface === "desk" || surface === "quick") {
-    return (
-    <>
-    <WorkbenchAgentDesk
-      composer={
-        <WorkbenchAgentComposer
-          busy={busy}
-          contextChips={contextChips}
-          disabled={inputDisabled}
-          draft={draft}
-          onCancel={
-            surface === "quick" && busy && pendingEntry !== null
-              ? () => void cancelCurrentRun()
-              : undefined
-          }
-          onContinueInDesk={
-            surface === "quick" ? onContinueInDesk : undefined
-          }
-          onDraftChange={setDraft}
-          onSend={() => void send(draft)}
-          focusRequest={focusRequest}
-          surface={surface}
-        />
-      }
-      conversation={
-        <WorkbenchAgentConversation
-          busy={busy}
-          liveRuns={liveRuns}
-          messages={messages}
-          messagesError={messagesError}
-          messagesLoading={messagesLoading}
-          onLocateEvent={onLocateEvent}
-          onLocateObject={onLocateObject}
-          onFocusPatch={focusPatch}
-          onFocusFinding={focusFinding}
-          onReconnect={() => void bootstrap()}
-          onReloadMessages={() => void reloadMessages()}
-          onRetryMessage={retryMessage}
-          renderRoutingFeedback={(message) => {
-            return message.interpretation === null ? null : (
-              <RoutingFeedback
-                interpretation={message.interpretation}
-                onSubmitted={(interpretation) =>
-                  submitRoutingFeedback(message, interpretation)
-                }
-                submittedIntent={feedbackByMessage[message.message_id]}
-              />
-            );
-          }}
-          selectedThreadTitle={selectedThread?.title ?? null}
-          surface={surface}
-          threadsError={threadsError}
-          threadsLoading={threadsLoading}
-        />
-      }
-      onClose={onClose}
-      prompts={
-        <div className={styles.agentPrompts} aria-label="统筹指令">
-          {agentPromptPresets.map((preset) => (
-            <button
-              disabled={promptsDisabled}
-              key={preset.id}
-              onClick={() => void send(preset.prompt, preset.routingHint)}
-              type="button"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      }
-      surface={surface}
-      taskStrip={
-        <WorkbenchAgentTaskStrip
-          contextState={
-            runForStrip === null
-              ? null
-              : (contextByRun[runForStrip.run_id] ?? null)
-          }
-          verificationProgress={
-            runForStrip === null
-              ? null
-              : (verificationByRun[runForStrip.run_id] ?? null)
-          }
-          onCancel={
-            busy && pendingEntry !== null
-              ? () => void cancelCurrentRun()
-              : undefined
-          }
-          run={runForStrip}
-        />
-      }
-      threadManager={
+  function renderMessagePatch(message: PublicAgentMessage, conversation = false) {
+    return <AgentMessagePatch message={message} inspector={inspectorProps}
+      scope={`${selectedThreadId}:${draftId}:${draftRevision}`} reviews={patchReviews} onReviewsChange={setPatchReviews}
+      conversation={conversation}
+      onDetails={conversation && message.patch ? () => focusPatch(message.patch!.patch_id) : undefined}
+      onAdjust={conversation && message.patch ? () => {
+        setDraft(`${draft.trim() ? `${draft}\n\n` : ""}请调整「${message.patch!.title}」这组修改建议：`);
+        setPatchFocusRequest((previous) => previous + 1);
+      } : undefined}
+    />;
+  }
+  const inspectorPortal = inspectorHost && inspectorHasContent
+    ? createPortal(
+        <WorkbenchAgentInspector
+          {...inspectorProps}
+          renderPatch={(message) => renderMessagePatch(message)}
+          onFocusPatch={(id) => { setLocalFocusPatchSetId(id); setLocalFocusFindingId(null); onFocusPatch(id); }}
+        />,
+        inspectorHost,
+      )
+    : null;
+  const threadPortal = threadHost
+    ? createPortal(
         <WorkbenchAgentThreadMenu
           disabled={threadsLoading || creatingThread}
           onCreate={createThread}
@@ -973,114 +903,114 @@ export function AgentLivePanel({
           onSearch={searchThreads}
           onSelect={(thread) => {
             upsertThread(thread);
-            setMessagesLoading(true);
-            setSelectedThreadId(thread.thread_id);
+            if (thread.thread_id !== selectedThreadId) {
+              setMessages([]);
+              setSelectedThreadId(thread.thread_id);
+            }
+            void reloadMessages(thread.thread_id);
+            onContinueInDesk();
           }}
           onSetArchived={setThreadArchived}
           onSetPinned={setThreadPinned}
           selectedThread={selectedThread}
           selectedThreadId={selectedThreadId}
           threads={threadMenuRows}
-        />
-      }
-    />
-    {inspectorPortal ?? (
-      inspectorFindings.length > 0 ||
-      inspectorPatches.length > 0 ||
-      localFocusPatchSetId !== null ||
-      localFocusFindingId !== null
-    ? (
-      <WorkbenchAgentInspector
-        {...inspectorProps}
-        onFocusPatch={focusPatch}
+          placement="toolbar"
+        />,
+        threadHost,
+      )
+    : null;
+  const presentation = (
+        <WorkbenchAgentDesk
+        composer={
+          <WorkbenchAgentComposer
+            busy={busy}
+            deliveryControl={goal && (goal.can_steer || goal.can_replace) ? <select
+              aria-label="运行中消息用途" value={deliveryMode} disabled={!goalFeedback.connected || sending}
+              onChange={(event) => setDeliveryMode(event.target.value as "steer" | "replace")}
+            >
+              <option value="steer" disabled={!goal.can_steer}>补充当前要求</option>
+              <option value="replace" disabled={!goal.can_replace}>替换当前任务</option>
+            </select> : null}
+            disabled={disabled || threadsLoading || selectedThreadId === null}
+            submitDisabled={inputDisabled}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={() => {
+              if (!draft.trim() || inputDisabled || disabled) return;
+              onContinueInDesk();
+              void send(draft);
+            }}
+            focusRequest={focusRequest + patchFocusRequest}
+            surface="dock"
+          />
+        }
+        conversation={
+          <WorkbenchAgentConversation
+            liveRuns={liveRuns}
+            feedback={feedback}
+            sendingText={sendingText?.threadId === selectedThreadId ? sendingText.text : null}
+            sendError={sendError?.threadId === selectedThreadId ? sendError.message : null}
+            patchError={patchError}
+            messages={messages}
+            messagesError={messagesError}
+            messagesLoading={messagesLoading}
+            onReconnect={() => void bootstrap()}
+            onReloadMessages={() => void reloadMessages()}
+            onRetryMessage={retryMessage}
+            selectedThreadTitle={selectedThread?.title ?? null}
+            threadsError={threadsError}
+            threadsLoading={threadsLoading}
+            onFocusPatch={focusPatch}
+            renderPatch={(message) => renderMessagePatch(message, true)}
+            onFocusFinding={onFocusFinding}
+            taskControls={goal || pendingLiveRun ? <div className={styles.agentLiveStatus} aria-label="Agent 状态">
+              <span role="status">{goal ? goalLabel(goal) : pendingLiveRun?.status === "queued" ? "回复已排队" : busy ? "正在处理你的要求" : "正在同步结果"}</span>
+              {goal && !goalFeedback.connected ? <small>正在重新连接，暂不能提交新要求</small> : null}
+              {goal?.status === "stale" && resumeAcknowledgement !== goalScope ? <button type="button" onClick={() => setResumeAcknowledgement(goalScope)}>基于当前工作稿继续</button> : null}
+              {goal?.active_patch_id ? <button type="button" onClick={() => focusPatch(goal.active_patch_id!)}>审阅修改建议</button> : null}
+              {goalFeedback.deliveries.map((delivery) => <small key={delivery.delivery_id}>
+                {delivery.mode === "replace" ? "替换要求" : "补充要求"} · {delivery.status === "queued" ? "已收到，等待当前步骤结束" : delivery.status === "claimed" ? "正在处理" : delivery.status === "consumed" ? "已生效" : "未生效"}
+              </small>)}
+              {(goal?.cancellable || (!goal && pendingLiveRun?.cancellable)) ? <button type="button" onClick={() => {
+                const action = goal ? cancelAgentGoal(LOCAL_ACTOR_ID, projectId, goal.goal_id) : cancelAgentRun(LOCAL_ACTOR_ID, projectId, pendingLiveRun!.run_id);
+                void action.then(() => { refreshGoal(); return reloadMessages(); }).catch((caught: unknown) => setMessagesError(errorMessage(caught)));
+              }}>停止{goal ? "目标" : "回复"}</button> : null}
+            </div> : null}
+          />
+        }
+        prompts={null}
+        surface={surface}
+        taskStrip={null}
       />
-    ) : null)}
-    </>
-    );
-  }
-  return inspectorPortal;
-}
-function RoutingFeedback({
-  interpretation,
-  submittedIntent,
-  onSubmitted,
-}: {
-  interpretation: PublicRoutingInterpretation;
-  submittedIntent?: PublicRoutingInterpretation;
-  onSubmitted: (intent: PublicRoutingInterpretation) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [selection, setSelection] = useState<PublicRoutingInterpretation | "">("");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submit() {
-    if (selection === "" || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSubmitted(selection);
-      setEditing(false);
-    } catch {
-      // The panel surfaces the API error near the message list.
-    } finally {
-      setSubmitting(false);
-    }
-  }
+      );
+  const wrappedPresentation = (
+    <WorkbenchAgentSurface surface={surface} working={busy && (!goal || ["running", "interpreting"].includes(goal.status))}>{presentation}</WorkbenchAgentSurface>
+  );
 
   return (
-    <div className={styles.agentRouteMeta} aria-label="请求理解">
-      <span className={styles.agentRouteChip}>
-        理解为：{interpretationLabels[interpretation]}
-      </span>
-      {submittedIntent ? (
-        <span className={styles.agentRouteSubmitted}>
-          已更正为：{interpretationLabels[submittedIntent]}
-        </span>
-      ) : editing ? (
-        <span className={styles.agentRouteFeedback}>
-          <select
-            aria-label="正确的请求类型"
-            onChange={(event) =>
-              setSelection(event.target.value as PublicRoutingInterpretation)
-            }
-            value={selection}
-          >
-            <option value="" disabled>
-              选择正确理解
-            </option>
-            {(
-              Object.entries(interpretationLabels) as Array<
-                [PublicRoutingInterpretation, string]
-              >
-            ).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button
-            disabled={selection === "" || submitting}
-            onClick={() => void submit()}
-            type="button"
-          >
-            {submitting ? "提交中…" : "确认更正"}
-          </button>
-          <button
-            disabled={submitting}
-            onClick={() => setEditing(false)}
-            type="button"
-          >
-            取消
-          </button>
-        </span>
-      ) : (
-        <button
-          className={styles.agentRouteFeedbackButton}
-          onClick={() => setEditing(true)}
-          type="button"
-        >
-          理解不对
-        </button>
+    <>
+      {threadPortal}
+      <WorkbenchAgentPortal host={presentationHost}>{wrappedPresentation}</WorkbenchAgentPortal>
+      {details ? <WorkbenchAgentDetailPortals details={details} inspector={inspectorProps}
+        scope={`${selectedThreadId}:${draftId}:${draftRevision}`} loading={messagesLoading}
+        reviews={patchReviews} onReviewsChange={setPatchReviews}
+        onAddContext={(items) => { for (const item of items) dispatchComposer({ type: "add", threadId: composerThreadId, candidate: focus, item }); }}
+      /> : null}
+      {details ? null : inspectorPortal ?? (
+        inspectorFindings.length > 0 ||
+        inspectorPatches.length > 0 ||
+        localFocusPatchSetId !== null ||
+        localFocusFindingId !== null
+          ? (
+              <WorkbenchAgentInspector
+                {...inspectorProps}
+                renderPatch={(message) => renderMessagePatch(message)}
+                onFocusPatch={focusPatch}
+              />
+            )
+          : null
       )}
-    </div>
+    </>
   );
 }

@@ -1,0 +1,11 @@
+.objectMark { display: grid; flex: none; width: var(--relation-mark-size, 42px); height: var(--relation-mark-size, 42px); place-items: center; border: 1px solid #dfd7ca; border-radius: 5px; color: #675c4f; background: #eee9df; font: 500 var(--relation-mark-font, 22px)/1 "Noto Serif SC", "STSong", SimSun, serif; }
+.objectMark[data-kind="entity"] { border-radius: 50%; }
+.flow { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) minmax(90px, 1.7fr) minmax(0, 1fr); gap: 10px; align-items: center; color: #292c2c; font: var(--relation-flow-font, 13px)/1.6 "Noto Serif SC", "STSong", SimSun, serif; }
+.endpoint { min-width: 0; overflow-wrap: anywhere; text-align: center; }
+.connection { display: grid; min-width: 0; grid-template-columns: minmax(8px, 1fr) minmax(0, auto) minmax(8px, 1fr); gap: 8px; align-items: center; color: #a92609; }
+.connection em { min-width: 0; overflow-wrap: anywhere; text-align: center; font-style: normal; }
+.connection i { position: relative; height: 0; border-top: 1px solid currentColor; }
+.flow[data-direction="incoming"] .connection i { border-top-style: dashed; }
+.flow:is([data-direction="incoming"], [data-direction="mutual"]) .connection i:first-child::before { position: absolute; top: -4px; left: -1px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-right: 5px solid currentColor; content: ""; }
+.flow:is([data-direction="outgoing"], [data-direction="mutual"]) .connection i:last-child::after { position: absolute; top: -4px; right: -1px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid currentColor; content: ""; }
+.flow[data-direction="neutral"] .connection { color: #777a75; }

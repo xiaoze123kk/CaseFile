@@ -100,6 +100,12 @@ from casefile.agent_runtime.brief_to_draft_v8.validation import (
 from casefile.agent_runtime.brief_to_draft_v8.validation import (
     _v15_story_person_name_issues as _v15_story_person_name_issues,
 )
+from casefile.agent_runtime.brief_to_draft_v8.validation import (
+    _v16_blueprint_relationship_coverage_issues as _v16_blueprint_relationship_coverage_issues,
+)
+from casefile.agent_runtime.brief_to_draft_v8.validation import (
+    _v16_story_relationship_coverage_issues as _v16_story_relationship_coverage_issues,
+)
 from casefile.agent_runtime.brief_to_draft_v11.contracts import (
     EventIRV2,
     StoryWorldIRV2,
@@ -424,9 +430,7 @@ class _BlueprintPlannerStage:
     async def run(self, ctx: PipelineContext) -> None:
         if ctx.context_pack is None:
             raise RuntimeError("planner stage requires a context pack")
-        planner_input: dict[str, Any] = {
-            "context_pack": ctx.context_pack.model_dump(mode="json")
-        }
+        planner_input: dict[str, Any] = {"context_pack": ctx.context_pack.model_dump(mode="json")}
         if ctx.uses_v2_context:
             planner_repairs = [
                 issue
@@ -451,12 +455,19 @@ class _BlueprintPlannerStage:
             if ctx.uses_v2_context
             else []
         )
+        blueprint_relationship_issues = (
+            _v16_blueprint_relationship_coverage_issues(ctx.blueprint)
+            if ctx.features.relationship_coverage
+            else []
+        )
         if blueprint_path_issues and not ctx.uses_v15:
             error = ContractValidationError(blueprint_path_issues)
             _emit_quality_gate_failure(ctx.request, error)
             raise error
         language_repair_allowed = ctx.features.language_gate
-        needs_blueprint_repair = bool(blueprint_path_issues) or (
+        needs_blueprint_repair = bool(
+            blueprint_path_issues or blueprint_relationship_issues
+        ) or (
             language_repair_allowed and bool(_blueprint_creator_chinese_issues(ctx.blueprint))
         )
         if not needs_blueprint_repair:
@@ -464,6 +475,11 @@ class _BlueprintPlannerStage:
         for _ in range(ctx.features.blueprint_repair_budget):
             combined_issues = [
                 *_blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15),
+                *(
+                    _v16_blueprint_relationship_coverage_issues(ctx.blueprint)
+                    if ctx.features.relationship_coverage
+                    else []
+                ),
                 *_blueprint_creator_chinese_issues(ctx.blueprint),
             ]
             if not combined_issues:
@@ -479,12 +495,22 @@ class _BlueprintPlannerStage:
                 input_payload={
                     "context_pack": ctx.context_pack.model_dump(mode="json"),
                     "targeted_repair_issues": combined_issues,
+                    **(
+                        {"previous_output": ctx.blueprint.model_dump(mode="json")}
+                        if ctx.features.relationship_coverage
+                        else {}
+                    ),
                 },
             )
             ctx.usage_records.append(repaired_usage)
             ctx.blueprint = CaseBlueprintV1.model_validate(repaired_output)
         remaining_blueprint_issues = [
             *_blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15),
+            *(
+                _v16_blueprint_relationship_coverage_issues(ctx.blueprint)
+                if ctx.features.relationship_coverage
+                else []
+            ),
             *_blueprint_creator_chinese_issues(ctx.blueprint),
         ]
         if remaining_blueprint_issues:
@@ -597,9 +623,7 @@ class _DomainDraftStage:
                 ctx.repaired_components.add("evidence_logic")
                 ctx.evidence = _evidence_from_output(evidence_value, evidence_output_type)
                 if not isinstance(ctx.evidence, EvidenceLogicIRV2):
-                    raise RuntimeError(
-                        "competition matrix repair must return EvidenceLogicIRV2"
-                    )
+                    raise RuntimeError("competition matrix repair must return EvidenceLogicIRV2")
             if ctx.uses_v15:
                 context_pack = ctx.context_pack
                 if context_pack is None:
@@ -611,16 +635,12 @@ class _DomainDraftStage:
                     ctx.evidence,
                     context_payload=context_pack.model_dump(mode="json"),
                     hypotheses_by_resolution=_hypotheses_by_resolution(ctx.evidence),
-                    used_information_by_hypothesis=_used_information_by_hypothesis(
-                        ctx.evidence
-                    ),
+                    used_information_by_hypothesis=_used_information_by_hypothesis(ctx.evidence),
                     model_step=_model_step,
                 )
                 ctx.usage_records.extend(matrix_usage)
         if ctx.spec.governance_runs_in_parallel:
-            ctx.governance = ctx.spec.governance_output_type.model_validate(
-                domain_results[2][0]
-            )
+            ctx.governance = ctx.spec.governance_output_type.model_validate(domain_results[2][0])
 
 
 class _ResolutionGovernanceStage:
@@ -665,9 +685,7 @@ class _CompileQualityGateStage:
             try:
                 if ctx.uses_competition_matrix:
                     if not isinstance(ctx.evidence, EvidenceLogicIRV2):
-                        raise RuntimeError(
-                            "competition matrix versions must use EvidenceLogicIRV2"
-                        )
+                        raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
                     matrix_issues = _evidence_assessment_issues(
                         ctx.evidence,
                         strict_competition=ctx.uses_v2_context,
@@ -700,12 +718,16 @@ class _CompileQualityGateStage:
                         raise LinkerValidationError(temporal_issues)
                 if ctx.uses_v15:
                     if not isinstance(ctx.story_output, StoryWorldIRV3):
-                        raise RuntimeError(
-                            "v15 naming gate requires StoryWorldIRV3"
-                        )
+                        raise RuntimeError("v15 naming gate requires StoryWorldIRV3")
                     naming_issues = _v15_story_person_name_issues(ctx.story_output)
                     if naming_issues:
                         raise LinkerValidationError(naming_issues)
+                if ctx.features.relationship_coverage:
+                    if not isinstance(ctx.story_output, StoryWorldIRV3):
+                        raise RuntimeError("relationship coverage gate requires StoryWorldIRV3")
+                    relationship_issues = _v16_story_relationship_coverage_issues(ctx.story_output)
+                    if relationship_issues:
+                        raise LinkerValidationError(relationship_issues)
                 if ctx.spec.story_feature is not None:
                     feature_issues = ctx.spec.story_feature.validate_story(
                         ctx.story,
@@ -726,9 +748,8 @@ class _CompileQualityGateStage:
                     candidate,
                     recoverable=gate_attempt == 0,
                 )
-                ctx.tools.calls = (
-                    (6 if ctx.uses_v15 else 5 if ctx.uses_temporal_plan else 4)
-                    + len(ctx.repaired_components)
+                ctx.tools.calls = (6 if ctx.uses_v15 else 5 if ctx.uses_temporal_plan else 4) + len(
+                    ctx.repaired_components
                 )
                 ctx.tools.valid_calls = ctx.tools.calls
                 ctx.tools.successful_calls = ctx.tools.calls
@@ -810,8 +831,7 @@ class _CompileQualityGateStage:
                                 (StoryWorldIRV1, StoryWorldIRV2),
                             ):
                                 raise RuntimeError(
-                                    "legacy brief-to-draft repair returned an "
-                                    "incompatible Story IR"
+                                    "legacy brief-to-draft repair returned an incompatible Story IR"
                                 ) from error
                             ctx.story = repaired_story
                     if "evidence_logic" in affected:
@@ -901,8 +921,7 @@ class _CompileQualityGateStage:
                     if component_id == "evidence_logic" and ctx.uses_competition_matrix:
                         if not isinstance(ctx.evidence, EvidenceLogicIRV2):
                             raise RuntimeError(
-                                "competition matrix evidence repair requires "
-                                "EvidenceLogicIRV2"
+                                "competition matrix evidence repair requires EvidenceLogicIRV2"
                             ) from error
                         repair_kwargs["previous_output"] = ctx.evidence
                         repair_kwargs["input_contract_id"] = (
@@ -922,9 +941,7 @@ class _CompileQualityGateStage:
                         )
                     )
                 repaired = await asyncio.gather(*repair_tasks)
-                for component_id, (value, usage) in zip(
-                    repair_order, repaired, strict=True
-                ):
+                for component_id, (value, usage) in zip(repair_order, repaired, strict=True):
                     ctx.usage_records.append(usage)
                     ctx.repaired_components.add(component_id)
                     if component_id == "story_world":
@@ -955,8 +972,7 @@ class _CompileQualityGateStage:
                                 (StoryWorldIRV1, StoryWorldIRV2),
                             ):
                                 raise RuntimeError(
-                                    "legacy brief-to-draft repair returned an "
-                                    "incompatible Story IR"
+                                    "legacy brief-to-draft repair returned an incompatible Story IR"
                                 ) from error
                             ctx.story = repaired_story
                     elif component_id == "evidence_logic":
@@ -1012,9 +1028,7 @@ async def run_v8_generation(
     for stage_id in spec.stages:
         stage = _PIPELINE_STAGES.get(stage_id)
         if stage is None:
-            raise RuntimeError(
-                f"no brief-to-draft pipeline stage registered for {stage_id!r}"
-            )
+            raise RuntimeError(f"no brief-to-draft pipeline stage registered for {stage_id!r}")
         await stage.run(ctx)
     if ctx.result is None:
         raise RuntimeError("brief-to-draft stage graph finished without a result")

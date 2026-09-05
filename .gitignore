@@ -35,3 +35,6 @@ Thumbs.db
 .vscode/
 *.log
 *.tsbuildinfo
+apps/web/.next-feedback/
+apps/web/.next-*/
+/.playwright-mcp/

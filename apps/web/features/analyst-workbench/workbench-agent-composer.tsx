@@ -1,52 +1,52 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import styles from "./workbench-agent.module.css";
+import { WorkbenchIcon } from "./workbench-icon";
 
 export function WorkbenchAgentComposer({
   draft,
   onDraftChange,
   onSend,
-  onContinueInDesk,
   onCancel,
-  contextChips,
   disabled,
+  submitDisabled = false,
   busy,
   surface,
   focusRequest = 0,
+  deliveryControl,
 }: {
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: () => void;
-  onContinueInDesk?: () => void;
   onCancel?: () => void;
-  contextChips: string[];
   disabled: boolean;
+  submitDisabled?: boolean;
   busy: boolean;
-  surface: "quick" | "desk";
+  surface: "dock" | "desk";
   focusRequest?: number;
+  deliveryControl?: ReactNode;
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
+    if (surface === "dock") {
+      input.style.height = "44px";
+      return;
+    }
     input.style.height = "auto";
     input.style.height = `${Math.min(Math.max(input.scrollHeight, 64), 120)}px`;
-  }, [draft]);
+  }, [draft, surface]);
 
   useEffect(() => {
-    if (surface === "quick") inputRef.current?.focus();
+    if (focusRequest > 0) inputRef.current?.focus();
   }, [focusRequest, surface]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-    if (event.ctrlKey && event.shiftKey && surface === "quick") {
-      event.preventDefault();
-      onContinueInDesk?.();
-      return;
-    }
     if (!event.shiftKey) {
       event.preventDefault();
       onSend();
@@ -56,22 +56,13 @@ export function WorkbenchAgentComposer({
   return (
     <form
       className={styles.agentComposer}
+      data-surface={surface}
       onSubmit={(event) => {
         event.preventDefault();
         onSend();
       }}
     >
-      <div className={styles.agentContextRow} aria-label="当前上下文">
-        <span className={styles.agentContextLabel}>当前上下文</span>
-        {contextChips.map((chip) => (
-          <span className={styles.agentContextChip} key={chip}>
-            {chip}
-          </span>
-        ))}
-        {contextChips.length === 0 ? (
-          <span className={styles.agentContextEmpty}>未选择对象</span>
-        ) : null}
-      </div>
+      {deliveryControl ? <div className={styles.agentDeliveryControl}>{deliveryControl}</div> : null}
       <div className={styles.agentComposerRow}>
         <textarea
           aria-label="给卷宗统筹 Agent 的指令"
@@ -79,24 +70,24 @@ export function WorkbenchAgentComposer({
           disabled={disabled}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={busy ? "Agent 正在回复，请稍候…" : "追问当前卷宗…"}
+          placeholder={
+            busy
+              ? "可继续起草下一条消息…"
+              : surface === "dock"
+                ? "写下你的疑问，让卷宗循着线索回答……"
+                : "追问当前卷宗…"
+          }
           ref={inputRef}
-          rows={2}
+          rows={surface === "dock" ? 1 : 2}
           value={draft}
         />
-        <button disabled={disabled || !draft.trim()} type="submit">
-          {busy ? "回复中" : "发送"}
+        <button
+          aria-label="发送"
+          disabled={disabled || submitDisabled || !draft.trim()}
+          type="submit"
+        >
+          {surface === "dock" ? <WorkbenchIcon name="send" /> : "发送"}
         </button>
-        {surface === "quick" && onContinueInDesk ? (
-          <button
-            className={styles.agentDeskButton}
-            disabled={disabled}
-            onClick={onContinueInDesk}
-            type="button"
-          >
-            在统筹台继续
-          </button>
-        ) : null}
         {busy && onCancel ? (
           <button
             className={styles.agentCancel}
@@ -107,10 +98,9 @@ export function WorkbenchAgentComposer({
           </button>
         ) : null}
       </div>
-      <small className={styles.agentComposerHint}>
-        Enter 发送 · Shift+Enter 换行
-        {surface === "quick" ? " · Ctrl+Shift+Enter 进入统筹台" : ""}
-      </small>
+      {surface === "desk" ? (
+        <small className={styles.agentComposerHint}>Enter 发送 · Shift+Enter 换行</small>
+      ) : null}
     </form>
   );
 }

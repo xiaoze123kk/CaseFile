@@ -16,6 +16,7 @@ from casefile.agent_runtime.goal.contracts import (
     GoalObligation,
 )
 from casefile.agent_runtime.goal.policy import stable_hash
+from casefile.application.agent_message_context import message_context_input
 from casefile.application.casefile_v1 import casefile_content_hash
 from casefile.application.errors import ApplicationError
 from casefile.application.goal_session_repository import GoalSessionRepository
@@ -105,6 +106,37 @@ class GoalSessionWorkflowMixin:
             )
             current = self._public_goal_session(goal)
             return [self._public_goal_event(row, current) for row in transitions]
+
+    def list_agent_goal_deliveries(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        goal_id: int,
+    ) -> list[PublicGoalDelivery]:
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id)
+            goal = self._goal_session(owned, goal_id)
+            deliveries = self.session.scalars(
+                select(AgentGoalDelivery)
+                .where(
+                    AgentGoalDelivery.goal_session_id == goal.id,
+                )
+                .order_by(AgentGoalDelivery.id)
+            )
+            result = []
+            for delivery in deliveries:
+                public = public_goal_delivery_view(delivery)
+                if delivery.mode == "replace" and delivery.status == "consumed":
+                    successor = self.session.scalar(
+                        select(AgentGoalSession).where(
+                            AgentGoalSession.predecessor_goal_session_id == goal.id,
+                            AgentGoalSession.source_message_id == delivery.source_message_id,
+                        )
+                    )
+                    if successor is not None:
+                        public = public.model_copy(update={"successor_goal_id": successor.id})
+                result.append(public)
+            return result
 
     def cancel_agent_goal(
         self,
@@ -781,6 +813,9 @@ class GoalSessionWorkflowMixin:
             )
             next_input = dict(task.input_jsonb)
             next_input.update(
+                message_context_input(self.session, task.project_id, source_message.id)
+            )
+            next_input.update(
                 {
                     "history": [
                         {"role": message.role, "content": message.content_text}
@@ -1105,6 +1140,7 @@ class GoalSessionWorkflowMixin:
                 )
             )
             next_input = dict(task.input_jsonb)
+            next_input.update(message_context_input(self.session, task.project_id, source.id))
             next_input.update(
                 {
                     "history": [
@@ -2108,6 +2144,7 @@ class GoalSessionWorkflowMixin:
             }
         )
         next_input.pop("goal_checkpoint", None)
+        next_input.update(message_context_input(self.session, previous.project_id, source.id))
         continuation = _continuation_task(
             previous,
             input_message_id=source.id,
@@ -2425,7 +2462,7 @@ def _goal_actions(status: str, revision: int) -> dict[str, bool]:
     terminal = status in TERMINAL_GOAL_STATUSES
     return {
         "can_steer": not terminal and revision >= 1,
-        "can_follow_up": status not in {"cancelled", "superseded", "failed"},
+        "can_follow_up": status == "completed" and revision >= 1,
         "can_replace": not terminal and revision >= 1,
         "cancellable": not terminal,
     }

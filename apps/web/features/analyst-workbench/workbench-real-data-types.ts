@@ -1,10 +1,8 @@
 import type { CaseFileDocument } from "@/lib/api-client";
 
 import type {
-  SourceItem,
   ValidationIssue,
   WorkbenchAuditEntry,
-  WorkbenchDrawerCopy,
   WorkbenchReasoningGroup,
   WorkbenchSeed,
 } from "./analyst-fixture";
@@ -371,7 +369,6 @@ export interface WorkbenchModel extends WorkbenchSeed {
   objectCounts: Record<WorkbenchObjectKind, number>;
   timelineEvents: WorkbenchTimelineEvent[];
   validationIssues: ValidationIssue[];
-  sourceItems: SourceItem[];
   graphNodes: WorkbenchGraphNode[];
   graphEdges: WorkbenchGraphEdge[];
   relationshipGraph: {
@@ -384,7 +381,6 @@ export interface WorkbenchModel extends WorkbenchSeed {
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   map: WorkbenchMapModel;
-  drawer: WorkbenchDrawerCopy;
   initialAuditEntries: WorkbenchAuditEntry[];
   defaultEventId: string | null;
   defaultObjectId: string | null;
