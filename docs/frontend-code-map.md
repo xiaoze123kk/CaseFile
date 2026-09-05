@@ -1,5 +1,18 @@
 # 前端代码职责地图
 
+## 分析师工作台信息架构重构
+
+- `workbench-navigation.tsx`、`workbench-navigation.module.css`：工作台子树的固定桌面导航。总览、五个分析视图、待处理问题与编译作品始终可访问；对象档案可在任意视图展开。导航事件回交宿主，复用未保存保护，不持有领域数据。
+- `workbench-overview.tsx`、`workbench-overview.module.css`：当前工作稿总览，呈现真实核心问题、按类型的对象数量、待处理问题和 Agent 讨论入口。状态不可用时不宣称验证通过；对象引用与跳转由宿主处理。
+- `workbench-shell.module.css`：仅作用于分析师工作台的蓝灰桌面令牌与三栏布局；导航、主内容和详情有固定位置。保留拖动分栏、收起恢复与 Agent Controller/Portal 身份。
+- `analyst-workbench.tsx`：保留原有领域功能与编辑门禁；工具不再藏在可切换的侧栏中，待处理问题可直接进入，搜索覆盖全部可用视图，离开编译时恢复上次分析视图。顶部只保留当前卷宗身份、搜索、验证与设置。
+- `workbench-object-directory.tsx`、其 CSS：保留类型/子类型筛选、计数和引用选择，收紧字号及层级间距，并在搜索时直接展示匹配对象；总览的类型入口可定位对应目录。
+- 关系图的 `workbench-canvas.module.css`、`workbench-canvas-kernel.tsx`、`workbench-relationship-graph.tsx` 改用浅色画布、低饱和节点与白底关系标签，保留语义色、箭头、布局、聚焦、拖动与动效开关。节点使用实色底、名称字印与加大的点击区域；单击直接打开右侧对象并切回对象基础页，Ctrl 保留多选。关系图不再展示选择/平移工具：拖动空白处平移、点击节点查看详情、滚轮缩放。默认单点拖动只移动自身，不再启用关联节点弹性跟随；底部关系表和文字摘要入口已移除。
+- 详情侧栏明确展示“对象详情 / 协作者”文字入口。对象身份改变或详情重新展开时，用 180ms 淡入位移动画过渡；不通过 React key 重挂载编辑器，减少动态效果设置下禁用。对象编辑、关联详情、来源、验证与 Patch 审阅、Agent 运行与输入法保护继续由原有模块负责。
+
+本节取代下文旧版顶栏模式导航、动态模式侧栏、对象目录大字排版与背景装饰的描述。建案中心、小说工作台、API、契约与持久化行为不在本次修改范围。
+
+
 ## 小说协作工作台
 
 - `apps/web/features/analyst-workbench/compile-center-view.tsx`、`compile-center.module.css`、`compile-target-icon.tsx`：编译中心的桌面作品入口选择页，用五个纸质对象 SVG 大图标呈现小说、剧本、互动脚本、作者卷宗和测试材料；小说进入独立工作台，其余未实现入口禁用并标明即将开放。移除事件拼接预览、模拟编译按钮与编译选项；仅在此页隐藏 Agent Dock、线程入口和对象侧栏，保持既有 Controller 与挂载槽，离开后恢复。

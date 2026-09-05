@@ -1,0 +1,30 @@
+.rail { display: flex; min-width: 0; min-height: 0; flex-direction: column; color: var(--ink); background: #edf2f4; border-right: 1px solid var(--rule); }
+.heading { display: flex; height: 56px; flex: none; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--rule); font-size: 12px; font-weight: 650; letter-spacing: .04em; }
+.heading button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 5px; color: var(--ink-muted); background: transparent; }
+.heading svg { width: 15px; height: 15px; }
+.scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 10px; scrollbar-width: thin; scrollbar-color: #bccbd2 transparent; }
+.destinations, .tools { display: grid; gap: 3px; }
+.destinations > button, .tools > button, .issueLink { display: flex; min-width: 0; width: 100%; height: 38px; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; color: #4d626e; background: transparent; text-align: left; }
+.destinations > button > span:not(.illustration), .tools > button > span:not(.illustration), .issueLink > span { flex: 1; font-size: 13px; font-weight: 550; white-space: nowrap; }
+.destinations small, .issueLink small { flex: none; color: #617581; font-size: 10px; font-variant-numeric: tabular-nums; }
+.destinations svg, .tools svg, .issueLink svg { width: 19px; height: 19px; flex: none; }
+.destinations > button:hover:not(:disabled), .tools > button:hover, .issueLink:hover, .heading button:hover { background: #e2e9ed; color: #233e4e; }
+.destinations > button[aria-selected="true"]:not(.sectionLink), .tools > button[aria-selected="true"], .issueLink[aria-pressed="true"] { background: #dce8ed; border-color: #c5d6df; color: #244b61; box-shadow: inset 3px 0 #315c73; }
+.destinations > .sectionLink { height: 36px; margin-top: 14px; padding-left: 12px; }
+.destinations > .sectionLink > span { font-size: 11px; color: #617581; font-weight: 650; }
+.destinations > .sectionLink small { font-size: 10px; color: #617581; }
+.issueLink { margin: 5px 0 12px; }
+.issueLink small { color: #92513f; }
+.illustration { display: block; flex: none; width: 20px; height: 20px; background: currentColor; mask: var(--nav-image) center / contain no-repeat; }
+.illustration[data-view="timeline"] { --nav-image: url('/casefile-analysis-timeline-v1.png'); }
+.illustration[data-view="relations"] { --nav-image: url('/casefile-analysis-relations-v1.png'); }
+.illustration[data-view="reasoning"] { --nav-image: url('/casefile-analysis-reasoning-v1.png'); }
+.illustration[data-view="map"] { --nav-image: url('/casefile-analysis-map-v1.png'); }
+.illustration[data-view="evidence"] { --nav-image: url('/casefile-analysis-evidence-v1.png'); }
+.illustration[data-view="compile"] { --nav-image: url('/casefile-analysis-compile-v1.png'); }
+.directory { margin-top: 18px; border-top: 1px solid #d3dfe4; }
+.directory > button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 15px 12px 10px; border: 0; color: #344e5d; background: transparent; font-size: 12px; text-align: left; }
+.directory > button > span { flex: 1; font-weight: 650; }
+.directory > button > svg { width: 15px; height: 15px; }
+.footer { display: flex; flex: none; align-items: center; gap: 8px; padding: 13px 18px; border-top: 1px solid var(--rule); color: #617581; font-size: 10px; }
+.footer kbd { padding: 2px 5px; border: 1px solid #c7d5dc; border-radius: 4px; font: 10px Consolas, monospace; }

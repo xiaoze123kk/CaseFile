@@ -205,6 +205,7 @@ function WorkbenchCanvasNode({
         type="target"
       />
       <small>{data.caption}</small>
+      {data.variant === "relationship" ? <span aria-hidden="true" className={styles.nodeMonogram}>{Array.from(data.label)[0]}</span> : null}
       <strong>{data.label}</strong>
       <Handle
         className={styles.canvasHandle}
@@ -320,9 +321,7 @@ function edgeStyle(
       strokeWidth: active ? 2.4 : 1.45,
       strokeDasharray,
       opacity: active ? 1 : 0.7,
-      filter: active
-        ? `drop-shadow(0 0 4px ${accent ?? "#60a5fa"})`
-        : undefined,
+      filter: undefined,
     };
   }
   if (active) {
@@ -490,6 +489,7 @@ export function WorkbenchCanvasKernel({
   const [nodes, setNodes] = useState(automaticNodes);
   const nodesRef = useRef(nodes);
   const [tool, setTool] = useState<CanvasTool>("select");
+  const directInteraction = identity.view === "relations";
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [relationshipFocusNodeId, setRelationshipFocusNodeId] = useState<
@@ -634,8 +634,8 @@ export function WorkbenchCanvasKernel({
     setNodes(next);
   }, []);
 
-  const toggleNodeSelection = useCallback((nodeId: string) => {
-    const selectedIds = new Set(selectedNodeIdsRef.current);
+  const toggleNodeSelection = useCallback((nodeId: string, exclusive = false) => {
+    const selectedIds = new Set(exclusive ? [] : selectedNodeIdsRef.current);
     const willSelect = !selectedIds.has(nodeId);
     if (willSelect) selectedIds.add(nodeId);
     else selectedIds.delete(nodeId);
@@ -649,7 +649,7 @@ export function WorkbenchCanvasKernel({
     setHasCanvasSelectionIntent(true);
     setLiveMessage(
       selectedIds.size
-        ? `已选择 ${selectedIds.size} 个画布节点；再次点击可取消选择。`
+        ? exclusive ? "已选择当前节点；按住 Ctrl 点击可多选。" : `已选择 ${selectedIds.size} 个画布节点；再次点击可取消选择。`
         : "已清除画布节点选择。",
     );
     return willSelect;
@@ -839,8 +839,8 @@ export function WorkbenchCanvasKernel({
               externalSelectedNodeIds.includes(node.id)),
           related: relatedNodeIds.has(node.id),
           onActivate: () => {
-            if (tool === "select") {
-              const selected = toggleNodeSelection(node.id);
+            if (directInteraction || tool === "select") {
+              const selected = toggleNodeSelection(node.id, focusDirectRelationsOnClick);
               if (selected && node.data.selectableId) {
                 canvasActivationPendingRef.current = true;
                 onActivateNode(node.data.selectableId);
@@ -856,6 +856,8 @@ export function WorkbenchCanvasKernel({
       })),
     [
       anchorNodeIds,
+      directInteraction,
+      focusDirectRelationsOnClick,
       externalSelectedNodeIds,
       hasCanvasSelectionIntent,
       hasRelationshipFocus,
@@ -915,7 +917,7 @@ export function WorkbenchCanvasKernel({
           labelBgStyle: {
             fill:
               identity.view === "relations"
-                ? "rgba(9, 11, 15, 0.88)"
+                ? "rgba(255, 255, 255, 0.92)"
                 : "rgba(251, 250, 246, 0.96)",
             stroke:
               identity.view === "relations"
@@ -1099,13 +1101,13 @@ export function WorkbenchCanvasKernel({
         aria-label={ariaLabel}
         className={styles.canvasKernel}
         data-scene={identity.view}
-        data-tool={tool}
+        data-tool={directInteraction ? "direct" : tool}
         deleteKeyCode={null}
         edgeTypes={edgeTypes}
         edges={renderedEdges}
         edgesFocusable={false}
         edgesReconnectable={false}
-        elementsSelectable={tool === "select"}
+        elementsSelectable={directInteraction || tool === "select"}
         elevateEdgesOnSelect={false}
         fitView={false}
         maxZoom={2.5}
@@ -1114,7 +1116,7 @@ export function WorkbenchCanvasKernel({
         nodeTypes={nodeTypes}
         nodes={renderedNodes}
         nodesConnectable={false}
-        nodesDraggable={tool === "select"}
+        nodesDraggable={directInteraction || tool === "select"}
         nodesFocusable={false}
         onInit={setInstance}
         onEdgeClick={(event, edge) => {
@@ -1132,7 +1134,7 @@ export function WorkbenchCanvasKernel({
           persist(nodesRef.current, nextViewport);
         }}
         onNodeClick={(event, node) => {
-          if (tool !== "select") return;
+          if (!directInteraction && tool !== "select") return;
           if (focusDirectRelationsOnClick) {
             setRelationshipFocusNodeId((current) =>
               current === node.id ? null : node.id,
@@ -1150,7 +1152,7 @@ export function WorkbenchCanvasKernel({
             );
             return;
           }
-          const selected = toggleNodeSelection(node.id);
+          const selected = toggleNodeSelection(node.id, focusDirectRelationsOnClick && !event.ctrlKey && !event.metaKey);
           if (selected && node.data.selectableId) {
             canvasActivationPendingRef.current = true;
             onActivateNode(node.data.selectableId);
@@ -1186,12 +1188,15 @@ export function WorkbenchCanvasKernel({
         }}
         onSelectionDragStart={startSelectionDrag}
         onSelectionDragStop={stopSelectionDrag}
-        panOnDrag={tool === "pan"}
-        panOnScroll={tool === "pan"}
+        panOnDrag={directInteraction || tool === "pan"}
+        panOnScroll={!directInteraction && tool === "pan"}
         preventScrolling
         proOptions={{ hideAttribution: true }}
         selectionMode={SelectionMode.Partial}
-        selectionOnDrag={tool === "select"}
+        selectionOnDrag={!directInteraction && tool === "select"}
+        selectionKeyCode={directInteraction ? null : "Shift"}
+        zoomOnScroll
+        zoomOnPinch
         zoomOnDoubleClick={false}
       />
       {identity.view === "relations" ? <button
@@ -1228,6 +1233,8 @@ export function WorkbenchCanvasKernel({
         role="group"
       >
         <CanvasKernelControls
+          hideTools={directInteraction}
+          selectionHint={focusDirectRelationsOnClick ? "点击查看对象；拖动移动节点；Ctrl 点击多选" : undefined}
           canRedo={history.future.length > 0}
           canUndo={history.past.length > 0}
           isFullscreen={isFullscreen}

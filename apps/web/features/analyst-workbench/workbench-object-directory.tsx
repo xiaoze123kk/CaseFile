@@ -251,6 +251,9 @@ export function WorkbenchObjectDirectory({
           className={styles.primaryKindIndex}
           role="region"
         >
+          {query.trim() && !expandedSubtype ? <div className={styles.objectList} role="group" aria-label="搜索匹配对象">
+            {queryMatches.filter((object) => kindFilter === "all" || directoryObjectKind(object.kind) === kindFilter).map(renderObjectButton)}
+          </div> : null}
           {kinds.map((kind) => {
             const expanded = expandedKinds.has(kind);
             return (
