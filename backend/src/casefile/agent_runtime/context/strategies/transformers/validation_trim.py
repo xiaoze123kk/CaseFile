@@ -15,7 +15,10 @@ from casefile.agent_runtime.context.protocols import ContextRun
 
 _MAX_MESSAGE_CHARS = 200
 _DEFAULT_FULL_PROFILES = ("validate_request.gate_check",)
-_COMPACT_FIELDS = ("issue_id", "rule_id", "severity", "title", "message", "object_refs")
+_COMPACT_FIELDS = (
+    "issue_id", "rule_id", "code", "severity", "title", "message", "object_refs",
+    "target", "path", "impact_refs", "evidence_refs",
+)
 
 
 def _full_snapshot_profiles(config: dict[str, Any]) -> tuple[str, ...]:

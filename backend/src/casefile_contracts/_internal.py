@@ -2763,6 +2763,8 @@ class SceneCompilerBatchSceneView(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    intent: Annotated[str | None, Field(max_length=2000)] = None
+    actor_allowlist: list[ObjectRef] | None = None
     scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
     chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
     discourse_order: Annotated[int, Field(ge=1)]
@@ -2789,6 +2791,7 @@ class ProjectionVersion(Enum):
     compiler_scene_compiler_model_view_projection_v1 = 'compiler.scene-compiler-model-view-projection.v1'
     compiler_scene_compiler_model_view_projection_v2 = 'compiler.scene-compiler-model-view-projection.v2'
     compiler_scene_compiler_model_view_projection_v3 = 'compiler.scene-compiler-model-view-projection.v3'
+    compiler_scene_compiler_model_view_projection_v4 = 'compiler.scene-compiler-model-view-projection.v4'
 
 
 class Source(BaseModel):
@@ -3753,6 +3756,7 @@ class SelectionReason(Enum):
     semantic_accepted = 'semantic_accepted'
     polished_accepted = 'polished_accepted'
     polish_semantic_rollback = 'polish_semantic_rollback'
+    judge_budget_preserve_accepted_original = 'judge_budget_preserve_accepted_original'
     quality_rollback = 'quality_rollback'
     quality_unstable = 'quality_unstable'
 
@@ -3802,7 +3806,7 @@ class JudgeAssessment(BaseModel):
         str, Field(pattern='^check_scene_[a-z0-9][a-z0-9_]{0,70}_[0-9]{3}$')
     ]
     verdict: Verdict
-    evidence: Annotated[list[Evidence], Field(max_length=20)]
+    evidence: Annotated[list[Evidence], Field(max_length=64)]
     rationale: Annotated[str, Field(max_length=1000, min_length=1)]
 
 

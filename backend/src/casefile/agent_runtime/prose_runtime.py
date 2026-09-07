@@ -5,21 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from casefile_contracts import (
-    CompileManifest,
-    NovelCandidate,
-    NovelProfileV2,
-    ProseConsensusReport,
-    ProseJudgeChecklist,
-    ProseJudgeReport,
-    ProseQualityReport,
-    SceneRender,
-)
-
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
-    FULL_COUNCIL_POLICY,
     PROSE_COUNCIL_MAX_OUTPUT_TOKENS,
     PROSE_EVIDENCE_CATALOG_POLICY_HASH,
     PROSE_JUDGE_CANDIDATE_SCHEMA_HASH,
@@ -43,8 +31,18 @@ from casefile.agent_runtime.prose_writer import (
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
 from casefile.domain.narrative_compiler.prose_checklist import PROSE_CHECKLIST_POLICY_HASH
+from casefile_contracts import (
+    CompileManifest,
+    NovelCandidate,
+    NovelProfileV2,
+    ProseConsensusReport,
+    ProseJudgeChecklist,
+    ProseJudgeReport,
+    ProseQualityReport,
+    SceneRender,
+)
 
-PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v1"
+PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v6"
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -55,15 +53,16 @@ def ignore_component(_name: str, _execution: Any) -> None:
 def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
     """Freeze executable policies and prompt contents without credentials."""
     versions = {
-        "prose_writer": "prose-writer-v1",
-        "prose_fidelity_judge": "prose-fidelity-judge-v6",
-        "prose_adversarial_judge": "prose-adversarial-judge-v5",
-        "prose_coherence_judge": "prose-coherence-judge-v5",
-        "prose_arbiter": "prose-arbiter-v5",
-        "prose_rewriter": "prose-rewriter-v3",
+        "prose_continuity": "prose-continuity-v1",
+        "prose_writer": "prose-writer-v3",
+        "prose_fidelity_judge": load_prompt("prose_fidelity_judge").version,
+        "prose_adversarial_judge": load_prompt("prose_adversarial_judge").version,
+        "prose_coherence_judge": load_prompt("prose_coherence_judge").version,
+        "prose_arbiter": load_prompt("prose_arbiter").version,
+        "prose_rewriter": "prose-rewriter-v5",
         "prose_quality_critic": "prose-quality-critic-v1",
         "prose_quality_pairwise": "prose-quality-pairwise-v1",
-        "prose_polisher": "prose-polisher-v2",
+        "prose_polisher": "prose-polisher-v5",
     }
     return {
         "version": PROSE_RUNTIME_VERSION,
@@ -87,8 +86,8 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
         "quality_model": "deepseek-v4-flash",
         "semantic_policy": FIDELITY_ONLY_POLICY.descriptor(),
         "semantic_policy_hash": FIDELITY_ONLY_POLICY.policy_hash,
-        "preservation_policy": FULL_COUNCIL_POLICY.descriptor(),
-        "preservation_policy_hash": FULL_COUNCIL_POLICY.policy_hash,
+        "preservation_policy": FIDELITY_ONLY_POLICY.descriptor(),
+        "preservation_policy_hash": FIDELITY_ONLY_POLICY.policy_hash,
         "prompts": {
             name: {"version": version, "hash": load_prompt(name, version).system_prompt_sha256}
             for name, version in versions.items()
@@ -118,9 +117,18 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
             "thinking_enabled": False,
         },
         "limits": {
+            "continuity_reviews_per_scene": 1,
+            "continuity_counts_toward_judge_budget": True,
+            "scene_checkpoint_policy": "accepted-prefix-v1",
+            "generation_repairs_per_call": 1,
+            "generation_policy": "prose-generation-repair-v3",
+            "generation_length_policy": "hard-range-before-judging",
+            "judge_calls_per_scene": 3,
+            "protocol_repairs_per_call": 1,
+            "judge_evidence_per_check": 64,
             "rewrite_rounds": 2,
             "arbiter_per_round": 1,
-            "judge_network_retries": 1,
+            "judge_network_retries": 0,
             "other_network_retries": 0,
             "logical_calls_per_scene": 23,
             "cost_limit": None,

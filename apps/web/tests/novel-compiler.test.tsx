@@ -39,6 +39,28 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("正文局部失败显示保存进度并使用服务端续跑权限", async () => {
+  const partial = run("succeeded", "inconclusive_infrastructure");
+  partial.artifacts = [];
+  partial.prose_shadow = { status: "inconclusive_infrastructure", completed_scene_count: 8, resume_available: true };
+  vi.mocked(apiRequest).mockResolvedValue([partial]);
+  render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+  expect(await screen.findByText("已保存 8 个场景，继续时保留已完成正文。")).toBeInTheDocument();
+  vi.mocked(apiRequest).mockResolvedValueOnce(run("queued", "running"));
+  fireEvent.click(screen.getByRole("button", { name: "从失败处继续" }));
+  await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/projects/7/compile-runs/3/resume", expect.objectContaining({ method: "POST" })));
+});
+
+it("场景冲突展示局部调整意见且不提供续跑按钮", async () => {
+  const blocked = run("succeeded", "blocked_precondition");
+  blocked.artifacts = [];
+  blocked.prose_shadow = { status: "blocked_precondition", resume_available: false, plan_issues: ["将真相揭示移到错误推断之后"] };
+  vi.mocked(apiRequest).mockResolvedValue([blocked]);
+  render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("将真相揭示移到错误推断之后");
+  expect(screen.queryByRole("button", { name: "从失败处继续" })).not.toBeInTheDocument();
+});
+
 describe("小说编译 API 适配", () => {
   it("冻结当前工作稿和新配置，显式启用完整正文编译", async () => {
     vi.mocked(apiRequest).mockResolvedValueOnce({ current_version_id: 25 }).mockResolvedValueOnce(run("queued", "pending"));
@@ -87,6 +109,21 @@ describe("小说编译 API 适配", () => {
 });
 
 describe("小说编译工作表面", () => {
+  it("主任务成功但正文失败不计为完整小说", async () => {
+    vi.mocked(apiRequest).mockResolvedValue([run("succeeded", "inconclusive_infrastructure"),
+      { ...run(), compile_run_id: 4, prose_renderer_shadow: false }]);
+    render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByLabelText("小说生成统计")).toHaveTextContent("完整小说 0/1 次（0%）");
+  });
+
+  it("失败记录可显式继续并绑定工作稿版本", async () => {
+    vi.mocked(apiRequest).mockImplementation(async (url) => url.endsWith("/resume") ?
+      run("queued", "pending") : [run("failed", "pending")]);
+    render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "从失败处继续" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/projects/7/compile-runs/3/resume",
+      expect.objectContaining({ method: "POST", body: { expected_draft_id: 9, expected_draft_revision: 12 } })));
+  });
   it("明确说明模型输出截断原因", () => {
     const failed = run("failed", "pending");
     failed.execution.error_code = "compiler_model_output_truncated";
@@ -100,7 +137,7 @@ describe("小说编译工作表面", () => {
     if (["queued", "running", "cancelling"].includes(status)) expect(indicator).toHaveAttribute("aria-hidden", "true");
     else expect(indicator).not.toBeInTheDocument();
   });
-  it("用户不用填数字，推荐后只生成方案，不自动写正文", async () => {
+  it("推荐后等待确认，确认后才规划章节，不自动写正文", async () => {
     const recommendation = { ...settings, concept: "围绕失踪来客的紧凑谜案", rationale: "将调查和揭晓分开呈现。" };
     const queued = { ...run("queued", "disabled"), prose_renderer_shadow: false };
     vi.mocked(apiRequest).mockImplementation(async (url, options) => {
@@ -114,11 +151,29 @@ describe("小说编译工作表面", () => {
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "让 Agent 推荐小说方案" }));
     await screen.findByText(recommendation.concept);
-    expect(apiRequest).toHaveBeenCalledWith("/projects/7/compile-runs", expect.objectContaining({ body: expect.objectContaining({
+    expect(vi.mocked(apiRequest).mock.calls.some(([url]) => url.endsWith("compiler-profiles"))).toBe(false);
+    expect(vi.mocked(apiRequest).mock.calls.some(([, options]) => options.method === "POST" &&
+      (options.body as { mode?: string } | undefined)?.mode === "preview")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "确认推荐，开始章节规划" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/projects/7/compile-runs", expect.objectContaining({ body: expect.objectContaining({
       prose_renderer_shadow: false, scene_compiler_shadow: true,
-    }) }));
+    }) })));
     expect(vi.mocked(apiRequest).mock.calls.filter(([, options]) =>
       (options.body as { prose_renderer_shadow?: boolean } | undefined)?.prose_renderer_shadow)).toHaveLength(0);
+  });
+  it("章节规划启动失败后保留推荐，允许再次确认", async () => {
+    vi.mocked(apiRequest).mockImplementation(async (url) => {
+      if (url.endsWith("novel-recommendation")) return { ...settings, concept: "推荐方向", rationale: "推荐依据" };
+      if (url.endsWith("compiler-profiles")) throw new Error("暂时无法启动规划");
+      return [];
+    });
+    render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "让 Agent 推荐小说方案" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "让 Agent 推荐小说方案" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认推荐，开始章节规划" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法启动规划");
+    expect(screen.getByText("推荐方向")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认推荐，开始章节规划" })).toBeEnabled();
   });
   it("按章节给出具体场景的人物、地点、事件和叙事作用", () => {
     const scene = { ...plan.scenes[0], intent: "林岚在候船室核验离港记录", purpose: "investigation",

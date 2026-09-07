@@ -357,6 +357,8 @@
         "prerequisite_scene_ids", "obligations", "forbidden_reveal_entry_keys"
       ],
       "properties": {
+        "intent": {"type": "string", "maxLength": 2000},
+        "actor_allowlist": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
         "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
         "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
         "discourse_order": {"type": "integer", "minimum": 1},
@@ -430,7 +432,8 @@
               "enum": [
                 "compiler.scene-compiler-model-view-projection.v1",
                 "compiler.scene-compiler-model-view-projection.v2",
-                "compiler.scene-compiler-model-view-projection.v3"
+                "compiler.scene-compiler-model-view-projection.v3",
+              "compiler.scene-compiler-model-view-projection.v4"
               ]
             },
             "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}

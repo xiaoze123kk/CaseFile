@@ -7,6 +7,12 @@ from collections.abc import Iterable
 from copy import deepcopy
 from typing import Any
 
+from pydantic import ValidationError
+
+from casefile.domain.narrative_compiler.foundation import (
+    CompilerContractError,
+    canonical_json_sha256,
+)
 from casefile_contracts import (
     NarrativeIR,
     NovelProfileV2,
@@ -15,12 +21,6 @@ from casefile_contracts import (
     ScenePlanIRV2,
     SceneRender,
     SceneRenderCandidate,
-)
-from pydantic import ValidationError
-
-from casefile.domain.narrative_compiler.foundation import (
-    CompilerContractError,
-    canonical_json_sha256,
 )
 
 PROSE_CHECKLIST_SCHEMA_ID = "compiler.prose-judge-checklist.v1"
@@ -379,6 +379,7 @@ def finalize_scene_render(
         selected_render, checklist=checklist_json, profile=profile
     ).model_dump(mode="json")
     valid_reasons = {
+        "judge_budget_preserve_accepted_original",
         "polished_accepted",
         "polish_semantic_rollback",
         "quality_rollback",
@@ -587,12 +588,23 @@ def _validate_previous_scene(
         ):
             raise CompilerContractError("compiler_prose_checklist_previous_scene_invalid")
     count = sum(len(block["text"]) for block in parsed["blocks"])
-    length_range = profile["prose"]["target_scene_chars"]
-    if parsed["character_count"] != count or not (
-        length_range["min"] <= count <= length_range["max"]
-    ):
+    # Accepted historical renders retain their frozen generation policy. New production
+    # generations enforce the same hard range before every Writer/Rewrite/Polisher result.
+    if parsed["character_count"] != count:
         raise CompilerContractError("compiler_prose_checklist_previous_scene_invalid")
     return parsed
+
+
+def scene_plan_review_context(
+    plan: dict[str, Any], narrative: dict[str, Any], scene_id: str
+) -> dict[str, Any]:
+    """Review planned future state without inventing an accepted predecessor render."""
+    scene = next(s for s in plan["scenes"] if s["scene_id"] == scene_id)
+    before, after = _replay_scene_states(plan)[scene_id]
+    beats_by_id = {b["beat_id"]: b for b in plan["beats"]}
+    beats = [beats_by_id[bid] for bid in scene["beat_ids"]]
+    context = _scene_context(scene=scene, beats=beats, before=before, after=after, previous=None)
+    return {**context, "object_catalog": _build_object_catalog(narrative, seed_values=[context])}
 
 
 def _scene_context(

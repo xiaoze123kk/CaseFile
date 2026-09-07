@@ -199,7 +199,11 @@ def _council_call_count(execution: ProseCouncilExecution) -> int:
 
 
 def _rewrite_call_count(execution: ProseRewriterExecution) -> int:
-    return int(execution.call is not None or execution.failed_call is not None)
+    return (
+        execution.call.generation_call_count
+        if execution.call is not None
+        else int(execution.failed_call is not None)
+    )
 
 
 def _terminal(

@@ -32,6 +32,23 @@ _FAILURE_MESSAGES = {
     "goal_completion_blocked": "复杂请求仍有未完成事项，已停止且未生成修改。",
 }
 _COMPILER_FAILURE_MESSAGE = "编译冻结输入校验失败，本次构建已安全停止。"
+
+
+def _compiler_failure_message(code: str) -> str:
+    if code == "compiler_scene_fill_actor_invalid":
+        return "场景细化中的角色与章节方案参与者不一致，已停止场景编译，尚未生成正文。"
+    for prefixes, message in (
+        (("compiler_scene_",), "场景编排或校验失败，已停止场景编译，尚未生成正文。"),
+        (("compiler_skeleton_", "compiler_novel_plan_", "compiler_story_"),
+         "小说结构规划或校验失败，尚未进入场景编译。"),
+        (("compiler_narrative_",), "卷宗内容转换校验失败，尚未进入小说规划。"),
+        (("compiler_prose_",), "正文生成或校验失败，未生成可载入的完整小说。"),
+        (("compiler_snapshot_", "compiler_input_", "compiler_manifest_", "compiler_source_",
+          "compiler_profile_", "compiler_exposure_", "compiler_canon_"), _COMPILER_FAILURE_MESSAGE),
+    ):
+        if code.startswith(prefixes):
+            return message
+    return "编译未能完成，本次构建已安全停止。"
 _RETRYABLE_FAILURES = frozenset(
     {
         "candidate_validation_failed",
@@ -243,7 +260,7 @@ def task_failure_view(
         "compiler_model_output_incomplete": "模型未完成编译方案输出，请稍后重新编译。",
     }
     message = compiler_messages.get(error_code) or (
-        _COMPILER_FAILURE_MESSAGE
+        _compiler_failure_message(error_code)
         if error_code.startswith("compiler_")
         else _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])
     )

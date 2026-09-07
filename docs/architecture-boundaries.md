@@ -57,6 +57,9 @@ M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通
 | `pnpm-lock.yaml` | JavaScript/TypeScript 工具与 workspace 依赖的可复现锁文件。 |
 | `infra/compose/docker-compose.yml` | 仅绑定回环地址的 PostgreSQL 18 开发库与独立 `_test` 测试库。 |
 | `scripts/bootstrap.ps1` | 幂等准备本地 `.env` 与加密主密钥、两个 PostgreSQL 容器、开发库迁移、76 表/head 验证，以及可选开发用户种子。 |
+| `scripts/start.ps1` | 完整本地启动编排：仓库启动锁、依赖同步、数据库准备、已有服务复用、后台启动与就绪检查，记录启动日志。 |
+| `scripts/startup-runtime.ps1` | Windows 启动底层操作：子进程超时、Docker 已知套接字故障识别与可逆目录备份恢复、工作区进程和端口归属检查；不清理数据卷。 |
+| `scripts/test-startup.ps1` | 通过隔离临时目录验证启动超时、故障识别、备份完整性、未知数据保护和端口冲突；不停止真实 Docker。 |
 | `scripts/dev.ps1` | 从仓库根目录启动 `apps/web` 本地开发服务器；API 与 Worker 仍按各自入口启动。 |
 | `scripts/benchmark.ps1` | `brief_to_draft` Provider 级 Benchmark CLI 入口，支持 fake/openai/deepseek、重复运行和可选 JSON 报告；失败或环境阻断会返回非零状态，运行时发布验收另走 API/Worker/PostgreSQL 集成测试。 |
 | `scripts/acceptance-brief-to-draft-v8.ps1` | 显式触发真实 Provider 的组件化 Brief-to-Draft 运行时验收；兼容 v8–v14、默认验证 v14，仅使用当前本地配置凭据的密文副本和隔离 `*_test` 数据库，轮换五类时间/空间/竞争矩阵场景并验证 API、Worker、持久化、SSE 与未自动采用边界。 |
@@ -75,3 +78,21 @@ M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通
 - `contracts/schemas` 是跨语言机器契约的唯一源头；`contracts/generated` 只存生成物，禁止手改。
 - 跨领域调用必须经过 `core` 中公开的应用端口，不能跨模块直接查询数据表。API route 只完成协议转换、依赖解析和调用应用服务，不写业务规则。
 - 骨架目录中的 `.gitkeep` 只用于追踪尚未实现的模块边界。首次加入真实文件时必须删除同目录 `.gitkeep`，并在本文登记真实职责。
+
+## 小说交付 Judge 有界执行（runtime v3）
+
+生产正文链路每场景最多三次 Judge 模型调用，包含初审、重写复审、润色后 Preservation 和协议修复。生产 Preservation 使用完整 Checklist 的 Fidelity-only policy；多角色 Council 仍供独立组件实验使用。生产 Judge 关闭隐式网络重试。预算耗尽前已语义通过的正文允许跳过可选润色，并以 judge_budget_preserve_accepted_original 标记交付；未经校验的正文不晋级。
+
+Judge 每 check 的 evidence_ids 与正式 JudgeAssessment.evidence 上限同步为64，保持目录唯一引用、原文跨度及完整契约校验。最多一次 evidence-only 协议修复只可修改证据引用，冻结 verdict、rationale、check_id 和顺序。原始失败及修复结果分开保存，旧失败不改写成成功。新 runtime/prompt/hash 与历史冻结运行分离。
+
+## 生产正文生成 runtime v4
+
+生成输出新增独立一次有界纠偏，覆盖整场复制上一场、重写无进展及长度不合规。Writer/Rewriter/Polisher 生产出口统一使用硬字符范围，完整重验通过后才进入下一步。每场景Judge最多三次，全部模型调用最多23次；生成修复单独计费留痕，不隐藏调用。可选润色失败可以保留已通过语义审核的原稿。历史已接受正文按原身份和字符统计读取，不在下一场重新以不同长度规则拒绝。旧Prompt和旧运行证据保持不可变。
+
+## 生产正文 runtime v6：一致性与恢复
+
+生成前以独立 Continuity 审核比较上一场已接受正文、当前和下一场计划的认知及信息释放；该模型调用计入当前场景三次 Judge 总额，不额外扩容。冲突保存结构化报告，阻断正文并返回局部规划调整意见，不静默修改已批准的 ScenePlan。生成视图仅对相关角色状态去重并提供变化项，正文、对象原文、完整权威清单及原始响应保持不变。
+
+恢复使用同一冻结 CompileRun/TaskRun 的一次显式续跑；已接受前缀按清单哈希和产物哈希验证复用。尝试级中间产物与 manifest 追加 attempt 后缀，旧失败不可覆盖。数据库累计实际模型调用是预算权威，进程重启、恢复及协议修复均不能重置 Judge 三次/场景和全部调用二十三次/场景限制。计划、工作稿或运行版本变化拒绝恢复，要求重新规划。
+
+质量优化不是正文交付前提：质量请求允许一次显式连接重试；findings、preservation、pairwise 失败时保留此前已语义通过的原稿并保存降级原因，不接受未经校验的候选。

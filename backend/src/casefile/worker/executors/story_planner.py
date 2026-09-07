@@ -59,6 +59,7 @@ from casefile.domain.narrative_compiler import (
     story_planner_component_fingerprint,
     validate_novel_plan_candidate,
 )
+from casefile.worker.executors.compiler_evidence import CompilerEvidenceProvider
 from casefile.worker.failures import CompilerExecutionError, TaskCancellationRequested
 from casefile.worker.provider_resolution import ProviderFactory
 
@@ -123,7 +124,7 @@ def execute_story_planner_component(
             network_retries=int(task.budget_jsonb.get("network_retries", 0)),
         )
         execution = execute_story_planner(
-            provider_factory(task),
+            CompilerEvidenceProvider(provider_factory(task), session_factory, worker_id, step_id),
             request,
             before_call=lambda call_no, _request: _start_call(
                 session_factory, worker_id, task, attempt_id, step_id, call_no,
@@ -260,7 +261,7 @@ def _execute_constraint_first_component(
         ),
     }
     execution = execute_constraint_first_story_planner(
-        provider_factory(task),
+        CompilerEvidenceProvider(provider_factory(task), session_factory, worker_id, step_id),
         ReferencePlanningSolver(),
         task_run_id=task_run_id,
         planner_input=planner_input,
@@ -860,6 +861,7 @@ def fail_story_planner_component(
     attempt_id: int,
     error_code: str,
     provider_failure: CompilerProviderOutputError | None = None,
+    failure_evidence: dict[str, Any] | None = None,
 ) -> None:
     with session_factory() as session, session.begin():
         current_task = session.get(TaskRun, task_run_id)
@@ -892,6 +894,8 @@ def fail_story_planner_component(
             for call in calls:
                 call.status = "failed"
                 call.error_code = error_code
+                call.issues_jsonb = [*call.issues_jsonb,
+                                    {"code": error_code, **(failure_evidence or {})}]
                 if provider_failure is not None:
                     encoded = provider_failure.raw_output.encode("utf-8")
                     call.raw_output_text = encoded[:262_144].decode("utf-8", errors="ignore")
@@ -905,7 +909,7 @@ def fail_story_planner_component(
             step.diagnostic_jsonb = {
                 **step.diagnostic_jsonb,
                 "failure_layer": "story_planner",
-                "issues": [{"code": error_code, "path": "", "message": error_code}],
+                "issues": [{"code": error_code, **(failure_evidence or {})}],
                 "recoverable": False,
             }
         append_task_event(

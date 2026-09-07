@@ -9,6 +9,7 @@ from casefile.agent_runtime.prose_judge import (
     FULL_COUNCIL_POLICY,
     PROSE_COUNCIL_MODEL_ID,
     ProseCouncilExecution,
+    ProseCouncilPolicy,
     ProseJudgeProvider,
     execute_semantic_council,
 )
@@ -73,6 +74,7 @@ def execute_prose_polish_supervisor(
     quality_config: ProseQualityConfig = QUALITY_V2,
     frozen_findings: dict[str, Any] | None = None,
     reverse_first: bool = False,
+    preservation_policy: ProseCouncilPolicy = FULL_COUNCIL_POLICY,
 ) -> ProsePolishSupervisorExecution:
     """Run the bounded B3 path and never expose model-owned acceptance control."""
 
@@ -107,6 +109,30 @@ def execute_prose_polish_supervisor(
         )
     except CompilerContractError as error:
         return _terminal("protocol_failed", None, None, None, None, None, None, str(error))
+    if getattr(judge_provider, "remaining_judge_calls", 1) <= 0:
+        accepted = _accepted(
+            original,
+            original,
+            checklist,
+            profile,
+            "judge_budget_preserve_accepted_original",
+            {
+                "supervisor": PROSE_POLISH_SUPERVISOR_VERSION,
+                "selection_reason": "judge_budget_preserve_accepted_original",
+                "semantic_consensus_hash": canonical_json_sha256(semantic_consensus),
+            },
+        )
+        return _terminal(
+            "finalized_original",
+            original,
+            None,
+            None,
+            None,
+            None,
+            accepted,
+            None,
+            "judge_budget_preserve_accepted_original",
+        )
     if frozen_findings is None:
         findings = execute_quality_findings(
             quality_provider,
@@ -131,6 +157,10 @@ def execute_prose_polish_supervisor(
         findings = ProseQualityExecution("completed", report, None)
     observe("findings", findings)
     if findings.status != "completed" or findings.report is None:
+        if getattr(judge_provider, "allow_generation_repair", False):
+            return _retain_original(
+                original, checklist, profile, semantic_consensus, findings.error_code
+            )
         return _terminal(
             findings.status,
             original,
@@ -153,6 +183,31 @@ def execute_prose_polish_supervisor(
     )
     observe("polish", polish)
     if polish.status != "completed" or polish.render is None:
+        if getattr(judge_provider, "allow_generation_repair", False):
+            accepted = _accepted(
+                original,
+                original,
+                checklist,
+                profile,
+                "quality_rollback",
+                {
+                    "supervisor": PROSE_POLISH_SUPERVISOR_VERSION,
+                    "semantic_consensus_hash": canonical_json_sha256(semantic_consensus),
+                    "selection_reason": "polish_generation_failed_original_retained",
+                    "polish_error": polish.error_code,
+                },
+            )
+            return _terminal(
+                "finalized_original",
+                original,
+                findings,
+                polish,
+                None,
+                None,
+                accepted,
+                None,
+                "polish_generation_failed_original_retained",
+            )
         return _terminal(
             polish.status,
             original,
@@ -168,12 +223,16 @@ def execute_prose_polish_supervisor(
         checklist=checklist,
         render=polish.render,
         profile=profile,
-        policy=FULL_COUNCIL_POLICY,
+        policy=preservation_policy,
         model_id=generation_model_id,
         api_key=api_key,
     )
     observe("preservation", preservation)
     if preservation.status != "completed" or preservation.consensus is None:
+        if getattr(judge_provider, "allow_generation_repair", False):
+            return _retain_original(
+                original, checklist, profile, semantic_consensus, preservation.error_code
+            )
         return _terminal(
             preservation.status,
             original,
@@ -224,6 +283,10 @@ def execute_prose_polish_supervisor(
     )
     observe("pairwise", pairwise)
     if pairwise.status != "completed" or pairwise.decision is None:
+        if getattr(judge_provider, "allow_generation_repair", False):
+            return _retain_original(
+                original, checklist, profile, semantic_consensus, pairwise.error_code
+            )
         return _terminal(
             pairwise.status,
             original,
@@ -262,6 +325,39 @@ def execute_prose_polish_supervisor(
         accepted,
         None,
         decision.selection_reason,
+    )
+
+
+def _retain_original(
+    original: dict[str, Any],
+    checklist: dict[str, Any],
+    profile: dict[str, Any],
+    consensus: dict[str, Any],
+    error: str | None,
+) -> ProsePolishSupervisorExecution:
+    accepted = _accepted(
+        original,
+        original,
+        checklist,
+        profile,
+        "quality_rollback",
+        {
+            "supervisor": PROSE_POLISH_SUPERVISOR_VERSION,
+            "selection_reason": "optional_quality_failed_original_retained",
+            "semantic_consensus_hash": canonical_json_sha256(consensus),
+            "quality_error": error,
+        },
+    )
+    return _terminal(
+        "finalized_original",
+        original,
+        None,
+        None,
+        None,
+        None,
+        accepted,
+        None,
+        "optional_quality_failed_original_retained",
     )
 
 

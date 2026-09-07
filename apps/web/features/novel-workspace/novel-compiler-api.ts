@@ -11,10 +11,23 @@ export interface NovelCompileRun {
   compiler_profile_version_id: number;
   created_at: string;
   execution: TaskView;
-  prose_shadow: { status: string; completed_scene_count?: number };
+  prose_shadow: { status: string; completed_scene_count?: number; resume_available?: boolean; plan_issues?: string[] };
+  stability?: {
+    novel_ready: boolean; outcome: string; first_pass_success: boolean;
+    repair_attempts: number; repair_successes: number; model_calls: number;
+    failure_stages: Record<string, number>;
+  };
   artifacts: { artifact_id: number; schema_id: string; content_hash: string }[];
 }
 export interface NovelSettings { chapters: number; scenes: number; style: string }
+
+export function resumeNovelCompile(scope: NovelCompileScope, runId: number): Promise<NovelCompileRun> {
+  return apiRequest(`/projects/${scope.projectId}/compile-runs/${runId}/resume`, {
+    actorId: LOCAL_ACTOR_ID, method: "POST", body: {
+      expected_draft_id: scope.draftId, expected_draft_revision: scope.revision,
+    },
+  });
+}
 
 export function novelProfile(settings: NovelSettings): NovelProfileV2 {
   if (!Number.isInteger(settings.chapters) || !Number.isInteger(settings.scenes) ||

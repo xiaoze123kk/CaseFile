@@ -240,7 +240,29 @@ def test_ambiguous_high_confidence_edit_still_requires_clarification() -> None:
         budget={"max_tool_calls": 1}, rewrite_strategy="CONTEXTUALIZE",
     )
     assert route.execution_profile["primary_intent"] == "clarify"
-    assert route.execution_profile["max_tool_calls"] == 0
+    assert route.execution_profile["max_tool_calls"] == 1
     assert route.rewrite_strategy == "KEEP"
     assert route_hash(route) == route.route_hash
     assert "intent_ambiguous" in route.reason_codes
+
+
+def test_clarification_can_investigate_but_cannot_propose_changes() -> None:
+    route = route_llm_task(
+        ChatTaskUnderstanding(
+            primary_intent="clarify", confidence=0.3, ambiguous=True,
+            missing_info=("问题对象不明确",),
+        ),
+        budget={}, rewrite_strategy="KEEP",
+    )
+    assert route.execution_profile["max_tool_calls"] == 6
+    assert "get_validation_issues" in route.execution_profile["toolset"]
+    assert "get_casefile_object" in route.execution_profile["toolset"]
+    assert "validate_patch_proposal" not in route.execution_profile["toolset"]
+    assert "simulate_patch_application" not in route.execution_profile["toolset"]
+    assert route_suggestion_policy(route) == "deny"
+    assert not route_allows_suggestions(route)
+    zero = route_llm_task(
+        ChatTaskUnderstanding(primary_intent="clarify", confidence=0.3, ambiguous=True),
+        budget={"max_tool_calls": 0}, rewrite_strategy="KEEP",
+    )
+    assert zero.execution_profile["max_tool_calls"] == 0

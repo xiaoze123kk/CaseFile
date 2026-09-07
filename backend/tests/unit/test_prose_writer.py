@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_writer import (
     PROSE_WRITER_MODEL_ID,
     DeepSeekProseWriterProvider,
@@ -70,8 +71,7 @@ def writer_case() -> dict[str, Any]:
 
 def _execute(case: dict[str, Any], provider: FakeProseWriterProvider | None = None) -> Any:
     return execute_prose_writer(
-        provider
-        or FakeProseWriterProvider(candidates=(deepcopy(case["candidate"]),)),
+        provider or FakeProseWriterProvider(candidates=(deepcopy(case["candidate"]),)),
         scene_plan=case["plan"],
         narrative_ir=case["narrative"],
         profile=case["profile"],
@@ -161,9 +161,10 @@ def test_total_character_bounds_and_component_hash_fail_closed(
 ) -> None:
     too_short = deepcopy(writer_case["candidate"])
     too_short["blocks"] = [{"text": "太短。"}]
-    assert _execute(
-        writer_case, FakeProseWriterProvider(candidates=(too_short,))
-    ).error_code == "compiler_scene_render_length_out_of_bounds"
+    assert (
+        _execute(writer_case, FakeProseWriterProvider(candidates=(too_short,))).error_code
+        == "compiler_scene_render_length_out_of_bounds"
+    )
 
     with pytest.raises(
         CompilerContractError, match="compiler_scene_render_component_input_hash_invalid"
@@ -191,6 +192,8 @@ def test_request_is_minimal_untrusted_and_credential_free(writer_case: dict[str,
     assert set(request.input_payload["untrusted_data"]) == {
         "checklist",
         "scene_context",
+        "continuity_reference",
+        "current_assignment",
         "profile",
     }
     for forbidden in (
@@ -275,9 +278,7 @@ def test_exact_recovery_is_reused_and_drifted_recovery_is_rejected(
         api_key="fake",
         remaining_scene_call_budget=23,
     )
-    original = FakeProseWriterProvider(candidates=(writer_case["candidate"],)).write_scene(
-        request
-    )
+    original = FakeProseWriterProvider(candidates=(writer_case["candidate"],)).write_scene(request)
     provider = FakeProseWriterProvider()
     recovered = execute_prose_writer(
         provider,
@@ -369,3 +370,113 @@ def test_render_hash_is_stable_for_identical_execution(writer_case: dict[str, An
     first = _execute(writer_case)
     second = _execute(writer_case)
     assert canonical_json_sha256(first.render) == canonical_json_sha256(second.render)
+
+
+@pytest.mark.parametrize("repair_succeeds", [True, False])
+def test_production_writer_length_repair_is_bounded(writer_case, repair_succeeds):
+    too_long = deepcopy(writer_case["candidate"])
+    too_long["blocks"][0]["text"] *= 20
+    provider = FakeProseWriterProvider(
+        candidates=(too_long, writer_case["candidate"] if repair_succeeds else too_long)
+    )
+    provider.allow_generation_repair = True
+    failures = []
+    provider.record_generation_failure = lambda fp, issue: failures.append((fp, issue))
+    result = _execute(writer_case, provider)
+    assert provider.call_count == 2
+    assert result.status == ("completed" if repair_succeeds else "protocol_failed")
+    assert len(failures) == (1 if repair_succeeds else 2)
+    assert result.call.request_payload["generation_repair"]["failed_candidate"] == too_long
+    assert failures[0][1]["actual_chars"] > failures[0][1]["max_chars"]
+    assert "scene_context" not in result.call.request_payload["untrusted_data"]["checklist"]
+    projected = result.call.request_payload["untrusted_data"]["scene_context"]
+    assert projected["objective"] == writer_case["checklist"]["scene_context"]["objective"]
+    assert projected["projection_source_hash"] == canonical_json_sha256(
+        writer_case["checklist"]["scene_context"]
+    )
+
+
+def test_repeat_detection_ignores_only_whitespace_and_paragraph_boundaries():
+    from casefile.agent_runtime.prose_generation import generation_issue
+
+    request = SimpleNamespace(
+        input_payload={
+            "untrusted_data": {
+                "checklist": {},
+                "scene_context": {"previous_scene_render": {"blocks": [{"text": "同一段正文。"}]}},
+                "profile": {"prose": {"target_scene_chars": {"min": 1, "max": 100}}},
+            }
+        }
+    )
+    candidate = {
+        "schema_id": "compiler.scene-render-candidate.v1",
+        "blocks": [{"text": "同一段"}, {"text": " 正文。"}],
+    }
+    assert (
+        generation_issue(candidate, request, "prose_writer")["code"]
+        == "prose_generation_repeated_previous_scene"
+    )
+    request.input_payload["untrusted_data"]["scene_context"] = {}
+    request.input_payload["untrusted_data"]["current_render"] = {
+        "blocks": [{"text": "同一段正文。"}]
+    }
+    assert (
+        generation_issue(candidate, request, "prose_rewrite")["code"]
+        == "prose_generation_no_progress"
+    )
+
+
+def test_generation_view_keeps_full_previous_text_without_an_output_shaped_example(writer_case):
+    from casefile.agent_runtime.prose_generation import generation_focus, generation_view
+
+    checklist = deepcopy(writer_case["checklist"])
+    previous = {
+        "scene_id": "previous_scene",
+        "blocks": [{"text": "历史原文甲。"}, {"text": "历史原文乙。"}],
+    }
+    checklist["scene_context"]["previous_scene_render"] = previous
+    data = generation_view(checklist)
+    data["profile"] = writer_case["profile"]
+    assert data["continuity_reference"]["text"] == "历史原文甲。\n\n历史原文乙。"
+    assert data["continuity_reference"]["render_hash"] == canonical_json_sha256(previous)
+    assert "blocks" not in data["continuity_reference"]
+    assert "previous_scene_render" not in data["scene_context"]
+    assert checklist["scene_context"]["previous_scene_render"] == previous
+    focus = generation_focus(SimpleNamespace(input_payload={"untrusted_data": data}))
+    assert checklist["scene_id"] in focus and "历史原文甲" not in focus
+
+
+def test_generation_repair_recovery_reuses_both_original_and_repaired_responses(writer_case):
+    cache = {}
+    too_long = deepcopy(writer_case["candidate"])
+    too_long["blocks"][0]["text"] *= 20
+
+    class Recorded(FakeProseWriterProvider):
+        allow_generation_repair = True
+
+        def write_scene(self, request):
+            result = super().write_scene(request)
+            cache[request.request_fingerprint] = result
+            return result
+
+        def record_generation_failure(self, fingerprint, issue):
+            assert fingerprint in cache
+
+    provider = Recorded(candidates=(too_long, writer_case["candidate"]))
+    first = _execute(writer_case, provider)
+    recovered = execute_prose_writer(
+        provider,
+        scene_plan=writer_case["plan"],
+        narrative_ir=writer_case["narrative"],
+        profile=writer_case["profile"],
+        checklist=writer_case["checklist"],
+        previous_scene_render=None,
+        model_id=PROSE_WRITER_MODEL_ID,
+        api_key="fake-secret",
+        remaining_scene_call_budget=23,
+        recover_call=cache.get,
+    )
+    assert first.status == recovered.status == "completed"
+    assert first.render == recovered.render
+    assert provider.call_count == 2
+    assert recovered.call.recovered and recovered.call.generation_call_count == 2

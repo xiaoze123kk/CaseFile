@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/prose-continuity-review.schema.json",
+  "title": "ProseContinuityReview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "scene_id", "input_hash", "verdict", "issues"],
+  "properties": {
+    "schema_id": {"const": "compiler.prose-continuity-review.v1"},
+    "scene_id": {"type": "string", "minLength": 1},
+    "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "verdict": {"enum": ["pass", "blocked"]},
+    "issues": {
+      "type": "array", "maxItems": 16,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["scene_ids", "reason", "required_plan_change"],
+        "properties": {
+          "scene_ids": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"type": "string", "minLength": 1}},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "required_plan_change": {"type": "string", "minLength": 1, "maxLength": 2000}
+        }
+      }
+    }
+  },
+  "allOf": [{"if": {"properties": {"verdict": {"const": "pass"}}}, "then": {"properties": {"issues": {"maxItems": 0}}}, "else": {"properties": {"issues": {"minItems": 1}}}}]
+}

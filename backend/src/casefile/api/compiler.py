@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from casefile_contracts import NovelRecommendation
 from fastapi import APIRouter
 from pydantic import Field
 
@@ -17,6 +16,7 @@ from casefile.api.schemas import (
 )
 from casefile.application.compiler import CompilerService
 from casefile.application.compiler.recommendation import recommend_for_draft
+from casefile_contracts import NovelRecommendation
 
 
 class NovelRecommendationRequest(StrictRequest):
@@ -25,8 +25,29 @@ class NovelRecommendationRequest(StrictRequest):
     preferences: str = Field(default="", max_length=2000)
 
 
+class CompileResumeRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+
+
 def compiler_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["narrative-compiler"])
+
+    @router.post("/projects/{project_id}/compile-runs/{run_id}/resume")
+    def resume_run(
+        project_id: int,
+        run_id: int,
+        payload: CompileResumeRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return CompilerService(session).resume_run(
+            actor,
+            project_id,
+            run_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_draft_revision=payload.expected_draft_revision,
+        )
 
     @router.post("/projects/{project_id}/novel-recommendation", response_model=NovelRecommendation)
     def recommend(

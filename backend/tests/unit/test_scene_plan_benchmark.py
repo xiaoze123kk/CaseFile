@@ -82,7 +82,7 @@ def test_scene_plan_suite_is_audited_24_task_matrix() -> None:
     )
     for model_view in validated["model_views"].values():
         assert model_view["source"]["projection_version"] == (
-            "compiler.scene-compiler-model-view-projection.v3"
+            "compiler.scene-compiler-model-view-projection.v4"
         )
         for batch in model_view["batches"]:
             catalog = {

@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_rewriter",
+  "version": "prose-rewriter-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "7a6c7c896791a0f0207255b59cb4f1b4f543b16d07586113f34603dbe66dfc41",
+  "previous_version": "prose-rewriter-v3",
+  "change_summary": "明确当前场景边界、完整替换正文及一次有界生成修复，统一生产长度约束。"
+}

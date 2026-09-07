@@ -7,6 +7,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
+    trim_validation_issues,
+)
 from casefile.agent_runtime.context.thread_memory import ThreadCompactionRequest
 from casefile.agent_runtime.goal.provider import (
     GoalAmendmentRequest,
@@ -93,6 +96,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v20",
         "casefile-chat-v21",
         "casefile-chat-v22",
+        "casefile-chat-v23",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -342,6 +346,7 @@ def _with_chat_repair_feedback(
             "casefile-chat-v20",
             "casefile-chat-v21",
             "casefile-chat-v22",
+            "casefile-chat-v23",
         }
         else "只修正引用槽"
     )
@@ -381,6 +386,7 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
             "casefile-chat-v20",
             "casefile-chat-v21",
             "casefile-chat-v22",
+            "casefile-chat-v23",
         }
         and request.target_locked_repair is not None
     ):
@@ -482,6 +488,7 @@ def render_chat_finalizer_prompt(
         "casefile-chat-v20",
         "casefile-chat-v21",
         "casefile-chat-v22",
+        "casefile-chat-v23",
     }:
         instructions = _with_chat_repair_feedback(instructions, request)
     if repair_plan:
@@ -653,15 +660,11 @@ def chat_router_input(request: CaseFileChatRequest) -> str:
         "thread_history": list(request.history)[-6:],
         "focus": request.focus,
         "candidate_object_labels": labels,
-        "validation_issues": [
-            {
-                "issue_id": item.get("issue_id"),
-                "title": item.get("title"),
-                "message": item.get("message"),
-            }
-            for item in request.validation_issues
-            if isinstance(item, dict)
-        ],
+        "validation_issues": trim_validation_issues(
+            list(request.validation_issues),
+            focus_issue_ids=[],
+            author_message="",
+        )["issues"],
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

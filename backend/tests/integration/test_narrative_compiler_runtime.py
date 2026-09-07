@@ -8,6 +8,11 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import _adopt_candidate, _prepare_task
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
@@ -49,10 +54,6 @@ from casefile.domain.narrative_compiler import (
 from casefile.worker.executors.compiler_artifacts import materialize_json_artifact_component
 from casefile.worker.failures import TaskCancellationRequested
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -531,8 +532,10 @@ def test_constraint_first_worker_is_default_and_records_exact_stage_hashes(
     ]
 
 
+@pytest.mark.parametrize("invalid_actor", [False, True, "parse", "transport", "crash", "skeleton"])
 def test_shadow_scene_compiler_persists_batched_calls_and_v2_artifact(
     workflow_database: tuple[Engine, int, str],
+    invalid_actor: bool | str,
 ) -> None:
     engine, actor_id, master_key = workflow_database
     factory, project_id, draft_id, _profile_version_id = _prepare_compilable_project(
@@ -572,14 +575,54 @@ def test_shadow_scene_compiler_persists_batched_calls_and_v2_artifact(
         task = session.get(TaskRun, int(run["task_run_id"]))
         assert task is not None
         assert task.agent_version == SCENE_COMPILER_PIPELINE_VERSION
-        assert task.budget_jsonb["max_turns"] == 3
+        assert task.budget_jsonb["max_turns"] == 4
+
+    class SceneProvider(FakeProvider):
+        def propose_skeleton(self, request):
+            if invalid_actor == "skeleton":
+                from casefile.agent_runtime.constraint_first_story_planner import (
+                    SkeletonProposalResult,
+                )
+
+                return SkeletonProposalResult({}, {"total_tokens": 11}, "invalid skeleton")
+            return super().propose_skeleton(request)
+
+        def fill_scene_batch(self, request):
+            if isinstance(invalid_actor, str):
+                if invalid_actor == "transport":
+                    raise TimeoutError("synthetic transport timeout")
+                request.on_response('{"broken":', {"total_tokens": 19}, "received")
+                if invalid_actor == "crash":
+                    raise SystemExit("synthetic process interruption after receipt")
+                from casefile.agent_runtime.story_planner import CompilerProviderOutputError
+
+                raise CompilerProviderOutputError(
+                    "compiler_model_output_invalid_json", '{"broken":',
+                    {"total_tokens": 19}, "stop",
+                )
+            result = super().fill_scene_batch(request)
+            if invalid_actor:
+                result.proposal["scenes"][0]["beats"][0]["actor_refs"] = [
+                    {"object_type": "entity", "object_id": "invalid_actor"}
+                ]
+                from casefile.agent_runtime.scene_compiler import SceneFillBatchResult
+
+                return SceneFillBatchResult(
+                    result.proposal, {"total_tokens": 17}, "失败原文" * 70000
+                )
+            return result
 
     with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
-        assert Worker(
+        worker = Worker(
             factory,
             config=WorkerConfig(worker_id="scene-compiler-shadow-worker"),
-            provider_factory=lambda _task: FakeProvider(),
-        ).run_once()
+            provider_factory=lambda _task: SceneProvider(),
+        )
+        if invalid_actor == "crash":
+            with pytest.raises(SystemExit):
+                worker.run_once()
+        else:
+            assert worker.run_once()
 
     with factory() as session:
         task = session.get(TaskRun, int(run["task_run_id"]))
@@ -605,7 +648,74 @@ def test_shadow_scene_compiler_persists_batched_calls_and_v2_artifact(
             )
         )
 
-    assert task is not None and task.status == "succeeded"
+    assert task is not None
+    if isinstance(invalid_actor, str):
+        call = calls[-1]
+        if invalid_actor == "skeleton":
+            assert task.status == "failed" and call.status == "failed"
+            assert task.error_code == "compiler_skeleton_proposal_invalid"
+            assert call.response_jsonb["raw_response"] == "invalid skeleton"
+            assert call.usage_jsonb["total_tokens"] == 11
+            assert call.issues_jsonb[-1]["validation_errors"]
+            assert artifacts[-1].schema_id == "compiler.narrative-ir.v1"
+            return
+        assert artifacts[-1].schema_id == "compiler.novel-plan.v1"
+        if invalid_actor == "transport":
+            assert task.status == "failed" and call.status == "failed"
+            assert call.response_jsonb is None
+            assert any(i.get("exception_type") == "TimeoutError" for i in call.issues_jsonb)
+        else:
+            assert call.response_jsonb["raw_response"] == '{"broken":'
+            assert call.usage_jsonb["total_tokens"] == 19
+            if invalid_actor == "crash":
+                assert call.status == "running" and call.parse_status == "response_saved"
+            else:
+                assert task.status == "failed" and call.status == "failed"
+                assert call.error_code == "compiler_model_output_invalid_json"
+        return
+    if invalid_actor:
+        assert task.status == "failed"
+        assert task.error_code == "compiler_scene_fill_actor_invalid"
+        call = calls[-1]
+        assert call.status == "failed" and call.error_code == task.error_code
+        assert call.raw_output_text and call.raw_output_truncated
+        assert call.response_jsonb["raw_response"] == "失败原文" * 70000
+        assert call.response_jsonb["responses"][0]["raw_response"] == "失败原文" * 70000
+        assert len(call.raw_output_text.encode("utf-8")) <= 262144
+        assert call.output_size_bytes == len(("失败原文" * 70000).encode("utf-8"))
+        assert call.usage_jsonb["total_tokens"] == 17
+        issue = call.issues_jsonb[0]
+        assert issue["json_path"] == "/scenes/0/beats/0/actor_refs/0"
+        assert issue["emitted_ref"]["object_id"] == "invalid_actor"
+        assert "allowed_refs" in issue and "scene_id" in issue
+        step = next(step for step in steps if step.component_id == "scene_compiler")
+        assert step.diagnostic_jsonb["issues"] == [issue]
+        assert artifacts[-1].schema_id == "compiler.novel-plan.v1"
+        assert "角色" in task_failure_from_row(task)["message"]
+        from casefile.application.errors import ApplicationError
+
+        with factory() as session, pytest.raises(ApplicationError, match="工作稿已变化"):
+            CompilerService(session).resume_run(
+                actor_id, project_id, int(run["compile_run_id"]),
+                expected_draft_id=draft_id + 999, expected_draft_revision=task.input_draft_revision,
+            )
+        with factory() as session:
+            resumed = CompilerService(session).resume_run(
+                actor_id, project_id, int(run["compile_run_id"]),
+                expected_draft_id=draft_id, expected_draft_revision=task.input_draft_revision,
+            )
+        assert resumed["execution"]["status"] == "queued"
+        with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
+            assert Worker(factory, config=WorkerConfig(worker_id="resume-compiler"),
+                          provider_factory=lambda _task: FakeProvider()).run_once()
+        with factory() as session:
+            assert session.get(TaskRun, task.id).status == "succeeded"
+            assert session.scalar(select(func.count(AgentModelCall.id)).where(
+                AgentModelCall.task_run_id == task.id,
+                AgentModelCall.prompt_component_id == "skeleton_proposal",
+            )) == 1
+        return
+    assert task.status == "succeeded", task.error_code
     assert task.agent_version == SCENE_COMPILER_PIPELINE_VERSION
     assert [call.prompt_component_id for call in calls] == [
         "skeleton_proposal",
@@ -841,7 +951,7 @@ def test_narrative_ir_failure_code_propagates_through_worker_records(
     assert task.error_code == expected_code
     assert task_failure_from_row(task) == {
         "code": expected_code,
-        "message": "编译冻结输入校验失败，本次构建已安全停止。",
+        "message": "卷宗内容转换校验失败，尚未进入小说规划。",
         "retryable": False,
         "issues": [],
     }

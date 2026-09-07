@@ -86,6 +86,17 @@ class ProseStore:
         self.current_step_id: int | None = None
         self.current_request: Any = None
         self.recovered_hashes: list[str] = []
+        with factory() as session:
+            attempt = session.get(TaskAttempt, attempt_id)
+            self.attempt_no = attempt.attempt_no if attempt is not None else 1
+
+    def artifact_key(self, key: str, kind: str) -> str:
+        if self.attempt_no > 1 and (
+            key.startswith("compiler.compile_manifest")
+            or (kind in {"scene_render", "validation_report"} and not key.endswith(".accepted"))
+        ):
+            return f"{key}.attempt_{self.attempt_id}"
+        return key
 
     def lock(self, session: Session, *, allow_cancel: bool = False) -> tuple[TaskRun, TaskAttempt]:
         task = session.scalar(
@@ -101,6 +112,28 @@ class ProseStore:
     def boundary(self) -> None:
         with self.factory() as session, session.begin():
             self.lock(session)
+
+    def judge_call_count(self) -> int:
+        with self.factory() as session:
+            return sum(self._is_judge(c.prompt_component_id) for c in self._scene_calls(session))
+
+    def _scene_calls(self, session: Session) -> list[AgentModelCall]:
+        return list(
+            session.scalars(
+                select(AgentModelCall)
+                .join(AgentStepRun, AgentStepRun.id == AgentModelCall.agent_step_run_id)
+                .where(
+                    AgentModelCall.task_run_id == self.run.task_run_id,
+                    AgentStepRun.diagnostic_jsonb["scene_id"].astext == self.scene_id,
+                )
+            )
+        )
+
+    @staticmethod
+    def _is_judge(component: str) -> bool:
+        return (
+            component == "prose_continuity" or "judge" in component or component == "prose_arbiter"
+        )
 
     @contextmanager
     def heartbeat(self) -> Iterator[None]:
@@ -170,6 +203,8 @@ class ProseStore:
             ir_schema_id=(
                 "compiler.compile-manifest.v1"
                 if request is None
+                else "compiler.prose-continuity-review.v1"
+                if component == "prose_continuity"
                 else "compiler.scene-render.v1"
                 if component in {"prose_writer", "prose_rewrite", "prose_polisher"}
                 else "compiler.prose-quality-report.v1"
@@ -196,6 +231,7 @@ class ProseStore:
         source_step: int | None = None,
         allow_cancel: bool = False,
     ) -> CompileArtifact:
+        key = self.artifact_key(key, kind)
         digest = canonical_json_sha256(content)
         fingerprint = canonical_json_sha256(
             {
@@ -281,7 +317,15 @@ class ProseStore:
                     .order_by(AgentModelCall.id)
                 )
             )
-            completed = next((c for c in reversed(prior) if c.response_jsonb is not None), None)
+            completed = next(
+                (
+                    c
+                    for c in reversed(prior)
+                    if c.response_jsonb is not None
+                    and (c.status != "failed" or c.task_attempt_id == self.attempt_id)
+                ),
+                None,
+            )
             if completed is not None:
                 data = dict(completed.response_jsonb or {})
                 try:
@@ -312,7 +356,7 @@ class ProseStore:
                 self.current_step_id = step.id
                 self.recovered_hashes.append(request.request_fingerprint)
                 return result_type(**data)
-            if prior:
+            if any(c.status != "failed" for c in prior):
                 raise ProseResultUnknown("compiler_prose_external_result_unknown")
             step = self._step(session, component, fingerprint, request=request)
             self.current_step_id = step.id
@@ -324,6 +368,12 @@ class ProseStore:
             step = session.get(AgentStepRun, self.current_step_id)
             if step is None or step.status != "running":
                 raise ProseLeaseLost("compiler_prose_step_not_running")
+            calls = self._scene_calls(session)
+            if len(calls) >= 23 or (
+                self._is_judge(step.component_id)
+                and sum(self._is_judge(c.prompt_component_id) for c in calls) >= 3
+            ):
+                raise ProseResultUnknown("prose_scene_persisted_budget_exhausted")
             session.add(
                 AgentModelCall(
                     project_id=self.run.project_id,
@@ -392,6 +442,33 @@ class ProseStore:
             }
             call.latency_ms = result.transport_attempts[-1].latency_ms
             call.parse_status = "response_saved"
+
+    def reject_response(self, step_id: int, details: dict[str, Any]) -> None:
+        """Keep raw output immutable while recording a failed validation attempt."""
+        with self.factory() as session, session.begin():
+            self.lock(session, allow_cancel=True)
+            step = session.get(AgentStepRun, step_id)
+            assert step is not None and step.task_run_id == self.run.task_run_id
+            if step.status != "running":
+                return
+            step.status = "failed"
+            step.diagnostic_jsonb = {
+                **step.diagnostic_jsonb,
+                "validation": details,
+                "error_code": details["code"],
+            }
+            step.finished_at = datetime.now(UTC)
+            for call in session.scalars(
+                select(AgentModelCall).where(
+                    AgentModelCall.agent_step_run_id == step.id,
+                    AgentModelCall.status == "running",
+                )
+            ):
+                call.status = "failed"
+                call.parse_status = "invalid"
+                call.error_code = "prose_component_failed"
+                call.issues_jsonb = [details]
+                call.finished_at = datetime.now(UTC)
 
     def finish_steps(
         self,

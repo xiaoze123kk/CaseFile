@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_adversarial_judge",
+  "version": "prose-adversarial-judge-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "d72b6beaaf9dd2d3ae43bd8c5bb07cad65410e30faf3b2b9da666cd337435844",
+  "previous_version": "prose-adversarial-judge-v6",
+  "change_summary": "证据上限扩展为64；支持一次保留判定的证据协议修复。"
+}

@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -34,6 +35,7 @@ from casefile.agent_runtime.prompt_repository import (
 from casefile_contracts import TaskType
 
 EXPECTED_CURRENT_VERSIONS = {
+    "prose_continuity": "prose-continuity-v1",
     "brief_polish": "brief-polish-v3",
     "brief_anchor_extract": "brief-anchor-extract-v3",
     "brief_intake_questions": "brief-intake-questions-v3",
@@ -48,34 +50,132 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner": "story-planner-v3",
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
-    "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
-    "prose_writer": "prose-writer-v1",
-    "prose_rewriter": "prose-rewriter-v3",
-    "prose_fidelity_judge": "prose-fidelity-judge-v6",
-    "prose_adversarial_judge": "prose-adversarial-judge-v5",
-    "prose_coherence_judge": "prose-coherence-judge-v5",
-    "prose_arbiter": "prose-arbiter-v5",
+    "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v7",
+    "prose_writer": "prose-writer-v3",
+    "prose_rewriter": "prose-rewriter-v5",
+    "prose_fidelity_judge": "prose-fidelity-judge-v8",
+    "prose_adversarial_judge": "prose-adversarial-judge-v7",
+    "prose_coherence_judge": "prose-coherence-judge-v7",
+    "prose_arbiter": "prose-arbiter-v7",
     "prose_quality_critic": "prose-quality-critic-v1",
     "prose_quality_pairwise": "prose-quality-pairwise-v1",
-    "prose_polisher": "prose-polisher-v2",
-    "general_mutation_planner": "general-mutation-planner-v7",
+    "prose_polisher": "prose-polisher-v5",
+    "general_mutation_planner": "general-mutation-planner-v8",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("prose_continuity", "prose-continuity-v1"): {
+        "system": "5022e18b7c75f23cfd8db86dbc09185609ad40e801da310fad374f073a78b517"
+    },
+    ("prose_polisher", "prose-polisher-v5"): {
+        "system": "ab8ccfe11025dec0680f11d165f7f14321009628c54bf1b4d89a5ab61be4342a"
+    },
+    ("prose_rewriter", "prose-rewriter-v5"): {
+        "system": "066add5b05007221c70a52154ccb1b16defd337de65afc68dfadbc14af573b6e"
+    },
+    ("prose_writer", "prose-writer-v3"): {
+        "system": "9e0e0301ecee1559f979d1e0ca5d908d395052b220573f1fcbab43e7bef50def"
+    },
+    ("prose_polisher", "prose-polisher-v4"): {
+        "system": "051c9dbb6ee3d0d9bc6b5cdddbc416da7cb2d73f1f300390f10f120e93ba3f35"
+    },
+    ("prose_rewriter", "prose-rewriter-v4"): {
+        "system": "7a6c7c896791a0f0207255b59cb4f1b4f543b16d07586113f34603dbe66dfc41"
+    },
+    ("prose_writer", "prose-writer-v2"): {
+        "system": "65f050f45393c581f7da3cf0bcf14c8723778a8d26c47116eb1ccb3fca93a7bd"
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v8"): {
+        "system": "38bb66399fd8116ef793cd23f249fa612d50962e20221fd4af92291a85854df9"
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v7"): {
+        "system": "d72b6beaaf9dd2d3ae43bd8c5bb07cad65410e30faf3b2b9da666cd337435844"
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v7"): {
+        "system": "6d7a8c0c8dc63fac136d88f62cc0e05934be1cb85fed2d7bc20a010690bb8dd3"
+    },
+    ("prose_arbiter", "prose-arbiter-v7"): {
+        "system": "1dcb59fb476bcb9f4c1d9f5786547964595f6139a72e5b9b3a78ff85f99d5069"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v7"): {
+        "system": "ca953a07fa4bf5c15fb5b48717e3a3eb3c0964e717aab44be881460dbdd32662",
+    },
+    ("prose_fidelity_judge", "prose-fidelity-judge-v7"): {
+        "system": "6a93626c346d96db865c595d2c88f415a1a7876186fb96ce5ba38b16eebe2042",
+    },
+    ("prose_adversarial_judge", "prose-adversarial-judge-v6"): {
+        "system": "4cca1d802ab0f83a64ea6f00859e3d0b02eea4868e3a99bfa3b238933598d863",
+    },
+    ("prose_coherence_judge", "prose-coherence-judge-v6"): {
+        "system": "dd09ce963783e6abb07ba965957176a430050aed68aa76c74ac5f39f0a4ec16b",
+    },
+    ("prose_arbiter", "prose-arbiter-v6"): {
+        "system": "7317c5d5950e3579b1dff1344d4a60c4a93c593dba3458a3024d93815340b2ce",
+    },
+    ("general_mutation_planner", "general-mutation-planner-v8"): {
+        "fragment:planner": ("d8d6953413b45381dafe09157f62bfd51795f71697234ee581802e1a059f0330"),
+        "fragment:reasons": ("503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"),
+    },
+    ("casefile_chat", "casefile-chat-v23"): {
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("a3b9186a6631e691c569edaca48f59667f22f2e6267c70886611bdd7e75415bc"),
+        "fragment:finalizer": ("35e44c07ed8676cc0791d2a9bc4e89e8045f605c8d6969be7956e81007349d8e"),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
     ("casefile_chat", "casefile-chat-v22"): {
-        "fragment:router": (
-            "2c87e2d8602aac1a08a02d75dcaa2efaeac9aa3e682b059b4f4e2d71455d3518"
-        ),
-        "fragment:rewrite": (
-            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
-        ),
-        "fragment:evidence": (
-            "a3b9186a6631e691c569edaca48f59667f22f2e6267c70886611bdd7e75415bc"
-        ),
-        "fragment:finalizer": (
-            "6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70"
-        ),
+        "fragment:router": ("2c87e2d8602aac1a08a02d75dcaa2efaeac9aa3e682b059b4f4e2d71455d3518"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("a3b9186a6631e691c569edaca48f59667f22f2e6267c70886611bdd7e75415bc"),
+        "fragment:finalizer": ("6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70"),
         "fragment:public-language-v1": (
             "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
         ),
@@ -126,12 +226,8 @@ EXPECTED_RELEASE_HASHES = {
         ),
     },
     ("general_mutation_planner", "general-mutation-planner-v7"): {
-        "fragment:planner": (
-            "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
-        ),
-        "fragment:reasons": (
-            "503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"
-        ),
+        "fragment:planner": ("a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"),
+        "fragment:reasons": ("503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"),
     },
     ("story_planner_skeleton", "story-planner-skeleton-v1"): {
         "system": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5"
@@ -793,6 +889,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
     deterministic_task_types = {"novel_compile"}
     auxiliary_agent_ids = {
+        "prose_continuity",
         "casefile_chat_context_compactor",
         "closure_repair",
         "story_planner",
@@ -803,12 +900,12 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "prose_rewriter",
         "prose_fidelity_judge",
         "prose_adversarial_judge",
-            "prose_coherence_judge",
-            "prose_arbiter",
-            "prose_quality_critic",
-            "prose_quality_pairwise",
-            "prose_polisher",
-            "general_mutation_planner",
+        "prose_coherence_judge",
+        "prose_arbiter",
+        "prose_quality_critic",
+        "prose_quality_pairwise",
+        "prose_polisher",
+        "general_mutation_planner",
     }
 
     assert deterministic_task_types <= contract_task_types
@@ -926,7 +1023,7 @@ def test_prose_judge_v5_preserves_protocol_and_closes_semantic_gaps(
 
 
 def test_prose_fidelity_judge_v6_audits_required_evidence_before_output() -> None:
-    current = load_prompt("prose_fidelity_judge")
+    current = load_prompt("prose_fidelity_judge", "prose-fidelity-judge-v6")
 
     assert current.previous_version == "prose-fidelity-judge-v5"
     assert "required+pass" in current.system_prompt
@@ -1364,3 +1461,18 @@ def test_mutation_reason_guidance_is_injected_into_planner() -> None:
     assert "reasons" in package.components["general_mutation_planner"].instruction_fragments
     assert "实际修改" in package.fragments["reasons"].content
     assert "标签已存在" in package.fragments["reasons"].content
+
+
+def test_v23_clarify_gathers_read_only_evidence_before_no_tool_finalizer() -> None:
+    from casefile.agent_runtime.chat_routing import routing_policy
+    from casefile.agent_runtime.models import ChatTaskUnderstanding
+    from casefile.agent_runtime.prompt_package import TOOL_POLICIES
+
+    package = load_prompt("casefile_chat", "casefile-chat-v23").package
+    assert package is not None
+    route = routing_policy(ChatTaskUnderstanding(primary_intent="clarify", confidence=0.3))
+    allowed = set(route.execution_profile["toolset"])
+    allowed.update(route.execution_profile["context_tools"])
+    assert allowed == TOOL_POLICIES[package.components["clarify"].tool_policy_id]
+    assert TOOL_POLICIES[package.components["clarify_finalizer"].tool_policy_id] == frozenset()
+    assert package.previous_version == "casefile-chat-v22"

@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.credentials import decrypt_api_key
@@ -14,6 +14,7 @@ from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.scene_compiler import (
     SCENE_COMPILER_PIPELINE_VERSION,
     SCENE_SEMANTIC_FILL_PROMPT_VERSION,
+    SceneFillFailure,
     SceneFillStage,
     execute_scene_semantic_fill,
 )
@@ -45,12 +46,15 @@ from casefile.domain.narrative_compiler import (
     compile_scene_plan_v2,
 )
 from casefile.worker.executors.compiler_artifacts import materialize_json_artifact_component
+from casefile.worker.executors.compiler_evidence import CompilerEvidenceProvider
 from casefile.worker.failures import CompilerExecutionError, TaskCancellationRequested
 from casefile.worker.provider_resolution import ProviderFactory
 
 
 def execute_scene_compiler_component(
-    session_factory: sessionmaker[Session], worker_id: str, provider_factory: ProviderFactory,
+    session_factory: sessionmaker[Session],
+    worker_id: str,
+    provider_factory: ProviderFactory,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -84,13 +88,16 @@ def execute_scene_compiler_component(
         "provider_config_version": task.provider_config_version,
         "batch_size": SCENE_COMPILER_BATCH_SIZE,
         "state_engine_version": SCENE_STATE_ENGINE_VERSION,
+        "repair_policy": "one-scene-preserving-repair-v1",
+        "max_repairs": min(int(task.budget_jsonb.get("max_repairs", 0)), 1),
     }
     component_hash = canonical_json_sha256(fingerprint)
     if task.provider == "deepseek":
         fingerprint["max_output_tokens"] = COMPILER_JSON_MAX_OUTPUT_TOKENS
         component_hash = canonical_json_sha256(fingerprint)
     step_id = _start_step(
-        session_factory, worker_id,
+        session_factory,
+        worker_id,
         task_run_id=task_run_id,
         attempt_id=attempt_id,
         component_hash=component_hash,
@@ -99,18 +106,20 @@ def execute_scene_compiler_component(
         batch_count=len(model_view["batches"]),
     )
     execution = execute_scene_semantic_fill(
-        provider_factory(task),
+        CompilerEvidenceProvider(provider_factory(task), session_factory, worker_id, step_id),
         task_run_id=task_run_id,
         model_view=model_view,
         component_hash=component_hash,
         model_id=str(task.model_id),
         api_key=api_key,
         network_retries=int(task.budget_jsonb.get("network_retries", 0)),
+        max_repairs=min(int(task.budget_jsonb.get("max_repairs", 0)), 1),
         recover_stage=lambda batch_id, input_hash: _recover_stage(
             session_factory, task_run_id, batch_id, input_hash
         ),
         before_stage=lambda batch_id, ordinal, input_hash, prompt_version, schema_id: _start_call(
-            session_factory, worker_id,
+            session_factory,
+            worker_id,
             task,
             attempt_id,
             step_id,
@@ -121,8 +130,11 @@ def execute_scene_compiler_component(
             prompt.system_prompt_sha256,
             schema_id,
         ),
-        after_stage=lambda stage: None if stage.recovered else _finish_call(
-            session_factory, worker_id, step_id, stage
+        after_stage=lambda stage: (
+            None if stage.recovered else _finish_call(session_factory, worker_id, step_id, stage)
+        ),
+        on_failure=lambda failure: _finish_failed_call(
+            session_factory, worker_id, step_id, failure
         ),
     )
     proposals = list(execution.proposals)
@@ -130,7 +142,8 @@ def execute_scene_compiler_component(
     scene_plan_hash = canonical_json_sha256(scene_plan)
     _finish_step(session_factory, worker_id, step_id, execution.stages, proposals)
     artifact_id, reused = materialize_json_artifact_component(
-        session_factory, worker_id,
+        session_factory,
+        worker_id,
         task_run_id=task_run_id,
         attempt_id=attempt_id,
         run=run,
@@ -155,8 +168,12 @@ def execute_scene_compiler_component(
 
 
 def fail_scene_compiler_component(
-    session_factory: sessionmaker[Session], worker_id: str,
-    task_run_id: int, attempt_id: int, error_code: str
+    session_factory: sessionmaker[Session],
+    worker_id: str,
+    task_run_id: int,
+    attempt_id: int,
+    error_code: str,
+    failure_evidence: dict[str, Any] | None = None,
 ) -> None:
     with session_factory() as session, session.begin():
         current_task = session.get(TaskRun, task_run_id)
@@ -189,12 +206,19 @@ def fail_scene_compiler_component(
             for call in calls:
                 call.status = "failed"
                 call.error_code = error_code
+                call.issues_jsonb = [
+                    *call.issues_jsonb,
+                    {"code": error_code, **(failure_evidence or {})},
+                ]
                 call.finished_at = now
             step.status = "failed"
             step.finished_at = now
             step.diagnostic_jsonb = {
+                **step.diagnostic_jsonb,
                 "failure_layer": "scene_semantic_fill",
-                "issues": [{"code": error_code}],
+                "issues": step.diagnostic_jsonb.get(
+                    "issues", [{"code": error_code, **(failure_evidence or {})}]
+                ),
             }
 
 
@@ -234,7 +258,8 @@ def _load_provider_binding(
 
 
 def _start_step(
-    session_factory: sessionmaker[Session], worker_id: str,
+    session_factory: sessionmaker[Session],
+    worker_id: str,
     *,
     task_run_id: int,
     attempt_id: int,
@@ -291,7 +316,8 @@ def _start_step(
 
 
 def _start_call(
-    session_factory: sessionmaker[Session], worker_id: str,
+    session_factory: sessionmaker[Session],
+    worker_id: str,
     task: TaskRun,
     attempt_id: int,
     step_id: int,
@@ -325,6 +351,47 @@ def _start_call(
         )
 
 
+def _finish_failed_call(
+    session_factory: sessionmaker[Session],
+    worker_id: str,
+    step_id: int,
+    failure: SceneFillFailure,
+) -> None:
+    raw = failure.result.raw_output or json.dumps(
+        failure.result.proposal, ensure_ascii=False, separators=(",", ":")
+    )
+    encoded = raw.encode("utf-8")
+    bounded = encoded[:262_144].decode("utf-8", errors="ignore")
+    issue = {"code": failure.reason_code, **failure.evidence}
+    with session_factory() as session, session.begin():
+        from casefile.worker.executors.prose_store import fence_prose_step
+
+        fence_prose_step(session, worker_id, step_id)
+        call = session.scalar(
+            select(AgentModelCall)
+            .where(
+                AgentModelCall.agent_step_run_id == step_id,
+                AgentModelCall.call_no == failure.batch_ordinal,
+            )
+            .with_for_update(of=AgentModelCall)
+        )
+        if call is None or call.status != "running":
+            raise CompilerExecutionError("compiler_scene_fill_call_missing")
+        call.status = "failed"
+        call.error_code = failure.reason_code
+        call.raw_output_text = bounded
+        call.raw_output_truncated = len(encoded) > len(bounded.encode("utf-8"))
+        call.output_size_bytes = len(encoded)
+        call.output_hash = canonical_json_sha256(failure.result.proposal)
+        call.issues_jsonb = [issue]
+        call.usage_jsonb = {**failure.result.usage, "latency_ms": failure.latency_ms}
+        call.finished_at = datetime.now(UTC)
+        step = session.get(AgentStepRun, step_id)
+        if step is None:
+            raise CompilerExecutionError("compiler_scene_fill_step_missing")
+        step.diagnostic_jsonb = {**step.diagnostic_jsonb, "issues": [issue]}
+
+
 def _finish_call(
     session_factory: sessionmaker[Session], worker_id: str, step_id: int, stage: SceneFillStage
 ) -> None:
@@ -339,13 +406,18 @@ def _finish_call(
             select(AgentModelCall)
             .where(
                 AgentModelCall.agent_step_run_id == step_id,
-                AgentModelCall.call_no == stage.batch_ordinal,
+                AgentModelCall.call_no == (stage.call_no or stage.batch_ordinal),
             )
             .with_for_update(of=AgentModelCall)
         )
         if call is None:
             raise CompilerExecutionError("compiler_scene_fill_call_missing")
         call.status = "succeeded"
+        call.response_jsonb = {
+            **(call.response_jsonb or {}),
+            "base_input_hash": stage.input_hash,
+            "validated_output": stage.output,
+        }
         call.output_hash = canonical_json_sha256(stage.output)
         call.output_size_bytes = len(encoded)
         call.raw_output_text = bounded
@@ -363,23 +435,33 @@ def _recover_stage(
             select(AgentModelCall)
             .where(
                 AgentModelCall.task_run_id == task_run_id,
-                AgentModelCall.input_hash == input_hash,
+                or_(
+                    AgentModelCall.input_hash == input_hash,
+                    AgentModelCall.response_jsonb["base_input_hash"].astext == input_hash,
+                ),
                 AgentModelCall.status == "succeeded",
-                AgentModelCall.raw_output_text.is_not(None),
-                AgentModelCall.raw_output_truncated.is_(False),
+                or_(
+                    AgentModelCall.response_jsonb.has_key("validated_output"),
+                    AgentModelCall.raw_output_truncated.is_(False),
+                ),
             )
             .order_by(AgentModelCall.id.desc())
         )
-        if call is None or call.raw_output_text is None or call.issues_jsonb:
+        if call is None or call.issues_jsonb:
             return None
-        value = json.loads(call.raw_output_text)
+        value = (call.response_jsonb or {}).get("validated_output")
+        if value is None:
+            value = json.loads(call.raw_output_text or "null")
         if not isinstance(value, dict) or value.get("batch_id") != batch_id:
             return None
+        if canonical_json_sha256(value) != call.output_hash:
+            raise CompilerExecutionError("compiler_scene_recovery_output_hash_mismatch")
         return value
 
 
 def _finish_step(
-    session_factory: sessionmaker[Session], worker_id: str,
+    session_factory: sessionmaker[Session],
+    worker_id: str,
     step_id: int,
     stages: tuple[SceneFillStage, ...],
     proposals: list[dict[str, Any]],
@@ -398,6 +480,15 @@ def _finish_step(
         )
         if step is None or step.status != "running":
             raise CompilerExecutionError("compiler_scene_fill_step_missing")
+        for failed_call in session.scalars(
+            select(AgentModelCall).where(
+                AgentModelCall.agent_step_run_id == step_id,
+                AgentModelCall.status == "failed",
+            )
+        ):
+            for key, value in failed_call.usage_jsonb.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    usage[key] = usage.get(key, 0.0) + float(value)
         step.status = "succeeded"
         step.output_hash = canonical_json_sha256(proposals)
         step.output_jsonb = None
@@ -428,11 +519,7 @@ def _lock_active(
         from casefile.worker.executors.prose_store import assert_prose_owner
 
         assert_prose_owner(task, attempt, worker_id)
-    if (
-        task is not None
-        and task.status == "cancelling"
-        and task.leased_by == worker_id
-    ):
+    if task is not None and task.status == "cancelling" and task.leased_by == worker_id:
         raise TaskCancellationRequested
     if (
         task is None

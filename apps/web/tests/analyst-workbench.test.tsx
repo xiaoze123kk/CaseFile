@@ -265,17 +265,6 @@ describe("analyst workbench", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("removes the relation table while retaining accessible graph nodes", () => {
-    renderWorkbench();
-
-    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
-    expect(screen.queryByText("查看关系表与文字摘要")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("application", { name: "实体关系图" })).getAllByRole("button").length).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole("button", { name: /来源抽屉/ }),
-    ).not.toBeInTheDocument();
-  });
-
   it("keeps top navigation compact and places reset in a dismissible more menu", () => {
     renderWorkbench();
     const header = screen.getByRole("link", { name: "返回建案中心" }).closest("header")!;

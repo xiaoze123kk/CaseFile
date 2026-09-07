@@ -150,6 +150,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1 -SkipDepen
 
 脚本会启动或连接 Docker Desktop，准备数据库，并在后台启动 Web、API 与独立 Worker。日志写入 `var/dev/`。默认端口可通过 `-WebPort` 和 `-ApiPort` 调整。
 
+重复运行会复用当前仓库的已有服务，保留正在执行的任务；端口被其他程序占用时会报错，不会强制结束该程序。同一仓库只允许一个启动流程运行。复用服务不会重新加载 API/Worker 代码，修改后需要在任务结束后手动停止对应服务再启动。已有服务运行时会跳过依赖同步；冷启动不带 `-SkipDependencySync` 时使用 pnpm 和 uv 同步依赖。
+
+Docker 检查单次最多 8 秒，启动等待每轮最多约 130 秒。检测到当前 Docker 会话的 `dockerInference` 或 `engine.sock` 无法访问错误时，脚本停止 Docker Desktop，将 `%LOCALAPPDATA%\Docker\run` 和 `%LOCALAPPDATA%\docker-secrets-engine` 同时改名为带时间戳的 `*-recovery-*` 备份，然后重试一次。数据库、镜像和卷不会被清理；未知目录内容或其他 Docker 故障会保留现场并明确报错。这是对已知故障的自动恢复，不能保证 Docker 自身永不报错。
+
+完整启动记录位于 `var/dev/startup-*.log`；数据库准备最多等待 240 秒。可用下面的命令验证超时、恢复备份和端口保护逻辑（使用临时目录，不停止真实 Docker）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-startup.ps1
+```
+
 ### 分别启动
 
 只启动 Web：

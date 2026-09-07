@@ -8,6 +8,15 @@
 .content button { padding: 9px 16px; border: 1px solid #bec7cb; border-radius: 5px; background: #f8f7f0; color: #354553; cursor: pointer; }
 .content button:disabled { opacity: .5; cursor: default; }
 .fields button { background: #354c60; color: white; }
+.prepareButton { display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.content .prepareButton[aria-busy="true"] { opacity: 1; background: #526779; cursor: wait; }
+.prepareSpinner {
+  width: 15px; height: 15px; flex: 0 0 15px; border: 2px solid #ffffff40;
+  border-top-color: currentColor; border-radius: 50%;
+  animation: prepareSpin .9s linear infinite;
+}
+@keyframes prepareSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .prepareSpinner { animation: none; } }
 .heading { display: flex; align-items: center; justify-content: space-between; }
 .heading h3 { margin: 0; font-size: 16px; }
 .runs { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }

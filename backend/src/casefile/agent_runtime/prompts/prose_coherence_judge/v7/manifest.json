@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_coherence_judge",
+  "version": "prose-coherence-judge-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "6d7a8c0c8dc63fac136d88f62cc0e05934be1cb85fed2d7bc20a010690bb8dd3",
+  "previous_version": "prose-coherence-judge-v6",
+  "change_summary": "证据上限扩展为64；支持一次保留判定的证据协议修复。"
+}

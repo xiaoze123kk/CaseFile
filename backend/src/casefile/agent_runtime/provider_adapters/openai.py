@@ -7,19 +7,6 @@ from typing import Any, cast
 
 from agents import ModelSettings, Tool
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    NovelPlanCandidate,
-    SceneSemanticFillProposal,
-    SemanticFillProposal,
-    SkeletonProposal,
-    StoryPlanStructuralPatch,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
@@ -169,6 +156,19 @@ from casefile.agent_runtime.story_planner_prompt import (
 )
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SceneSemanticFillProposal,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
 )
 
 
@@ -505,6 +505,7 @@ class OpenAIAgentsProvider:
             "casefile-chat-v20",
             "casefile-chat-v21",
             "casefile-chat-v22",
+            "casefile-chat-v23",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -622,6 +623,7 @@ class OpenAIAgentsProvider:
                     "casefile-chat-v20",
                     "casefile-chat-v21",
                     "casefile-chat-v22",
+                    "casefile-chat-v23",
                 }:
                     raise
                 request.emit(
@@ -939,6 +941,14 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
+        response_sink = getattr(request, "on_response", None)
+        if response_sink is not None:
+            from casefile.agent_runtime.provider_adapters.compiler_responses import (
+                CompilerResponsesModel,
+            )
+
+            model = CompilerResponsesModel(model=request.model_id, openai_client=client)
+            model.on_response = response_sink
         try:
             return await _run_auxiliary_agent(
                 request,

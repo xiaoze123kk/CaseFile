@@ -1,5 +1,7 @@
 # 前端代码职责地图
 
+小说编译面板展示已保存场景数、跨场景规划调整意见，以及服务端允许时的“从失败处继续”。续跑复用已完成正文；前端不自行重置预算或改写规划，接口拒绝旧运行版本及已耗尽恢复次数。
+
 ## 分析师工作台信息架构重构
 
 - `workbench-navigation.tsx`、`workbench-navigation.module.css`：工作台子树的固定桌面导航。总览、五个分析视图、待处理问题与编译作品始终可访问；对象档案可在任意视图展开。导航事件回交宿主，复用未保存保护，不持有领域数据。
@@ -257,4 +259,9 @@ CaseSession的task_updated reducer动作统一生成进度、去重重试、取�
 
 删除无人读取的generation.stage数值及advance_generation动作；可见进度仍来自Task部件步骤/槽位阶段。generation.status保留为跨创建、等待、候选刷新过程的本地操作锁，不能只从单个Task终态推导。
 
+
+测试减负：eslint.config.mjs同时忽略默认.next和自定义.next-*生成目录，保持源码全量lint。analyst-workbench.test.tsx删除旧关系表文案/来源抽屉缺席与节点数量的重复整页检查；保留人物/地点可访问节点交互及生产页来源抽屉边界验证。
+
+
 `apps/web/tests/product-boundary.test.ts` 验证根路由、视觉实验路由实际渲染及旧地址重定向；不再锁定源码 import 字符串、已删除文件清单或 Prototype 命名。工作台路由参数、会话和生产交互由已有行为测试覆盖。
+小说编译记录提供显式失败点继续入口；旧版本或工作稿漂移由服务端拒绝。正文交付统计排除方案规划与主动取消，只把正文成功并存在完整候选计为成功；不把 TaskRun succeeded 等同小说生成成功。

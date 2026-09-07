@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from casefile_contracts import CompileManifest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,6 +18,7 @@ from casefile.data_postgres.models import (
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
 from casefile.domain.narrative_compiler.prose_checklist import PROSE_CHECKLIST_POLICY_HASH
+from casefile_contracts import CompileManifest
 
 
 def scene_usage(
@@ -162,7 +162,12 @@ def finalize_prose_cancellation(
     artifacts = list(
         session.scalars(select(CompileArtifact).where(CompileArtifact.compile_run_id == run.id))
     )
-    if any(a.artifact_key == "compiler.compile_manifest" for a in artifacts):
+    manifest_key = (
+        "compiler.compile_manifest"
+        if attempt.attempt_no == 1
+        else f"compiler.compile_manifest.attempt_{attempt.id}"
+    )
+    if any(a.artifact_key == manifest_key for a in artifacts):
         return
     plan = next((a for a in artifacts if a.schema_id == "compiler.scene-plan.v2"), None)
     if plan is None:
@@ -262,7 +267,7 @@ def finalize_prose_cancellation(
             task_run_id=task.id,
             agent_step_run_id=step.id,
             artifact_kind="compile_manifest",
-            artifact_key="compiler.compile_manifest",
+            artifact_key=manifest_key,
             schema_id=data["schema_id"],
             content_hash=digest,
             content_jsonb=data,

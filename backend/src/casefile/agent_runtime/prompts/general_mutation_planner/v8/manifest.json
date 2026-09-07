@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v8",
+  "previous_version": "general-mutation-planner-v7",
+  "change_summary": "为正式补丁规划传入冻结对话、焦点、问题定位和指代解释，支持承接确认生成待审操作。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v8",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "d8d6953413b45381dafe09157f62bfd51795f71697234ee581802e1a059f0330"
+    },
+    "reasons": {
+      "file": "fragments/reasons.md",
+      "sha256": "503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": [
+        "planner",
+        "reasons"
+      ],
+      "input_contract_id": "general-mutation-planner-input-v2",
+      "output_schema_id": "general-mutation-plan-v2",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}

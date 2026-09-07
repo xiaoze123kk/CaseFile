@@ -7,7 +7,7 @@ import { cancelTask } from "@/features/case-session/case-session-api";
 import { errorMessage } from "@/lib/api-client";
 import { Dialog } from "./novel-workspace-panels";
 import { completedNovelArtifact, listNovelCompiles, loadCompiledNovel, startNovelCompile,
-  requestNovelRecommendation, confirmNovelPlan, loadNovelPlan,
+  requestNovelRecommendation, confirmNovelPlan, loadNovelPlan, resumeNovelCompile,
   type NovelPlanPreview, type NovelCompileRun, type NovelCompileScope } from "./novel-compiler-api";
 import type { NovelManuscript } from "./novel-document";
 import styles from "./novel-compiler.module.css";
@@ -54,6 +54,12 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
   const lock = useRef(false);
   const mounted = useRef(true);
   const { projectId, draftId, revision } = scope;
+  const novelAttempts = runs.filter((run) => run.prose_renderer_shadow && !active(run) && run.execution.status !== "cancelled");
+  const novelReady = novelAttempts.filter((run) => completedNovelArtifact(run)).length;
+  const measuredAttempts = novelAttempts.filter((run) => run.stability);
+  const firstPass = measuredAttempts.filter((run) => run.stability?.first_pass_success).length;
+  const repairs = runs.reduce((sum, run) => sum + (run.stability?.repair_attempts ?? 0), 0);
+  const repaired = runs.reduce((sum, run) => sum + (run.stability?.repair_successes ?? 0), 0);
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -112,8 +118,8 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
   }
   return <Dialog title="小说编译" onClose={onClose}>
     <div className={styles.content}>
-      <div className={styles.introduction}><span>先看方案，再写正文</span><h3>让 Agent 帮你判断，这个故事适合怎样写。</h3>
-        <p>根据卷宗中的谜题、人物和事件，推荐篇幅、文风与章节安排，并列出每一个具体场景。你不需要先决定章节数。</p></div>
+      <div className={styles.introduction}><span>先看推荐，再确认规划</span><h3>让 Agent 帮你判断，这个故事适合怎样写。</h3>
+        <p>根据卷宗中的谜题、人物和事件，推荐篇幅与文风。确认推荐后再规划章节与具体场景，审阅章节后再生成正文。</p></div>
       <form onSubmit={(event) => {
         event.preventDefault();
         if (loading || !available || runs.some(active)) return;
@@ -121,25 +127,32 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
           setRecommendation(null);
           const next = await requestNovelRecommendation(scope, preferences);
           if (!mounted.current) return;
-          const run = await startNovelCompile(scope, next, true);
-          if (mounted.current) {
-            setRecommendation(next);
-            setRuns((items) => [run, ...items.filter((item) => item.compile_run_id !== run.compile_run_id)]);
-            setSelectedId(run.compile_run_id);
-          }
+          setRecommendation(next);
         });
       }}>
         <fieldset disabled={busy || loading || !available || runs.some(active)} className={styles.fields}>
           <label className={styles.style}>你想要的阅读感受（选填）<textarea maxLength={2000} value={preferences}
             placeholder="还没想好可以留空。也可以说：希望一口气读完，偏重推理，结尾不要解释太多。"
             onChange={(e) => setPreferences(e.target.value)} /></label>
-          <button type="submit">{busy ? "Agent 正在准备…" : "让 Agent 推荐小说方案"}</button>
-          <p>先生成方案，确认后才写正文。</p>
+          <button type="submit" className={styles.prepareButton} aria-busy={busy}>
+            {busy ? <span className={styles.prepareSpinner} aria-hidden="true" /> : null}
+            {busy ? "Agent 正在准备…" : "让 Agent 推荐小说方案"}
+          </button>
+          <p>先获取推荐，确认后才开始章节规划。</p>
         </fieldset>
       </form>
       {recommendation ? <section className={styles.recommendation} aria-label="Agent 推荐">
         <span>Agent 推荐</span><h3>{recommendation.concept}</h3><p>{recommendation.rationale}</p>
         <p><strong>文风建议：</strong>{recommendation.style}</p>
+        <button type="button" className={styles.confirm} disabled={busy || !available || runs.some(active)}
+          onClick={() => void action(async () => {
+            const run = await startNovelCompile(scope, recommendation, true);
+            if (mounted.current) {
+              setRuns((items) => [run, ...items.filter((item) => item.compile_run_id !== run.compile_run_id)]);
+              setSelectedId(run.compile_run_id);
+              setRecommendation(null);
+            }
+          })}>确认推荐，开始章节规划</button>
       </section> : null}
       {selectedRun && !preview && planArtifactId && !previewError ? <p role="status">正在读取章节与场景…</p> : null}
       {previewError ? <p role="alert">{previewError}</p> : null}
@@ -154,15 +167,31 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
       </> : null}
       {error ? <p role="alert">{error}</p> : null}
       <div className={styles.heading}><h3>编译记录</h3><button type="button" disabled={busy} onClick={() => { setError(""); setPreviewLoad(null); setRefresh((n) => n + 1); }}>刷新</button></div>
+      {novelAttempts.length ? <p aria-label="小说生成统计">
+        完整小说 {novelReady}/{novelAttempts.length} 次（{Math.round(novelReady / novelAttempts.length * 100)}%）
+        {measuredAttempts.length ? ` · 首次通过 ${firstPass}/${measuredAttempts.length} 次` : ""}
+        {repairs ? ` · 修复调用成功 ${repaired}/${repairs} 次` : ""}。仅统计已结束的正文生成，方案规划与主动取消不计入。
+      </p> : null}
       {loading ? <p role="status">正在读取编译记录…</p> : !runs.length ? <p>当前工作稿还没有小说编译记录。</p> : null}
       <ul className={styles.runs}>{runs.map((run) => <li key={run.compile_run_id} data-execution-state={run.execution.status}>
         {active(run) ? <span className={styles.compileActivity} aria-hidden="true" data-compile-activity>
           <span /><span /><span />
         </span> : null}
         <div><strong role="status">{novelCompileStatus(run)}</strong><small>{new Date(run.created_at).toLocaleString("zh-CN")} · 工作稿版本 {run.execution.input_draft_revision}</small></div>
+        {run.stability && Object.keys(run.stability.failure_stages).length ? <small>
+          {Object.entries(run.stability.failure_stages).map(([stage, count]) => `${stage}失败 ${count} 次`).join(" · ")}
+        </small> : null}
         {run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1") ? <button type="button" disabled={busy}
           onClick={() => { setSelectedId(run.compile_run_id); setRecommendation(null); }}>查看场景方案</button> : null}
         {active(run) ? <button type="button" disabled={busy || run.execution.status === "cancelling"} onClick={() => void action(async () => { await cancelTask(projectId, run.execution.task_run_id); })}>停止编译</button> : null}
+        {run.prose_shadow.plan_issues?.length ? <p role="alert">场景衔接需要调整：{run.prose_shadow.plan_issues.join("；")}</p> : null}
+        {run.prose_renderer_shadow && run.prose_shadow.completed_scene_count ? <p>已保存 {run.prose_shadow.completed_scene_count} 个场景，继续时保留已完成正文。</p> : null}
+        {(run.execution.status === "failed" || run.prose_shadow.resume_available) ? <button type="button" disabled={busy || runs.some(active)}
+          onClick={() => void action(async () => {
+            const resumed = await resumeNovelCompile(scope, run.compile_run_id);
+            if (mounted.current) setRuns((items) => items.map((item) =>
+              item.compile_run_id === resumed.compile_run_id ? resumed : item));
+          })}>从失败处继续</button> : null}
         {completedNovelArtifact(run) ? <button type="button" disabled={busy} onClick={() => void action(async () => {
           const manuscript = await loadCompiledNovel(projectId, run, title);
           if (mounted.current) {

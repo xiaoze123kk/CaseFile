@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_writer",
+  "version": "prose-writer-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "65f050f45393c581f7da3cf0bcf14c8723778a8d26c47116eb1ccb3fca93a7bd",
+  "previous_version": "prose-writer-v1",
+  "change_summary": "明确当前场景边界、完整替换正文及一次有界生成修复，统一生产长度约束。"
+}

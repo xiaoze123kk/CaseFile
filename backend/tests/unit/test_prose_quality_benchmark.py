@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_quality_critic import FakeProseQualityCriticProvider
 from casefile.benchmark.prose_quality_eval import (
     DEFAULT_ATTESTATION,
@@ -47,22 +48,17 @@ def test_suite_freezes_eight_semantically_valid_pairs(
     tasks = loaded_suite["tasks"]
     assert len(tasks) == 8
     assert {
-        preference: sum(
-            task["asset"]["gold"]["overall_preference"] == preference
-            for task in tasks
-        )
+        preference: sum(task["asset"]["gold"]["overall_preference"] == preference for task in tasks)
         for preference in ("a", "b", "tie")
     } == {"a": 2, "b": 4, "tie": 2}
     for task in tasks:
         asset = task["asset"]
         assert asset["render_a"]["stage"] == "writer"
         assert asset["render_b"]["stage"] == "polished"
-        assert asset["render_b"]["previous_render_hash"] == canonical_hash(
-            asset["render_a"]
+        assert asset["render_b"]["previous_render_hash"] == canonical_hash(asset["render_a"])
+        assert [item["dimension"] for item in asset["gold"]["dimension_preferences"]] == list(
+            QUALITY_DIMENSIONS
         )
-        assert [
-            item["dimension"] for item in asset["gold"]["dimension_preferences"]
-        ] == list(QUALITY_DIMENSIONS)
 
 
 def test_generator_rebuilds_all_public_assets_without_writing() -> None:
@@ -80,9 +76,7 @@ def test_generator_rebuilds_all_public_assets_without_writing() -> None:
 
 
 @pytest.mark.parametrize("target", ("suite", "attestation", "descriptor", "asset"))
-def test_suite_and_assets_fail_closed_on_hash_drift(
-    tmp_path: Path, target: str
-) -> None:
+def test_suite_and_assets_fail_closed_on_hash_drift(tmp_path: Path, target: str) -> None:
     suite = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
     attestation = json.loads(DEFAULT_ATTESTATION.read_text(encoding="utf-8"))
     if target == "suite":
@@ -96,9 +90,7 @@ def test_suite_and_assets_fail_closed_on_hash_drift(
     suite_path = tmp_path / "suite.json"
     attestation_path = tmp_path / "attestation.json"
     suite_path.write_text(json.dumps(suite, ensure_ascii=False), encoding="utf-8")
-    attestation_path.write_text(
-        json.dumps(attestation, ensure_ascii=False), encoding="utf-8"
-    )
+    attestation_path.write_text(json.dumps(attestation, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ProseQualitySuiteError):
         load_prose_quality_dev_suite(suite_path, attestation_path)
 
@@ -218,17 +210,11 @@ def test_runner_writes_self_hashed_report(tmp_path: Path) -> None:
 
 
 def test_qualification_descriptor_freezes_private_cohorts_and_review() -> None:
-    descriptor = json.loads(
-        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
-    )
+    descriptor = json.loads(DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8"))
     assert descriptor["quality_holdout_count"] == 16
     assert descriptor["polisher_task_count"] == 24
-    assert descriptor["quality_focus_distribution"] == {
-        focus: 2 for focus in QUALITY_FOCI
-    }
-    assert descriptor["polisher_focus_distribution"] == {
-        focus: 3 for focus in QUALITY_FOCI
-    }
+    assert descriptor["quality_focus_distribution"] == {focus: 2 for focus in QUALITY_FOCI}
+    assert descriptor["polisher_focus_distribution"] == {focus: 3 for focus in QUALITY_FOCI}
     assert descriptor["quality_gate_thresholds"] == QUALITY_QUALIFICATION_GATES
     assert descriptor["polisher_gate_thresholds"] == POLISHER_QUALIFICATION_GATES
     assert descriptor["review_policy"] == "codex-owner-accepted-review-v1"
@@ -239,12 +225,27 @@ def test_qualification_descriptor_freezes_private_cohorts_and_review() -> None:
     )
 
 
+def _current_descriptor_for_guard_test():
+    # Temporary test metadata only; the historical qualification file stays immutable.
+    from casefile.agent_runtime.prose_polisher import (
+        PROSE_POLISHER_COMPONENT_HASH,
+        PROSE_POLISHER_PROMPT_VERSION,
+    )
+    from casefile.agent_runtime.prose_quality_critic import PROSE_QUALITY_COMPONENT_HASH
+
+    descriptor = json.loads(DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8"))
+    descriptor.update(
+        polisher_component_hash=PROSE_POLISHER_COMPONENT_HASH,
+        polisher_prompt_version=PROSE_POLISHER_PROMPT_VERSION,
+        quality_component_hash=PROSE_QUALITY_COMPONENT_HASH,
+    )
+    return descriptor
+
+
 def test_unreviewed_qualification_blocks_before_private_package_read(
     tmp_path: Path,
 ) -> None:
-    descriptor = json.loads(
-        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
-    )
+    descriptor = _current_descriptor_for_guard_test()
     descriptor["review_status"] = "pending_codex_review"
     descriptor["qualification_eligible"] = False
     descriptor["descriptor_hash"] = canonical_hash(
@@ -259,12 +260,18 @@ def test_unreviewed_qualification_blocks_before_private_package_read(
         load_prose_quality_qualification_suite(tmp_path / "missing.json", path)
 
 
-def test_qualification_rejects_nonprivate_suite_path() -> None:
+def test_qualification_rejects_nonprivate_suite_path(tmp_path: Path) -> None:
+    descriptor = _current_descriptor_for_guard_test()
+    descriptor["descriptor_hash"] = canonical_hash(
+        {k: v for k, v in descriptor.items() if k != "descriptor_hash"}
+    )
+    path = tmp_path / "descriptor.json"
+    path.write_text(json.dumps(descriptor), encoding="utf-8")
     with pytest.raises(
         ProseQualitySuiteError,
         match="prose_quality_qualification_private_path_invalid",
     ):
-        load_prose_quality_qualification_suite(DEFAULT_SUITE)
+        load_prose_quality_qualification_suite(DEFAULT_SUITE, path)
 
 
 @pytest.mark.skipif(

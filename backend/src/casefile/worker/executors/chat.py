@@ -814,6 +814,12 @@ class ChatMutationRuntime(_ChatComponent):
                         api_key=api_key,
                         casefile=request.casefile,
                         message=request.message,
+                        thread_history=request.history,
+                        focus=request.focus,
+                        validation_issues=request.validation_issues,
+                        canonical_query=(
+                            request.rewrite.canonical_query if request.rewrite is not None else None
+                        ),
                         input_hash=task.input_hash,
                         editable_fields_by_collection=request.editable_fields_by_collection,
                         emit=emit,
@@ -1391,6 +1397,7 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v20",
             "casefile-chat-v21",
             "casefile-chat-v22",
+            "casefile-chat-v23",
         }:
             raise RuntimeError(
                 "Context policy "

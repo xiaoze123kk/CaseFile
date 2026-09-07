@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_fidelity_judge",
+  "version": "prose-fidelity-judge-v8",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "38bb66399fd8116ef793cd23f249fa612d50962e20221fd4af92291a85854df9",
+  "previous_version": "prose-fidelity-judge-v7",
+  "change_summary": "证据上限扩展为64；支持一次保留判定的证据协议修复。"
+}

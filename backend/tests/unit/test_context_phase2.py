@@ -420,3 +420,31 @@ def test_fold_tool_results_collapses_old_results_to_one_line() -> None:
     assert len(folded["folded"]) == 3
     assert folded["folded"][0]["tool"] == "search_casefile"
     assert folded["folded"][0]["hit_ids"] == ["object:0"]
+
+
+def test_compacted_issues_keep_distinct_targets_without_inventing_missing_bindings() -> None:
+    issues = [
+        {
+            "issue_id": f"issue:{index}",
+            "code": "knowledge_state_available_before_source",
+            "message": "角色引用了在其知识状态锚点之后才产生的信息",
+            "path": f"/entities/{index}/knowledge_states/0/knows_refs/1",
+            "target": {
+                "object_ref": {"object_id": object_id, "object_type": "entity"},
+                "field_path": "/knowledge_states/0/knows_refs/1",
+            },
+            "impact_refs": [{"object_id": object_id, "object_type": "entity"}],
+            "evidence_refs": [{"object_id": "info_future", "object_type": "information_unit"}],
+            "explanation": "详情" * 500,
+        }
+        for index, object_id in enumerate(("person_a", "person_b"))
+    ]
+    issues.append({"issue_id": "issue:unbound", "message": "需要核对"})
+    trimmed = trim_validation_issues(issues, focus_issue_ids=[], author_message="帮我处理这个问题")
+    assert trimmed["compacted_count"] == 3
+    for source, summary in zip(issues[:2], trimmed["issues"][:2], strict=True):
+        for key in ("code", "target", "path", "impact_refs", "evidence_refs"):
+            assert summary[key] == source[key]
+        assert "explanation" not in summary
+    assert "target" not in trimmed["issues"][2]
+    assert "explanation" in issues[0]

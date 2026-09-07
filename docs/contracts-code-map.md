@@ -1,5 +1,7 @@
 # 跨语言契约与 Fixture
 
+`compiler/prose-continuity-review.schema.json` 定义持久化跨场景审核报告：来源输入哈希、当前场景、pass/blocked 及涉及场景和局部规划调整意见。该报告不替代正文 Fidelity 报告，不产生批准方案的新版本。运行时 Schema 镜像由统一生成入口同步。
+
 ## Chat 增强反馈协议
 
 Run `/events` 和 `/stream` 接受 `feedback_version=1|2`，默认 1；新工作台显式请求 2。v1 仍只收到既有事件。v2 在同一 `PublicAgentEvent` 源 Schema 定义 `run.activity_detail`、`message.preview_started`、`message.preview_delta` 和 `message.preview_invalidated`。
@@ -105,3 +107,6 @@ project/project.schema.json 定义 ProjectView，brief/brief-views.schema.json �
 
 
 `fixtures/README.md` 记录当前、兼容与历史 Fixture 的用途及维护规则。历史 hash/attestation 与跨版本引用保持原样；测试层面的复用与小样本不改写正式资格资产。
+SceneCompilerBatchSceneView 兼容增加可选 intent 与 actor_allowlist，ModelView projection v4 输出这些服务端字段；旧 projection v1-v3 仍可读。生成 Python/TypeScript 与 OpenAPI 同步。新增编译 resume 路由只复用冻结 TaskRun，不修改输入契约或已保存产物。
+
+JudgeAssessment.evidence 上限20兼容扩展为64，与 Provider candidate 的 evidence_ids 保持一致；Quality Finding 的20条上限保持原语义。SceneRender.selection_reason 增加 judge_budget_preserve_accepted_original，用于已语义通过且跳过可选润色的正文。历史产物不重写，生成包和 OpenAPI 同步更新。

@@ -1489,7 +1489,8 @@ export interface SceneCompilerModelView {
     projection_version:
       | "compiler.scene-compiler-model-view-projection.v1"
       | "compiler.scene-compiler-model-view-projection.v2"
-      | "compiler.scene-compiler-model-view-projection.v3";
+      | "compiler.scene-compiler-model-view-projection.v3"
+      | "compiler.scene-compiler-model-view-projection.v4";
     scene_compiler_input_hash: string;
   };
   /**
@@ -1515,6 +1516,8 @@ export interface SceneCompilerBatchView {
   state_seed: SceneStateSeed;
 }
 export interface SceneCompilerBatchSceneView {
+  intent?: string;
+  actor_allowlist?: ObjectRef[];
   scene_id: string;
   chapter_id: string;
   discourse_order: number;
@@ -2437,7 +2440,14 @@ export interface SceneRender {
   blocks: [SceneRenderBlock, ...SceneRenderBlock[]];
   character_count: number;
   selection_reason:
-    | ("semantic_accepted" | "polished_accepted" | "polish_semantic_rollback" | "quality_rollback" | "quality_unstable")
+    | (
+        | "semantic_accepted"
+        | "polished_accepted"
+        | "polish_semantic_rollback"
+        | "judge_budget_preserve_accepted_original"
+        | "quality_rollback"
+        | "quality_unstable"
+      )
     | null;
 }
 export interface SceneRenderSource {
@@ -2499,7 +2509,7 @@ export interface JudgeAssessment {
   check_id: string;
   verdict: "pass" | "fail" | "uncertain";
   /**
-   * @maxItems 20
+   * @maxItems 64
    */
   evidence: Evidence[];
   rationale: string;

@@ -236,7 +236,7 @@
           "oneOf": [
             {
               "enum": [
-                "semantic_accepted", "polished_accepted", "polish_semantic_rollback",
+                "semantic_accepted", "polished_accepted", "polish_semantic_rollback", "judge_budget_preserve_accepted_original",
                 "quality_rollback", "quality_unstable"
               ]
             },
@@ -264,7 +264,7 @@
         "check_id": {"$ref": "#/$defs/CheckId"},
         "verdict": {"enum": ["pass", "fail", "uncertain"]},
         "evidence": {
-          "type": "array", "items": {"$ref": "#/$defs/Evidence"}, "maxItems": 20
+          "type": "array", "items": {"$ref": "#/$defs/Evidence"}, "maxItems": 64
         },
         "rationale": {"type": "string", "minLength": 1, "maxLength": 1000}
       }

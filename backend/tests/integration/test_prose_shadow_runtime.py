@@ -10,6 +10,10 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, select, update
+from test_narrative_compiler_runtime import _prepare_compilable_project
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider
 from casefile.agent_runtime.prose_polisher import FakeProsePolisherProvider
@@ -25,12 +29,131 @@ from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS, canonical_jso
 from casefile.worker.executors.prose_providers import ProseProviders
 from casefile.worker.executors.prose_store import ProseStore
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select, update
-from test_narrative_compiler_runtime import _prepare_compilable_project
 
 pytestmark = pytest.mark.postgres
 ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(autouse=True)
+def forbid_live_provider_network(monkeypatch):
+    def blocked(*args, **kwargs):
+        raise AssertionError("This integration suite must not contact a live Provider")
+
+    monkeypatch.setattr("openai._base_client.SyncAPIClient.request", blocked)
+
+
+def test_continuity_and_resume_share_persisted_judge_budget(workflow_database):
+    factory, project, run, draft = _prepare(workflow_database)
+    providers = replace(
+        _providers(failures=3),
+        continuity=FakeProseWriterProvider(candidates=({"verdict": "pass", "issues": []},)),
+    )
+    _run(factory, run, providers, workflow_database[2])
+    _, initial, _ = _result(factory, run)
+    assert initial["shadow_status"] != "succeeded"
+
+    def count():
+        with factory() as session:
+            return sum(
+                c.prompt_component_id == "prose_continuity" or "judge" in c.prompt_component_id
+                for c in session.scalars(
+                    select(AgentModelCall).where(AgentModelCall.task_run_id == run["task_run_id"])
+                )
+            )
+
+    assert count() == 3
+    with factory() as session:
+        CompilerService(session).resume_run(
+            workflow_database[1],
+            project,
+            run["compile_run_id"],
+            expected_draft_id=run["draft_id"],
+            expected_draft_revision=draft["revision"],
+        )
+    _run(factory, run, providers, workflow_database[2], "budget-resume")
+    assert count() == 3
+
+
+def test_continuity_blocks_before_writer_and_preserves_evidence(workflow_database):
+    factory, _, run, _ = _prepare(workflow_database)
+    continuity = FakeProseWriterProvider(
+        candidates=(
+            {
+                "verdict": "blocked",
+                "issues": [
+                    {
+                        "scene_ids": ["scene_001"],
+                        "reason": "同一人物已经知道真相却又无解释地否认。",
+                        "required_plan_change": "调整本场信息释放顺序。",
+                    }
+                ],
+            },
+        )
+    )
+    providers = replace(_providers(), continuity=continuity)
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    assert manifest["incomplete_reason"] == "compiler_prose_local_plan_conflict"
+    assert providers.writer.call_count == 0
+    report = next(a for a in artifacts if a.schema_id == "compiler.prose-continuity-review.v1")
+    assert report.content_jsonb["issues"][0]["required_plan_change"]
+    with factory() as session:
+        call = session.scalar(
+            select(AgentModelCall).where(AgentModelCall.task_run_id == run["task_run_id"])
+        )
+        assert call is not None and call.raw_output_text
+
+
+def test_optional_quality_transport_failure_retains_accepted_original(workflow_database):
+    factory, _, run, _ = _prepare(workflow_database)
+
+    class BrokenQuality:
+        def assess_quality(self, request):
+            return FakeProseQualityCriticProvider(failure_at_call=1).assess_quality(request)
+
+    providers = replace(_providers(), quality=BrokenQuality())
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    assert manifest["shadow_status"] == "succeeded"
+    assert all(s["final_state"] == "finalized_original" for s in manifest["scenes"])
+    with factory() as session:
+        calls = list(
+            session.scalars(
+                select(AgentModelCall).where(
+                    AgentModelCall.task_run_id == run["task_run_id"],
+                    AgentModelCall.prompt_component_id == "prose_quality_critic",
+                )
+            )
+        )
+    assert len(calls) == 4 and all(c.status == "failed" for c in calls)
+    assert len([a for a in artifacts if a.artifact_key.endswith(".accepted")]) == 2
+
+
+def test_resume_prose_reuses_accepted_prefix_and_preserves_failed_manifest(workflow_database):
+    factory, project, run, draft = _prepare(workflow_database)
+    providers = _providers()
+    providers.writer._failure_at_call = 2
+    _run(factory, run, providers, workflow_database[2])
+    _, initial, artifacts = _result(factory, run)
+    assert initial["shadow_status"] == "inconclusive_infrastructure"
+    accepted = next(a for a in artifacts if a.artifact_key.endswith(".accepted"))
+    draft_id = run["draft_id"]
+    with factory() as session:
+        CompilerService(session).resume_run(
+            workflow_database[1],
+            project,
+            run["compile_run_id"],
+            expected_draft_id=draft_id,
+            expected_draft_revision=draft["revision"],
+        )
+    _run(factory, run, providers, workflow_database[2], "prose-continuation")
+    _, final, artifacts = _result(factory, run)
+    assert final["shadow_status"] == "succeeded", final["incomplete_reason"]
+    assert providers.writer.call_count == 3
+    assert next(a for a in artifacts if a.id == accepted.id).content_hash == accepted.content_hash
+    manifests = [a for a in artifacts if a.artifact_kind == "compile_manifest"]
+    assert len(manifests) == 2
+    assert manifests[0].content_jsonb == initial
 
 
 class ScriptedJudge:
@@ -104,8 +227,19 @@ def _providers(
         )
     )
     return ProseProviders(
-        FakeProseWriterProvider(candidates=({"bad": "shape"} if invalid_writer else original,) * 4),
-        FakeProseRewriterProvider(candidates=(original,) * 8),
+        FakeProseWriterProvider(
+            candidates=tuple(
+                {"bad": "shape"}
+                if invalid_writer
+                else {**original, "blocks": [{"text": text + f"他翻过第{n}页记录。"}]}
+                for n in range(4)
+            )
+        ),
+        FakeProseRewriterProvider(
+            candidates=tuple(
+                {**original, "blocks": [{"text": text + f"他补上第{n}处遗漏。"}]} for n in range(8)
+            )
+        ),
         ScriptedJudge(failures, preservation_fail),
         FakeProseQualityCriticProvider(
             findings_candidates=(
@@ -114,7 +248,15 @@ def _providers(
             * 4,
             pairwise_candidates=pairwise * 4,
         ),
-        FakeProsePolisherProvider(candidates=(polished,) * 4),
+        FakeProsePolisherProvider(
+            candidates=tuple(
+                {
+                    **polished,
+                    "blocks": [{"text": polished["blocks"][0]["text"] + f"他望向第{n}扇窗。"}],
+                }
+                for n in range(4)
+            )
+        ),
     )
 
 
@@ -194,9 +336,12 @@ def _result(factory: Any, run: dict[str, Any]) -> tuple[TaskRun, dict[str, Any],
             )
         )
     assert task is not None
-    manifest = next(
-        (a.content_jsonb for a in artifacts if a.artifact_key == "compiler.compile_manifest"), None
+    latest = max(
+        (a for a in artifacts if a.artifact_key.startswith("compiler.compile_manifest")),
+        key=lambda a: a.id,
+        default=None,
     )
+    manifest = latest.content_jsonb if latest is not None else None
     assert manifest is not None, (task.status, task.error_code, task.error_details_jsonb)
     return task, manifest, artifacts
 
@@ -206,7 +351,7 @@ def _result(factory: Any, run: dict[str, Any]) -> tuple[TaskRun, dict[str, Any],
     [
         (0, False, "polished", "finalized_polished"),
         (1, False, "tie", "finalized_original"),
-        (2, False, "polished", "finalized_polished"),
+        (2, False, "polished", "finalized_original"),
         (3, False, "polished", "semantic_rejected"),
         (0, True, "polished", "finalized_original"),
         (0, False, "disagreement", "finalized_original"),
@@ -227,7 +372,9 @@ def test_serial_shadow_and_exact_rollback(
     _run(factory, run, providers, key)
     task, manifest, artifacts = _result(factory, run)
     assert task.status == "succeeded"
-    assert manifest["scenes"][0]["final_state"] == state, manifest
+    assert manifest["scenes"][0]["final_state"] == state, manifest["scenes"][0].get(
+        "failure_reason"
+    )
     assert manifest["scenes"][0]["rewrite_count"] == min(failures, 2)
     assert manifest["shadow_status"] == ("semantic_rejected" if failures == 3 else "succeeded")
     assert len(manifest["scenes"]) == (1 if failures == 3 else 2)
@@ -420,12 +567,15 @@ def test_same_worker_new_attempt_fences_every_old_write(
     assert providers.writer.call_count == 2
 
 
-def test_judge_retry_has_two_physical_calls(workflow_database: tuple[Engine, int, str]) -> None:
+def test_judge_transport_failure_has_no_hidden_retry(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
     from types import SimpleNamespace
 
     import httpx
-    from casefile.agent_runtime.prose_judge import DeepSeekProseJudgeProvider
     from openai import APIConnectionError
+
+    from casefile.agent_runtime.prose_judge import DeepSeekProseJudgeProvider
 
     class RetryingJudge(DeepSeekProseJudgeProvider):
         def __init__(self) -> None:
@@ -447,11 +597,10 @@ def test_judge_retry_has_two_physical_calls(workflow_database: tuple[Engine, int
     providers = replace(_providers(), judge=RetryingJudge())
     _run(factory, run, providers, workflow_database[2])
     _, manifest, _ = _result(factory, run)
-    assert manifest["shadow_status"] == "succeeded", manifest
+    assert manifest["shadow_status"] == "inconclusive_infrastructure", manifest
     first = manifest["scenes"][0]
-    assert first["physical_request_count"] == first["call_count"] + 1
-    assert first["unknown_usage_count"] == 1
-    assert first["usage"]["total_tokens"] == 80
+    assert first["physical_request_count"] == first["call_count"]
+    assert providers.judge.sent == 1
 
 
 def test_successful_responses_without_usage_remain_unknown(
@@ -463,6 +612,12 @@ def test_successful_responses_without_usage_remain_unknown(
     factory, _, run, _ = _prepare(workflow_database)
     oracle = _providers(failures=1)
     providers = ProseProviders.deepseek()
+    continuity = FakeProseWriterProvider(
+        candidates=(
+            {"verdict": "pass", "issues": []},
+            {"verdict": "pass", "issues": []},
+        )
+    )
 
     def response(method: Any, request: Any) -> Any:
         result = method(request)
@@ -473,6 +628,7 @@ def test_successful_responses_without_usage_remain_unknown(
 
     with ExitStack() as stack:
         for provider, method in (
+            (providers.continuity, continuity.write_scene),
             (providers.writer, oracle.writer.write_scene),
             (providers.rewriter, oracle.rewriter.rewrite_scene),
             (providers.judge, oracle.judge.judge_scene),
@@ -711,7 +867,7 @@ def test_previous_revision_upgrade_preserves_legacy_run(
     assert view["prose_shadow"]["status"] == "disabled"
 
 
-def test_preservation_arbiter_is_persisted_once_per_scene(
+def test_bounded_production_preservation_does_not_start_extra_roles(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     class SplitJudge(ScriptedJudge):
@@ -739,8 +895,8 @@ def test_preservation_arbiter_is_persisted_once_per_scene(
     _run(factory, run, replace(_providers(), judge=SplitJudge()), workflow_database[2])
     task, manifest, artifacts = _result(factory, run)
     assert task.status == "succeeded" and manifest["shadow_status"] == "succeeded"
-    assert all(len(scene["arbiter_report_hashes"]) == 1 for scene in manifest["scenes"])
-    assert len([a for a in artifacts if a.artifact_key.endswith(".preservation.arbiter")]) == 2
+    assert all(len(scene["arbiter_report_hashes"]) == 0 for scene in manifest["scenes"])
+    assert not [a for a in artifacts if a.artifact_key.endswith(".preservation.arbiter")]
 
 
 def test_expired_worker_cannot_write_generic_terminal(
@@ -779,3 +935,124 @@ def test_expired_worker_cannot_write_generic_terminal(
     with factory() as session:
         task = session.get(TaskRun, task_id)
         assert task is not None and task.status == "cancelling"
+
+
+def test_judge_protocol_repair_retains_failed_raw_and_respects_scene_budget(workflow_database):
+    class RepairJudge(ScriptedJudge):
+        def judge_scene(self, request):
+            result = super().judge_scene(request)
+            if (
+                request.input_payload["untrusted_data"]["render"]["stage"] == "writer"
+                and "protocol_repair" not in request.input_payload
+            ):
+                candidate = json.loads(json.dumps(result.candidate))
+                candidate["assessments"][0]["evidence_ids"].append("unknown-evidence")
+                return FakeProseJudgeProvider(judge_reports=(candidate,)).judge_scene(request)
+            return result
+
+    factory, _, run, _ = _prepare(workflow_database)
+    judge = RepairJudge()
+    _run(factory, run, replace(_providers(), judge=judge), workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    assert manifest["shadow_status"] == "succeeded"
+    with factory() as session:
+        calls = list(
+            session.scalars(
+                select(AgentModelCall).where(
+                    AgentModelCall.task_run_id == run["task_run_id"],
+                    AgentModelCall.prompt_component_id == "prose_fidelity_judge",
+                )
+            )
+        )
+    assert len(calls) == 6
+    assert all(
+        sum(
+            r.input_payload["untrusted_data"]["render"]["scene_id"] == scene["scene_id"]
+            for r in judge.requests
+        )
+        == 3
+        for scene in manifest["scenes"]
+    )
+    failed = [c for c in calls if c.status == "failed"]
+    assert len(failed) == 2
+    assert all(
+        "unknown-evidence" in c.response_jsonb["raw_response"] and c.issues_jsonb for c in failed
+    )
+    assert all(r.network_retries == 0 for r in judge.requests)
+    repair = [c for c in calls if "protocol_repair" in c.response_jsonb["request_payload"]]
+    assert len(repair) == 2 and all(c.status == "succeeded" for c in repair)
+
+
+def test_generation_repair_keeps_failed_raw_and_does_not_spend_judge_budget(workflow_database):
+    class RepairingWriter:
+        def write_scene(self, request):
+            data = request.input_payload["untrusted_data"]
+            scene = data["checklist"]["scene_ordinal"]
+            body = "调查者核对记录，确认当前场景已经发生的动作。" * 18 + f"他写下第{scene}次观察。"
+            candidate = {
+                "schema_id": "compiler.scene-render-candidate.v1",
+                "blocks": [{"text": body}],
+            }
+            if "generation_repair" not in request.input_payload:
+                if scene == 1:
+                    candidate["blocks"][0]["text"] *= 4
+                else:
+                    candidate["blocks"] = [{"text": data["continuity_reference"]["text"]}]
+            return FakeProseWriterProvider(candidates=(candidate,)).write_scene(request)
+
+    factory, _, run, _ = _prepare(workflow_database)
+    providers = replace(_providers(), writer=RepairingWriter())
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    assert manifest["shadow_status"] == "succeeded"
+    assert providers.judge.calls == 4
+    with factory() as session:
+        calls = list(
+            session.scalars(
+                select(AgentModelCall).where(
+                    AgentModelCall.task_run_id == run["task_run_id"],
+                    AgentModelCall.prompt_component_id == "prose_writer",
+                )
+            )
+        )
+    assert len(calls) == 4
+    failed = [c for c in calls if c.status == "failed"]
+    assert len(failed) == 2
+    assert {c.issues_jsonb[0]["code"] for c in failed} == {
+        "compiler_scene_render_length_out_of_bounds",
+        "prose_generation_repeated_previous_scene",
+    }
+    assert all(
+        c.response_jsonb["raw_response"] and c.issues_jsonb[0]["actual_chars"] for c in failed
+    )
+    successful = [c for c in calls if c.status == "succeeded"]
+    assert all("generation_repair" in c.response_jsonb["request_payload"] for c in successful)
+    accepted_writer = [
+        a
+        for a in artifacts
+        if a.artifact_kind == "scene_render" and a.content_jsonb["stage"] == "writer"
+    ]
+    assert {a.agent_step_run_id for a in accepted_writer} == {
+        c.agent_step_run_id for c in successful
+    }
+
+
+def test_failed_optional_polish_retains_semantically_accepted_original(workflow_database):
+    factory, _, run, _ = _prepare(workflow_database)
+    short = {"schema_id": "compiler.scene-render-candidate.v1", "blocks": [{"text": "过短。"}]}
+    providers = replace(_providers(), polisher=FakeProsePolisherProvider(candidates=(short,) * 4))
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, _ = _result(factory, run)
+    assert manifest["shadow_status"] == "succeeded"
+    assert all(s["final_state"] == "finalized_original" for s in manifest["scenes"])
+    assert providers.judge.calls == 2
+    with factory() as session:
+        calls = list(
+            session.scalars(
+                select(AgentModelCall).where(
+                    AgentModelCall.task_run_id == run["task_run_id"],
+                    AgentModelCall.prompt_component_id == "prose_polisher",
+                )
+            )
+        )
+    assert len(calls) == 4 and all(c.status == "failed" for c in calls)

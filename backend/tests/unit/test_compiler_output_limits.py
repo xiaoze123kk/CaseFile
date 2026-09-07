@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from casefile.agent_runtime.constraint_first_story_planner import SkeletonProposalRequest
 from casefile.agent_runtime.provider_adapters.deepseek import DeepSeekAgentsProvider
 from casefile.agent_runtime.story_planner import (
@@ -14,7 +15,7 @@ from casefile.agent_runtime.story_planner import (
 from casefile_contracts import SkeletonProposal
 
 
-def invoke(raw: str, finish: str):
+def invoke(raw: str, finish: str, on_response=lambda *_: None):
     response = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=raw), finish_reason=finish)],
         usage=SimpleNamespace(prompt_tokens=100, completion_tokens=8192, total_tokens=8292),
@@ -31,6 +32,7 @@ def invoke(raw: str, finish: str):
         input_hash="a" * 64,
         model_id="deepseek-v4-pro",
         api_key="test-secret",
+        on_response=on_response,
     )
     with patch(
         "casefile.agent_runtime.provider_adapters.deepseek.AsyncOpenAI", return_value=client
@@ -64,8 +66,11 @@ def test_compiler_explicitly_uses_full_provider_output_allowance():
     ],
 )
 def test_incomplete_output_retains_evidence_and_is_never_a_valid_candidate(raw, finish, code):
+    received = []
     with pytest.raises(CompilerProviderOutputError) as caught:
-        invoke(raw, finish)
+        invoke(raw, finish, lambda *args: received.append(args))
+    assert received[0][0] == raw
+    assert received[0][1]["output_tokens"] == 8192
     assert caught.value.reason_code == code
     assert caught.value.raw_output == raw
     assert caught.value.finish_reason == finish

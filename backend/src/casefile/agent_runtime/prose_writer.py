@@ -10,10 +10,16 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import SceneRender, SceneRenderCandidate
 from openai import OpenAI
 
 from casefile.agent_runtime.prompt_repository import load_prompt
+from casefile.agent_runtime.prose_generation import (
+    generation_focus,
+    generation_length_contract,
+    generation_view,
+    prepare_generation_result,
+    validate_generation_result,
+)
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
@@ -21,11 +27,12 @@ from casefile.domain.narrative_compiler import (
     validate_novel_profile_v2,
     validate_prose_judge_checklist,
 )
+from casefile_contracts import SceneRender, SceneRenderCandidate
 
 PROSE_WRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v1"
-PROSE_WRITER_REQUEST_PROTOCOL: Final = "prose-writer-json-object-v1"
-PROSE_WRITER_COMPONENT_VERSION: Final = "prose-writer-runtime-v1"
+PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v3"
+PROSE_WRITER_REQUEST_PROTOCOL: Final = "prose-writer-json-object-v3"
+PROSE_WRITER_COMPONENT_VERSION: Final = "prose-writer-runtime-v3"
 PROSE_WRITER_MAX_TURNS: Final = 1
 PROSE_WRITER_MAX_CALLS: Final = 1
 PROSE_WRITER_NETWORK_RETRIES: Final = 0
@@ -35,9 +42,7 @@ PROSE_WRITER_THINKING_ENABLED: Final = False
 PROSE_WRITER_CANDIDATE_SCHEMA_ID: Final = "compiler.scene-render-candidate.v1"
 PROSE_WRITER_RENDER_SCHEMA_ID: Final = "compiler.scene-render.v1"
 PROSE_WRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
-PROSE_WRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(
-    PROSE_WRITER_CANDIDATE_SCHEMA
-)
+PROSE_WRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_WRITER_CANDIDATE_SCHEMA)
 PROSE_WRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
 PROSE_WRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
@@ -118,6 +123,7 @@ class ProseWriterProviderResult:
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProseWriterTransportAttempt, ...]
     recovered: bool = False
+    generation_call_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +246,7 @@ class DeepSeekProseWriterProvider:
                             separators=(",", ":"),
                         ),
                     },
+                    {"role": "user", "content": generation_focus(request)},
                 ],
                 response_format={"type": "json_object"},
                 temperature=request.temperature,
@@ -330,9 +337,16 @@ def execute_prose_writer(
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
             call = (
-                replace(recovered, recovered=True)
-                if recovered
-                else provider.write_scene(request)
+                replace(recovered, recovered=True) if recovered else provider.write_scene(request)
+            )
+            call, request = prepare_generation_result(
+                provider,
+                provider.write_scene,
+                request,
+                call,
+                "prose_writer",
+                _validate_result_binding,
+                recover_call,
             )
         except ProseWriterInfrastructureError as error:
             failed = error.failed_call or _failed_call_from_request(
@@ -357,6 +371,7 @@ def execute_prose_writer(
                 error_code=str(error),
             )
         _validate_result_binding(call, request)
+        validate_generation_result(provider, call, request, "prose_writer")
         if call.candidate is None:
             raise ProseWriterProtocolError("prose_writer_empty_or_invalid_json")
         render = normalize_scene_render_candidate(
@@ -390,10 +405,10 @@ def build_prose_writer_request(
 
     if model_id != PROSE_WRITER_MODEL_ID:
         raise ProseWriterProtocolError("prose_writer_model_id_not_frozen")
-    if not isinstance(remaining_scene_call_budget, int) or isinstance(
-        remaining_scene_call_budget, bool
-    ) or not (
-        1 <= remaining_scene_call_budget <= 23
+    if (
+        not isinstance(remaining_scene_call_budget, int)
+        or isinstance(remaining_scene_call_budget, bool)
+        or not (1 <= remaining_scene_call_budget <= 23)
     ):
         raise ProseWriterProtocolError("prose_writer_call_budget_invalid")
     checklist_json = validate_prose_judge_checklist(
@@ -415,9 +430,7 @@ def build_prose_writer_request(
             "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
             "narrative_ir_hash": checklist_json["source"]["narrative_ir_hash"],
             "profile_hash": checklist_json["source"]["profile_hash"],
-            "previous_scene_render_hash": checklist_json["source"][
-                "previous_scene_render_hash"
-            ],
+            "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
             "checklist_hash": canonical_json_sha256(checklist_json),
             "prompt_version": prompt.version,
             "prompt_hash": prompt.system_prompt_sha256,
@@ -437,19 +450,17 @@ def build_prose_writer_request(
             "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
             "narrative_ir_hash": checklist_json["source"]["narrative_ir_hash"],
             "profile_hash": checklist_json["source"]["profile_hash"],
-            "previous_scene_render_hash": checklist_json["source"][
-                "previous_scene_render_hash"
-            ],
+            "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
             "candidate_schema_id": PROSE_WRITER_CANDIDATE_SCHEMA_ID,
             "candidate_schema_hash": PROSE_WRITER_CANDIDATE_SCHEMA_HASH,
             "render_schema_id": PROSE_WRITER_RENDER_SCHEMA_ID,
             "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
             "max_writer_calls": PROSE_WRITER_MAX_CALLS,
+            "length_contract": generation_length_contract(profile_json),
             "remaining_scene_call_budget": remaining_scene_call_budget,
         },
         "untrusted_data": {
-            "checklist": checklist_json,
-            "scene_context": checklist_json["scene_context"],
+            **generation_view(checklist_json),
             "profile": profile_json,
         },
         "output_schema_id": PROSE_WRITER_CANDIDATE_SCHEMA_ID,

@@ -38,6 +38,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "story_planner_skeleton",
     "story_planner_semantic_fill",
     "scene_compiler_semantic_fill",
+    "prose_continuity",
     "prose_writer",
     "prose_rewriter",
     "prose_fidelity_judge",
@@ -125,6 +126,7 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "general-mutation-planner-v5": frozenset({"general_mutation_planner"}),
     "general-mutation-planner-v6": frozenset({"general_mutation_planner"}),
     "general-mutation-planner-v7": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v8": frozenset({"general_mutation_planner"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

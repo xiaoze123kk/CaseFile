@@ -1,8 +1,8 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$SkipDependencySync,
-    [int]$ApiPort = 8000,
-    [int]$WebPort = 3000
+    [ValidateRange(1, 65535)][int]$ApiPort = 8000,
+    [ValidateRange(1, 65535)][int]$WebPort = 3000
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,23 +37,6 @@ function Wait-HttpReady([string]$uri, [int]$timeoutSeconds = 90) {
     throw "Timed out waiting for $uri."
 }
 
-function Stop-PortOwner([int]$port) {
-    $owners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-        Where-Object { $_.LocalPort -eq $port } |
-        Select-Object -ExpandProperty OwningProcess -Unique
-    foreach ($owner in $owners) {
-        Stop-Process -Id $owner -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Stop-CaseFileWorkers {
-    $workers = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*-m casefile.worker*" }
-    foreach ($worker in $workers) {
-        Stop-Process -Id $worker.ProcessId -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Show-LogTail([string]$path) {
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         Write-Host "--- $path ---"
@@ -61,19 +44,18 @@ function Show-LogTail([string]$path) {
     }
 }
 
-function Test-DockerEngine {
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "Continue"
-        & docker info *> $null
-        return ($LASTEXITCODE -eq 0)
-    } finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-}
+. (Join-Path $PSScriptRoot "startup-runtime.ps1")
+if ($ApiPort -eq $WebPort) { throw 'API and Web ports must differ.' }
+New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+try {
+    $startupLock = [IO.File]::Open((Join-Path $runDir 'startup.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+} catch { throw 'Another CaseFile startup is already running.' }
 
 Push-Location $repoRoot
+$transcriptStarted = $false
 try {
+    $null = Start-Transcript -Path (Join-Path $runDir ("startup-" + (Get-Date -Format "yyyyMMdd-HHmmss-fff") + ".log"))
+    $transcriptStarted = $true
     Add-PathEntry $nodeBin
     Add-PathEntry (Split-Path -Parent $pnpmFallback)
 
@@ -88,37 +70,35 @@ try {
         throw "Backend virtual environment is missing: $venvPython"
     }
 
-    if (-not (Test-DockerEngine)) {
-        $dockerDesktop = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
-        if (-not (Test-Path -LiteralPath $dockerDesktop -PathType Leaf)) {
-            throw "Docker Engine is unavailable and Docker Desktop was not found."
-        }
-        Write-Host "Starting Docker Desktop..."
-        Start-Process -FilePath $dockerDesktop -WindowStyle Hidden | Out-Null
-        $dockerDeadline = [DateTimeOffset]::Now.AddSeconds(90)
-        do {
-            Start-Sleep -Seconds 2
-        } while (-not (Test-DockerEngine) -and [DateTimeOffset]::Now -lt $dockerDeadline)
-        if (-not (Test-DockerEngine)) {
-            throw "Docker Engine did not become ready within 90 seconds."
-        }
-    }
+    $api = Get-WorkspacePortOwner $ApiPort $repoRoot
+    $web = Get-WorkspacePortOwner $WebPort $repoRoot
+    $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
+        Where-Object { $_.CommandLine -like '*-m casefile.worker*' -and
+            $_.CommandLine -like "*$venvPython*" })
+    $worker = if ($workers.Count) { Get-Process -Id $workers[0].ProcessId } else { $null }
+    Start-CaseFileDocker
 
-    if (-not $SkipDependencySync) {
+    if (-not $SkipDependencySync -and -not ($api -or $web -or $worker)) {
+        $uv = Get-Command uv -ErrorAction SilentlyContinue
+        if (-not $uv) { throw 'uv was not found. Install uv, or use -SkipDependencySync when dependencies are already installed.' }
         Write-Host "Syncing workspace dependencies..."
-        & $pnpm.Source install --frozen-lockfile
-        if ($LASTEXITCODE -ne 0) {
+        $sync = Invoke-StartupCommand $env:ComSpec "/d /s /c `"`"$($pnpm.Source)`" install --frozen-lockfile`"" 600
+        Write-Host $sync.Output
+        if ($sync.ExitCode -ne 0) {
+            Write-Host $sync.Error
             throw "pnpm dependency sync failed."
         }
-        & $venvPython -m pip install -e ".\backend" --quiet
-        if ($LASTEXITCODE -ne 0) {
-            throw "Backend dependency sync failed."
-        }
+        $sync = Invoke-StartupCommand $uv.Source 'sync --project backend --extra dev' 600
+        if ($sync.ExitCode -ne 0) { Write-Host $sync.Error; throw "Backend dependency sync failed." }
+    } elseif (-not $SkipDependencySync) {
+        Write-Host "Services are running; dependency sync skipped to preserve active tasks."
     }
 
     Write-Host "Preparing PostgreSQL and applying migrations..."
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "bootstrap.ps1")
-    if ($LASTEXITCODE -ne 0) {
+    $bootstrap = Invoke-StartupCommand powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $PSScriptRoot 'bootstrap.ps1')`"" 240
+    Write-Host $bootstrap.Output
+    if ($bootstrap.ExitCode -ne 0) {
+        Write-Host $bootstrap.Error
         throw "Database bootstrap failed."
     }
 
@@ -135,11 +115,6 @@ try {
         }
     }
 
-    Stop-PortOwner $ApiPort
-    Stop-PortOwner $WebPort
-    Stop-CaseFileWorkers
-    Start-Sleep -Milliseconds 300
-
     New-Item -ItemType Directory -Force -Path $runDir | Out-Null
     $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $apiOut = Join-Path $runDir "api-$stamp.out.log"
@@ -149,22 +124,29 @@ try {
     $workerOut = Join-Path $runDir "worker-$stamp.out.log"
     $workerErr = Join-Path $runDir "worker-$stamp.err.log"
 
-    $api = Start-Process -FilePath $venvPython `
-        -ArgumentList @("-m", "uvicorn", "casefile.api.app:app", "--host", "127.0.0.1", "--port", "$ApiPort") `
-        -WorkingDirectory $backendRoot -WindowStyle Hidden `
-        -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru
+    if (-not $api) {
+        $api = Start-Process -FilePath $venvPython `
+            -ArgumentList @("-m", "uvicorn", "casefile.api.app:app", "--host", "127.0.0.1", "--port", "$ApiPort") `
+            -WorkingDirectory $backendRoot -WindowStyle Hidden `
+            -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru
+    } else { Write-Host "Reusing API PID $($api.Id)." }
     # Start pnpm through cmd.exe so .cmd shims work reliably.
     # Pass --port explicitly so an external PORT value cannot override -WebPort.
-    $web = Start-Process -FilePath $env:ComSpec `
-        -ArgumentList @("/c", "`"$($pnpm.Source)`" --filter @casefile/web dev --port $WebPort") `
-        -WorkingDirectory $repoRoot -WindowStyle Hidden `
-        -RedirectStandardOutput $webOut -RedirectStandardError $webErr -PassThru
+    if (-not $web) {
+        $web = Start-Process -FilePath $env:ComSpec `
+            -ArgumentList @("/c", "`"$($pnpm.Source)`" --filter @casefile/web dev --port $WebPort") `
+            -WorkingDirectory $repoRoot -WindowStyle Hidden `
+            -RedirectStandardOutput $webOut -RedirectStandardError $webErr -PassThru
+    } else { Write-Host "Reusing Web PID $($web.Id)." }
     if ([string]::IsNullOrWhiteSpace($env:CASEFILE_PROVIDER_MODE)) {
         $env:CASEFILE_PROVIDER_MODE = "live"
     }
-    $worker = Start-Process -FilePath $venvPython -ArgumentList @("-m", "casefile.worker") `
-        -WorkingDirectory $backendRoot -WindowStyle Hidden `
-        -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -PassThru
+    if (-not $worker) {
+        $worker = Start-Process -FilePath $venvPython -ArgumentList @("-m", "casefile.worker") `
+            -WorkingDirectory $backendRoot -WindowStyle Hidden `
+            -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr -PassThru
+
+    } else { Write-Host "Reusing Worker PID $($worker.Id); active tasks are preserved." }
 
     try {
         Start-Sleep -Milliseconds 500
@@ -178,6 +160,8 @@ try {
         if ($webResponse.Content.Length -lt 100) {
             throw "Frontend returned an unexpectedly small HTML document."
         }
+        $worker.Refresh()
+        if ($worker.HasExited) { throw 'CaseFile Worker exited before startup completed.' }
     } catch {
         Show-LogTail $apiErr
         Show-LogTail $webErr
@@ -192,6 +176,11 @@ try {
     Write-Host "  Web PID: $($web.Id)"
     Write-Host "  Worker PID: $($worker.Id)"
     Write-Host "  Logs: $runDir"
+} catch {
+    Write-Host "Startup failed: $($_.Exception.Message)"
+    throw
 } finally {
+    if ($transcriptStarted) { $null = Stop-Transcript }
     Pop-Location
+    $startupLock.Dispose()
 }

@@ -404,6 +404,7 @@ def test_v2_rejects_inferred_type_incompatible_with_target_field() -> None:
         ("general-mutation-planner-v5", MutationPlanV2),
         ("general-mutation-planner-v6", MutationPlanV2),
         ("general-mutation-planner-v7", MutationPlanV2),
+        ("general-mutation-planner-v8", MutationPlanV2),
     ],
 )
 def test_prompt_version_routes_matching_output_contract(
@@ -493,3 +494,27 @@ def test_explicit_unknown_object_ids_exclude_contract_fields_and_known_ids() -> 
         _document(),
         {"claims": ("status",)},
     ) == ()
+
+
+@pytest.mark.parametrize("version", ["general-mutation-planner-v7", "general-mutation-planner-v8"])
+def test_planner_context_is_versioned_and_preserves_current_instruction(version: str) -> None:
+    import json
+    request = GeneralMutationPlannerRequest(
+        task_run_id=1, model_id="fake", api_key=None, casefile=_document(),
+        message="好，但保留事件时间", input_hash="a" * 64,
+        editable_fields_by_collection={"entities": ("knowledge_states",)}, emit=lambda *_: None,
+        prompt_version=version,
+        thread_history=({"role": "assistant", "content": "修正两位角色的所知范围。"},),
+        focus={"object_ids": ["ent_researcher"]},
+        validation_issues=({"issue_id": "issue_1", "target": {"field_path": "/knowledge_states"}},),
+        canonical_query="修正所知范围，保留事件时间",
+    )
+    payload = json.loads(render_general_mutation_prompt(request).input_text)
+    assert payload["message"] == request.message
+    if version.endswith("v8"):
+        assert payload["thread_history"] == list(request.thread_history)
+        assert payload["focus"] == request.focus
+        assert payload["validation_issues"] == list(request.validation_issues)
+        assert payload["canonical_query"] == request.canonical_query
+    else:
+        assert set(payload) == {"message", "casefile", "editable_fields_by_collection"}

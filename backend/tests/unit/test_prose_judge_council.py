@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 import pytest
+from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
+
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ADVERSARIAL_POLICY,
     FIDELITY_ONLY_POLICY,
@@ -32,7 +34,6 @@ from casefile.benchmark.prose_judge_eval import (
     load_prose_judge_dev_suite,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
-from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
 
 
 @pytest.fixture(scope="module")
@@ -350,7 +351,7 @@ def test_render_binding_is_explicit_and_changes_request_fingerprint(
     )
     assert original.status == changed.status == "completed"
     assert original.calls[0].request_fingerprint != changed.calls[0].request_fingerprint
-    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v6"
+    assert PROSE_JUDGE_REQUEST_PROTOCOL == "prose-judge-json-object-v7"
     assert (
         original.calls[0].request_payload["server_evidence_catalog"]
         != (changed.calls[0].request_payload["server_evidence_catalog"])
@@ -616,3 +617,84 @@ def test_non_frozen_model_is_rejected_before_provider_call(case: dict[str, Any])
             api_key="fake",
         )
     assert provider.call_count == 0
+
+
+@pytest.mark.parametrize("change_decision", [False, True])
+def test_bounded_evidence_repair_preserves_original_and_decision(case, change_decision):
+    original = _report(case, "fidelity")
+    original["assessments"][0]["evidence_ids"].append("unknown-evidence")
+    repaired = _report(case, "fidelity")
+    if change_decision:
+        repaired["assessments"][0]["verdict"] = "uncertain"
+    provider = FakeProseJudgeProvider(judge_reports=(original, repaired))
+    provider.allow_protocol_repair = True
+    failures = []
+    provider.record_protocol_failure = lambda fingerprint, details: failures.append(details)
+    result = execute_semantic_council(
+        provider,
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert provider.call_count == 2
+    assert len(result.calls) == 2
+    assert result.calls[0].candidate == original
+    assert result.calls[1].request_payload["protocol_repair"]["original_candidate"] == original
+    assert result.status == ("protocol_failed" if change_decision else "completed")
+    assert len(failures) == (2 if change_decision else 1)
+
+
+def test_evidence_repair_stops_after_one_failed_repair(case):
+    original = _report(case, "fidelity")
+    original["assessments"][0]["evidence_ids"].append("unknown-evidence")
+    provider = FakeProseJudgeProvider(judge_reports=(original, original, _report(case, "fidelity")))
+    provider.allow_protocol_repair = True
+    result = execute_semantic_council(
+        provider,
+        checklist=case["checklist"],
+        render=case["sample"]["render"],
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert provider.call_count == 2
+    assert result.status == "protocol_failed"
+
+
+def test_candidate_evidence_limit_matches_report_contract():
+    from casefile.agent_runtime.prose_judge import PROSE_JUDGE_CANDIDATE_SCHEMA
+    from casefile_contracts import ProseJudgeReport
+
+    candidate = PROSE_JUDGE_CANDIDATE_SCHEMA["$defs"]["_ProseJudgeCandidateAssessment"]
+    report = ProseJudgeReport.model_json_schema()["$defs"]["JudgeAssessment"]
+    assert candidate["properties"]["evidence_ids"]["maxItems"] == 64
+    assert report["properties"]["evidence"]["maxItems"] == 64
+
+
+def test_twenty_seven_evidence_spans_are_retained_without_truncation(case):
+    render = deepcopy(case["sample"]["render"])
+    render["blocks"][0]["text"] += "新的记录已经核对。" * 30
+    render["character_count"] = sum(len(b["text"]) for b in render["blocks"])
+    catalog = build_server_evidence_catalog(render)
+    evidence = [item["evidence_id"] for item in catalog][-27:]
+    assert len(evidence) == 27
+    candidate = _report(case, "fidelity")
+    candidate["assessments"][0]["evidence_ids"] = evidence
+    result = execute_semantic_council(
+        FakeProseJudgeProvider(judge_reports=(candidate,)),
+        checklist=case["checklist"],
+        render=render,
+        profile=case["profile"],
+        policy=FIDELITY_ONLY_POLICY,
+        model_id=PROSE_COUNCIL_MODEL_ID,
+        api_key="fake",
+    )
+    assert result.status == "completed"
+    actual = result.judge_reports[0]["assessments"][0]["evidence"]
+    assert actual == [
+        {k: v for k, v in item.items() if k != "evidence_id"} for item in catalog[-27:]
+    ]

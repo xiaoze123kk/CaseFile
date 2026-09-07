@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, NoReturn
 
-from casefile_contracts import SceneSemanticFillProposal
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
 )
+from casefile_contracts import SceneSemanticFillProposal
 
 
 class SceneFillValidationError(CompilerContractError):
@@ -250,6 +250,7 @@ def _raise_validation_error(
         evidence["emitted_ref"] = emitted_ref
     if allowed_refs is not None:
         ordered = sorted(allowed_refs)
+        evidence["allowed_refs"] = ordered
         evidence["allowed_ref_count"] = len(ordered)
         evidence["allowed_ref_hash"] = canonical_json_sha256(ordered)
     raise SceneFillValidationError(reason_code, evidence)

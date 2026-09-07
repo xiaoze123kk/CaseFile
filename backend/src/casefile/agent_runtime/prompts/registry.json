@@ -44,25 +44,25 @@
       "current_version": "story-planner-semantic-fill-v1"
     },
     "scene_compiler_semantic_fill": {
-      "current_version": "scene-compiler-semantic-fill-v6"
+      "current_version": "scene-compiler-semantic-fill-v7"
     },
     "prose_writer": {
-      "current_version": "prose-writer-v1"
+      "current_version": "prose-writer-v3"
     },
     "prose_rewriter": {
-      "current_version": "prose-rewriter-v3"
+      "current_version": "prose-rewriter-v5"
     },
     "prose_fidelity_judge": {
-      "current_version": "prose-fidelity-judge-v6"
+      "current_version": "prose-fidelity-judge-v8"
     },
     "prose_adversarial_judge": {
-      "current_version": "prose-adversarial-judge-v5"
+      "current_version": "prose-adversarial-judge-v7"
     },
     "prose_coherence_judge": {
-      "current_version": "prose-coherence-judge-v5"
+      "current_version": "prose-coherence-judge-v7"
     },
     "prose_arbiter": {
-      "current_version": "prose-arbiter-v5"
+      "current_version": "prose-arbiter-v7"
     },
     "prose_quality_critic": {
       "current_version": "prose-quality-critic-v1"
@@ -71,10 +71,13 @@
       "current_version": "prose-quality-pairwise-v1"
     },
     "prose_polisher": {
-      "current_version": "prose-polisher-v2"
+      "current_version": "prose-polisher-v5"
     },
     "general_mutation_planner": {
-      "current_version": "general-mutation-planner-v7"
+      "current_version": "general-mutation-planner-v8"
+    },
+    "prose_continuity": {
+      "current_version": "prose-continuity-v1"
     }
   }
 }

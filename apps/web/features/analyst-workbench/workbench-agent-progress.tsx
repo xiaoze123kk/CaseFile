@@ -8,7 +8,7 @@ export function AgentProgress({ feedback, run, controls }: { feedback?: RunFeedb
   const active = ["queued", "running", "cancelling"].includes(run.status);
   if (!active) return controls ?? null;
   const activity = feedback?.activities.filter((item) => item.status === "started").at(-1);
-  const completed = feedback?.activities.filter((item) => item.status !== "started") ?? [];
+  const completed = feedback?.activities.filter((item) => item.status === "completed") ?? [];
   const label = run.status === "queued" ? "回复已排队" : run.status === "cancelling" ? "正在安全停止" :
     `正在${activityLabels[activity?.activity ?? run.activity ?? "understanding"]}`;
   const renderActivity = (item: NonNullable<RunFeedback>["activities"][number]) => (

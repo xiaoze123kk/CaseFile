@@ -1236,6 +1236,12 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             # General Mutation is the sole PatchSet source in suggest mode.
             if general_mutation_envelope is not None:
                 suggestions = []
+                if general_mutation_envelope.get("status") == "blocked":
+                    answer = "本轮未能生成通过校验的补丁，未创建修改卡片，也没有修改工作稿。"
+                    _append_event(
+                        self.session, task, "message.preview_invalidated", "feedback",
+                        {"discard": True},
+                    )
 
             focused_target_ids = _focused_patch_target_ids(
                 task.input_jsonb.get("focus"), task.input_jsonb.get("validation")

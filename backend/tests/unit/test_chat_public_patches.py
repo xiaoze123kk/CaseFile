@@ -418,3 +418,22 @@ def test_public_patch_requests_use_change_warning_and_confirmation_handles() -> 
                 "accepted_warning_ids": ["warning_abc"],
             }
         )
+
+
+def test_knowledge_review_labels_and_values_are_readable() -> None:
+    fields = FieldLabelRegistry()
+    assert fields.label("/knowledge_states/0/knows_refs") == "第 1 个认知时点 · 所知信息"
+    assert fields.label("/knowledge_states/1/as_of_event_ref") == "第 2 个认知时点 · 认知时点"
+    formatter = ValueFormatter(ObjectLabelResolver({"object_labels": {
+        "evt_investigation": {"object_type": "event", "name": "追查阶段"},
+        "info_future": {"object_type": "information_unit", "name": "后来的真相"},
+    }}))
+    value = formatter.format([{
+        "as_of_event_ref": {"object_type": "event", "object_id": "evt_investigation"},
+        "knows_refs": [{"object_type": "information_unit", "object_id": "info_future"}],
+        "believes_refs": [], "false_belief_refs": [],
+    }])
+    assert "追查阶段" in value["text"]
+    assert "所知信息：后来的真相" in value["text"]
+    assert "误判：无" in value["text"]
+    assert "info_future" not in value["text"]
