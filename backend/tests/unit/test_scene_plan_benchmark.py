@@ -17,6 +17,19 @@ from casefile.benchmark import scene_plan_eval
 from casefile.benchmark.scene_plan_eval import run_suite, validate_suite
 
 
+@pytest.fixture(scope="module")
+def validated_scene_suite() -> dict[str, Any]:
+    # Validate the complete frozen bank once; each consumer gets its own copy.
+    return validate_suite()
+
+
+@pytest.fixture(autouse=True)
+def reuse_validated_scene_suite(
+    monkeypatch: pytest.MonkeyPatch, validated_scene_suite: dict[str, Any],
+) -> None:
+    monkeypatch.setattr(scene_plan_eval, "validate_suite", lambda: deepcopy(validated_scene_suite))
+
+
 def _object_ref_keys(value: Any) -> set[str]:
     refs: set[str] = set()
     if isinstance(value, dict):
@@ -33,7 +46,7 @@ def _object_ref_keys(value: Any) -> set[str]:
 
 
 def test_scene_plan_suite_is_audited_24_task_matrix() -> None:
-    validated = validate_suite()
+    validated = scene_plan_eval.validate_suite()
 
     assert len(validated["suite"]["tasks"]) == 24
     assert len(validated["alternatives"]) == 8
@@ -253,7 +266,7 @@ def test_g3_flash_protocol_blinds_slots_and_maps_scores_back(
         model_id="deepseek-v4-flash",
         task_id="scene_decomposition__basic",
         trial_index=1,
-        rubric=validate_suite()["rubric"],
+        rubric=scene_plan_eval.validate_suite()["rubric"],
         model_view={"schema_id": "test-context"},
         candidate={"schema_id": "candidate"},
         reference={"schema_id": "reference"},
@@ -302,7 +315,7 @@ def test_g3_flash_protocol_retries_one_empty_response(
         model_id="deepseek-v4-flash",
         task_id="scene_decomposition__basic",
         trial_index=1,
-        rubric=validate_suite()["rubric"],
+        rubric=scene_plan_eval.validate_suite()["rubric"],
         model_view={"schema_id": "test-context"},
         candidate={"schema_id": "candidate"},
         reference={"schema_id": "reference"},
@@ -343,7 +356,7 @@ def test_g3_paired_bootstrap_is_task_clustered_and_deterministic() -> None:
 
 
 def test_promotion_gate_requires_both_g3_non_regression_and_g4_audit() -> None:
-    thresholds = validate_suite()["suite"]["promotion_gate"]
+    thresholds = scene_plan_eval.validate_suite()["suite"]["promotion_gate"]
     metrics = {
         "passed_trial_count": 71,
         "pass_at_k_task_count": 24,
@@ -425,7 +438,7 @@ def test_rejected_provider_output_retains_stage_usage_evidence() -> None:
     assert report["trials"][0]["stages"][0]["raw_output_hash"]
     assert report["trials"][0]["stages"][0]["diagnostic_payload"]
     evidence = report["trials"][0]["failure_evidence"]
-    assert {key: value for key, value in evidence.items() if key != "allowed_ref_hash"} == {
+    expected_evidence = {
         "batch_id": "scene_batch_chapter_1_001",
         "json_path": "/scenes/0/beats/0/actor_refs/0",
         "scene_id": "scene_1",
@@ -433,6 +446,8 @@ def test_rejected_provider_output_retains_stage_usage_evidence() -> None:
         "emitted_ref": {"object_type": "entity", "object_id": "ent_unknown"},
         "allowed_ref_count": 2,
     }
+    # Extra diagnostic fields may evolve; the required evidence must remain exact.
+    assert {key: evidence[key] for key in expected_evidence} == expected_evidence
     assert len(evidence["allowed_ref_hash"]) == 64
     assert report["metrics"]["failure_batch_ordinals"] == {"1": 1}
     assert report["metrics"]["usage_total"] == {
@@ -442,14 +457,18 @@ def test_rejected_provider_output_retains_stage_usage_evidence() -> None:
 
 
 def test_scene_plan_report_fingerprint_is_deterministic() -> None:
-    first = run_suite(suite_kind="regression")
-    second = run_suite(suite_kind="regression")
+    # Full regression coverage lives in test_scene_plan_reference_and_alternative_outcomes_pass.
+    selection = ("scene_decomposition__basic",)
+    first = run_suite(suite_kind="regression", task_ids=selection)
+    second = run_suite(suite_kind="regression", task_ids=selection)
 
     assert first["fingerprint"] == second["fingerprint"]
     assert first["frozen"] == second["frozen"]
     assert first["metrics"]["task_results"] == second["metrics"]["task_results"]
     assert first["metrics"]["usage_total"] == second["metrics"]["usage_total"]
-    retained = run_suite(suite_kind="regression", diagnostic_payload_policy="failed-proposal")
+    retained = run_suite(
+        suite_kind="regression", task_ids=selection, diagnostic_payload_policy="failed-proposal",
+    )
     assert retained["fingerprint"] != first["fingerprint"]
 
 

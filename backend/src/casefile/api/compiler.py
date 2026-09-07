@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from casefile_contracts import NovelRecommendation
 from fastapi import APIRouter
 from pydantic import Field
 
@@ -16,7 +17,6 @@ from casefile.api.schemas import (
 )
 from casefile.application.compiler import CompilerService
 from casefile.application.compiler.recommendation import recommend_for_draft
-from casefile_contracts import NovelRecommendation
 
 
 class NovelRecommendationRequest(StrictRequest):

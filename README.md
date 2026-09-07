@@ -213,6 +213,22 @@ $env:CASEFILE_TEST_DATABASE_URL = "postgresql+psycopg://casefile:casefile_test_l
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
+统一检查中的完整确定性矩阵由 pytest 执行一次：Closure Repair、Novel Plan regression/safety、General Mutation、Chat Outcome calibration、Context Boundary 和 Context Tier 均复用对应测试；独立的 Chat Goal 门禁仍由脚本运行。架构扫描由 `test_backend_architecture.py` 执行，不再在脚本中预先重复扫描。
+
+日常定位可在 `backend` 下运行 `.venv/Scripts/python.exe -m pytest tests/unit tests/contract --durations=20`，或指定受影响的测试文件。独立 Benchmark CLI 保留用于显式生成报告、诊断和正式资格评测；`check.ps1` 不再额外生成 General Mutation、Context Boundary、Context Tier 的固定路径 JSON 报告。正式资格评测的完整矩阵、次数和门槛不变。
+
+每次 `check.ps1` 都打印 static / evaluation / tests 阶段耗时，并在 `var/checks/<UTC时间-随机后缀>/` 保存独立报告：
+
+- `summary.json`：整轮与各阶段耗时、类别汇总、通过/失败状态及 pytest 报告路径；中途失败也保存已经执行的阶段。
+- `pytest.json`：每条测试的 setup/call/teardown 耗时与结果，按耗时降序排列，并分别汇总三个阶段。完整数据库检查的两次 rollout 验收另存 `pytest-phase3.json` 和 `pytest-phase4.json`。
+- 控制台自动显示最慢 20 个 pytest 阶段。pytest 内执行的完整 benchmark 仍计入 tests，具体耗时通过其文件名和 nodeid 定位；evaluation 类别只计独立的 Goal 门禁，不重复运行矩阵来计时。
+
+单独运行 pytest 时可添加 `--timing-report var/check-timing.json --durations=20`；未指定时不生成时序报告。阶段总和不包含 Python 启动、收集和其他框架开销，因此不等于整轮墙钟时间；计时文件只记录 nodeid、状态与耗时，不保存测试内容或凭据。比较性能时应使用同一测试范围，并注意后台负载和冷/热缓存差异。
+
+数据库业务测试统一复用 `workflow_database`：保留迁移后的 schema，清理独立提交的数据；只有迁移专项测试执行升降级。不要给共用同一测试库的测试直接启用并行执行。
+
+Fixture 的活动/兼容/历史用途和维护规则见 [fixtures/README.md](fixtures/README.md)。
+
 浏览器黄金路径使用真实 Web、API、Worker 和隔离测试库，但固定使用 FakeProvider：
 
 ```powershell

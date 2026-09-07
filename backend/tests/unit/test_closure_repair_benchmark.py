@@ -4,10 +4,12 @@ import json
 import shutil
 import sys
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
 import pytest
+from benchmark_preparation import reuse_document_findings
 from casefile.agent_runtime import (
     ClosureRepairOperationOutputV1,
     ClosureRepairOutputV1,
@@ -16,6 +18,7 @@ from casefile.agent_runtime import (
     OpenAIAgentsProvider,
 )
 from casefile.agent_runtime.closure_repair import ClosureRepairProviderResult
+from casefile.benchmark import closure_repair_capability
 from casefile.benchmark.closure_repair_capability import (
     CapabilityContractError,
     assert_comparable_reports,
@@ -35,8 +38,16 @@ ROOT = Path(__file__).resolve().parents[3]
 SUITE = ROOT / "fixtures/closure_repair_benchmark/v1-scenarios.json"
 
 
-def test_fake_golden_matrix_passes_every_contract_and_safety_gate() -> None:
-    report = run_closure_repair_benchmark(repo_root=ROOT)
+@pytest.fixture(scope="module")
+def golden_report() -> dict[str, Any]:
+    with reuse_document_findings():
+        return run_closure_repair_benchmark(repo_root=ROOT, trials=2)
+
+
+def test_fake_golden_matrix_passes_every_contract_and_safety_gate(
+    golden_report: dict[str, Any],
+) -> None:
+    report = golden_report
 
     assert report["status"] == "passed"
     assert report["mode"] == "deterministic_fake"
@@ -80,8 +91,10 @@ def test_golden_suite_covers_required_success_and_fail_closed_boundaries() -> No
     }.issubset(tags)
 
 
-def test_report_is_all_of_trials_and_does_not_expose_pass_at_k() -> None:
-    report = run_closure_repair_benchmark(repo_root=ROOT, trials=2)
+def test_report_is_all_of_trials_and_does_not_expose_pass_at_k(
+    golden_report: dict[str, Any],
+) -> None:
+    report = golden_report
 
     assert report["metrics"]["trial_count"] == report["scenario_count"] * 2
     assert report["gates"]["all_trials_safe"] is True
@@ -215,6 +228,15 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
         "repair_closure",
         lambda _self, request: _adapter_result(request),
     )
+    # The reference test covers all 61 tasks through the production kernel.
+    # This runner/report test needs one real example of each automation category.
+    full_suite = load_capability_suite(ROOT)
+    tasks = tuple(
+        next(task for task in full_suite.tasks if task.automation == automation)
+        for automation in ("agent", "manual", "ineligible")
+    )
+    sample = replace(full_suite, suite_id="report-test-sample", tasks=tasks)
+    monkeypatch.setattr(closure_repair_capability, "load_capability_suite", lambda *_args: sample)
     artifacts = tmp_path / "trials"
 
     report = run_capability_benchmark(
@@ -231,10 +253,10 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
     assert report["agent_version"] == "closure-repair-agent-v3"
     assert report["output_schema_id"] == "closure-repair-output-v3"
     assert report["context_version"] == "closure-repair-context-v3"
-    assert report["task_count"] == 61
-    assert report["repair_task_count"] == 12
-    assert report["abstention_task_count"] == 49
-    assert report["metrics"]["capability"]["evaluable_trial_count"] == 12
+    assert report["task_count"] == 3
+    assert report["repair_task_count"] == 1
+    assert report["abstention_task_count"] == 2
+    assert report["metrics"]["capability"]["evaluable_trial_count"] == 1
     assert report["metrics"]["capability"]["trial_success_rate"] == 1.0
     assert report["metrics"]["capability"]["semantic_round_2_entry_count"] == 0
     assert report["metrics"]["capability"]["conditional_round_2_recovery_rate"] is None
@@ -252,7 +274,7 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
     assert report["metrics"]["safety"]["unsafe_trial_count"] == 0
     assert report["metrics"]["safety"]["all_of_1_safe"] is True
     assert report["metrics"]["infrastructure_failure_count"] == 0
-    assert len(list(artifacts.glob("*.json"))) == 61
+    assert len(list(artifacts.glob("*.json"))) == 3
 
 
 def test_capability_cli_fails_closed_with_structured_missing_credential(
@@ -282,8 +304,10 @@ def test_capability_cli_fails_closed_with_structured_missing_credential(
     assert payload["blocked_reason"] == "credential_missing"
 
 
-def test_one_unsafe_trial_fails_the_all_of_trials_release_gate() -> None:
-    report = run_closure_repair_benchmark(repo_root=ROOT)
+def test_one_unsafe_trial_fails_the_all_of_trials_release_gate(
+    golden_report: dict[str, Any],
+) -> None:
+    report = golden_report
     rows = deepcopy(report["rows"])
     escaped = next(row for row in rows if "scope_escape" in row["tags"])
     escaped["actual"].update(status="repaired", proof_complete=True, patchset_eligible=True)

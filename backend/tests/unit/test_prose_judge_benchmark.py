@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import pytest
+from benchmark_preparation import reuse_prose_judge_inputs
 from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider, ProseCouncilPolicy
+from casefile.benchmark import prose_judge_eval
 from casefile.benchmark.prose_judge_eval import (
     DEFAULT_ATTESTATION,
     DEFAULT_SUITE,
@@ -28,7 +31,19 @@ from casefile.benchmark.prose_judge_eval import (
 
 
 @pytest.fixture(scope="module")
-def fake_ablation_report() -> dict[str, Any]:
+def validated_judge_suite() -> dict[str, Any]:
+    # One complete real loader pass, including all hashes, Gold and review checks.
+    return load_prose_judge_dev_suite()
+
+
+@pytest.fixture(autouse=True)
+def prepared_judge_inputs(validated_judge_suite: dict[str, Any]) -> Iterator[None]:
+    with reuse_prose_judge_inputs(validated_judge_suite):
+        yield
+
+
+@pytest.fixture(scope="module")
+def fake_ablation_report(validated_judge_suite: dict[str, Any]) -> dict[str, Any]:
     def factory(sample: dict[str, Any], policy: ProseCouncilPolicy) -> FakeProseJudgeProvider:
         return FakeProseJudgeProvider(
             judge_reports=tuple(
@@ -36,15 +51,16 @@ def fake_ablation_report() -> dict[str, Any]:
             )
         )
 
-    return run_development_ablation(
-        provider_factory=factory,
-        api_key="fake",
-        mode="fake",
-    )
+    with reuse_prose_judge_inputs(validated_judge_suite):
+        return run_development_ablation(
+            provider_factory=factory,
+            api_key="fake",
+            mode="fake",
+        )
 
 
 def test_public_suite_has_frozen_distribution_gold_and_review_attestation() -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     tasks = loaded["suite"]["tasks"]
     assert len(tasks) == 24
     assert len({task["ability"] for task in tasks}) == 8
@@ -137,7 +153,7 @@ def test_live_attempt_stops_on_first_infrastructure_failure(tmp_path: Path) -> N
 def test_provider_protocol_smoke_is_fixed_three_call_and_non_qualifying(
     tmp_path: Path,
 ) -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
     reports = []
     for task_id, sample_kind in PROVIDER_SMOKE_CASES:
@@ -166,7 +182,7 @@ def test_provider_protocol_smoke_is_fixed_three_call_and_non_qualifying(
 
 
 def test_provider_protocol_smoke_stops_on_first_protocol_failure() -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
     task_id, sample_kind = PROVIDER_SMOKE_CASES[0]
     sample = tasks[task_id]["samples"][sample_kind]
@@ -219,7 +235,7 @@ def _council_smoke_reports(
 def test_provider_council_smoke_is_exact_four_role_calls_and_non_qualifying(
     tmp_path: Path,
 ) -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     reports, arbiter = _council_smoke_reports(loaded)
     provider = FakeProseJudgeProvider(
         judge_reports=reports,
@@ -246,7 +262,7 @@ def test_provider_council_smoke_is_exact_four_role_calls_and_non_qualifying(
 
 
 def test_provider_council_smoke_stops_on_judge_protocol_failure() -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     reports, _arbiter = _council_smoke_reports(loaded)
     invalid = deepcopy(reports[1])
     invalid["render_hash"] = "0" * 64
@@ -264,7 +280,7 @@ def test_provider_council_smoke_stops_on_judge_protocol_failure() -> None:
 
 
 def test_provider_council_smoke_stops_on_arbiter_infrastructure_failure() -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     reports, arbiter = _council_smoke_reports(loaded)
     provider = FakeProseJudgeProvider(
         judge_reports=reports,
@@ -285,7 +301,7 @@ def test_provider_council_smoke_stops_on_arbiter_infrastructure_failure() -> Non
 def test_provider_semantic_smoke_is_fixed_fourteen_exact_calls(
     tmp_path: Path,
 ) -> None:
-    loaded = load_prose_judge_dev_suite()
+    loaded = prose_judge_eval.load_prose_judge_dev_suite()
     tasks = {task["task_id"]: task for task in loaded["suite"]["tasks"]}
     reports = tuple(
         _gold_candidate(

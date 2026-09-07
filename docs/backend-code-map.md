@@ -371,3 +371,19 @@ TD-009 Story Planner依赖边界：worker/executors/story_planner.py的19个现�
 
 
 TD-009 SceneCompiler与Artifact边界：worker/executors/compiler_artifacts.py拥有原有materialize_json_artifact_component事务，Compiler和SceneCompiler直接调用同一函数；输入产物/IR/ScenePlan的事件、哈希比较、复用与Attempt fencing不变。scene_compiler.py的9函数按需接收sessionmaker[Session]、worker_id、ProviderFactory，禁止向Compiler回调私有方法；原_materialize_json_artifact_component已在生产与测试调用迁移后删除。
+
+测试优化：`test_scene_plan_benchmark.py` 在模块内验证完整套件一次并给消费者深拷贝，指纹测试使用单任务；`test_closure_repair_benchmark.py` 保留 61 项 reference 核验，报表/适配器测试选取 agent/manual/ineligible 各一项；`test_general_mutation_capability.py` 复用完整 runner 的 reference 校验，7×5 报表门禁用单次真实执行行扩展验证统计。`test_brief_intake_vertical_slice.py` 的 intake fixture 仅追加第二位用户，数据库生命周期交给 `workflow_database`。`scripts/check-backend-architecture.py` 保留真实代码依赖/公共导出/规模约束，移除对本地文档具体措辞与路径清单的断言。
+
+`benchmark/chat_router_eval.py` 的 `match_chat_router_outcome` 统一产生 intent/route 命中判定，`benchmark/chat_live_eval.py` 的逐行 matched 与汇总准确率共享它。预期 question/clarify 的安全 fallback 只在实际路由目标匹配时计分，route 命中仍要求组件匹配；保留历史 fallback fixture 约定。`test_chat_live_eval.py` 保留全量行数/汇总一致性回归，并验证错误 fallback 目标与组件不获计分。
+
+`backend/tests/conftest.py` 提供 opt-in `--timing-report`，逐项保存 setup/call/teardown、结果与阶段总时长；`backend/tests/unit/test_check_timing.py` 验证成功、call/setup 失败、跳过以及 PowerShell 静态阶段失败仍保留报告与非零退出。`scripts/check.ps1` 将静态检查、独立 Goal 门禁与各次 pytest 分段计时，报告保存在独立 `var/checks/` 运行目录。
+
+General Mutation 的 `test_general_mutation_capability.py::capability_report` 只在同步 fixture 内复用 `VerificationEngine._deterministic_findings`：缓存键包含完整文档内容、profile、draft revision、closure policy 与 editable fields；每个消费者获取深拷贝。40 个 reference 与 40 个 trial 仍分别绑定并执行全部模拟/修复/门禁，不复用 simulation 或 Provider 输出；离开 fixture 立即恢复原方法，正式评测无缓存改动。
+
+`backend/tests/benchmark_preparation.py` 提取 General Mutation 与 Closure Repair 共用的 `reuse_document_findings` 上下文管理器。只在两个同步报告 fixture 内复用确定性文档检查，按完整文档和 verifier 配置隔离并返回深拷贝，正常/异常退出均恢复原方法；不缓存 simulation、修复流程或 Provider 结果。Closure Repair 继续执行完整 24 场景×2 trial 安全矩阵。
+
+`test_scene_plan_benchmark.py` 的错误证据回归精确核对必需的 batch、JSON path、scene/beat、错误引用、允许引用数量和哈希，并继续核对 usage；允许诊断对象增加字段，不再把整个内部诊断字典的键集合锁死。
+
+Prose Judge 的 `test_prose_judge_benchmark.py` 通过模块级 fixture 完整验证默认 24×3 套件一次。`benchmark_preparation.py::reuse_prose_judge_inputs` 在测试上下文内复用默认已验证套件，并按完整 Profile、Render、Checklist 内容复用输入校验模型；返回深拷贝并在退出时还原。自定义/漂移文件仍进入真实 loader，所有 Judge 输出校验、Council 角色执行和 432 次 Fake 调用继续执行。报表与 policy freeze 用例复用已有完整报告，不增加第二轮 ablation。
+
+`test_backend_architecture.py` 保留一次真实全仓架构检查；非字面量 TaskType 集合的反例使用只包含 dispatch、必要稳定导出和最小 Worker 的临时仓库，仍调用真实 collect_violations，不再 mock 解析器后重扫全仓。

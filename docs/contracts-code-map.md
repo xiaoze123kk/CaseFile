@@ -102,3 +102,6 @@ task/task.schema.json 的 TaskRun 增补现有 HTTP 字段 goal_id、goal_revisi
 ## TD-003 资源响应 Schema
 
 project/project.schema.json 定义 ProjectView，brief/brief-views.schema.json 定义 BriefView／BriefVersionView，后者引用已存在的 Brief 内容契约并允许新建时的空对象。新识别的历史可省略字段保持 optional，生成与漂移检查同步覆盖 project 目录。Python 生成器对空对象分支生成较宽的 dict，空态约束由 JSON Schema 回归校验；HTTP 不依赖该宽分支做业务验证。
+
+
+`fixtures/README.md` 记录当前、兼容与历史 Fixture 的用途及维护规则。历史 hash/attestation 与跨版本引用保持原样；测试层面的复用与小样本不改写正式资格资产。

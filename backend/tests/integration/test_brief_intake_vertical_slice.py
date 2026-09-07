@@ -4,78 +4,32 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
-from alembic.config import Config
 from casefile.agent_runtime import FakeProvider
-from casefile.agent_runtime.credentials import generate_master_key
 from casefile.api.app import create_app
 from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import Engine, text
 from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _database_url() -> str:
-    value = os.getenv("CASEFILE_TEST_DATABASE_URL")
-    if not value:
-        pytest.skip("CASEFILE_TEST_DATABASE_URL is not configured")
-    if not (make_url(value).database or "").endswith("_test"):
-        pytest.fail("CASEFILE_TEST_DATABASE_URL must use a disposable *_test database")
-    return value
-
-
-def _config(database_url: str) -> Config:
-    config = Config(str(BACKEND_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
-    config.set_main_option("prepend_sys_path", str(BACKEND_ROOT / "src"))
-    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
-    return config
-
-
 @pytest.fixture
-def intake_database() -> Iterator[tuple[str, Engine, int, int, str]]:
-    database_url = _database_url()
-    config = _config(database_url)
-    master_key = generate_master_key()
-    with patch.dict(
-        os.environ,
-        {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
-    ):
-        command.downgrade(config, "base")
-        command.upgrade(config, "head")
-        engine = create_engine(database_url)
-        try:
-            with engine.begin() as connection:
-                actor_id = int(
-                    connection.execute(
-                        text(
-                            "INSERT INTO users (display_name) "
-                            "VALUES ('Intake Owner') RETURNING id"
-                        )
-                    ).scalar_one()
-                )
-                stranger_id = int(
-                    connection.execute(
-                        text(
-                            "INSERT INTO users (display_name) "
-                            "VALUES ('Other Owner') RETURNING id"
-                        )
-                    ).scalar_one()
-                )
-            yield database_url, engine, actor_id, stranger_id, master_key
-        finally:
-            engine.dispose()
-            command.downgrade(config, "base")
+def intake_database(
+    workflow_database: tuple[Engine, int, str],
+) -> Iterator[tuple[str, Engine, int, int, str]]:
+    engine, actor_id, master_key = workflow_database
+    with engine.begin() as connection:
+        stranger_id = int(
+            connection.execute(
+                text("INSERT INTO users (display_name) VALUES ('Other Owner') RETURNING id")
+            ).scalar_one()
+        )
+    database_url = engine.url.render_as_string(hide_password=False)
+    yield database_url, engine, actor_id, stranger_id, master_key
 
 
 def _identity(actor_id: int) -> dict[str, str]:

@@ -4,6 +4,16 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from casefile_contracts import (
+    CanonBinding,
+    CompileInputManifest,
+    CompileMode,
+    CompilerProfileBinding,
+    ExposureBinding,
+    NovelProfile,
+    NovelProfileV2,
+    SnapshotBinding,
+)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -46,16 +56,6 @@ from casefile.domain.narrative_compiler import (
     canonical_json_sha256,
     validate_compile_input_manifest,
     validate_novel_profile_v2,
-)
-from casefile_contracts import (
-    CanonBinding,
-    CompileInputManifest,
-    CompileMode,
-    CompilerProfileBinding,
-    ExposureBinding,
-    NovelProfile,
-    NovelProfileV2,
-    SnapshotBinding,
 )
 
 

@@ -256,3 +256,5 @@ AgentLivePanel的修改预演/应用/撤销/重做在请求开始时捕获项目
 CaseSession的task_updated reducer动作统一生成进度、去重重试、取消、恢复与重试刷新等8处权威Task写入：原子合并latestTasks并从Task派生对应槽位的status/stage/taskRunId/latestTask，保持客户端strategy attempt与调用方错误文案。update_generation_slot仅用于尚无权威Task的本地操作进度，不再接受Task副本；async callback不再用stateRef快照拼latestTasks。hydration仍从服务器整体初始化。
 
 删除无人读取的generation.stage数值及advance_generation动作；可见进度仍来自Task部件步骤/槽位阶段。generation.status保留为跨创建、等待、候选刷新过程的本地操作锁，不能只从单个Task终态推导。
+
+`apps/web/tests/product-boundary.test.ts` 验证根路由、视觉实验路由实际渲染及旧地址重定向；不再锁定源码 import 字符串、已删除文件清单或 Prototype 命名。工作台路由参数、会话和生产交互由已有行为测试覆盖。
