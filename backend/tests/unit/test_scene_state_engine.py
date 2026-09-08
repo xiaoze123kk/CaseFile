@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.agent_runtime.scene_compiler import execute_scene_semantic_fill
 from casefile.domain.narrative_compiler import (
@@ -149,6 +150,40 @@ def test_state_engine_applies_knowledge_location_and_cross_scene_setup_payoff() 
     assert any(edge["relation"] == "beat_pays_off_setup" for edge in compiled["edges"])
     assert compiled["metrics"]["knowledge_transition_count"] == 1
     assert compiled["metrics"]["location_assertion_count"] == 1
+
+
+def test_state_engine_allows_seeded_observer_location_assertion() -> None:
+    from casefile.domain.narrative_compiler.scene_state_engine import (
+        _apply_location_assertion,
+    )
+
+    observer = {"object_type": "entity", "object_id": "ent_safety_observer"}
+    location = {"object_type": "location", "object_id": "loc_control_room"}
+    story_time = {"object_type": "event", "object_id": "evt_restart"}
+    assertion = {
+        "subject_ref": observer,
+        "location_ref": location,
+        "story_time_refs": [story_time],
+        "basis_refs": [story_time],
+    }
+    state: dict[str, Any] = {"locations": []}
+
+    diagnostic = _apply_location_assertion(
+        state,
+        assertion,
+        scene={
+            "scene_id": "scene_1",
+            "participant_refs": [],
+            "location_ref": location,
+            "story_time_refs": [story_time],
+        },
+        narrative={},
+        source_refs={},
+        observers={"entity:ent_safety_observer"},
+    )
+
+    assert diagnostic is None
+    assert state["locations"] == [assertion]
 
 
 def test_state_engine_rejects_unpaid_setup_and_known_fact_false_belief() -> None:

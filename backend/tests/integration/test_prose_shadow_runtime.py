@@ -74,7 +74,7 @@ def test_continuity_and_resume_share_persisted_judge_budget(workflow_database):
     assert count() == 3
 
 
-def test_continuity_blocks_before_writer_and_preserves_evidence(workflow_database):
+def test_continuity_finding_is_advisory_and_preserves_evidence(workflow_database):
     factory, _, run, _ = _prepare(workflow_database)
     continuity = FakeProseWriterProvider(
         candidates=(
@@ -88,13 +88,14 @@ def test_continuity_blocks_before_writer_and_preserves_evidence(workflow_databas
                     }
                 ],
             },
+            {"verdict": "pass", "issues": []},
         )
     )
     providers = replace(_providers(), continuity=continuity)
     _run(factory, run, providers, workflow_database[2])
     _, manifest, artifacts = _result(factory, run)
-    assert manifest["incomplete_reason"] == "compiler_prose_local_plan_conflict"
-    assert providers.writer.call_count == 0
+    assert manifest["shadow_status"] == "succeeded"
+    assert providers.writer.call_count == 2
     report = next(a for a in artifacts if a.schema_id == "compiler.prose-continuity-review.v1")
     assert report.content_jsonb["issues"][0]["required_plan_change"]
     with factory() as session:

@@ -1,13 +1,13 @@
 # 后端代码职责地图
 
-## 正文一致性与断点恢复（runtime v6）
+## 正文一致性与断点恢复（runtime v7）
 
 - `backend/src/casefile/agent_runtime/prose_continuity.py`：跨场景审核协议、请求绑定与 Provider 适配，不持有数据库，不改写规划。
 - `backend/src/casefile/agent_runtime/prose_context.py`：生成专用状态投影、去重和变化项，保留完整对象原文，原清单不变。
 - `backend/src/casefile/domain/narrative_compiler/prose_checklist.py` 的 `scene_plan_review_context`：复用状态回放构建未来场景审核上下文，不伪造已接受正文。
-- `backend/src/casefile/worker/executors/prose_store.py`：尝试级不可变产物、恢复与数据库累计调用预算；`prose_shadow.py`：审核门禁、已接受前缀复用；`prose_providers.py`：审核和质量调用的留痕适配。
+- `backend/src/casefile/worker/executors/prose_store.py`：尝试级不可变产物、恢复与数据库累计调用预算；`prose_shadow.py`：连续性建议留痕、确定性协议门禁和已接受前缀复用；`prose_providers.py`：审核和质量调用的留痕适配。
 - `backend/migrations/versions/V20260907210634__prose_continuity_and_attempt_artifacts.py`：兼容扩展产物身份约束，旧身份及旧数据保留；有新产物时回退约束会拒绝，不删除证据。
-- `backend/tests/unit/test_prose_context.py`、`backend/tests/integration/test_prose_shadow_runtime.py`：输入保真、冲突拦截、可选质量降级、真实 Worker 续跑及跨尝试累计预算回归；集成测试禁止真实 Provider 网络。
+- `backend/tests/unit/test_prose_context.py`、`backend/tests/integration/test_prose_shadow_runtime.py`：输入保真、连续性建议不阻断正文、确定性协议失败关闭、可选质量降级、真实 Worker 续跑及跨尝试累计预算回归；集成测试禁止真实 Provider 网络。
 
 ## Agent 公共反馈
 

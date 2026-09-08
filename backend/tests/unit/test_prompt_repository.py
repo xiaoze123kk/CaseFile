@@ -51,7 +51,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v7",
-    "prose_writer": "prose-writer-v3",
+    "prose_writer": "prose-writer-v4",
     "prose_rewriter": "prose-rewriter-v5",
     "prose_fidelity_judge": "prose-fidelity-judge-v8",
     "prose_adversarial_judge": "prose-adversarial-judge-v7",
@@ -65,6 +65,9 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("prose_writer", "prose-writer-v4"): {
+        "system": "936880c86ac1c3040afc65861b3fc4c214af9f7f57f52eff4b254bdbbe6edae9"
+    },
     ("prose_continuity", "prose-continuity-v1"): {
         "system": "5022e18b7c75f23cfd8db86dbc09185609ad40e801da310fad374f073a78b517"
     },

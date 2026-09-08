@@ -42,7 +42,7 @@ from casefile_contracts import (
     SceneRender,
 )
 
-PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v6"
+PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v7"
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -54,7 +54,7 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
     """Freeze executable policies and prompt contents without credentials."""
     versions = {
         "prose_continuity": "prose-continuity-v1",
-        "prose_writer": "prose-writer-v3",
+        "prose_writer": "prose-writer-v4",
         "prose_fidelity_judge": load_prompt("prose_fidelity_judge").version,
         "prose_adversarial_judge": load_prompt("prose_adversarial_judge").version,
         "prose_coherence_judge": load_prompt("prose_coherence_judge").version,

@@ -228,6 +228,7 @@ class ProseShadowExecutor:
             checklist,
             "prose_checklist",
         )
+        continuity_advisories: list[dict[str, Any]] = []
         if self.provider.sources.continuity is not None:
             contexts = []
             ordinal = next(i for i, s in enumerate(self.ordered) if s["scene_id"] == store.scene_id)
@@ -270,8 +271,11 @@ class ProseShadowExecutor:
                 "prose_continuity",
                 source_step=self.provider.steps[call.request_fingerprint],
             )
-            if review.verdict != "pass":
-                return "blocked_precondition", None, "compiler_prose_local_plan_conflict"
+            # Continuity is a literary judgment, not a server-owned execution
+            # invariant. Persist the model's findings for observability and let
+            # Writer resolve them from the same frozen context. Protocol and
+            # reference-binding failures above remain fail-closed.
+            continuity_advisories = [issue.model_dump(mode="json") for issue in review.issues]
         writer = execute_prose_writer(
             self.provider,
             scene_plan=plan,
@@ -282,6 +286,7 @@ class ProseShadowExecutor:
             model_id="deepseek-v4-pro",
             api_key=api_key,
             remaining_scene_call_budget=23,
+            continuity_advisories=continuity_advisories,
         )
         self.observe("writer", writer)
         if writer.status != "completed" or writer.render is None:

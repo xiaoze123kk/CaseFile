@@ -30,9 +30,9 @@ from casefile.domain.narrative_compiler import (
 from casefile_contracts import SceneRender, SceneRenderCandidate
 
 PROSE_WRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v3"
-PROSE_WRITER_REQUEST_PROTOCOL: Final = "prose-writer-json-object-v3"
-PROSE_WRITER_COMPONENT_VERSION: Final = "prose-writer-runtime-v3"
+PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v4"
+PROSE_WRITER_REQUEST_PROTOCOL: Final = "prose-writer-json-object-v4"
+PROSE_WRITER_COMPONENT_VERSION: Final = "prose-writer-runtime-v4"
 PROSE_WRITER_MAX_TURNS: Final = 1
 PROSE_WRITER_MAX_CALLS: Final = 1
 PROSE_WRITER_NETWORK_RETRIES: Final = 0
@@ -319,6 +319,7 @@ def execute_prose_writer(
     api_key: str,
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseWriterProviderResult | None] | None = None,
+    continuity_advisories: list[dict[str, Any]] | None = None,
 ) -> ProseWriterExecution:
     """Validate frozen inputs, execute at most one Writer call, and normalize it."""
 
@@ -333,6 +334,7 @@ def execute_prose_writer(
             model_id=model_id,
             api_key=api_key,
             remaining_scene_call_budget=remaining_scene_call_budget,
+            continuity_advisories=continuity_advisories,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -400,6 +402,7 @@ def build_prose_writer_request(
     model_id: str,
     api_key: str,
     remaining_scene_call_budget: int,
+    continuity_advisories: list[dict[str, Any]] | None = None,
 ) -> ProseWriterRequest:
     """Build the minimal Provider view after exact authoritative input validation."""
 
@@ -419,6 +422,7 @@ def build_prose_writer_request(
         previous_scene_render=previous_scene_render,
     ).model_dump(mode="json")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
+    advisories = _validated_continuity_advisories(continuity_advisories)
     prompt = load_prompt("prose_writer", PROSE_WRITER_PROMPT_VERSION)
     component_input_hash = canonical_json_sha256(
         {
@@ -438,9 +442,10 @@ def build_prose_writer_request(
             "candidate_schema_hash": PROSE_WRITER_CANDIDATE_SCHEMA_HASH,
             "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
             "remaining_scene_call_budget": remaining_scene_call_budget,
+            "continuity_advisories": advisories,
         }
     )
-    payload = {
+    payload: dict[str, Any] = {
         "server_bindings": {
             "component_id": "prose_writer",
             "component_input_hash": component_input_hash,
@@ -465,6 +470,8 @@ def build_prose_writer_request(
         },
         "output_schema_id": PROSE_WRITER_CANDIDATE_SCHEMA_ID,
     }
+    if advisories:
+        payload["untrusted_data"]["continuity_advisories"] = advisories
     input_hash = canonical_json_sha256(payload)
     fingerprint = canonical_json_sha256(
         {
@@ -494,6 +501,44 @@ def build_prose_writer_request(
         request_fingerprint=fingerprint,
         remaining_scene_call_budget=remaining_scene_call_budget,
     )
+
+
+def _validated_continuity_advisories(
+    value: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 16:
+        raise ProseWriterProtocolError("prose_writer_continuity_advisories_invalid")
+    normalized: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {
+            "scene_ids",
+            "reason",
+            "required_plan_change",
+        }:
+            raise ProseWriterProtocolError("prose_writer_continuity_advisories_invalid")
+        scene_ids = item["scene_ids"]
+        reason = item["reason"]
+        change = item["required_plan_change"]
+        if (
+            not isinstance(scene_ids, list)
+            or not 1 <= len(scene_ids) <= 3
+            or any(not isinstance(scene_id, str) or not scene_id for scene_id in scene_ids)
+            or not isinstance(reason, str)
+            or not 1 <= len(reason) <= 2000
+            or not isinstance(change, str)
+            or not 1 <= len(change) <= 2000
+        ):
+            raise ProseWriterProtocolError("prose_writer_continuity_advisories_invalid")
+        normalized.append(
+            {
+                "scene_ids": list(scene_ids),
+                "reason": reason,
+                "required_plan_change": change,
+            }
+        )
+    return normalized
 
 
 def _validate_result_binding(

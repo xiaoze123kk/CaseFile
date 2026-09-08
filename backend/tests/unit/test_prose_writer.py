@@ -209,6 +209,30 @@ def test_request_is_minimal_untrusted_and_credential_free(writer_case: dict[str,
     assert request.network_retries == 0
 
 
+def test_continuity_advisory_is_bound_into_writer_request(writer_case: dict[str, Any]) -> None:
+    advisory = {
+        "scene_ids": [writer_case["checklist"]["scene_id"]],
+        "reason": "人物认知存在可能的回退。",
+        "required_plan_change": "在正文中提供迟疑或推翻旧结论的依据。",
+    }
+    kwargs = {
+        "scene_plan": writer_case["plan"],
+        "narrative_ir": writer_case["narrative"],
+        "profile": writer_case["profile"],
+        "checklist": writer_case["checklist"],
+        "previous_scene_render": None,
+        "model_id": PROSE_WRITER_MODEL_ID,
+        "api_key": "fake",
+        "remaining_scene_call_budget": 23,
+    }
+
+    request = build_prose_writer_request(**kwargs, continuity_advisories=[advisory])
+    baseline = build_prose_writer_request(**kwargs)
+
+    assert request.input_payload["untrusted_data"]["continuity_advisories"] == [advisory]
+    assert request.request_fingerprint != baseline.request_fingerprint
+
+
 def test_authoritative_input_and_budget_drift_are_rejected_before_provider(
     writer_case: dict[str, Any],
 ) -> None:
