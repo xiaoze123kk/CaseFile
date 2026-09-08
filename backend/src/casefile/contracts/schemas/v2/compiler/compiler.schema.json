@@ -208,6 +208,7 @@
         },
         "profile": {"$ref": "#/$defs/CompilerProfileBinding"},
         "compiler_version": {"$ref": "#/$defs/StableKey"},
+        "prose_mode": {"enum": ["quick_draft", "full_polish"]},
         "prose_renderer_shadow": {"type": "boolean", "default": false},
         "approved_novel_plan": {"$ref": "#/$defs/CompilerArtifactRef"},
         "prose_runtime": {"type": ["object", "null"], "default": null}

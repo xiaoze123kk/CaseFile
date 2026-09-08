@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-EXPECTED_DATABASE_REVISION = "20260908121826"
+EXPECTED_DATABASE_REVISION = "20260908161410"
 DEFAULT_DATABASE_URL = "postgresql+psycopg://casefile:casefile_local_only@127.0.0.1:55432/casefile"
 
 

@@ -42,6 +42,48 @@ def forbid_live_provider_network(monkeypatch):
     monkeypatch.setattr("openai._base_client.SyncAPIClient.request", blocked)
 
 
+def test_quick_draft_skips_reviews_and_is_not_strict_pass(workflow_database):
+    factory, _, run, _ = _prepare(workflow_database, prose_mode="quick_draft")
+    providers = replace(_providers(), continuity=FakeProseWriterProvider(candidates=({},)))
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    assert run["prose_mode"] == "quick_draft"
+    assert manifest["shadow_status"] == "succeeded", manifest["incomplete_reason"]
+    assert providers.writer.call_count == 2
+    assert providers.judge.calls == 0
+    assert providers.continuity.call_count == 0
+    assert all(
+        s["literary_review"] == "not_run"
+        and s["product_accepted"]
+        and not s["strict_semantic_pass"]
+        for s in manifest["scenes"]
+    )
+    accepted = [a for a in artifacts if a.artifact_key.endswith(".accepted")]
+    assert len(accepted) == 2
+    assert all(a.content_jsonb["selection_reason"] == "quick_draft_unreviewed" for a in accepted)
+    with factory() as session:
+        calls = list(
+            session.scalars(
+                select(AgentModelCall).where(AgentModelCall.task_run_id == run["task_run_id"])
+            )
+        )
+    prose_calls = [c for c in calls if c.prompt_component_id.startswith("prose_")]
+    assert len(prose_calls) == 2
+    assert {c.prompt_component_id for c in prose_calls} == {"prose_writer"}
+
+
+def test_quick_draft_stops_after_two_invalid_generations(workflow_database):
+    factory, _, run, _ = _prepare(workflow_database, prose_mode="quick_draft")
+    invalid = {"schema_id": "compiler.scene-render-candidate.v1", "blocks": [{"text": "过短"}]}
+    providers = replace(_providers(), writer=FakeProseWriterProvider(candidates=(invalid,) * 3))
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    assert manifest["shadow_status"] != "succeeded"
+    assert providers.writer.call_count == 2
+    assert providers.judge.calls == 0
+    assert not any(a.artifact_key.endswith(".accepted") for a in artifacts)
+
+
 def test_continuity_and_resume_share_persisted_judge_budget(workflow_database):
     factory, project, run, draft = _prepare(workflow_database)
     providers = replace(
@@ -130,8 +172,11 @@ def test_optional_quality_transport_failure_retains_accepted_original(workflow_d
     assert len([a for a in artifacts if a.artifact_key.endswith(".accepted")]) == 2
 
 
-def test_resume_prose_reuses_accepted_prefix_and_preserves_failed_manifest(workflow_database):
-    factory, project, run, draft = _prepare(workflow_database)
+@pytest.mark.parametrize("prose_mode", ["full_polish", "quick_draft"])
+def test_resume_prose_reuses_accepted_prefix_and_preserves_failed_manifest(
+    workflow_database, prose_mode
+):
+    factory, project, run, draft = _prepare(workflow_database, prose_mode=prose_mode)
     providers = _providers()
     providers.writer._failure_at_call = 2
     _run(factory, run, providers, workflow_database[2])
@@ -344,7 +389,10 @@ def _providers(
 
 
 def _prepare(
-    database: tuple[Engine, int, str], *, planning_only: bool = False
+    database: tuple[Engine, int, str],
+    *,
+    planning_only: bool = False,
+    prose_mode: str = "full_polish",
 ) -> tuple[Any, int, dict[str, Any], dict[str, Any]]:
     engine, actor, key = database
     factory, project, draft_id, _ = _prepare_compilable_project(engine, actor, key)
@@ -379,6 +427,7 @@ def _prepare(
         "planner_provider": "deepseek",
         "prose_renderer_shadow": not planning_only,
         "scene_compiler_shadow": planning_only,
+        "prose_mode": prose_mode,
     }
     with TestClient(create_app(engine.url.render_as_string(hide_password=False))) as client:
         response = client.post(
@@ -569,10 +618,12 @@ def test_response_crash_recovery_and_unknown_window(
         assert task.usage_jsonb["total_tokens"] == 18
 
 
+@pytest.mark.parametrize("prose_mode", ["full_polish", "quick_draft"])
 def test_cancel_after_response_preserves_main_and_audit(
     workflow_database: tuple[Engine, int, str],
+    prose_mode: str,
 ) -> None:
-    factory, project, run, before = _prepare(workflow_database)
+    factory, project, run, before = _prepare(workflow_database, prose_mode=prose_mode)
     original = ProseStore.save_response
 
     def cancel(store: ProseStore, result: Any) -> None:
@@ -834,15 +885,17 @@ def test_artifact_identity_immutability_and_collision(
         )
 
 
+@pytest.mark.parametrize("drift", ["version", "prose_mode"])
 def test_runtime_drift_blocks_before_prose_calls(
     workflow_database: tuple[Engine, int, str],
+    drift: str,
 ) -> None:
     from casefile.agent_runtime.prose_runtime import prose_runtime_binding
 
     factory, _, run, _ = _prepare(workflow_database)
     providers = _providers()
     changed = prose_runtime_binding(2)
-    changed["version"] = "different-runtime"
+    changed[drift] = "different-runtime" if drift == "version" else "quick_draft"
     with patch(
         "casefile.worker.executors.prose_shadow.prose_runtime_binding", return_value=changed
     ):
@@ -1066,7 +1119,10 @@ def test_judge_protocol_repair_retains_failed_raw_and_respects_scene_budget(work
     assert len(repair) == 2 and all(c.status == "succeeded" for c in repair)
 
 
-def test_generation_repair_keeps_failed_raw_and_does_not_spend_judge_budget(workflow_database):
+@pytest.mark.parametrize("prose_mode", ["full_polish", "quick_draft"])
+def test_generation_repair_keeps_failed_raw_and_does_not_spend_judge_budget(
+    workflow_database, prose_mode
+):
     class RepairingWriter:
         def write_scene(self, request):
             data = request.input_payload["untrusted_data"]
@@ -1083,12 +1139,12 @@ def test_generation_repair_keeps_failed_raw_and_does_not_spend_judge_budget(work
                     candidate["blocks"] = [{"text": data["continuity_reference"]["text"]}]
             return FakeProseWriterProvider(candidates=(candidate,)).write_scene(request)
 
-    factory, _, run, _ = _prepare(workflow_database)
+    factory, _, run, _ = _prepare(workflow_database, prose_mode=prose_mode)
     providers = replace(_providers(), writer=RepairingWriter())
     _run(factory, run, providers, workflow_database[2])
     _, manifest, artifacts = _result(factory, run)
     assert manifest["shadow_status"] == "succeeded"
-    assert providers.judge.calls == 4
+    assert providers.judge.calls == (0 if prose_mode == "quick_draft" else 4)
     with factory() as session:
         calls = list(
             session.scalars(

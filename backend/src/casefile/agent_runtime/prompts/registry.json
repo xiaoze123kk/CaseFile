@@ -81,6 +81,9 @@
     },
     "prose_revision": {
       "current_version": "prose-revision-v3"
+    },
+    "novel_collaboration": {
+      "current_version": "novel-collaboration-v1"
     }
   }
 }

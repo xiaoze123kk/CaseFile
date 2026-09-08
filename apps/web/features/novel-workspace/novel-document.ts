@@ -13,6 +13,7 @@ export interface NovelManuscript {
 }
 
 export interface NovelDraft {
+  remote?: { id: number; revision: number; syncedContent: string };
   original: NovelManuscript;
   chapters: NovelChapter[];
   revision: number;

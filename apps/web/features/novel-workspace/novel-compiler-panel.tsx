@@ -8,13 +8,13 @@ import { errorMessage } from "@/lib/api-client";
 import { Dialog } from "./novel-workspace-panels";
 import { completedNovelArtifact, listNovelCompiles, loadCompiledNovel, startNovelCompile,
   requestNovelRecommendation, confirmNovelPlan, loadNovelPlan, resumeNovelCompile,
-  type NovelPlanPreview, type NovelCompileRun, type NovelCompileScope } from "./novel-compiler-api";
+  type NovelPlanPreview, type NovelCompileRun, type NovelCompileScope, type ProseMode } from "./novel-compiler-api";
 import type { NovelManuscript } from "./novel-document";
 import styles from "./novel-compiler.module.css";
 
 const active = (run: NovelCompileRun) => ["queued", "running", "cancelling"].includes(run.execution.status);
 export function novelCompileStatus(run: NovelCompileRun) {
-  if (completedNovelArtifact(run)) return "小说已完成";
+  if (completedNovelArtifact(run)) return run.prose_mode === "quick_draft" ? "初稿已完成 · 未做文学审核" : "小说已完成";
   if (!run.prose_renderer_shadow && run.execution.status === "succeeded") return run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1") ? "小说方案已就绪" : "本次未生成章节方案";
   if (run.execution.status === "cancelled") return "已停止";
   if (run.execution.status === "cancelling") return "正在停止";
@@ -32,7 +32,7 @@ export function novelCompileStatus(run: NovelCompileRun) {
   if (run.prose_shadow.status === "inconclusive_infrastructure") return "正文生成中断，可重新编译";
   if (run.execution.status === "queued") return "排队中，等待编译服务";
   if (run.execution.status === "succeeded") return "本次未生成完整小说";
-  if (run.artifacts.some((a) => a.schema_id === "compiler.scene-plan.v2")) return run.prose_renderer_shadow ? "正在撰写、校验与润色正文" : "正在校验场景方案";
+  if (run.artifacts.some((a) => a.schema_id === "compiler.scene-plan.v2")) return run.prose_renderer_shadow ? (run.prose_mode === "quick_draft" ? "正在撰写初稿" : "正在撰写、校验与润色正文") : "正在校验场景方案";
   if (run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1")) return "正在编排场景";
   return "正在规划小说结构";
 }
@@ -48,6 +48,7 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [preferences, setPreferences] = useState("");
+  const [proseMode, setProseMode] = useState<ProseMode>("quick_draft");
   const [recommendation, setRecommendation] = useState<NovelRecommendation | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [previewLoad, setPreviewLoad] = useState<{ id: number; data?: NovelPlanPreview; error?: string } | null>(null);
@@ -157,19 +158,28 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
       {selectedRun && !preview && planArtifactId && !previewError ? <p role="status">正在读取章节与场景…</p> : null}
       {previewError ? <p role="alert">{previewError}</p> : null}
       {preview && selectedRun ? <>
-        <NovelPlanOutline preview={preview} />
+        <fieldset className={styles.modeOptions} disabled={busy || runs.some(active)}>
+          <legend>正文生成方式</legend>
+          <label><input type="radio" name="prose-mode" value="quick_draft" checked={proseMode === "quick_draft"}
+            onChange={() => setProseMode("quick_draft")} /><span><strong>快速初稿（默认）</strong>
+            <span>优先写完整本，保留格式校验；不做文学审核与润色，费用较低。</span></span></label>
+          <label><input type="radio" name="prose-mode" value="full_polish" checked={proseMode === "full_polish"}
+            onChange={() => setProseMode("full_polish")} /><span><strong>完整精修</strong>
+            <span>逐场审核、必要修订与润色，耗时和费用较高。</span></span></label>
+        </fieldset>
         {selectedRun.execution.input_draft_revision !== revision ? <p role="alert">工作稿已更新，这份方案仅供查看。请重新推荐后再生成正文。</p> :
           <button type="button" className={styles.confirm} disabled={busy || runs.some(active) || selectedRun.execution.status !== "succeeded"}
             onClick={() => void action(async () => {
-              const run = await confirmNovelPlan(scope, selectedRun);
+              const run = await confirmNovelPlan(scope, selectedRun, proseMode);
               if (mounted.current) setRuns((items) => [run, ...items]);
             })}>按这份方案生成小说</button>}
+        <NovelPlanOutline preview={preview} />
       </> : null}
       {error ? <p role="alert">{error}</p> : null}
       <div className={styles.heading}><h3>编译记录</h3><button type="button" disabled={busy} onClick={() => { setError(""); setPreviewLoad(null); setRefresh((n) => n + 1); }}>刷新</button></div>
       {novelAttempts.length ? <p aria-label="小说生成统计">
         完整小说 {novelReady}/{novelAttempts.length} 次（{Math.round(novelReady / novelAttempts.length * 100)}%）
-        {measuredAttempts.length ? ` · 首次通过 ${firstPass}/${measuredAttempts.length} 次` : ""}
+        {measuredAttempts.length ? ` · 首次完成 ${firstPass}/${measuredAttempts.length} 次` : ""}
         {repairs ? ` · 修复调用成功 ${repaired}/${repairs} 次` : ""}。仅统计已结束的正文生成，方案规划与主动取消不计入。
       </p> : null}
       {loading ? <p role="status">正在读取编译记录…</p> : !runs.length ? <p>当前工作稿还没有小说编译记录。</p> : null}
@@ -178,6 +188,7 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
           <span /><span /><span />
         </span> : null}
         <div><strong role="status">{novelCompileStatus(run)}</strong><small>{new Date(run.created_at).toLocaleString("zh-CN")} · 工作稿版本 {run.execution.input_draft_revision}</small></div>
+        {run.prose_renderer_shadow ? <small>{run.prose_mode === "quick_draft" ? "快速初稿 · 未做文学审核" : "完整精修"}</small> : null}
         {run.stability && Object.keys(run.stability.failure_stages).length ? <small>
           {Object.entries(run.stability.failure_stages).map(([stage, count]) => `${stage}失败 ${count} 次`).join(" · ")}
         </small> : null}

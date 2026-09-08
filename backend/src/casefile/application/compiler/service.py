@@ -148,7 +148,9 @@ class CompilerService:
                     {},
                 )
                 runtime = frozen.get("prose_runtime", {})
-                if runtime != prose_runtime_binding(runtime.get("scene_count")):
+                if runtime != prose_runtime_binding(
+                    runtime.get("scene_count"), frozen.get("prose_mode", "full_polish")
+                ):
                     raise ApplicationError(
                         "compiler_resume_version_changed",
                         "生成协议已更新，请重新规划。",
@@ -305,6 +307,7 @@ class CompilerService:
         planner_provider: str | None = None,
         scene_compiler_shadow: bool = False,
         prose_renderer_shadow: bool = False,
+        prose_mode: Literal["quick_draft", "full_polish"] = "full_polish",
         approved_plan_run_id: int | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
@@ -493,10 +496,15 @@ class CompilerService:
                     approved_plan_run_id,
                     manifest_json,
                 )
+            if prose_mode not in {"quick_draft", "full_polish"}:
+                raise ApplicationError(
+                    "compiler_prose_mode_invalid", "请选择有效的生成方式。", status_code=422
+                )
+            manifest_json["prose_mode"] = prose_mode
             if prose_renderer_shadow:
                 manifest_json["prose_renderer_shadow"] = True
                 manifest_json["prose_runtime"] = prose_runtime_binding(
-                    profile.payload_jsonb["structure"]["target_scenes"]
+                    profile.payload_jsonb["structure"]["target_scenes"], prose_mode
                 )
             input_hash = canonical_json_sha256(manifest_json)
             task = TaskRun(
@@ -887,6 +895,7 @@ class CompilerService:
             "compiler_profile_version_id": run.compiler_profile_version_id,
             "compiler_version": run.compiler_version,
             "prose_renderer_shadow": run.prose_renderer_shadow,
+            "prose_mode": task.input_jsonb.get("prose_mode", "full_polish"),
             **shadow,
             "stability": compiler_stability(
                 task_status=task.status,

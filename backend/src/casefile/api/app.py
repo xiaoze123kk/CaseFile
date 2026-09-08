@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlsplit
 
-from casefile_contracts import ProjectView
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +25,7 @@ from casefile.api.dependencies import (
     SessionDependency,
 )
 from casefile.api.ideas import ideas_router
+from casefile.api.novel_editor import novel_editor_router
 from casefile.api.reverse_parse import reverse_parse_router
 from casefile.api.schemas import (
     DraftActivateRequest,
@@ -57,6 +57,7 @@ from casefile.data_postgres.session import (
     create_session_factory,
     current_database_revision,
 )
+from casefile_contracts import ProjectView
 
 _DEFAULT_CORS_ORIGINS = (
     "http://127.0.0.1:3000",
@@ -101,6 +102,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     application.include_router(_api_router())
     application.include_router(brief_intake_router())
     application.include_router(compiler_router())
+    application.include_router(novel_editor_router())
     application.include_router(ideas_router())
     application.include_router(reverse_parse_router())
     application.include_router(workflow_router())

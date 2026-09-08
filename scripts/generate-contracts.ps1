@@ -400,7 +400,9 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
         Copy-Item -LiteralPath (Join-Path $schemaRoot $schemaDirectory) `
             -Destination $runtimeSchemaFullPath -Recurse
     }
-    Copy-Item -LiteralPath $schemaEntry -Destination $runtimeSchemaFullPath
+    foreach ($rootSchema in Get-ChildItem -LiteralPath $schemaRoot -Filter "*.schema.json" -File) {
+        Copy-Item -LiteralPath $rootSchema.FullName -Destination $runtimeSchemaFullPath
+    }
     Write-GeneratedFile `
         -Path (Join-Path $runtimeSchemaFullPath "GENERATED_FROM_ROOT_SCHEMAS.txt") `
         -Content "Generated from current v2 contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand. The adjacent v1 mirror is retained for historical reads.`n"

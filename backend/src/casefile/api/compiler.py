@@ -136,6 +136,7 @@ def compiler_router() -> APIRouter:
             compiler_profile_version_id=payload.compiler_profile_version_id,
             planner_provider=payload.planner_provider,
             prose_renderer_shadow=payload.prose_renderer_shadow,
+            prose_mode=payload.prose_mode,
             scene_compiler_shadow=payload.scene_compiler_shadow,
             approved_plan_run_id=payload.approved_plan_run_id,
         )

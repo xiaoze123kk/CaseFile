@@ -673,6 +673,13 @@
   font-size: 16px;
   line-height: 1.8;
 }
+.composer textarea:focus-visible,
+.page textarea:focus-visible {
+  outline: none;
+}
+.composer:focus-within {
+  border-color: #c8b995;
+}
 .composer button {
   width: 40px;
   height: 40px;

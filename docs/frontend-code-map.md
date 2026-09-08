@@ -265,3 +265,7 @@ CaseSession的task_updated reducer动作统一生成进度、去重重试、取�
 
 `apps/web/tests/product-boundary.test.ts` 验证根路由、视觉实验路由实际渲染及旧地址重定向；不再锁定源码 import 字符串、已删除文件清单或 Prototype 命名。工作台路由参数、会话和生产交互由已有行为测试覆盖。
 小说编译记录提供显式失败点继续入口；旧版本或工作稿漂移由服务端拒绝。正文交付统计排除方案规划与主动取消，只把正文成功并存在完整候选计为成功；不把 TaskRun succeeded 等同小说生成成功。
+
+小说方案确认区提供“快速初稿 / 完整精修”两档，桌面双列选择，默认快速初稿。`novel-compiler-api.ts` 显式发送 prose_mode；记录与载入来源保留快速初稿的未审核标记。活动任务不允许修改选择，续跑不携带新模式；历史无 prose_mode 的记录按完整精修显示。首次完成统计不表示严格语义通过。
+
+小说协作由 novel-editor-api、use-novel-editor、novel-assistant、novel-editor-review、novel-selection 与 novel-diff 分担接口、同步、对话、审阅和文本定位。正文服务端版本权威，本地保存未同步副本；旧 localStorage 稿件幂等迁移，确认写入前不清除。三种模式只作用于选段/当前章；选区使用 Unicode code point 位置，DOM UTF-16 在边界转换。差异由程序计算，分组采纳携带基础版本，引用及理由可定位。编译面板两档生成方式独立保留。

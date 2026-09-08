@@ -38,6 +38,7 @@ from casefile.worker.handlers import (
     CompilerHandler,
     ReverseParseHandler,
 )
+from casefile.worker.handlers.novel_collaboration import NovelCollaborationHandler
 from casefile.worker.provider_resolution import (
     ProviderFactory,
     ProviderResolver,
@@ -107,6 +108,7 @@ class Worker:
         provider_factory: ProviderFactory | None = None,
         goal_safe_point_observer: GoalSafePointObserver | None = None,
         prose_providers: Any = None,
+        novel_provider: Any = None,
     ) -> None:
         self.session_factory = session_factory
         self.config = config
@@ -163,6 +165,7 @@ class Worker:
                     goal_safe_point_observer=goal_safe_point_observer,
                 ),
                 CompilerHandler(self._compiler),
+                NovelCollaborationHandler(novel_provider),
             )
         )
 

@@ -237,7 +237,7 @@
             {
               "enum": [
                 "semantic_accepted", "polished_accepted", "polish_semantic_rollback", "judge_budget_preserve_accepted_original",
-                "quality_rollback", "quality_unstable", "llm_nonfatal_retained"
+                "quality_rollback", "quality_unstable", "llm_nonfatal_retained", "quick_draft_unreviewed"
               ]
             },
             {"type": "null"}
@@ -615,6 +615,7 @@
         "accepted_render_hash": {
           "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
         },
+        "literary_review": {"enum": ["not_run", "completed"]},
         "strict_semantic_pass": {"type": "boolean"},
         "product_accepted": {"type": "boolean"},
         "revision_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},

@@ -372,9 +372,10 @@ class ProseStore:
             if step is None or step.status != "running":
                 raise ProseLeaseLost("compiler_prose_step_not_running")
             calls = self._scene_calls(session)
-            if len(calls) >= 23 or (
+            if len(calls) >= self.runtime["limits"]["logical_calls_per_scene"] or (
                 self._is_judge(step.component_id)
-                and sum(self._is_judge(c.prompt_component_id) for c in calls) >= 3
+                and sum(self._is_judge(c.prompt_component_id) for c in calls)
+                >= self.runtime["limits"]["judge_calls_per_scene"]
             ):
                 raise ProseResultUnknown("prose_scene_persisted_budget_exhausted")
             session.add(

@@ -78,7 +78,11 @@ class DurableProseProvider:
 
     @property
     def remaining_judge_calls(self) -> int:
-        return max(0, 3 - self.store.judge_call_count())
+        return max(
+            0,
+            int(self.store.runtime["limits"]["judge_calls_per_scene"])
+            - self.store.judge_call_count(),
+        )
 
     def record_protocol_failure(self, fingerprint: str, details: dict[str, Any]) -> None:
         self.store.reject_response(self.steps[fingerprint], details)
@@ -96,12 +100,12 @@ class DurableProseProvider:
         if judge:
             requests = self.judge_requests.setdefault(self.store.scene_id, set())
             if request.request_fingerprint not in requests:
-                if len(requests) >= 3:
+                if len(requests) >= self.store.runtime["limits"]["judge_calls_per_scene"]:
                     raise ProseCouncilProtocolError("prose_judge_scene_budget_exhausted")
                 requests.add(request.request_fingerprint)
         scene_requests = self.scene_requests.setdefault(self.store.scene_id, set())
         if request.request_fingerprint not in scene_requests:
-            if len(scene_requests) >= 23:
+            if len(scene_requests) >= self.store.runtime["limits"]["logical_calls_per_scene"]:
                 raise ProseCouncilProtocolError("prose_scene_call_budget_exhausted")
             scene_requests.add(request.request_fingerprint)
         recovered = self.store.begin_request(component, request, result_type, transport_type)

@@ -4,7 +4,9 @@ import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 import type { NovelManuscript } from "./novel-document";
 
 export interface NovelCompileScope { projectId: number; draftId: number; revision: number }
+export type ProseMode = "quick_draft" | "full_polish";
 export interface NovelCompileRun {
+  prose_mode?: ProseMode;
   compile_run_id: number;
   draft_id: number;
   prose_renderer_shadow: boolean;
@@ -19,7 +21,7 @@ export interface NovelCompileRun {
   };
   artifacts: { artifact_id: number; schema_id: string; content_hash: string }[];
 }
-export interface NovelSettings { chapters: number; scenes: number; style: string }
+export interface NovelSettings { chapters: number; scenes: number; style: string; proseMode?: ProseMode }
 
 export function resumeNovelCompile(scope: NovelCompileScope, runId: number): Promise<NovelCompileRun> {
   return apiRequest(`/projects/${scope.projectId}/compile-runs/${runId}/resume`, {
@@ -57,6 +59,7 @@ export async function startNovelCompile(scope: NovelCompileScope, settings: Nove
     actorId: LOCAL_ACTOR_ID, method: "POST",
     body: { mode: "preview", expected_draft_id: scope.draftId, expected_draft_revision: scope.revision,
       compiler_profile_version_id: profile.current_version_id, planner_provider: "deepseek", prose_renderer_shadow: !planningOnly,
+      prose_mode: settings.proseMode ?? "quick_draft",
       ...(planningOnly ? { scene_compiler_shadow: true } : {}) },
   });
 }
@@ -74,11 +77,11 @@ export function requestNovelRecommendation(scope: NovelCompileScope, preferences
   });
 }
 
-export function confirmNovelPlan(scope: NovelCompileScope, run: NovelCompileRun) {
+export function confirmNovelPlan(scope: NovelCompileScope, run: NovelCompileRun, proseMode: ProseMode = "quick_draft") {
   return apiRequest<NovelCompileRun>(`/projects/${scope.projectId}/compile-runs`, {
     actorId: LOCAL_ACTOR_ID, method: "POST", body: { mode: "preview", expected_draft_id: scope.draftId,
       expected_draft_revision: scope.revision, compiler_profile_version_id: run.compiler_profile_version_id,
-      planner_provider: "deepseek", prose_renderer_shadow: true, approved_plan_run_id: run.compile_run_id },
+      planner_provider: "deepseek", prose_renderer_shadow: true, prose_mode: proseMode, approved_plan_run_id: run.compile_run_id },
   });
 }
 
@@ -137,7 +140,7 @@ export async function loadCompiledNovel(projectId: number, run: NovelCompileRun,
   }
   const chapters = compiledChapters(candidate, plan, renders);
   return { title, chapters,
-    id: `compile-${run.compile_run_id}-${artifact.artifact_id}`, sourceLabel: "小说编译初稿" };
+    id: `compile-${run.compile_run_id}-${artifact.artifact_id}`, sourceLabel: run.prose_mode === "quick_draft" ? "快速初稿 · 未做文学审核" : "小说编译初稿" };
 }
 
 export function compiledChapters(candidate: NovelCandidate, plan: NovelPlanIR, renders: SceneRender[]) {

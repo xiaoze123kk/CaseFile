@@ -415,3 +415,8 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 - downgrade 只有数据仍能满足上一版 identity 才允许执行；存在正文 Artifact 时明确失败，不删除审计数据。生产优先向前修复。
 
 `backend/src/casefile/application/compiler/prose_projection.py` 统一从持久化 Artifact/Call 投影 Scene/CompileManifest，并在既有取消事务中收敛租约过期后的 Shadow；不调用 Provider。
+
+
+## 小说正文协作与版本
+
+新增 `novel_manuscripts`、`novel_versions`、`novel_chapters`、`novel_exchanges`、`novel_edits`、`novel_edit_decisions`，业务表总数82。小说稿件拥有独立的服务端版本链；原始稿、版本正文、对话请求、模型修改组和采纳记录只追加，模型任务复用 TaskRun/TaskAttempt、AgentModelCall 与 TaskEvent。稿件属于原项目与工作稿，但不写回 CaseFile，也不改写 CompileArtifact。数据库通过复合外键绑定项目；历史表拒绝普通 UPDATE/DELETE。V20260908161410 增加这些表并允许 novel_collaborate 任务；存在小说稿件时拒绝 downgrade，避免删除历史。

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
@@ -44,7 +44,7 @@ from casefile_contracts import (
     SceneRender,
 )
 
-PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v9"
+PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v10"
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -52,8 +52,16 @@ def ignore_component(_name: str, _execution: Any) -> None:
     """Default observer keeps component benchmarks independent of persistence."""
 
 
-def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
+ProseMode = Literal["quick_draft", "full_polish"]
+
+
+def prose_runtime_binding(
+    scene_count: int | None = None, prose_mode: ProseMode = "full_polish"
+) -> dict[str, Any]:
     """Freeze executable policies and prompt contents without credentials."""
+    if prose_mode not in {"quick_draft", "full_polish"}:
+        raise ValueError("compiler_prose_mode_invalid")
+    quick = prose_mode == "quick_draft"
     versions = {
         "prose_continuity": "prose-continuity-v1",
         "prose_writer": "prose-writer-v4",
@@ -69,8 +77,9 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
     }
     return {
         "version": PROSE_RUNTIME_VERSION,
+        "prose_mode": prose_mode,
         "scene_count": scene_count,
-        "max_logical_calls": None if scene_count is None else 23 * scene_count,
+        "max_logical_calls": None if scene_count is None else (2 if quick else 23) * scene_count,
         "schema_hashes": {
             model.__name__: canonical_json_sha256(model.model_json_schema())
             for model in (
@@ -122,23 +131,23 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
             "thinking_enabled": False,
         },
         "limits": {
-            "continuity_reviews_per_scene": 1,
+            "continuity_reviews_per_scene": 0 if quick else 1,
             "continuity_counts_toward_judge_budget": True,
             "scene_checkpoint_policy": "accepted-prefix-v1",
             "generation_repairs_per_call": 1,
             "generation_policy": "prose-generation-repair-v5",
             "generation_length_policy": "hard-range-before-judging",
-            "judge_calls_per_scene": 3,
+            "judge_calls_per_scene": 0 if quick else 3,
             "protocol_repairs_per_call": 1,
             "judge_evidence_per_check": 64,
-            "rewrite_rounds": 2,
-            "revision_decisions_per_scene": 3,
+            "rewrite_rounds": 0 if quick else 2,
+            "revision_decisions_per_scene": 0 if quick else 3,
             "delivery_mode": "product",
             "no_progress_policy": "semantic-exhaustion-no-transport-resume",
             "arbiter_per_round": 1,
             "judge_network_retries": 0,
             "other_network_retries": 0,
-            "logical_calls_per_scene": 23,
+            "logical_calls_per_scene": 2 if quick else 23,
             "cost_limit": None,
         },
     }

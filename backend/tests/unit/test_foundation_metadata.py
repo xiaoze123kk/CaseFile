@@ -10,6 +10,13 @@ from casefile.data_postgres.base import Base
 from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
+    "novel_manuscripts",
+    "novel_versions",
+    "novel_chapters",
+    "novel_exchanges",
+    "novel_edits",
+    "novel_edit_decisions",
+
     "agent_goal_deliveries",
     "agent_goal_obligation_dependencies",
     "agent_goal_obligations",
@@ -335,10 +342,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_76_personal_tables() -> None:
+def test_metadata_contains_exactly_the_82_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 76
+    assert len(models.__all__) == 82
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

@@ -1,0 +1,536 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/novel-editor.schema.json",
+  "$defs": {
+    "NovelEditorChapter": {
+      "title": "NovelEditorChapter",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 2000000
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "text"
+      ]
+    },
+    "NovelEditorCreate": {
+      "title": "NovelEditorCreate",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_key": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "source_label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "draft_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        },
+        "original_chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        }
+      },
+      "required": [
+        "source_key",
+        "source_label",
+        "draft_id",
+        "title",
+        "chapters",
+        "original_chapters"
+      ]
+    },
+    "NovelEditorSave": {
+      "title": "NovelEditorSave",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        }
+      },
+      "required": [
+        "expected_revision",
+        "title",
+        "chapters"
+      ]
+    },
+    "NovelEditorAnchor": {
+      "title": "NovelEditorAnchor",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "chapter_id": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 40000
+        },
+        "original": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chapter_id",
+        "start",
+        "end",
+        "text",
+        "original"
+      ]
+    },
+    "NovelEditorRequest": {
+      "title": "NovelEditorRequest",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_key": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mode": {
+          "enum": [
+            "discuss",
+            "rewrite",
+            "polish"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "chapter",
+            "selection"
+          ]
+        },
+        "chapter_id": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "instruction": {
+          "type": "string",
+          "maxLength": 6000
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NovelEditorAnchor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "request_key",
+        "expected_revision",
+        "mode",
+        "scope",
+        "chapter_id",
+        "instruction",
+        "anchor"
+      ]
+    },
+    "NovelEditorCandidateEdit": {
+      "title": "NovelEditorCandidateEdit",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "type": "string",
+          "maxLength": 40000
+        },
+        "after": {
+          "type": "string",
+          "maxLength": 40000
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "before",
+        "after",
+        "reason"
+      ]
+    },
+    "NovelEditorCandidate": {
+      "title": "NovelEditorCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorCandidateEdit"
+          },
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "message",
+        "edits"
+      ]
+    },
+    "NovelEditorEdit": {
+      "title": "NovelEditorEdit",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "before": {
+          "type": "string",
+          "maxLength": 2000000
+        },
+        "after": {
+          "type": "string",
+          "maxLength": 2000000
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "rejected"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "start",
+        "end",
+        "before",
+        "after",
+        "reason",
+        "status"
+      ]
+    },
+    "NovelEditorExchange": {
+      "title": "NovelEditorExchange",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "task_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mode": {
+          "enum": [
+            "discuss",
+            "rewrite",
+            "polish"
+          ]
+        },
+        "chapter_id": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "instruction": {
+          "type": "string",
+          "maxLength": 6000
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NovelEditorAnchor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "status": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorEdit"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "task_id",
+        "revision",
+        "mode",
+        "chapter_id",
+        "instruction",
+        "anchor",
+        "message",
+        "status",
+        "error",
+        "usage",
+        "edits"
+      ]
+    },
+    "NovelEditorView": {
+      "title": "NovelEditorView",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_key": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "source_label": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        },
+        "original_chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          },
+          "minItems": 1,
+          "maxItems": 500
+        },
+        "exchanges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorExchange"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "source_key",
+        "source_label",
+        "revision",
+        "title",
+        "chapters",
+        "original_chapters",
+        "exchanges"
+      ]
+    },
+    "NovelEditorDecision": {
+      "title": "NovelEditorDecision",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "edit_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "action": {
+          "enum": [
+            "accept",
+            "reject"
+          ]
+        }
+      },
+      "required": [
+        "expected_revision",
+        "edit_ids",
+        "action"
+      ]
+    },
+    "NovelEditorRestore": {
+      "title": "NovelEditorRestore",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "expected_revision",
+        "revision"
+      ]
+    },
+    "NovelEditorVersion": {
+      "title": "NovelEditorVersion",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "created_at": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "revision",
+        "title",
+        "reason",
+        "created_at"
+      ]
+    },
+    "NovelEditorSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "source_key",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "source_key": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

@@ -252,7 +252,8 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "task_type IN "
             "('brief_polish', 'brief_anchor_extract', 'brief_intake_questions', "
             "'brief_intake_synthesize', 'brief_strategy_options', "
-            "'brief_to_draft', 'casefile_chat', 'reverse_parse', 'novel_compile')",
+            "'brief_to_draft', 'casefile_chat', 'reverse_parse', "
+            "'novel_compile', 'novel_collaborate')",
             name="task_type_allowed",
         ),
         CheckConstraint(
@@ -383,7 +384,7 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND input_message_id IS NULL "
             "AND output_message_id IS NULL"
             ") OR ("
-            "task_type = 'novel_compile' "
+            "task_type IN ('novel_compile', 'novel_collaborate') "
             "AND brief_version_id IS NULL "
             "AND input_source_record_id IS NULL "
             "AND input_brief_revision IS NULL "

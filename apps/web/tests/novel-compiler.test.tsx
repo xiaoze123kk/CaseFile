@@ -68,7 +68,7 @@ describe("小说编译 API 适配", () => {
     expect(apiRequest).toHaveBeenNthCalledWith(1, "/projects/7/compiler-profiles", expect.objectContaining({ body: expect.objectContaining({ payload: novelProfile(settings) }) }));
     expect(apiRequest).toHaveBeenNthCalledWith(2, "/projects/7/compile-runs", expect.objectContaining({ body: {
       mode: "preview", expected_draft_id: 9, expected_draft_revision: 12, compiler_profile_version_id: 25,
-      planner_provider: "deepseek", prose_renderer_shadow: true,
+      planner_provider: "deepseek", prose_renderer_shadow: true, prose_mode: "quick_draft",
     } }));
   });
   it("拒绝无效结构并隔离其他工作稿和历史结构编译", async () => {
@@ -109,6 +109,27 @@ describe("小说编译 API 适配", () => {
 });
 
 describe("小说编译工作表面", () => {
+  it.each(["quick_draft", "full_polish"] as const)("正文模式默认快速，确认时冻结所选模式：%s", async (mode) => {
+    const planned = { ...run("succeeded", "disabled"), prose_renderer_shadow: false,
+      artifacts: [{ artifact_id: 5, schema_id: "compiler.novel-plan.v1", content_hash: "p" },
+        { artifact_id: 6, schema_id: "compiler.narrative-ir.v1", content_hash: "ir" }] };
+    vi.mocked(apiRequest).mockImplementation(async (_url, options) => options.method === "POST" ?
+      { ...run("queued", "pending"), prose_mode: mode } : [planned]);
+    vi.mocked(getCompileArtifactContent).mockImplementation(async (_a, _p, _r, id) => ({
+      content_hash: id === 5 ? "p" : "ir", content: id === 5 ? { ...plan, scenes: [] } : { objects: {} },
+    }) as never);
+    render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByRole("radio", { name: /快速初稿/ })).toBeChecked();
+    if (mode === "full_polish") fireEvent.click(screen.getByRole("radio", { name: /完整精修/ }));
+    fireEvent.click(screen.getByRole("button", { name: "按这份方案生成小说" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/projects/7/compile-runs", expect.objectContaining({
+      body: expect.objectContaining({ prose_mode: mode, approved_plan_run_id: 3 }),
+    })));
+  });
+  it("快速初稿不显示为审核通过，历史记录保留精修语义", () => {
+    expect(novelCompileStatus({ ...run(), prose_mode: "quick_draft" })).toBe("初稿已完成 · 未做文学审核");
+    expect(novelCompileStatus(run())).toBe("小说已完成");
+  });
   it("主任务成功但正文失败不计为完整小说", async () => {
     vi.mocked(apiRequest).mockResolvedValue([run("succeeded", "inconclusive_infrastructure"),
       { ...run(), compile_run_id: 4, prose_renderer_shadow: false }]);

@@ -1,6 +1,16 @@
 .content { display: grid; gap: 16px; padding: 22px; color: #354553; }
 .content p { margin: 0; line-height: 1.7; font-size: 14px; }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0; border: 0; }
+.modeOptions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0; margin: 0; border: 0; }
+.modeOptions legend { padding: 0 0 10px; font-size: 14px; font-weight: 600; }
+.modeOptions label { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid #cbd0d0; border-radius: 5px; background: #fffef9; cursor: pointer; }
+.modeOptions label:has(input:checked) { border-color: #354c60; background: #edf1ef; }
+.modeOptions label:has(input:focus-visible) { outline: 2px solid #354c60; outline-offset: 3px; }
+.modeOptions input { margin: 3px 0 0; accent-color: #354c60; }
+.modeOptions label > span { display: grid; gap: 7px; font-size: 14px; line-height: 1.6; }
+.modeOptions label > span > span { color: #596773; }
+.modeOptions:disabled { opacity: .6; }
+.modeOptions:disabled label { cursor: default; }
 .fields label { display: grid; gap: 8px; font-size: 14px; }
 .fields input, .fields textarea { padding: 10px; border: 1px solid #cbd0d0; background: #fffef9; border-radius: 5px; color: inherit; font: inherit; }
 .fields textarea { min-height: 90px; resize: vertical; }

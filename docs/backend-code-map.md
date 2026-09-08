@@ -442,6 +442,8 @@ Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围�
 
 ## LLM 修订决策（runtime v9）
 
+当前新增 runtime v10 两档执行策略：`prose_runtime.py` 冻结 `quick_draft` / `full_polish` 与各自预算；CompilerService 将选择加入输入哈希，恢复时校验同一策略。`prose_shadow.py` 在 Writer 成功后按快速模式直接形成带 `quick_draft_unreviewed` 标记的交付稿，跳过 Continuity、Judge、Rewrite 和润色；完整精修保持原有顺序。快速每场最多两次 Writer 调用（含一次生成纠偏），完整每场仍最多23次。持久化预算、取消、lease 与 accepted-prefix 恢复复用原实现。投影将未审核与严格通过分开；历史 v9 产物继续可读，跨 runtime 续跑拒绝，不改写历史证据。不涉及数据库迁移。
+
 - agent_runtime/prose_revision.py：使用生成契约验证编辑候选，冻结请求及正文绑定，不持有数据库，不决定文学严重程度。
 - agent_runtime/prose_rewrite_supervisor.py：编排编辑决策、全文替代稿及复审；有限预算和产品/严格结果分离。
 - agent_runtime/prose_generation.py：检测原样返回后结束生成纠偏，不把文学修复失败归入协议/基础设施重试。
@@ -449,3 +451,8 @@ Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围�
 - tests/unit/test_prose_revision.py 与 tests/integration/test_prose_shadow_runtime.py：意见绑定、fatal 禁止保留、耗尽不再重写、产品保留不篡改 Judge、无进展无续跑及累计留痕。
 
 - migrations/versions/V20260908121826__prose_revision_decision_artifacts.py：编辑报告键、scene 与 input_hash 身份约束，ORM 与 EXPECTED_DATABASE_REVISION 同步；既有报告不删除。
+
+
+## 小说正文协作与版本
+
+新增 `novel_manuscripts`、`novel_versions`、`novel_chapters`、`novel_exchanges`、`novel_edits`、`novel_edit_decisions`，业务表总数82。小说稿件拥有独立的服务端版本链；原始稿、版本正文、对话请求、模型修改组和采纳记录只追加，模型任务复用 TaskRun/TaskAttempt、AgentModelCall 与 TaskEvent。稿件属于原项目与工作稿，但不写回 CaseFile，也不改写 CompileArtifact。数据库通过复合外键绑定项目；历史表拒绝普通 UPDATE/DELETE。V20260908161410 增加这些表并允许 novel_collaborate 任务；存在小说稿件时拒绝 downgrade，避免删除历史。

@@ -113,4 +113,8 @@ JudgeAssessment.evidence 上限20兼容扩展为64，与 Provider candidate 的 
 
 ## LLM 编辑决策兼容扩展
 
+CompileInputManifest 兼容增加可选 prose_mode（quick_draft / full_polish），创建 API 为兼容旧调用默认 full_polish，前端显式默认 quick_draft。SceneRender.selection_reason 增加 quick_draft_unreviewed；SceneManifest 增加可选 literary_review（not_run / completed）。快速交付 product_accepted=true、strict_semantic_pass=false。模式与预算随任务输入/runtime 哈希冻结，历史缺省字段不补写产物。生成包、运行时镜像与 OpenAPI 同步，不改变数据库身份约束。
+
 prose-rendering.schema.json 新增 ProseRevisionFinding、ProseRevisionDecisionCandidate 和 ProseRevisionDecision。服务端绑定 scene_id、render_hash、input_hash 与 repair_budget_exhausted；模型给出意见解释、严重程度和编辑方案。SceneRender.selection_reason 增加 llm_nonfatal_retained；SceneManifest 兼容增加 product_accepted、strict_semantic_pass、revision_report_hashes。旧字段及旧证据不改写；历史读取不补写新字段重算哈希。生成 Python/TypeScript、运行时镜像及 OpenAPI 统一同步。新增 V20260908121826 兼容扩展数据库产物身份白名单，已有编辑证据时 downgrade 拒绝而不删除。
+
+novel-editor.schema.json 定义 NovelEditor 系列稿件、版本、选区、协作请求、模型候选、修改组与采纳契约。模型 before 必须在目标范围唯一匹配，服务端绑定位置和身份；对话不允许生成修改。TaskRun.task_type 兼容增加 novel_collaborate。生成包、运行时镜像与 OpenAPI 同步。

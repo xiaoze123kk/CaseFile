@@ -61,7 +61,8 @@ class ProseShadowExecutor:
                 or store.run.compile_mode != "preview"
                 or manifest.get("prose_runtime")
                 != prose_runtime_binding(
-                    manifest["profile"]["frozen_payload"]["structure"]["target_scenes"]
+                    manifest["profile"]["frozen_payload"]["structure"]["target_scenes"],
+                    manifest.get("prose_mode", "full_polish"),
                 )
             ):
                 raise CompilerContractError("compiler_prose_runtime_binding_mismatch")
@@ -230,7 +231,8 @@ class ProseShadowExecutor:
             "prose_checklist",
         )
         continuity_advisories: list[dict[str, Any]] = []
-        if self.provider.sources.continuity is not None:
+        quick = store.runtime.get("prose_mode") == "quick_draft"
+        if not quick and self.provider.sources.continuity is not None:
             contexts = []
             ordinal = next(i for i, s in enumerate(self.ordered) if s["scene_id"] == store.scene_id)
             for item in self.ordered[ordinal : ordinal + 2]:
@@ -286,12 +288,34 @@ class ProseShadowExecutor:
             previous_scene_render=previous,
             model_id="deepseek-v4-pro",
             api_key=api_key,
-            remaining_scene_call_budget=23,
+            remaining_scene_call_budget=store.runtime["limits"]["logical_calls_per_scene"],
             continuity_advisories=continuity_advisories,
         )
         self.observe("writer", writer)
         if writer.status != "completed" or writer.render is None:
             return "inconclusive_infrastructure", None, writer.error_code
+        if quick:
+            accepted = finalize_scene_render(
+                writer.render,
+                original_render=writer.render,
+                checklist=checklist,
+                profile=profile,
+                component_input_hash=canonical_json_sha256(
+                    {
+                        "runtime": store.runtime,
+                        "render": writer.render,
+                        "selection": "quick_draft_unreviewed",
+                    }
+                ),
+                selection_reason="quick_draft_unreviewed",
+            ).model_dump(mode="json")
+            store.artifact(
+                "scene_render",
+                f"compiler.scene_render.{store.scene_id}.accepted",
+                accepted,
+                "prose_manifest",
+            )
+            return "finalized_original", accepted, None
         rewrite = execute_bounded_prose_rewrite(
             self.provider,
             self.provider,

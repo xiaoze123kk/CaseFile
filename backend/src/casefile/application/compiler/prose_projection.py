@@ -95,9 +95,11 @@ def project_prose_scene(
             (a.content_hash for a in renders if a.content_jsonb["stage"] == "accepted"), None
         ),
         "rewrite_count": sum(a.content_jsonb["stage"].startswith("rewrite_") for a in renders),
+        "literary_review": "completed" if hashes("prose-consensus-report") else "not_run",
         "strict_semantic_pass": any(
             a.content_jsonb["stage"] == "accepted"
-            and a.content_jsonb["selection_reason"] != "llm_nonfatal_retained"
+            and a.content_jsonb["selection_reason"]
+            not in {"llm_nonfatal_retained", "quick_draft_unreviewed"}
             for a in renders
         ),
         "product_accepted": any(a.content_jsonb["stage"] == "accepted" for a in renders),

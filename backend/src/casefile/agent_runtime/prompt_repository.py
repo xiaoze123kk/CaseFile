@@ -23,6 +23,7 @@ from casefile.agent_runtime.prompt_package import (
 PROMPT_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.prompts"
 PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
 SUPPORTED_AGENT_IDS: Final = (
+    "novel_collaboration",
     "brief_polish",
     "brief_anchor_extract",
     "brief_intake_questions",

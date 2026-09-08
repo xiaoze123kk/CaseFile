@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkbenchSeed } from "@/features/analyst-workbench/analyst-fixture";
 import { WorkbenchIcon as Icon } from "@/features/analyst-workbench/workbench-icon";
 import {
@@ -23,6 +23,13 @@ import {
 import styles from "./novel-workspace.module.css";
 import { NovelCompilerPanel } from "./novel-compiler-panel";
 import type { NovelCompileScope } from "./novel-compiler-api";
+
+import { useNovelEditor } from "./use-novel-editor";
+import { NovelAssistant, type EditorSelection } from "./novel-assistant";
+import { NovelDiffReview, NovelServerHistory } from "./novel-editor-review";
+import { codePointOffset, utf16Offset, selectionMenuPosition } from "./novel-selection";
+import type { NovelEditorAnchor } from "@casefile/contracts";
+import collaborationStyles from "./novel-collaboration.module.css";
 
 const modes = [
   { id: "discuss", label: "讨论", icon: "chat" },
@@ -100,12 +107,47 @@ export function NovelWorkspace({
     "chapter",
   );
   const [selection, setSelection] = useState("");
+  const [editorSelection, setEditorSelection] = useState<EditorSelection | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<EditorSelection | null>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{left:number;top:number} | null>(null);
+  const [remoteReview, setRemoteReview] = useState<{id:number;edit?:number}|null>(null);
+  const [serverHistory, setServerHistory] = useState(false);
+  const [textareaScroll, setTextareaScroll] = useState<Record<string,number>>({});
+  const textareas = useRef(new Map<string, HTMLTextAreaElement>());
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [review, setReview] = useState<string | null>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!selectionMenu) return;
+    const dismiss = () => {
+      setSelectionMenu(null);
+      setPendingSelection(null);
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-novel-selection-tools]')) return;
+      dismiss();
+    };
+    const selectionChanged = () => {
+      const field = document.activeElement;
+      if (field instanceof HTMLTextAreaElement && [...textareas.current.values()].includes(field)) {
+        if (field.selectionStart === field.selectionEnd) dismiss();
+      } else if (window.getSelection()?.isCollapsed) {
+        dismiss();
+      }
+    };
+    const keyDown = (event: KeyboardEvent) => { if (event.key === "Escape") dismiss(); };
+    document.addEventListener("pointerdown", pointerDown);
+    document.addEventListener("selectionchange", selectionChanged);
+    document.addEventListener("keydown", keyDown);
+    return () => {
+      document.removeEventListener("pointerdown", pointerDown);
+      document.removeEventListener("selectionchange", selectionChanged);
+      document.removeEventListener("keydown", keyDown);
+    };
+  }, [selectionMenu]);
   const draftRef = useRef(draft);
   const chapter =
     draft?.chapters.find((item) => item.id === draft.selectedChapterId) ??
@@ -115,6 +157,26 @@ export function NovelWorkspace({
   const total =
     draft?.chapters.reduce((sum, item) => sum + wordCount(item.text), 0) ?? 0;
   const reviewMessage = messages.find((message) => message.id === review);
+
+  const editor = useNovelEditor(compileScope, draft, save);
+  const selectedExchange = editor.view?.exchanges.find(e => e.id === remoteReview?.id);
+  function locateReference(anchor: NovelEditorAnchor) {
+    const text = (anchor.original ? draft?.original.chapters : draft?.chapters)?.find(c => c.id === anchor.chapter_id)?.text;
+    if (!text || Array.from(text).slice(anchor.start,anchor.end).join("") !== anchor.text) {
+      setError("这段引用属于旧版本，当前正文已变化。原始引用仍保留在对话中。"); return;
+    }
+    if (draft) save({ ...draft, selectedChapterId: anchor.chapter_id });
+    setOriginal(anchor.original); setWholeBook(false); setRemoteReview(null);setSelectionMenu(null);
+    requestAnimationFrame(() => {
+      const field=textareas.current.get(anchor.chapter_id);
+      if(field && !anchor.original) { field.focus();field.setSelectionRange(utf16Offset(text,anchor.start),utf16Offset(text,anchor.end));field.scrollIntoView({block:"center"}); }
+      else {
+        const element=document.getElementById(`novel-original-${anchor.chapter_id}`);
+        element?.scrollIntoView({block:"center"});
+        if(element?.firstChild) { const range=document.createRange();range.setStart(element.firstChild,utf16Offset(text,anchor.start));range.setEnd(element.firstChild,utf16Offset(text,anchor.end));const selection=window.getSelection();selection?.removeAllRanges();selection?.addRange(range); }
+      }
+    });
+  }
 
   function save(next: NovelDraft) {
     draftRef.current = next;
@@ -134,6 +196,7 @@ export function NovelWorkspace({
   function selectChapter(id: string) {
     if (draft) save({ ...draft, selectedChapterId: id });
     setSelection("");
+    setEditorSelection(null); setSelectionMenu(null);
     if (scope === "selection") setScope("chapter");
   }
 
@@ -151,6 +214,7 @@ export function NovelWorkspace({
     }
     save(next);
     setMessages([]);
+    setEditorSelection(null);setSelectionMenu(null);setRemoteReview(null);
     setReview(null);
     setSelection("");
     setScope("chapter");
@@ -272,6 +336,7 @@ export function NovelWorkspace({
           {status}
         </span>
         <div className={styles.topActions}>
+          {compileScope && editor.view ? <button type="button" onClick={() => setServerHistory(true)}>服务器版本记录</button> : null}
           {compileScope ? <button disabled={busy || storageBlocked} onClick={() => setCompilerOpen(true)} type="button">
             <Icon name="document" />小说编译
           </button> : null}
@@ -473,7 +538,14 @@ export function NovelWorkspace({
           data-focus={focus}
           style={{ "--conversation-width": `${ratio}%` } as CSSProperties}
         >
-          {!focus ? (
+          {!focus && compileScope ? (
+            <section className={styles.conversation} aria-label="小说 AI 协作">
+              <NovelAssistant key={draft?.original.id ?? "empty"} project={compileScope.projectId} editor={editor} chapterId={chapter?.id}
+                original={original} onChapter={id => { selectChapter(id);setOriginal(false); }}
+                mode={mode} onMode={setMode} anchor={editorSelection} onAnchor={setEditorSelection} localRevision={draft?.revision}
+                onReview={(id,edit) => { setRemoteReview({id,edit});setSelectionMenu(null); }} onLocate={locateReference} />
+            </section>
+          ) : !focus ? (
             <section className={styles.conversation} aria-label="小说 AI 协作">
               <header className={styles.conversationHeader}>
                 <div className={styles.modeTabs} aria-label="协作模式">
@@ -736,7 +808,7 @@ export function NovelWorkspace({
                 <button
                   role="tab"
                   aria-selected={!original}
-                  onClick={() => setOriginal(false)}
+                  onClick={() => { setOriginal(false);setEditorSelection(null);setSelectionMenu(null); }}
                   type="button"
                 >
                   编辑稿
@@ -744,7 +816,7 @@ export function NovelWorkspace({
                 <button
                   role="tab"
                   aria-selected={original}
-                  onClick={() => setOriginal(true)}
+                  onClick={() => { setOriginal(true);setMode("discuss");setEditorSelection(null);setSelectionMenu(null); }}
                   type="button"
                 >
                   原始初稿
@@ -752,7 +824,7 @@ export function NovelWorkspace({
               </div>
               <span>{original ? "只读" : "可直接编辑"}</span>
             </div>
-            {!draft ? (
+            {selectedExchange ? <NovelDiffReview exchange={selectedExchange} editor={editor} focusEdit={remoteReview?.edit} onClose={() => setRemoteReview(null)} /> : !draft ? (
               <div className={styles.emptyManuscript}>
                 <Icon name="document" />
                 <h2>等待故事落笔</h2>
@@ -786,12 +858,24 @@ export function NovelWorkspace({
                     </span>
                     <h2>{item.title}</h2>
                     {original ? (
-                      <div className={styles.readText}>
+                      <div className={styles.readText} id={`novel-original-${item.id}`} onMouseUp={(event) => {
+                        if(!compileScope || !draft)return;
+                        const selected=window.getSelection();if(!selected?.rangeCount || selected.isCollapsed){setSelectionMenu(null);setPendingSelection(null);return;}
+                        const range=selected.getRangeAt(0);if(!event.currentTarget.contains(range.commonAncestorContainer))return;
+                        const prefix=range.cloneRange();prefix.selectNodeContents(event.currentTarget);prefix.setEnd(range.startContainer,range.startOffset);
+                        const start=Array.from(prefix.toString()).length,text=selected.toString();const rect=range.getBoundingClientRect();
+                        setPendingSelection({chapter_id:item.id,start,end:start+Array.from(text).length,text,original:true,localRevision:draft.revision,manuscriptKey:draft.original.id});
+                        setSelectionMenu({left:Math.max(8,Math.min(rect.left,window.innerWidth-250)),top:Math.max(8,rect.top-45)});
+                      }}>
                         {item.text || "本章暂无正文。"}
                       </div>
                     ) : (
+                      <div className={collaborationStyles.textareaWrap}>
+                      {editorSelection && !editorSelection.original && editorSelection.chapter_id===item.id && editorSelection.localRevision===draft.revision ? <div aria-hidden="true" className={collaborationStyles.highlightMirror}><div style={{transform:`translateY(-${textareaScroll[item.id] ?? 0}px)`}}>{Array.from(item.text).slice(0,editorSelection.start).join("")}<mark>{Array.from(item.text).slice(editorSelection.start,editorSelection.end).join("")}</mark>{Array.from(item.text).slice(editorSelection.end).join("")}</div></div> : null}
                       <textarea
                         aria-label={`${item.title}正文`}
+                        ref={node => { if(node)textareas.current.set(item.id,node);else textareas.current.delete(item.id); }}
+                        onScroll={event => {setSelectionMenu(null);const top=event.currentTarget.scrollTop;setTextareaScroll(values=>({...values,[item.id]:top}));}}
                         value={item.text}
                         placeholder="在这里编辑章节正文…"
                         onChange={(event) => {
@@ -805,7 +889,7 @@ export function NovelWorkspace({
                                 : entry,
                             ),
                           });
-                          setSelection("");
+                          setSelection("");setSelectionMenu(null);
                           if (scope === "selection") setScope("chapter");
                         }}
                         onSelect={(event) => {
@@ -819,12 +903,22 @@ export function NovelWorkspace({
                               ),
                             );
                             setScope("selection");
+                            if(compileScope) {
+                              setPendingSelection({chapter_id:item.id,start:codePointOffset(target.value,target.selectionStart),end:codePointOffset(target.value,target.selectionEnd),text:target.value.slice(target.selectionStart,target.selectionEnd),original:false,localRevision:draft.revision,manuscriptKey:draft.original.id});
+                              setSelectionMenu(selectionMenuPosition(target));
+                            }
+                          } else {
+                            setSelectionMenu(null);
+                            setPendingSelection(null);
+                            setSelection("");
+                            if (scope === "selection") setScope("chapter");
                           }
                         }}
                         style={{
                           minHeight: `${Math.max(340, item.text.split("\n").length * 34 + Math.ceil(item.text.length / 28) * 18)}px`,
                         }}
                       />
+                      </div>
                     )}
                   </article>
                 ))}
@@ -841,6 +935,10 @@ export function NovelWorkspace({
           </section>
         </div>
       </div>
+      {serverHistory && compileScope ? <NovelServerHistory project={compileScope.projectId} draftId={compileScope.draftId} editor={editor} onClose={() => setServerHistory(false)} /> : null}
+      {compileScope && selectionMenu && pendingSelection ? <div role="toolbar" data-novel-selection-tools aria-label="选中文字操作" className={collaborationStyles.selectionTools} style={selectionMenu} onMouseDown={event => event.preventDefault()}>
+        {modes.filter(m => !pendingSelection.original || m.id === "discuss").map(m => <button type="button" key={m.id} onClick={() => { setEditorSelection(pendingSelection);setMode(m.id);setFocus(false);setSelectionMenu(null); }}><Icon name={m.icon} />{m.id === "discuss" ? "提问" : m.label}</button>)}
+      </div> : null}
       {compilerOpen && compileScope ? (
         <NovelCompilerPanel scope={compileScope} title={seed.caseMeta.title} hasDraft={Boolean(draft)}
           onClose={() => setCompilerOpen(false)}

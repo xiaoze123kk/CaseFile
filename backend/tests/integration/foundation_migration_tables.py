@@ -1,6 +1,13 @@
 """Exact business-table inventory shared by foundation migration checks."""
 
 BUSINESS_TABLES = {
+    "novel_manuscripts",
+    "novel_versions",
+    "novel_chapters",
+    "novel_exchanges",
+    "novel_edits",
+    "novel_edit_decisions",
+
     "agent_goal_deliveries",
     "agent_goal_obligation_dependencies",
     "agent_goal_obligations",
