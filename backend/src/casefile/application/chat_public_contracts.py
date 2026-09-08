@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from casefile.application.chat_public_patches import (
+    public_patch_review_payload,
+    public_patch_set_payload,
+)
 from casefile_contracts import (
     PublicAgentMessage,
     PublicAgentMessageReceipt,
@@ -19,11 +23,6 @@ from casefile_contracts import (
     PublicPatchReviewResult,
     PublicPatchSet,
     PublicRoutingFeedbackReceipt,
-)
-
-from casefile.application.chat_public_patches import (
-    public_patch_review_payload,
-    public_patch_set_payload,
 )
 
 _ACTIVITY_BY_STAGE = {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     ContextBlock,

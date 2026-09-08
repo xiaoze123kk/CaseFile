@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.application.verification_engine import (
     PatchOperation,
     VerificationEngine,

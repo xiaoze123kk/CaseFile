@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
+
 from casefile.benchmark import closure_repair_holdout
 from casefile.benchmark.closure_repair_capability import load_capability_suite
 from casefile.benchmark.closure_repair_holdout import (

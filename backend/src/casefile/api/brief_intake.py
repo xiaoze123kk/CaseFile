@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from casefile_contracts import TaskRun
 from fastapi import APIRouter
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
@@ -18,6 +17,7 @@ from casefile.api.schemas import (
     BriefIntakeSynthesizeTaskRequest,
 )
 from casefile.application.brief_intake_service import BriefIntakeService
+from casefile_contracts import TaskRun
 
 
 def brief_intake_router() -> APIRouter:

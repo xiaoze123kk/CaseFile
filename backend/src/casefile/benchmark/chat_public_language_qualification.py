@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -18,7 +17,6 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 
 import rfc8785
-from casefile_contracts import PublicAgentEvent, PublicAgentMessage
 from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -26,11 +24,13 @@ from sqlalchemy.engine import make_url
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.public_language import public_language_rule_ids
 from casefile.benchmark.chat_live_eval import _saved_provider_credential
+from casefile.benchmark.source_identity import GitIdentityUnavailable, read_git_identity
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
     create_database_engine,
     current_database_revision,
 )
+from casefile_contracts import PublicAgentEvent, PublicAgentMessage
 
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_SUITE = Path("fixtures/chat_public_language_qualification/v1/suite.json")
@@ -681,23 +681,10 @@ def runtime_fingerprint(repo_root: Path) -> str:
 
 
 def git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*arguments: str) -> str:
-        result = subprocess.run(
-            ["git", *arguments],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise PublicLanguageQualificationError("qualification_git_identity_unavailable")
-        return result.stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
+    try:
+        return read_git_identity(repo_root, strict=True)
+    except GitIdentityUnavailable:
+        raise PublicLanguageQualificationError("qualification_git_identity_unavailable") from None
 
 
 def _load_task(repo_root: Path, raw: Mapping[str, Any]) -> PublicLanguageTask:

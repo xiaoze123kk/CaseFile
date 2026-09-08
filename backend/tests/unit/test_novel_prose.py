@@ -26,6 +26,23 @@ def check():
     }
 
 
+@pytest.mark.parametrize("message", [None, 7, {"text": "invalid"}])
+def test_public_result_message_does_not_expose_non_string_payloads(message):
+    from casefile.application.novel_editor import novel_result_message
+
+    assert novel_result_message("discuss", {"message": message}, has_edits=False) == ""
+
+
+def test_public_result_message_preserves_valid_text_and_no_edit_summary():
+    from casefile.application.novel_editor import novel_result_message
+
+    assert novel_result_message("discuss", {"message": "建议"}, has_edits=False) == "建议"
+    assert novel_result_message("rewrite", {"message": "修改"}, has_edits=True) == "修改"
+    assert novel_result_message("rewrite", {"message": "已修改"}, has_edits=False) == (
+        "本次未生成有效的正文修改，原文保持不变。"
+    )
+
+
 def test_checklist_requires_exact_author_source_and_unique_checks():
     context = {
         "instruction": "开门",

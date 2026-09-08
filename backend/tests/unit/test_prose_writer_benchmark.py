@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import (
     FakeProseJudgeProvider,
     build_server_evidence_catalog,

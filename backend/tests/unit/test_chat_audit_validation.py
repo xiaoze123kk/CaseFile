@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.chat_audit_validation import (
     audit_findings_suppressed_for,
     normalize_audit_findings,
@@ -14,7 +16,6 @@ from casefile.agent_runtime.models import (
     CaseFileChatSuggestionCandidateV2,
 )
 from casefile.agent_runtime.prompt_package import OUTPUT_SCHEMAS
-from pydantic import ValidationError
 
 
 def make_finding(**overrides: object) -> dict:

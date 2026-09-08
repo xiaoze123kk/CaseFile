@@ -28,7 +28,8 @@ def novel_result_message(mode: str, result: dict[str, Any], *, has_edits: bool) 
     """Public completion reflects effective edits rather than a model's self-description."""
     if mode != "discuss" and not has_edits and not result.get("editorial_review"):
         return "本次未生成有效的正文修改，原文保持不变。"
-    return result.get("message", "")
+    message = result.get("message", "")
+    return message if isinstance(message, str) else ""
 
 
 class NovelEditorService:
@@ -155,7 +156,9 @@ class NovelEditorService:
         return {
             "id": exchange.id,
             "task_id": task.id,
-            "history_after_exchange_id": task.input_jsonb["request"].get("history_after_exchange_id", 0),
+            "history_after_exchange_id": task.input_jsonb["request"].get(
+                "history_after_exchange_id", 0
+            ),
             "revision": exchange.revision,
             "mode": exchange.mode,
             "scope": task.input_jsonb["request"]["scope"],

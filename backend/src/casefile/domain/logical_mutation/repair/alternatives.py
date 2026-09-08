@@ -8,7 +8,6 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
 import rfc8785
-from casefile_contracts import Status as ClaimStatus
 
 from casefile.domain.logical_mutation.models import MutationSet, UpdateField
 from casefile.domain.logical_mutation.repair.assessment import assess_closure_repair
@@ -19,6 +18,7 @@ from casefile.domain.logical_mutation.repair.models import (
     RepairScopeV1,
     RepairUpdateOperation,
 )
+from casefile_contracts import Status as ClaimStatus
 
 if TYPE_CHECKING:
     from casefile.domain.verification_engine import MutationSimulation, VerificationEngine

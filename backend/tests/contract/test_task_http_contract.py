@@ -6,13 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
+
 from casefile.api.app import create_app
 from casefile.api.dependencies import get_actor_user_id, get_session
 from casefile.application.workflow_views import task_view
 from casefile_contracts import TaskRun
-from fastapi.testclient import TestClient
-from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
 
 
 def projected_task(task_type: str, status: str) -> dict:

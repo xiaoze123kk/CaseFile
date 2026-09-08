@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from casefile.agent_runtime.chat_preview import AnswerPreview, answer_prefix
 
 

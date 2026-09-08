@@ -9,7 +9,6 @@ from datetime import datetime
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
-from casefile_contracts import NovelPlanCandidate, NovelPlanIR
 from pydantic import ValidationError
 
 from casefile.contracts.object_types import COLLECTION_OBJECT_TYPES as _COLLECTION_TYPE
@@ -22,6 +21,7 @@ from casefile.domain.narrative_compiler.planner_input import (
     PLANNER_INPUT_V3_SCHEMA_ID,
     validate_planner_input_bundle,
 )
+from casefile_contracts import NovelPlanCandidate, NovelPlanIR
 
 NOVEL_PLAN_CANDIDATE_SCHEMA_ID = "compiler.novel-plan-candidate.v1"
 NOVEL_PLAN_SCHEMA_ID = "compiler.novel-plan.v1"

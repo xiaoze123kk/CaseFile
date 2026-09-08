@@ -10,7 +10,6 @@ import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -33,6 +32,7 @@ from casefile.benchmark.general_mutation_progress import (
     TrialProgressCheckpoint,
     default_checkpoint_path,
 )
+from casefile.benchmark.source_identity import read_git_identity as _git_identity
 from casefile.domain.logical_mutation import CLOSURE_POLICY_VERSION
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -546,19 +546,6 @@ def _gate(
 
 def _rate(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 6) if denominator else 0.0
-
-
-def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        return subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        ).stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
 
 
 def main() -> None:

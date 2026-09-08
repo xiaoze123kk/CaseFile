@@ -5,9 +5,10 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
+
 from casefile.api.app import _contract_validation_error_handler, _cors_origins, create_app
 from casefile.contracts import ContractValidationError
-from fastapi.testclient import TestClient
 
 
 def test_custom_cors_origin_is_exactly_allowed_for_preflight() -> None:

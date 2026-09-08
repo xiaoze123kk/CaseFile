@@ -24,6 +24,7 @@ from casefile.agent_runtime.prose_quality_config import (
     ProseQualityConfig,
     validate_quality_config,
 )
+from casefile.agent_runtime.usage import fake_prose_usage, prose_response_usage
 from casefile.domain.narrative_compiler import (
     QUALITY_DIMENSIONS,
     CompilerContractError,
@@ -262,7 +263,7 @@ class DeepSeekProseQualityCriticProvider:
                 error_code,
                 failed_call=_failed_call_from_request(request, error_code, (attempt,)),
             ) from error
-        usage = _response_usage(response)
+        usage = prose_response_usage(response)
         attempt = ProseQualityTransportAttempt(
             1,
             "completed",
@@ -363,7 +364,7 @@ class FakeProseQualityCriticProvider:
         queue = self._findings if request.request_kind == "findings" else self._pairwise
         candidate = queue.popleft() if queue else None
         raw = json.dumps(candidate, ensure_ascii=False, sort_keys=True) if candidate else ""
-        usage = _zero_usage()
+        usage = fake_prose_usage()
         return ProseQualityProviderResult(
             candidate=candidate,
             raw_response=raw,
@@ -827,29 +828,6 @@ def _anonymous_render(render: dict[str, Any]) -> dict[str, Any]:
 def _validate_model(model_id: str) -> None:
     if model_id != PROSE_QUALITY_MODEL_ID:
         raise ProseQualityProtocolError("prose_quality_model_id_not_frozen")
-
-
-def _response_usage(response: Any) -> dict[str, int]:
-    value = response.usage
-    return {
-        "requests": 1,
-        "input_tokens": int(getattr(value, "prompt_tokens", 0) or 0),
-        "output_tokens": int(getattr(value, "completion_tokens", 0) or 0),
-        "total_tokens": int(getattr(value, "total_tokens", 0) or 0),
-        "cached_tokens": int(getattr(value, "prompt_cache_hit_tokens", 0) or 0),
-        "reasoning_tokens": 0,
-    }
-
-
-def _zero_usage() -> dict[str, int]:
-    return {
-        "requests": 1,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "cached_tokens": 0,
-        "reasoning_tokens": 0,
-    }
 
 
 __all__ = [

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import build_server_evidence_catalog
 from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_FINDINGS_PROMPT_VERSION,

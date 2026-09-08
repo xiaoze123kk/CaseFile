@@ -12,6 +12,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.general_mutation import GeneralMutationPlannerResult, MutationPlanV1
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
@@ -20,8 +23,6 @@ from casefile.application.workflow_service import WorkflowService
 from casefile.data_postgres.models import TaskRun
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

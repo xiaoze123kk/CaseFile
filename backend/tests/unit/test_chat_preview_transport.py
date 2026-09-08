@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from agents import ModelSettings
+
 from casefile.agent_runtime.models import CaseFileChatCandidateV2, CaseFileChatRequest
 from casefile.agent_runtime.provider_adapters.shared import _run_auxiliary_agent
 from casefile.agent_runtime.structured_output import STRICT_OUTPUT_TOOL_NAME, _stream_strict_answer

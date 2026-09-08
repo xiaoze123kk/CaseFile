@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_PROMPT_VERSION,
     StoryPlannerPatchProviderResult,

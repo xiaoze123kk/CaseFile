@@ -8,7 +8,6 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
 import rfc8785
-from casefile_contracts import Status as ClaimStatus
 
 from casefile.domain.logical_mutation.graph import (
     COLLECTION_BY_TYPE,
@@ -34,6 +33,7 @@ from casefile.domain.logical_mutation.repair.scope import (
     RepairScopeError,
     build_repair_scope,
 )
+from casefile_contracts import Status as ClaimStatus
 
 if TYPE_CHECKING:
     from casefile.domain.verification_engine import MutationSimulation

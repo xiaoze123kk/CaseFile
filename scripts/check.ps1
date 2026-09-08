@@ -61,7 +61,7 @@ try {
             throw "Python compilation check failed."
         }
 
-        & $python -m ruff check --config backend/pyproject.toml backend/src backend/migrations backend/tests
+        & $python -m ruff check backend/src backend/migrations backend/tests
         if ($LASTEXITCODE -ne 0) {
             throw "Ruff check failed."
         }

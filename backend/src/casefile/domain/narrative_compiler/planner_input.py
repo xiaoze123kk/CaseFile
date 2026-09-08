@@ -5,12 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from casefile_contracts import (
-    NovelProfile,
-    PlannerInputBundle,
-    PlannerInputBundleV2,
-    PlannerInputBundleV3,
-)
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -18,6 +12,12 @@ from casefile.domain.narrative_compiler.foundation import (
     canonical_json_sha256,
 )
 from casefile.domain.narrative_compiler.prose_checklist import validate_novel_profile_v2
+from casefile_contracts import (
+    NovelProfile,
+    PlannerInputBundle,
+    PlannerInputBundleV2,
+    PlannerInputBundleV3,
+)
 
 PLANNER_INPUT_SCHEMA_ID = "compiler.story-planner-input.v1"
 PLANNER_INPUT_V2_SCHEMA_ID = "compiler.story-planner-input.v2"

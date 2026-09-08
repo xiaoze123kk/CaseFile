@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from casefile.benchmark import closure_repair_qualification as qualification
 
 

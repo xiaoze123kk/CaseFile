@@ -1,5 +1,6 @@
 """Bounded chapter orchestration over shared prose roles; never auto-adopts text."""
 
+from collections.abc import Callable
 from typing import Any
 
 from casefile.agent_runtime.novel_chapter_review import chapter_change_evidence
@@ -17,7 +18,11 @@ from casefile.agent_runtime.novel_prose import (
 from casefile.agent_runtime.prose_judge import judge_evidence_repair_baseline
 from casefile.agent_runtime.prose_quality_critic import parse_quality_pairwise
 from casefile.domain.narrative_compiler import canonical_json_sha256
-from casefile.worker.handlers.novel_model_calls import NovelCallError, NovelProtocolError
+from casefile.worker.handlers.novel_model_calls import (
+    NovelCallError,
+    NovelModelJournal,
+    NovelProtocolError,
+)
 
 LABELS = {
     "checklist": "检查清单",
@@ -32,7 +37,8 @@ LABELS = {
 
 class ChapterProseWorkflow:
     def __init__(
-        self, journal: Any, context: dict[str, Any], key: str, model: str, provider: Any = None
+        self, journal: NovelModelJournal, context: dict[str, Any], key: str, model: str,
+        provider: Any = None,
     ):
         self.journal, self.context, self.key, self.model = journal, context, key, model
         self.provider = provider or ChapterProseProvider()
@@ -44,7 +50,7 @@ class ChapterProseWorkflow:
         self.checks: list[dict[str, Any]] = []
         self.revision_failed = False
 
-    def call(self, phase: str, payload: dict[str, Any], validate: Any) -> Any:
+    def call[T](self, phase: str, payload: dict[str, Any], validate: Callable[[Any], T]) -> T:
         stage = {
             "phase": phase,
             "label": LABELS[phase],
@@ -62,9 +68,9 @@ class ChapterProseWorkflow:
         )
         repair = None
         rejected = None
-        protected = None
+        protected: dict[str, Any] | None = None
 
-        def validate_result(result: Any) -> Any:
+        def validate_result(result: Any) -> T:
             nonlocal rejected
             rejected = result.candidate
             if (
@@ -84,11 +90,14 @@ class ChapterProseWorkflow:
                 "prose_prompt_versions": self.context.get("prose_prompt_versions", {}),
             }
             try:
+                def invoke(data: dict[str, Any] = data) -> Any:
+                    return self.provider.invoke(phase, data, self.key, self.model)
+
                 result = self.journal.call(
                     phase,
                     phase_prompt(phase, self.context),
                     data,
-                    lambda data=data: self.provider.invoke(phase, data, self.key, self.model),
+                    invoke,
                     validate_result,
                 )
                 stage.update(status="completed", summary=LABELS[phase] + "完成")
