@@ -11,6 +11,10 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, func, select, text
+from sqlalchemy.orm import sessionmaker
+
 from casefile.api.app import create_app
 from casefile.application.errors import ApplicationError
 from casefile.application.goal_session_repository import GoalSessionRepository
@@ -22,9 +26,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select, text
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

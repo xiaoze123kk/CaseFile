@@ -22,6 +22,12 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
+
 from casefile.agent_runtime.brief_to_draft_v8.ir import EvidenceLogicIRV2
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
     _evidence_assessment_issues,
@@ -51,11 +57,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
-from sqlalchemy import Engine, create_engine, func, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = [
     pytest.mark.postgres,

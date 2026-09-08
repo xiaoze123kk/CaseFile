@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from casefile_contracts import Brief as BriefContract
 from pydantic import ValidationError
 
 from casefile.application.errors import ApplicationError
+from casefile_contracts import Brief as BriefContract
 
 _RESOLUTION_MODES = {"author_anchored", "agent_proposed", "open"}
 

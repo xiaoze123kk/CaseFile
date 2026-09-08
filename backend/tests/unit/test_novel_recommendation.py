@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from casefile.agent_runtime.novel_recommendation import recommend_novel
 
 RECOMMENDATION = {

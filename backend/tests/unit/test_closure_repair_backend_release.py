@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.benchmark.closure_repair_backend_release import (
     FAULT_MATRIX,
     BackendReleaseContractError,

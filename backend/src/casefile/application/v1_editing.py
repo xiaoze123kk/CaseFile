@@ -338,62 +338,6 @@ class V1EditingService:
                 )
             return _find(dict(simulation.document)[collection], object_id), revision
 
-    def _invalidate_dependent_conclusions(
-        self,
-        owned: OwnedDraft,
-        object_id: str,
-        *,
-        actor_user_id: int,
-        dependency_document: dict[str, Any],
-    ) -> list[CaseFileObject]:
-        """Return confirmed conclusions to review when their reasoning basis changes."""
-
-        resolution_by_id = {
-            item["id"]: item for item in dependency_document["resolution_specs"]
-        }
-        rows = list(
-            self.session.scalars(
-                select(ResolutionSpec).where(
-                    ResolutionSpec.draft_id == owned.draft.id,
-                    ResolutionSpec.conclusion_review_status == "confirmed",
-                )
-            )
-        )
-        invalidated: list[CaseFileObject] = []
-        for row in rows:
-            registry = self.session.scalar(
-                select(CaseFileObject).where(CaseFileObject.id == row.object_registry_id)
-            )
-            resolution = resolution_by_id.get(registry.object_id) if registry else None
-            if resolution is None or not _conclusion_references_object(
-                dependency_document, resolution, object_id
-            ):
-                continue
-            row.conclusion_review_status = "proposed"
-            row.conclusion_confirmed_by_user_id = None
-            row.conclusion_confirmed_at = None
-            self.session.add(
-                AuditEvent(
-                    project_id=owned.project.id,
-                    casefile_id=owned.casefile.id,
-                    actor_kind="user",
-                    actor_user_id=actor_user_id,
-                    actor_ref=None,
-                    action="resolution.conclusion_invalidated",
-                    target_type="resolution_spec",
-                    target_id=row.object_registry_id,
-                    trace_id=None,
-                    details_jsonb={
-                        "changed_object_id": object_id,
-                        "old_status": "confirmed",
-                        "new_status": "proposed",
-                    },
-                )
-            )
-            if registry is not None:
-                invalidated.append(registry)
-        return invalidated
-
     def confirm_conclusion(
         self,
         actor_user_id: int,
@@ -1363,34 +1307,6 @@ def _pointer_value(value: Any, path: str) -> Any:
                 details={"field_path": path},
             ) from error
     return deepcopy(current)
-
-
-def _replace_pointer(value: Any, path: str, replacement: Any) -> None:
-    parts = _pointer_parts(path)
-    parent = value
-    for part in parts[:-1]:
-        try:
-            parent = parent[int(part)] if isinstance(parent, list) else parent[part]
-        except (IndexError, KeyError, TypeError, ValueError) as error:
-            raise ApplicationError(
-                "patch_path_missing",
-                "建议字段不存在于当前对象中。",
-                status_code=409,
-                details={"field_path": path},
-            ) from error
-    final = parts[-1]
-    try:
-        if isinstance(parent, list):
-            parent[int(final)] = replacement
-        else:
-            parent[final] = replacement
-    except (IndexError, KeyError, TypeError, ValueError) as error:
-        raise ApplicationError(
-            "patch_path_missing",
-            "建议字段不存在于当前对象中。",
-            status_code=409,
-            details={"field_path": path},
-        ) from error
 
 
 def iter_editable_fields(object_type: str) -> Iterator[str]:

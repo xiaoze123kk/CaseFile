@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -24,6 +23,7 @@ from casefile.benchmark.closure_repair_gate import (
 )
 from casefile.benchmark.closure_repair_lineage import repair_runtime_fingerprint
 from casefile.benchmark.eval_core import EvalSuite, EvalTask
+from casefile.benchmark.source_identity import read_git_identity as _git_identity
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
 from casefile.domain.logical_mutation.repair import REPAIR_CONTEXT_V3, REPAIR_POLICY_V1
 
@@ -465,19 +465,6 @@ def _rate(numerator: int, denominator: int) -> float:
 
 def _canonical_bytes(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-
-
-def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        return subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        ).stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
 
 
 __all__ = [

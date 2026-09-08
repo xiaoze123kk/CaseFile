@@ -5,12 +5,13 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from application_services_test_support import _prepare_task, workflow_database
+from sqlalchemy import inspect, select, text
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.data_postgres.models import TaskRun
 from casefile.data_postgres.session import EXPECTED_DATABASE_REVISION, current_database_revision
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import inspect, select, text
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

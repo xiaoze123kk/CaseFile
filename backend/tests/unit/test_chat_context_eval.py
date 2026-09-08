@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+
 from casefile.benchmark.chat_context_eval import (
     boundary_scenario_from_dict,
     build_boundary_fixtures,

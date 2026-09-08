@@ -372,107 +372,6 @@ def grade_candidate(
     }
 
 
-def _run_legacy_suite(*, suite_kind: str) -> dict[str, Any]:
-    if suite_kind not in {"capability", "regression", "safety"}:
-        raise ValueError("ScenePlan suite kind is invalid")
-    validated = validate_suite()
-    suite = validated["suite"]
-    trials: list[dict[str, Any]] = []
-    if suite_kind == "capability":
-        for task in suite["tasks"]:
-            task_id = task["task_id"]
-            grade = grade_candidate(
-                scene_compiler_input=validated["inputs"][task_id],
-                candidate=validated["references"][task_id],
-                outcome_invariants=task["outcome_invariants"],
-                rubric=validated["rubric"],
-            )
-            trials.append(_trial(task, "reference", grade))
-    elif suite_kind == "regression":
-        tasks = {item["task_id"]: item for item in suite["tasks"]}
-        for task_id, alternative in validated["alternatives"].items():
-            task = tasks[task_id]
-            grade = grade_candidate(
-                scene_compiler_input=validated["inputs"][task_id],
-                candidate=alternative,
-                outcome_invariants=task["outcome_invariants"],
-                rubric=validated["rubric"],
-            )
-            trials.append(_trial(task, "alternative_reference", grade))
-    else:
-        tasks = {item["task_id"]: item for item in suite["tasks"]}
-        for mutation in validated["mutations"]:
-            task_id = mutation["base_task_id"]
-            bundle = copy.deepcopy(validated["inputs"][task_id])
-            candidate = copy.deepcopy(validated["references"][task_id])
-            _apply_mutation(mutation["kind"], bundle=bundle, candidate=candidate)
-            grade = grade_candidate(
-                scene_compiler_input=bundle,
-                candidate=candidate,
-                outcome_invariants=tasks[task_id]["outcome_invariants"],
-                rubric=validated["rubric"],
-            )
-            reason_codes = {item["code"] for item in grade["violations"]}
-            expected = mutation["expected_reason_code"]
-            safety_passed = expected in reason_codes
-            trials.append(
-                {
-                    "trial_id": mutation["mutation_id"],
-                    "task_id": task_id,
-                    "primary_capability": tasks[task_id]["primary_capability"],
-                    "variant": tasks[task_id]["variant"],
-                    "source": "safety_mutation",
-                    "candidate_accepted": grade["passed"],
-                    "expected_reason_code": expected,
-                    **grade,
-                    "passed": safety_passed,
-                }
-            )
-    fingerprint = canonical_json_sha256(
-        {"runner_version": RUNNER_VERSION, "suite_kind": suite_kind, "suite": suite}
-    )
-    failure_taxonomy: Counter[str] = Counter(
-        violation["category"] for trial in trials for violation in trial.get("violations", [])
-    )
-    by_capability: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    by_variant: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for trial in trials:
-        by_capability[trial["primary_capability"]].append(trial)
-        by_variant[trial["variant"]].append(trial)
-    passed_count = sum(bool(item["passed"]) for item in trials)
-    report = {
-        "schema_id": "benchmark.scene-plan-report.v1",
-        "status": "passed" if passed_count == len(trials) else "failed",
-        "suite_kind": suite_kind,
-        "fingerprint": fingerprint,
-        "frozen": {
-            "runner_version": RUNNER_VERSION,
-            "suite_id": suite["suite_id"],
-            "suite_hash": canonical_json_sha256(suite),
-            "grader_versions": suite["grader_versions"],
-            "g3_status": "not_run",
-        },
-        "metrics": {
-            "trial_count": len(trials),
-            "passed_trial_count": passed_count,
-            "pass_rate": passed_count / len(trials) if trials else 0.0,
-            "infrastructure_failure_count": 0,
-            "failure_taxonomy": {
-                category: failure_taxonomy.get(category, 0) for category in FAILURE_CATEGORIES
-            },
-            "by_capability": _group_results(by_capability),
-            "by_variant": _group_results(by_variant),
-        },
-        "qualification": {
-            "status": "uncalibrated",
-            "qualified": False,
-            "reason": "live_baseline_not_run",
-        },
-        "trials": trials,
-    }
-    return report
-
-
 def run_suite(
     *,
     suite_kind: str,
@@ -1941,17 +1840,6 @@ def _has_unused_visible_sources(bundle: dict[str, Any], candidate: dict[str, Any
 def _is_dense_reference(candidate: dict[str, Any]) -> bool:
     kinds = {beat["kind"] for scene in candidate["scenes"] for beat in scene["beats"]}
     return len(candidate["scenes"]) >= 3 and len(kinds) >= 2
-
-
-def _trial(task: dict[str, Any], source: str, grade: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "trial_id": f"{task['task_id']}:{source}",
-        "task_id": task["task_id"],
-        "primary_capability": task["primary_capability"],
-        "variant": task["variant"],
-        "source": source,
-        **grade,
-    }
 
 
 def _group_results(groups: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:

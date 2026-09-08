@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import random
-import subprocess
 import time
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
@@ -21,6 +20,7 @@ from casefile.agent_runtime import (
     DeepSeekAgentsProvider,
     ProviderRepairProposer,
 )
+from casefile.benchmark.source_identity import read_git_identity as _git_identity
 from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
     CLOSURE_POLICY_V2,
@@ -1282,20 +1282,6 @@ def _violation_counts(rows: Sequence[TrialRecord]) -> dict[str, int]:
             if grader.grader_id == "safety":
                 values.update(cast(Sequence[str], grader.evidence.get("violations", ())))
     return dict(sorted(values.items()))
-
-
-def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        completed = subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        )
-        return completed.stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
 
 
 def _file_fingerprint(paths: Sequence[Path], version: str) -> str:

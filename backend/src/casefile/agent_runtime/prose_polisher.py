@@ -21,6 +21,7 @@ from casefile.agent_runtime.prose_generation import (
     validate_generation_result,
 )
 from casefile.agent_runtime.prose_judge import FULL_COUNCIL_POLICY
+from casefile.agent_runtime.usage import fake_prose_usage, prose_response_usage
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
@@ -174,7 +175,7 @@ class DeepSeekProsePolisherProvider:
                 error_code,
                 failed_call=_failed_call_from_request(request, error_code, (attempt,)),
             ) from error
-        usage = _response_usage(response)
+        usage = prose_response_usage(response)
         attempt = ProsePolisherTransportAttempt(
             1,
             "completed",
@@ -270,7 +271,7 @@ class FakeProsePolisherProvider:
             raise ProsePolisherInfrastructureError("prose_polisher_fake_infrastructure")
         candidate = self._candidates.popleft() if self._candidates else None
         raw = json.dumps(candidate, ensure_ascii=False, sort_keys=True) if candidate else ""
-        usage = _zero_usage()
+        usage = fake_prose_usage()
         return ProsePolisherProviderResult(
             candidate,
             raw,
@@ -478,29 +479,6 @@ def _failed_call_from_request(
         error_code,
         attempts,
     )
-
-
-def _response_usage(response: Any) -> dict[str, int]:
-    value = response.usage
-    return {
-        "requests": 1,
-        "input_tokens": int(getattr(value, "prompt_tokens", 0) or 0),
-        "output_tokens": int(getattr(value, "completion_tokens", 0) or 0),
-        "total_tokens": int(getattr(value, "total_tokens", 0) or 0),
-        "cached_tokens": int(getattr(value, "prompt_cache_hit_tokens", 0) or 0),
-        "reasoning_tokens": 0,
-    }
-
-
-def _zero_usage() -> dict[str, int]:
-    return {
-        "requests": 1,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "cached_tokens": 0,
-        "reasoning_tokens": 0,
-    }
 
 
 __all__ = [

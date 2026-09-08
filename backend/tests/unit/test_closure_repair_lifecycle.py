@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.application.closure_repair import (
     REPAIR_LIFECYCLE_ENVELOPE_V1,
     closure_repair_envelope,

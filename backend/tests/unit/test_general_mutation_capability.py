@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from benchmark_preparation import reuse_document_findings
 from casefile.agent_runtime.closure_repair import (
     ClosureRepairOutputV3,

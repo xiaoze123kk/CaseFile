@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from casefile_contracts import NovelRecommendation
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,6 +12,7 @@ from casefile.application.errors import ApplicationError, not_found, revision_co
 from casefile.data_postgres.models import AuditEvent, UserProviderSetting
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.domain.narrative_compiler import canonical_json_sha256
+from casefile_contracts import NovelRecommendation
 
 
 def recommend_for_draft(

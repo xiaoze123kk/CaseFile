@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+
 from casefile.agent_runtime.brief_to_draft_runtime import (
     BriefToDraftSpec,
     FeatureFlags,

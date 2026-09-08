@@ -22,6 +22,7 @@ from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
 )
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.provider_policy import SUPPORTED_PROVIDERS as SUPPORTED_PROVIDERS
 from casefile.application.task_events import append_task_event
 from casefile.application.workflow_views import (
     event_view,
@@ -68,7 +69,6 @@ DEFAULT_PROVIDER = "openai"
 
 DEFAULT_MODEL = "gpt-5.6-sol"
 
-SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 
 SUPPORTED_CHAT_VIEWS = frozenset(
     {"timeline", "relations", "reasoning", "map", "export", "compile", "evidence"}
@@ -192,18 +192,6 @@ def _json_hash(value: dict[str, Any]) -> str:
 
 def _text_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _supported_provider(provider: str) -> str:
-    normalized = provider.strip().lower()
-    if normalized not in SUPPORTED_PROVIDERS:
-        raise ApplicationError(
-            "provider_not_supported",
-            f"不支持的模型服务：{provider}。",
-            status_code=422,
-            details={"supported_providers": sorted(SUPPORTED_PROVIDERS)},
-        )
-    return normalized
 
 
 __all__ = [

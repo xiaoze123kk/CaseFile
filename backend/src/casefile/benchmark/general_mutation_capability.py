@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import os
-import subprocess
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -46,6 +45,7 @@ from casefile.benchmark.general_mutation_progress import (
     TrialProgressCheckpoint,
     default_checkpoint_path,
 )
+from casefile.benchmark.source_identity import read_git_identity as _git_identity
 from casefile.domain.logical_mutation import (
     CLOSURE_POLICY_VERSION,
     RepairProposal,
@@ -823,20 +823,6 @@ def _holdout_gate(
         "eligible": checks["exact_24_tasks_x_5"] and checks["private_suite_role"],
         "passed": all(checks.values()),
         "checks": checks,
-    }
-
-
-def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        result = subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        )
-        return result.stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
     }
 
 

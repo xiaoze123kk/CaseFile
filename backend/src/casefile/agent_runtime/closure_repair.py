@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Literal, Protocol
 
-from casefile_contracts import Status as ClaimStatus
 from pydantic import Field, model_validator
 
 from casefile.agent_runtime.models import EventSink, StrictAgentOutput
@@ -19,6 +18,7 @@ from casefile.domain.logical_mutation.repair.models import (
     RepairProposal,
     RepairUpdateOperation,
 )
+from casefile_contracts import Status as ClaimStatus
 
 CLOSURE_REPAIR_PROMPT_VERSION = "closure-repair-v3"
 CLOSURE_REPAIR_AGENT_VERSION = "closure-repair-agent-v3"

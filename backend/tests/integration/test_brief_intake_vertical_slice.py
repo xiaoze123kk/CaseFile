@@ -8,12 +8,13 @@ from unittest.mock import patch
 
 import pytest
 import sqlalchemy as sa
-from casefile.agent_runtime import FakeProvider
-from casefile.api.app import create_app
-from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import sessionmaker
+
+from casefile.agent_runtime import FakeProvider
+from casefile.api.app import create_app
+from casefile.worker.runtime import Worker, WorkerConfig
 
 pytestmark = pytest.mark.postgres
 

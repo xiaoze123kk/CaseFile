@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -15,6 +14,8 @@ from typing import Any, Literal, Protocol, cast
 
 import rfc8785
 from sqlalchemy.engine import make_url
+
+from casefile.benchmark.source_identity import GitIdentityUnavailable, read_git_identity
 
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_SUITE = Path("fixtures/general_mutation_benchmark/release/v1/suite.json")
@@ -462,19 +463,10 @@ def _read_object(path: Path) -> dict[str, Any]:
 
 
 def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        result = subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        )
-        if result.returncode != 0:
-            raise BackendReleaseContractError("backend_release_git_identity_unavailable")
-        return result.stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
+    try:
+        return read_git_identity(repo_root, strict=True)
+    except GitIdentityUnavailable:
+        raise BackendReleaseContractError("backend_release_git_identity_unavailable") from None
 
 
 def _canonical_hash(value: Any) -> str:

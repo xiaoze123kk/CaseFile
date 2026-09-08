@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_artifact_ref,

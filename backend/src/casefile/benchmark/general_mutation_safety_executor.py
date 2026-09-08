@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -19,6 +18,7 @@ from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
+from casefile.benchmark.database_fingerprint import public_schema_fingerprint
 from casefile.benchmark.general_mutation_safety import ROOT, SafetyTask, SafetyTrialEvidence
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
@@ -351,16 +351,7 @@ class PostgresSafetyExecutor:
         return project_id, int(task["task_run_id"])
 
     def _schema_fingerprint(self) -> str:
-        with self.engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT table_name, column_name, data_type FROM information_schema.columns "
-                    "WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"
-                )
-            ).all()
-        return hashlib.sha256(
-            json.dumps([list(row) for row in rows], separators=(",", ":")).encode()
-        ).hexdigest()
+        return public_schema_fingerprint(self.engine)
 
 
 def _event_reason_codes(payload: Any) -> tuple[str, ...]:

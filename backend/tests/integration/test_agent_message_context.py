@@ -11,6 +11,9 @@ from application_services_test_support import (
     _alembic_config,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.application.agent_message_context import message_context_input
 from casefile.application.workflow_service import WorkflowService
 from casefile.data_postgres.models import (
@@ -20,8 +23,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

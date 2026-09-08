@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime import (
     ClosureRepairOutputV2,
     ClosureRepairRequest,
@@ -32,7 +34,6 @@ from casefile.domain.logical_mutation.repair.models import (
     ScopedRepairObligation,
 )
 from casefile.domain.verification_engine import VerificationEngine
-from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[3]
 

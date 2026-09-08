@@ -6,7 +6,6 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import PublicAgentEvent, PublicAgentRun
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -84,6 +83,7 @@ from casefile.application.closure_repair import (
 )
 from casefile.application.errors import ApplicationError, not_found
 from casefile.application.goal_session_repository import GoalSessionRepository
+from casefile.application.provider_policy import normalize_provider
 from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
     finalize_task_cancellation,
@@ -112,7 +112,6 @@ from casefile.application.workflow_common import (
     _event_view,
     _json_hash,
     _latest_context_state_ref,
-    _supported_provider,
     _task_view,
     require_current_draft,
     require_owned_project,
@@ -144,6 +143,7 @@ from casefile.domain.logical_mutation import (
     MutationSet,
     UpdateField,
 )
+from casefile_contracts import PublicAgentEvent, PublicAgentRun
 
 
 class AgentWorkflowMixin(AgentPatchMutationMixin):
@@ -494,7 +494,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         expected_goal_id: int | None = None,
         expected_goal_revision: int | None = None,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         content = content.strip()
         if verification_trigger not in {"chat", "manual"}:
             raise ValueError("Unsupported verification trigger")

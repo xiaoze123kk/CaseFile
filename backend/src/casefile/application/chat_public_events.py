@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from casefile_contracts import PublicAgentEvent, PublicAgentRun
-
 from casefile.application.chat_public_contracts import public_agent_run_view
+from casefile_contracts import PublicAgentEvent, PublicAgentRun
 
 _ACTIVITY_EVENTS = {
     "task.started": "understanding",

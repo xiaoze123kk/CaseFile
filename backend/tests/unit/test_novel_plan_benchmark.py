@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.benchmark import novel_plan_eval
 from casefile.benchmark.novel_plan_eval import run_suite, validate_suite
 
@@ -175,7 +176,7 @@ def test_v4_suite_freezes_typed_obligations_prompts_and_formal_gate(
     )
     prompts = report["frozen"]["constraint_first_prompts"]
     assert prompts["skeleton"]["version"] == "story-planner-skeleton-v1"
-    assert prompts["semantic_fill"]["version"] == "story-planner-semantic-fill-v1"
+    assert prompts["semantic_fill"]["version"] == "story-planner-semantic-fill-v2"
     assert all(len(item["sha256"]) == 64 for item in prompts.values())
     assert [round_["stage"] for round_ in report["trials"][0]["rounds"]] == [
         "skeleton_proposal",

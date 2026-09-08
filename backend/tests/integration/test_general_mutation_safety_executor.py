@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlalchemy import Engine
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import GeneralMutationPlannerResult, MutationPlanV2
 from casefile.agent_runtime.models import (
@@ -18,7 +20,6 @@ from casefile.benchmark.general_mutation_safety_executor import (
     _SafetyProvider,
 )
 from casefile.contracts import ContractValidationError
-from sqlalchemy import Engine
 
 
 class ProtectedConstraintProvider(FakeProvider):
