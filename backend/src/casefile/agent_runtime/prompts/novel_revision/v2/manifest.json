@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_revision",
+  "version": "novel-revision-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "925687b40b09c5163db2d7fcbba51ec1dd9b99f1dc64ae235f89144458ddb982",
+  "previous_version": "novel-revision-v1",
+  "change_summary": "明确候选保留与停止交付的语义，避免把stop当作正常完成。"
+}

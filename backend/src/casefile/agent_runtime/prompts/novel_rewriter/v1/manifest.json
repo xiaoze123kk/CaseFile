@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_rewriter",
+  "version": "novel-rewriter-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "bfdd45752c5d3f2768c1156e2a78a8e6d417bf3417ad043badb88a5054a307c2",
+  "previous_version": null,
+  "change_summary": "复用正文重链路组件并适配整章编辑。"
+}
