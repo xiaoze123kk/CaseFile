@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_collaboration",
+  "version": "novel-collaboration-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "d4ef482368971a1f94f80680554eadafc720cd293f7e59b43dc2cbb0ad2cd6ca",
+  "previous_version": null,
+  "change_summary": "独立小说讨论、改写与润色，返回有界修改组。"
+}

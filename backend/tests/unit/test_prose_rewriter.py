@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
     PROSE_COUNCIL_MODEL_ID,
@@ -172,6 +173,7 @@ def test_request_contains_failed_and_preserved_semantics_without_credentials(
     length = payload["server_bindings"]["length_contract"]
     expected = rewrite_case["profile"]["prose"]["target_scene_chars"]
     assert length == {
+        "enforcement": "production_hard_range",
         "policy_version": "prose-rewriter-length-contract-v2",
         "unit": "unicode_code_points_in_block_text_only",
         "min_chars": expected["min"],
@@ -185,8 +187,8 @@ def test_request_contains_failed_and_preserved_semantics_without_credentials(
         },
         "hard_gate": True,
     }
-    assert "generation_floor_chars" in request.system_prompt
-    assert "min_chars_per_block" in request.system_prompt
+    assert "revision_decision" in request.system_prompt
+    assert "local_revision" in request.system_prompt
 
 
 def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(
@@ -210,9 +212,7 @@ def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(
     assert execution.status == "completed"
     assert execution.render is not None
     assert (execution.render["stage"], execution.render["round"]) == ("rewrite_1", 1)
-    assert execution.render["previous_render_hash"] == canonical_json_sha256(
-        rewrite_case["render"]
-    )
+    assert execution.render["previous_render_hash"] == canonical_json_sha256(rewrite_case["render"])
 
 
 @pytest.mark.parametrize("mutation", ("passed", "wrong_render", "wrong_policy", "wrong_reports"))
@@ -251,9 +251,9 @@ def test_review_binding_drift_fails_before_provider(
 
 def test_exact_recovery_and_fingerprint_drift(rewrite_case: dict[str, Any]) -> None:
     request = _request(rewrite_case)
-    original = FakeProseRewriterProvider(
-        candidates=(rewrite_case["candidate"],)
-    ).rewrite_scene(request)
+    original = FakeProseRewriterProvider(candidates=(rewrite_case["candidate"],)).rewrite_scene(
+        request
+    )
     review = _failed_review(rewrite_case)
     provider = FakeProseRewriterProvider()
 
@@ -471,7 +471,8 @@ def test_deepseek_adapter_is_single_attempt_and_sanitized(
             SimpleNamespace(
                 message=SimpleNamespace(
                     content=json.dumps(rewrite_case["candidate"], ensure_ascii=False)
-                )
+                ),
+                finish_reason="length",
             ),
         ),
     )
@@ -479,6 +480,7 @@ def test_deepseek_adapter_is_single_attempt_and_sanitized(
     monkeypatch.setattr(provider, "_create_completion", lambda _request: response)
     result = provider.rewrite_scene(request)
     assert result.candidate == rewrite_case["candidate"]
+    assert result.finish_reason == "length"
     assert result.transport_attempts[0].attempt_index == 1
     assert request.network_retries == 0
 
@@ -490,3 +492,33 @@ def test_deepseek_adapter_is_single_attempt_and_sanitized(
         provider.rewrite_scene(request)
     assert raised.value.failed_call is not None
     assert "credential-canary" not in repr(raised.value.failed_call)
+
+
+def test_production_no_progress_is_semantic_and_does_not_repeat_generation(rewrite_case):
+    original = deepcopy(rewrite_case["candidate"])
+    corrected = deepcopy(original)
+    corrected["blocks"][0]["text"] += "他重新核实了遗漏的动作。"
+    provider = FakeProseRewriterProvider(candidates=(original, corrected))
+    provider.allow_generation_repair = True
+    failures = []
+    provider.record_generation_failure = lambda fp, issue: failures.append(issue)
+    review = _failed_review(rewrite_case)
+    result = execute_prose_rewriter(
+        provider,
+        scene_plan=rewrite_case["plan"],
+        narrative_ir=rewrite_case["narrative"],
+        profile=rewrite_case["profile"],
+        checklist=rewrite_case["checklist"],
+        previous_scene_render=None,
+        current_render=rewrite_case["render"],
+        consensus=review.consensus,
+        judge_reports=review.judge_reports,
+        model_id=PROSE_REWRITER_MODEL_ID,
+        api_key="fake",
+        remaining_scene_call_budget=22,
+    )
+    assert result.status == "semantic_rejected"
+    assert provider.call_count == result.call.generation_call_count == 1
+    assert failures[0]["code"] == "prose_generation_no_progress"
+    assert "generation_repair" not in result.call.request_payload
+    assert result.render is None

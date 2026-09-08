@@ -515,6 +515,7 @@ class CompilerProfileVersionCreateRequest(StrictRequest):
 
 
 class CompileRunCreateRequest(StrictRequest):
+    prose_mode: Literal["quick_draft", "full_polish"] = "full_polish"
     scene_compiler_shadow: bool = False
     approved_plan_run_id: int | None = Field(default=None, ge=1)
     prose_renderer_shadow: bool = False

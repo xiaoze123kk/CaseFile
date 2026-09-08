@@ -118,6 +118,13 @@ from casefile.data_postgres.session import EXPECTED_DATABASE_REVISION
 
 expected_revision = EXPECTED_DATABASE_REVISION
 expected_tables = {
+    "novel_manuscripts",
+    "novel_versions",
+    "novel_chapters",
+    "novel_exchanges",
+    "novel_edits",
+    "novel_edit_decisions",
+
     "agent_model_calls", "agent_step_runs",
     "agent_thread_context_states",
     "agent_goal_deliveries", "agent_goal_obligation_dependencies",

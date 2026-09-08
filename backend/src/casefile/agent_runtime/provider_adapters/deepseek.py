@@ -8,19 +8,6 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    NovelPlanCandidate,
-    SceneSemanticFillProposal,
-    SemanticFillProposal,
-    SkeletonProposal,
-    StoryPlanStructuralPatch,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -174,6 +161,19 @@ from casefile.agent_runtime.story_planner_prompt import (
 )
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SceneSemanticFillProposal,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
 )
 
 
@@ -330,11 +330,6 @@ class DeepSeekAgentsProvider:
             )
         finally:
             await client.close()
-        if len(response.choices) != 1:
-            raise ProviderProtocolError("DeepSeek Story Planner returned an invalid choice count")
-        raw_output = response.choices[0].message.content
-        if not raw_output:
-            raise ProviderProtocolError("DeepSeek Story Planner returned no content")
         response_usage = response.usage
         usage = {
             "requests": 1,
@@ -344,6 +339,18 @@ class DeepSeekAgentsProvider:
             "cached_tokens": int(getattr(response_usage, "prompt_cache_hit_tokens", 0) or 0),
             "reasoning_tokens": 0,
         }
+        if len(response.choices) != 1:
+            raw = response.model_dump_json()
+            request.on_response(raw, usage, "invalid_choices")
+            raise CompilerProviderOutputError(
+                "compiler_model_output_incomplete", raw, usage, "invalid_choices"
+            )
+        raw_output = response.choices[0].message.content
+        if not raw_output:
+            request.on_response("", usage, "empty_response")
+            raise CompilerProviderOutputError(
+                "compiler_model_output_incomplete", "", usage, "empty_response"
+            )
         request.emit(
             "agent.model_call.completed",
             stage,
@@ -356,6 +363,7 @@ class DeepSeekAgentsProvider:
             },
         )
         finish_reason = getattr(response.choices[0], "finish_reason", "stop")
+        request.on_response(raw_output, usage, str(finish_reason))
         if finish_reason != "stop":
             raise CompilerProviderOutputError(
                 "compiler_model_output_truncated"
@@ -594,6 +602,7 @@ class DeepSeekAgentsProvider:
             "casefile-chat-v20",
             "casefile-chat-v21",
             "casefile-chat-v22",
+            "casefile-chat-v23",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -715,6 +724,7 @@ class DeepSeekAgentsProvider:
                     "casefile-chat-v20",
                     "casefile-chat-v21",
                     "casefile-chat-v22",
+                    "casefile-chat-v23",
                 }:
                     raise
                 request.emit(

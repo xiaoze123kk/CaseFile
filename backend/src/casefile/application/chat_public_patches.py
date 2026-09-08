@@ -64,6 +64,11 @@ _FIELD_LABELS: Final = {
     "from_ref": "关系起点",
     "goals": "目标",
     "information_type": "信息类型",
+    "knowledge_states": "角色认知",
+    "as_of_event_ref": "认知时点",
+    "knows_refs": "所知信息",
+    "believes_refs": "推测",
+    "false_belief_refs": "误判",
     "level": "约束等级",
     "location_ref": "发生地点",
     "lock_type": "锁定类型",
@@ -157,6 +162,14 @@ class FieldLabelRegistry:
     def label(self, field_path: Any) -> str:
         if not isinstance(field_path, str) or not field_path.startswith("/"):
             return "卷宗内容"
+        knowledge = re.fullmatch(
+            r"/knowledge_states/(\d+)(?:/(as_of_event_ref|knows_refs|"
+            r"believes_refs|false_belief_refs)(?:/\d+)?)?", field_path,
+        )
+        if knowledge is not None:
+            ordinal = int(knowledge.group(1)) + 1
+            label = _FIELD_LABELS.get(knowledge.group(2), "角色认知")
+            return f"第 {ordinal} 个认知时点 · {label}"
         exact = _EXACT_FIELD_LABELS.get(field_path)
         if exact is not None:
             return exact
@@ -282,6 +295,16 @@ class ValueFormatter:
                     "kind": "reference",
                     "text": _bounded(self._labels.reference_name(value), 4000),
                 }
+            if set(value) == {
+                "as_of_event_ref", "knows_refs", "believes_refs", "false_belief_refs",
+            }:
+                parts = [
+                    f"{_FIELD_LABELS[key]}：{self.format(value[key])['text']}"
+                    for key in (
+                        "as_of_event_ref", "knows_refs", "believes_refs", "false_belief_refs",
+                    )
+                ]
+                return {"kind": "text", "text": _bounded("；".join(parts), 4000)}
             start = value.get("start")
             end = value.get("end")
             if isinstance(start, str) or isinstance(end, str):

@@ -78,6 +78,7 @@ from casefile.agent_runtime.context.thread_memory import (
 )
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPromptInput,
+    GeneralMutationPromptInputV2,
     MutationPlanV1,
     MutationPlanV2,
 )
@@ -195,6 +196,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "closure-repair-input-v2": ClosureRepairPromptInputV2,
         "closure-repair-input-v3": ClosureRepairPromptInputV3,
         "general-mutation-planner-input-v1": GeneralMutationPromptInput,
+        "general-mutation-planner-input-v2": GeneralMutationPromptInputV2,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -363,6 +365,9 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ),
         (
             "general-mutation-planner-agent-v7",
+            "general-mutation-planner-no-tools-v1",
+        ),        (
+            "general-mutation-planner-agent-v8",
             "general-mutation-planner-no-tools-v1",
         ),
     }

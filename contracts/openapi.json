@@ -2300,6 +2300,85 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/compile-runs/{run_id}/resume": {
+      "post": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Resume Run",
+        "operationId": "resume_run_api_v1_projects__project_id__compile_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompileResumeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Resume Run Api V1 Projects  Project Id  Compile Runs  Run Id  Resume Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/novel-recommendation": {
       "post": {
         "tags": [
@@ -2908,6 +2987,747 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Get Artifact Api V1 Projects  Project Id  Compile Runs  Compile Run Id  Artifacts  Artifact Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels": {
+      "get": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "List Novels",
+        "operationId": "list_novels_api_v1_projects__project_id__novels_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "draft_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NovelEditorSummary"
+                  },
+                  "title": "Response List Novels Api V1 Projects  Project Id  Novels Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Create",
+        "operationId": "create_api_v1_projects__project_id__novels_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelEditorCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels/{novel_id}": {
+      "get": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Get",
+        "operationId": "get_api_v1_projects__project_id__novels__novel_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Save",
+        "operationId": "save_api_v1_projects__project_id__novels__novel_id__put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelEditorSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels/{novel_id}/versions": {
+      "post": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Checkpoint",
+        "operationId": "checkpoint_api_v1_projects__project_id__novels__novel_id__versions_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelEditorSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "History",
+        "operationId": "history_api_v1_projects__project_id__novels__novel_id__versions_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NovelEditorVersion"
+                  },
+                  "title": "Response History Api V1 Projects  Project Id  Novels  Novel Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels/{novel_id}/versions/{revision}": {
+      "get": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Version Detail",
+        "operationId": "version_detail_api_v1_projects__project_id__novels__novel_id__versions__revision__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Revision"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorVersionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels/{novel_id}/restore": {
+      "post": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Restore",
+        "operationId": "restore_api_v1_projects__project_id__novels__novel_id__restore_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelEditorRestore"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels/{novel_id}/collaborations": {
+      "post": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Submit",
+        "operationId": "submit_api_v1_projects__project_id__novels__novel_id__collaborations_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelEditorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorExchange"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/novels/{novel_id}/collaborations/{exchange_id}/decisions": {
+      "post": {
+        "tags": [
+          "novel-editor"
+        ],
+        "summary": "Decide",
+        "operationId": "decide_api_v1_projects__project_id__novels__novel_id__collaborations__exchange_id__decisions_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "exchange_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exchange Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelEditorDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelEditorView"
                 }
               }
             }
@@ -7172,6 +7992,23 @@
   },
   "components": {
     "schemas": {
+      "Action5": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "reject"
+        ],
+        "title": "Action5"
+      },
+      "Action6": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "revise",
+          "needs_author"
+        ],
+        "title": "Action6"
+      },
       "Activity": {
         "enum": [
           "understanding",
@@ -8452,8 +9289,48 @@
         ],
         "title": "Category1"
       },
+      "Category2": {
+        "type": "string",
+        "enum": [
+          "intent",
+          "preservation",
+          "meaning",
+          "continuity"
+        ],
+        "title": "Category2"
+      },
+      "CompileResumeRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_draft_revision"
+        ],
+        "title": "CompileResumeRequest"
+      },
       "CompileRunCreateRequest": {
         "properties": {
+          "prose_mode": {
+            "type": "string",
+            "enum": [
+              "quick_draft",
+              "full_polish"
+            ],
+            "title": "Prose Mode",
+            "default": "full_polish"
+          },
           "scene_compiler_shadow": {
             "type": "boolean",
             "title": "Scene Compiler Shadow",
@@ -8753,6 +9630,11 @@
           "expected_current_draft_id"
         ],
         "title": "DraftCandidateAdoptRequest"
+      },
+      "EditId": {
+        "type": "integer",
+        "minimum": 1.0,
+        "title": "EditId"
       },
       "EventId": {
         "type": "string",
@@ -9334,6 +10216,15 @@
         ],
         "title": "Mode"
       },
+      "Mode1": {
+        "type": "string",
+        "enum": [
+          "discuss",
+          "rewrite",
+          "polish"
+        ],
+        "title": "Mode1"
+      },
       "ModelId": {
         "type": "string",
         "minLength": 1,
@@ -9460,6 +10351,846 @@
         ],
         "title": "MutationUpdateOperationRequest"
       },
+      "NovelChapterReviewCandidate": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Summary"
+          },
+          "action": {
+            "$ref": "#/components/schemas/Action6"
+          },
+          "revision_plan": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Revision Plan"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/NovelChapterReviewFinding"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "title": "Findings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "summary",
+          "action",
+          "revision_plan",
+          "findings"
+        ],
+        "title": "NovelChapterReviewCandidate"
+      },
+      "NovelChapterReviewFinding": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/Category2"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity4"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1500,
+            "title": "Message"
+          },
+          "source_quote": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Source Quote"
+          },
+          "candidate_quote": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Candidate Quote"
+          },
+          "suggestion": {
+            "type": "string",
+            "maxLength": 1500,
+            "title": "Suggestion"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "severity",
+          "message",
+          "source_quote",
+          "candidate_quote",
+          "suggestion"
+        ],
+        "title": "NovelChapterReviewFinding"
+      },
+      "NovelChapterReviewReport": {
+        "properties": {
+          "candidate_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Hash"
+          },
+          "round": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Round"
+          },
+          "review": {
+            "$ref": "#/components/schemas/NovelChapterReviewCandidate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidate_hash",
+          "round",
+          "review"
+        ],
+        "title": "NovelChapterReviewReport"
+      },
+      "NovelEditorAnchor": {
+        "properties": {
+          "chapter_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Chapter Id"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "End"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 40000,
+            "title": "Text"
+          },
+          "original": {
+            "type": "boolean",
+            "title": "Original"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "chapter_id",
+          "start",
+          "end",
+          "text",
+          "original"
+        ],
+        "title": "NovelEditorAnchor"
+      },
+      "NovelEditorChapter": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000000,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "text"
+        ],
+        "title": "NovelEditorChapter"
+      },
+      "NovelEditorCreate": {
+        "properties": {
+          "source_key": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Source Key"
+          },
+          "source_label": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Source Label"
+          },
+          "draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Draft Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Chapters"
+          },
+          "original_chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Original Chapters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_key",
+          "source_label",
+          "draft_id",
+          "title",
+          "chapters",
+          "original_chapters"
+        ],
+        "title": "NovelEditorCreate"
+      },
+      "NovelEditorDecision": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "edit_ids": {
+            "items": {
+              "$ref": "#/components/schemas/EditId"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Edit Ids"
+          },
+          "action": {
+            "$ref": "#/components/schemas/Action5"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "edit_ids",
+          "action"
+        ],
+        "title": "NovelEditorDecision"
+      },
+      "NovelEditorEdit": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "End"
+          },
+          "before": {
+            "type": "string",
+            "maxLength": 2000000,
+            "title": "Before"
+          },
+          "after": {
+            "type": "string",
+            "maxLength": 2000000,
+            "title": "After"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Reason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status12"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "start",
+          "end",
+          "before",
+          "after",
+          "reason",
+          "status"
+        ],
+        "title": "NovelEditorEdit"
+      },
+      "NovelEditorExchange": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          },
+          "task_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Task Id"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode1"
+          },
+          "chapter_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Chapter Id"
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 6000,
+            "title": "Instruction"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NovelEditorAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Message"
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 30,
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "usage": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Usage"
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorEdit"
+            },
+            "type": "array",
+            "title": "Edits"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Scope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NovelRewriteRequirements"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "editorial_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NovelEditorialReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history_after_exchange_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History After Exchange Id",
+            "description": "本次对话的历史起点；不读取此位置及以前的对话或摘要。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "revision",
+          "mode",
+          "chapter_id",
+          "instruction",
+          "anchor",
+          "message",
+          "status",
+          "error",
+          "usage",
+          "edits"
+        ],
+        "title": "NovelEditorExchange"
+      },
+      "NovelEditorRequest": {
+        "properties": {
+          "request_key": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Request Key"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode1"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "chapter_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Chapter Id"
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 6000,
+            "title": "Instruction"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NovelEditorAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NovelRewriteRequirements"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history_after_exchange_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History After Exchange Id",
+            "description": "本次对话的历史起点；不读取此位置及以前的对话或摘要。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_key",
+          "expected_revision",
+          "mode",
+          "scope",
+          "chapter_id",
+          "instruction",
+          "anchor"
+        ],
+        "title": "NovelEditorRequest"
+      },
+      "NovelEditorRestore": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "revision"
+        ],
+        "title": "NovelEditorRestore"
+      },
+      "NovelEditorSave": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Chapters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "title",
+          "chapters"
+        ],
+        "title": "NovelEditorSave"
+      },
+      "NovelEditorSummary": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "source_key": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Source Key"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "source_key",
+          "revision"
+        ],
+        "title": "NovelEditorSummary"
+      },
+      "NovelEditorVersion": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revision",
+          "title",
+          "reason",
+          "created_at"
+        ],
+        "title": "NovelEditorVersion"
+      },
+      "NovelEditorVersionDetail": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "previous_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Title"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "title": "Chapters"
+          },
+          "previous_chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "title": "Previous Chapters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revision",
+          "title",
+          "previous_title",
+          "chapters",
+          "previous_chapters"
+        ],
+        "title": "NovelEditorVersionDetail"
+      },
+      "NovelEditorView": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          },
+          "source_key": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Source Key"
+          },
+          "source_label": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Source Label"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Revision"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Title"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Chapters"
+          },
+          "original_chapters": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorChapter"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Original Chapters"
+          },
+          "exchanges": {
+            "items": {
+              "$ref": "#/components/schemas/NovelEditorExchange"
+            },
+            "type": "array",
+            "title": "Exchanges"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "source_key",
+          "source_label",
+          "revision",
+          "title",
+          "chapters",
+          "original_chapters",
+          "exchanges"
+        ],
+        "title": "NovelEditorView"
+      },
+      "NovelEditorialReview": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/Status13"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Message"
+          },
+          "candidate_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Hash"
+          },
+          "revision_count": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Revision Count"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/NovelChapterReviewReport"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Reports"
+          },
+          "stages": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/NovelProseStage"
+                },
+                "type": "array",
+                "maxItems": 18
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "candidate_hash",
+          "revision_count",
+          "reports"
+        ],
+        "title": "NovelEditorialReview"
+      },
+      "NovelProseStage": {
+        "properties": {
+          "phase": {
+            "type": "string",
+            "title": "Phase"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status14"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "candidate_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "phase",
+          "label",
+          "status",
+          "summary",
+          "findings",
+          "candidate_hash"
+        ],
+        "title": "NovelProseStage"
+      },
       "NovelRecommendationRequest": {
         "properties": {
           "expected_draft_id": {
@@ -9486,6 +11217,27 @@
           "expected_draft_revision"
         ],
         "title": "NovelRecommendationRequest"
+      },
+      "NovelRewriteRequirements": {
+        "properties": {
+          "preserve": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Preserve"
+          },
+          "allow_changes": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Allow Changes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preserve",
+          "allow_changes"
+        ],
+        "title": "NovelRewriteRequirements"
       },
       "ObjectId": {
         "type": "string",
@@ -11392,6 +13144,15 @@
         ],
         "title": "RootModel[Union[TaskRun, NoneType]]"
       },
+      "Scope": {
+        "type": "string",
+        "enum": [
+          "chapter",
+          "selection",
+          "chapter_rewrite"
+        ],
+        "title": "Scope"
+      },
       "ScopeEstimate": {
         "type": "string",
         "maxLength": 1000,
@@ -11406,6 +13167,15 @@
           "note"
         ],
         "title": "Severity"
+      },
+      "Severity4": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "major"
+        ],
+        "title": "Severity4"
       },
       "SourceRecordCreateRequest": {
         "properties": {
@@ -11459,6 +13229,32 @@
           "skipped"
         ],
         "title": "Status10"
+      },
+      "Status12": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "rejected"
+        ],
+        "title": "Status12"
+      },
+      "Status13": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "incomplete",
+          "revision_failed"
+        ],
+        "title": "Status13"
+      },
+      "Status14": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "incomplete"
+        ],
+        "title": "Status14"
       },
       "Status2": {
         "type": "string",
@@ -11931,6 +13727,7 @@
           "casefile_chat",
           "reverse_parse",
           "novel_compile",
+          "novel_collaborate",
           "idea_generation"
         ],
         "title": "TaskType"

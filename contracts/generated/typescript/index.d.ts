@@ -407,6 +407,25 @@ export interface EditingContracts {
   prose_quality_report: ProseQualityReport;
   novel_candidate: NovelCandidate;
   compile_manifest: CompileManifest;
+  novel_editor_chapter: NovelEditorChapter;
+  novel_editor_create: NovelEditorCreate;
+  novel_editor_save: NovelEditorSave;
+  novel_editor_anchor: NovelEditorAnchor;
+  novel_editor_request: NovelEditorRequest;
+  novel_editor_candidateedit: NovelEditorCandidateEdit;
+  novel_editor_candidate: NovelEditorCandidate;
+  novel_editor_edit: NovelEditorEdit;
+  novel_editor_exchange: NovelEditorExchange;
+  novel_editor_view: NovelEditorView;
+  novel_editor_decision: NovelEditorDecision;
+  novel_editor_restore: NovelEditorRestore;
+  novel_editor_version: NovelEditorVersion;
+  novel_editor_summary: NovelEditorSummary;
+  novel_chapter_rewrite_candidate?: NovelChapterRewriteCandidate;
+  novel_editor_version_detail?: NovelEditorVersionDetail;
+  NovelRewriteRequirements?: NovelRewriteRequirements;
+  NovelChapterReviewCandidate?: NovelChapterReviewCandidate;
+  NovelEditorialReview?: NovelEditorialReview;
 }
 export interface NovelRecommendation {
   concept: string;
@@ -989,6 +1008,7 @@ export interface TaskRun {
     | "casefile_chat"
     | "reverse_parse"
     | "novel_compile"
+    | "novel_collaborate"
     | "idea_generation";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
@@ -1489,7 +1509,8 @@ export interface SceneCompilerModelView {
     projection_version:
       | "compiler.scene-compiler-model-view-projection.v1"
       | "compiler.scene-compiler-model-view-projection.v2"
-      | "compiler.scene-compiler-model-view-projection.v3";
+      | "compiler.scene-compiler-model-view-projection.v3"
+      | "compiler.scene-compiler-model-view-projection.v4";
     scene_compiler_input_hash: string;
   };
   /**
@@ -1515,6 +1536,8 @@ export interface SceneCompilerBatchView {
   state_seed: SceneStateSeed;
 }
 export interface SceneCompilerBatchSceneView {
+  intent?: string;
+  actor_allowlist?: ObjectRef[];
   scene_id: string;
   chapter_id: string;
   discourse_order: number;
@@ -2437,7 +2460,16 @@ export interface SceneRender {
   blocks: [SceneRenderBlock, ...SceneRenderBlock[]];
   character_count: number;
   selection_reason:
-    | ("semantic_accepted" | "polished_accepted" | "polish_semantic_rollback" | "quality_rollback" | "quality_unstable")
+    | (
+        | "semantic_accepted"
+        | "polished_accepted"
+        | "polish_semantic_rollback"
+        | "judge_budget_preserve_accepted_original"
+        | "quality_rollback"
+        | "quality_unstable"
+        | "llm_nonfatal_retained"
+        | "quick_draft_unreviewed"
+      )
     | null;
 }
 export interface SceneRenderSource {
@@ -2499,7 +2531,7 @@ export interface JudgeAssessment {
   check_id: string;
   verdict: "pass" | "fail" | "uncertain";
   /**
-   * @maxItems 20
+   * @maxItems 64
    */
   evidence: Evidence[];
   rationale: string;
@@ -2660,6 +2692,10 @@ export interface SceneManifest {
   arbiter_report_hashes: string[];
   quality_report_hashes: string[];
   accepted_render_hash: string | null;
+  literary_review?: "not_run" | "completed";
+  strict_semantic_pass?: boolean;
+  product_accepted?: boolean;
+  revision_report_hashes?: string[];
   rewrite_count: number;
   call_count: number;
   physical_request_count?: number;
@@ -2673,6 +2709,203 @@ export interface UsageSummary {
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
+}
+export interface NovelEditorChapter {
+  id: string;
+  title: string;
+  text: string;
+}
+export interface NovelEditorCreate {
+  source_key: string;
+  source_label: string;
+  draft_id: number;
+  title: string;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  chapters: [NovelEditorChapter, ...NovelEditorChapter[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  original_chapters: [NovelEditorChapter, ...NovelEditorChapter[]];
+}
+export interface NovelEditorSave {
+  expected_revision: number;
+  title: string;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  chapters: [NovelEditorChapter, ...NovelEditorChapter[]];
+}
+export interface NovelEditorAnchor {
+  chapter_id: string;
+  start: number;
+  end: number;
+  text: string;
+  original: boolean;
+}
+export interface NovelEditorRequest {
+  request_key: string;
+  expected_revision: number;
+  mode: "discuss" | "rewrite" | "polish";
+  scope: "chapter" | "selection" | "chapter_rewrite";
+  chapter_id: string;
+  instruction: string;
+  anchor: NovelEditorAnchor | null;
+  requirements?: NovelRewriteRequirements | null;
+  /**
+   * 本次对话的历史起点；不读取此位置及以前的对话或摘要。
+   */
+  history_after_exchange_id?: number;
+}
+export interface NovelRewriteRequirements {
+  preserve: string;
+  allow_changes: string;
+}
+export interface NovelEditorCandidateEdit {
+  before: string;
+  after: string;
+  reason: string;
+}
+export interface NovelEditorCandidate {
+  message: string;
+  /**
+   * @maxItems 30
+   */
+  edits: NovelEditorCandidateEdit[];
+}
+export interface NovelEditorEdit {
+  id: number;
+  start: number;
+  end: number;
+  before: string;
+  after: string;
+  reason: string;
+  status: "pending" | "accepted" | "rejected";
+}
+export interface NovelEditorExchange {
+  id: number;
+  task_id: number;
+  revision: number;
+  mode: "discuss" | "rewrite" | "polish";
+  chapter_id: string;
+  instruction: string;
+  anchor: NovelEditorAnchor | null;
+  message: string;
+  status: string;
+  error: string | null;
+  usage: {
+    [k: string]: number;
+  };
+  edits: NovelEditorEdit[];
+  scope?: "chapter" | "selection" | "chapter_rewrite";
+  requirements?: NovelRewriteRequirements | null;
+  editorial_review?: NovelEditorialReview | null;
+  /**
+   * 本次对话的历史起点；不读取此位置及以前的对话或摘要。
+   */
+  history_after_exchange_id?: number;
+}
+export interface NovelEditorialReview {
+  status: "completed" | "incomplete" | "revision_failed";
+  message: string;
+  candidate_hash: string;
+  revision_count: number;
+  /**
+   * @maxItems 3
+   */
+  reports: NovelChapterReviewReport[];
+  /**
+   * @maxItems 18
+   */
+  stages?: NovelProseStage[];
+}
+export interface NovelChapterReviewReport {
+  candidate_hash: string;
+  round: number;
+  review: NovelChapterReviewCandidate;
+}
+export interface NovelChapterReviewCandidate {
+  summary: string;
+  action: "accept" | "revise" | "needs_author";
+  revision_plan: string;
+  /**
+   * @maxItems 40
+   */
+  findings: NovelChapterReviewFinding[];
+}
+export interface NovelChapterReviewFinding {
+  category: "intent" | "preservation" | "meaning" | "continuity";
+  severity: "info" | "warning" | "major";
+  message: string;
+  source_quote: string;
+  candidate_quote: string;
+  suggestion: string;
+}
+export interface NovelProseStage {
+  phase: string;
+  label: string;
+  status: "completed" | "incomplete";
+  summary: string;
+  findings: string[];
+  candidate_hash: string;
+}
+export interface NovelEditorView {
+  id: number;
+  source_key: string;
+  source_label: string;
+  revision: number;
+  title: string;
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  chapters: [NovelEditorChapter, ...NovelEditorChapter[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  original_chapters: [NovelEditorChapter, ...NovelEditorChapter[]];
+  exchanges: NovelEditorExchange[];
+}
+export interface NovelEditorDecision {
+  expected_revision: number;
+  /**
+   * @minItems 1
+   */
+  edit_ids: [number, ...number[]];
+  action: "accept" | "reject";
+}
+export interface NovelEditorRestore {
+  expected_revision: number;
+  revision: number;
+}
+export interface NovelEditorVersion {
+  revision: number;
+  title: string;
+  reason: string;
+  created_at: string;
+}
+export interface NovelEditorSummary {
+  id: number;
+  title: string;
+  source_key: string;
+  revision: number;
+}
+export interface NovelChapterRewriteCandidate {
+  message: string;
+  text: string;
+  reason: string;
+}
+export interface NovelEditorVersionDetail {
+  revision: number;
+  title: string;
+  previous_title: string | null;
+  chapters: NovelEditorChapter[];
+  previous_chapters: NovelEditorChapter[];
 }
 
 /** Strict public event union discriminated by `event`. */

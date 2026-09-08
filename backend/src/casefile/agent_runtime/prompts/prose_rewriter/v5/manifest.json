@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_rewriter",
+  "version": "prose-rewriter-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "066add5b05007221c70a52154ccb1b16defd337de65afc68dfadbc14af573b6e",
+  "previous_version": "prose-rewriter-v4",
+  "change_summary": "完整保留上场文本作为连续性参考，并在输入末尾重申当前任务，避免旧稿格式转换和凑段追加。"
+}

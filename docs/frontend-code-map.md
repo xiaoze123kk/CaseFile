@@ -1,5 +1,7 @@
 # 前端代码职责地图
 
+小说编译面板展示已保存场景数、跨场景规划调整意见，以及服务端允许时的“从失败处继续”。续跑复用已完成正文；前端不自行重置预算或改写规划，接口拒绝旧运行版本及已耗尽恢复次数。
+
 ## 分析师工作台信息架构重构
 
 - `workbench-navigation.tsx`、`workbench-navigation.module.css`：工作台子树的固定桌面导航。总览、五个分析视图、待处理问题与编译作品始终可访问；对象档案可在任意视图展开。导航事件回交宿主，复用未保存保护，不持有领域数据。
@@ -256,3 +258,31 @@ AgentLivePanel的修改预演/应用/撤销/重做在请求开始时捕获项目
 CaseSession的task_updated reducer动作统一生成进度、去重重试、取消、恢复与重试刷新等8处权威Task写入：原子合并latestTasks并从Task派生对应槽位的status/stage/taskRunId/latestTask，保持客户端strategy attempt与调用方错误文案。update_generation_slot仅用于尚无权威Task的本地操作进度，不再接受Task副本；async callback不再用stateRef快照拼latestTasks。hydration仍从服务器整体初始化。
 
 删除无人读取的generation.stage数值及advance_generation动作；可见进度仍来自Task部件步骤/槽位阶段。generation.status保留为跨创建、等待、候选刷新过程的本地操作锁，不能只从单个Task终态推导。
+
+
+测试减负：eslint.config.mjs同时忽略默认.next和自定义.next-*生成目录，保持源码全量lint。analyst-workbench.test.tsx删除旧关系表文案/来源抽屉缺席与节点数量的重复整页检查；保留人物/地点可访问节点交互及生产页来源抽屉边界验证。
+
+
+`apps/web/tests/product-boundary.test.ts` 验证根路由、视觉实验路由实际渲染及旧地址重定向；不再锁定源码 import 字符串、已删除文件清单或 Prototype 命名。工作台路由参数、会话和生产交互由已有行为测试覆盖。
+小说编译记录提供显式失败点继续入口；旧版本或工作稿漂移由服务端拒绝。正文交付统计排除方案规划与主动取消，只把正文成功并存在完整候选计为成功；不把 TaskRun succeeded 等同小说生成成功。
+
+小说方案确认区提供“快速初稿 / 完整精修”两档，桌面双列选择，默认快速初稿。`novel-compiler-api.ts` 显式发送 prose_mode；记录与载入来源保留快速初稿的未审核标记。活动任务不允许修改选择，续跑不携带新模式；历史无 prose_mode 的记录按完整精修显示。首次完成统计不表示严格语义通过。
+
+小说协作由 novel-editor-api、use-novel-editor、novel-assistant、novel-editor-review、novel-selection 与 novel-diff 分担接口、同步、对话、审阅和文本定位。正文服务端版本权威，本地保存未同步副本；旧 localStorage 稿件幂等迁移，确认写入前不清除。三种模式只作用于选段/当前章；选区使用 Unicode code point 位置，DOM UTF-16 在边界转换。差异由程序计算，分组采纳携带基础版本，引用及理由可定位。编译面板两档生成方式独立保留。
+
+## 整章重写
+
+`novel-assistant.tsx` 的改写模式显式选择“当前章节 · 整章重写”；正文选段继续使用选段范围，不隐式扩大操作目标。提交前检查空章和 12000 字上限。`novel-editor-review.tsx` 根据服务端 scope 展示完整章节候选、差异/新稿、整章采纳/放弃及撤销；不拆散整章候选为可独立采纳的片段。
+
+`novel-version-preview.tsx` 按需读取历史稿与上一版，展示真实章节变化、正文及差异；读取失败可重试，不触发恢复。版本记录标注当前已保存版本，工具栏显示 V 编号，字数复用 wordCount。
+
+整章重写增加“必须保留”“允许调整”文本项，与改写要求一同提交并在历史请求中展示。`novel-editorial-summary.tsx` 在对话和审阅中展示绑定当前候选的意见及未完成/修订失败状态，旧稿意见单独折叠。`novel-paragraph-review.tsx` 使用 novel-diff.ts 的有界段落对齐与逐段字符差异，可筛选变化段落；保留完整文本与换行，展示层拆段不拆分采纳事务。
+
+## 显式保存小说版本
+
+小说版本记录使用连续展示编号，独立于服务器 revision。use-novel-editor 的 checkpoint 先 flush 再显式保存版本，复用本地并发编辑保护；novel-editor-review 提供保存为新版本入口，novel-version-preview 对比上一个正式版本。
+
+
+整章润色复用 chapter_rewrite 范围，以 mode=polish 区分；novel-assistant.tsx 提供范围和保留项，novel-editorial-summary.tsx 展示各重链路阶段、检查项和真实修订次数，novel-editor-review.tsx 区分整章改写/润色标题。
+
+小说创作搭档顶部提供“新对话”和“历史对话”：新对话清空输入、引用与改写要求，保留正文和历史修改，后续发送绑定新的上下文起点。浏览器按项目/稿件保留未发送的新对话起点，已发送请求由服务端保存；生成期间禁止切换。历史记录仅供回看，不自动进入新请求。

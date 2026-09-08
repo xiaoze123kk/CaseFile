@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_polisher",
+  "version": "prose-polisher-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "051c9dbb6ee3d0d9bc6b5cdddbc416da7cb2d73f1f300390f10f120e93ba3f35",
+  "previous_version": "prose-polisher-v3",
+  "change_summary": "明确当前场景边界、完整替换正文及一次有界生成修复，统一生产长度约束。"
+}

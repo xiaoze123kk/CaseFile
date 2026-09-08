@@ -23,6 +23,18 @@ from casefile.agent_runtime.prompt_package import (
 PROMPT_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.prompts"
 PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
 SUPPORTED_AGENT_IDS: Final = (
+    "novel_context_compactor",
+    "novel_checklist",
+    "novel_judge",
+    "novel_revision",
+    "novel_rewriter",
+    "novel_quality_critic",
+    "novel_polisher",
+    "novel_pairwise",
+
+    "novel_chapter_rewrite",
+    "novel_chapter_review",
+    "novel_collaboration",
     "brief_polish",
     "brief_anchor_extract",
     "brief_intake_questions",
@@ -38,8 +50,10 @@ SUPPORTED_AGENT_IDS: Final = (
     "story_planner_skeleton",
     "story_planner_semantic_fill",
     "scene_compiler_semantic_fill",
+    "prose_continuity",
     "prose_writer",
     "prose_rewriter",
+    "prose_revision",
     "prose_fidelity_judge",
     "prose_adversarial_judge",
     "prose_coherence_judge",
@@ -125,6 +139,7 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "general-mutation-planner-v5": frozenset({"general_mutation_planner"}),
     "general-mutation-planner-v6": frozenset({"general_mutation_planner"}),
     "general-mutation-planner-v7": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v8": frozenset({"general_mutation_planner"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

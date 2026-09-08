@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_scene_compiler_input_v2,
@@ -108,8 +109,18 @@ def test_model_view_catalog_closes_every_provider_visible_reference() -> None:
     view = build_scene_compiler_model_view(_bundle())
 
     assert view["source"]["projection_version"] == (
-        "compiler.scene-compiler-model-view-projection.v3"
+        "compiler.scene-compiler-model-view-projection.v4"
     )
+    plans = {scene["scene_id"]: scene for scene in _bundle()["novel_plan"]["scenes"]}
+    for batch in view["batches"]:
+        for scene in batch["scenes"]:
+            assert scene["intent"] == plans[scene["scene_id"]]["intent"]
+            assert scene["actor_allowlist"] == plans[scene["scene_id"]]["participant_refs"]
+    single = build_scene_compiler_model_view(_bundle(), batch_size=1)
+    assert all(len(batch["scenes"]) == 1 for batch in single["batches"])
+    assert [scene["scene_id"] for batch in view["batches"] for scene in batch["scenes"]] == [
+        scene["scene_id"] for batch in single["batches"] for scene in batch["scenes"]
+    ]
     for batch in view["batches"]:
         catalog = {
             f"{item['object_ref']['object_type']}:{item['object_ref']['object_id']}"

@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_context_compactor",
+  "version": "novel-context-compactor-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "1d08292f25f0357c000f54ad19b8bf2b905e2ead2cb04e973d7349c8422789ae",
+  "previous_version": null,
+  "change_summary": "小说对话滚动记忆，保留来源与作者要求。"
+}

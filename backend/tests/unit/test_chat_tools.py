@@ -840,3 +840,38 @@ def test_request_thread_compaction_is_queued_not_executed() -> None:
     assert result == {"valid": True, "requested": True, "queued": "after_reply"}
     assert context.metrics.requested_thread_compaction == 1
     assert context.metrics.calls == 1
+
+
+def test_clarify_runtime_reads_bound_issues_and_enforces_frozen_budget() -> None:
+    from casefile.agent_runtime.chat_routing import routing_policy
+    from casefile.agent_runtime.models import ChatTaskUnderstanding
+    from casefile.agent_runtime.provider_adapters.shared import _chat_tool_runtime
+
+    issues = tuple(
+        {
+            "issue_id": f"issue:{index}",
+            "target": {
+                "object_ref": {"object_id": object_id, "object_type": "entity"},
+                "field_path": "/knowledge_states/0/knows_refs/1",
+            },
+            "explanation": "信息产生于更晚事件",
+        }
+        for index, object_id in enumerate(("object:person_1", "object:company_1"))
+    )
+    route = routing_policy(
+        ChatTaskUnderstanding(primary_intent="clarify", confidence=0.3, ambiguous=True),
+        budget={"max_tool_calls": 1},
+    )
+    request = replace(
+        make_request(toolset=[], max_tool_calls=1, validation_issues=issues),
+        route=route, prompt_version="casefile-chat-v23", toolset_version=CHAT_TOOLSET_V4_VERSION,
+    )
+    manifest, context, _turns = _chat_tool_runtime(request)
+    assert manifest is not None and context is not None
+    assert "get_validation_issues" in {tool.name for tool in manifest}
+    assert "validate_patch_proposal" not in {tool.name for tool in manifest}
+    result = json.loads(invoke(get_validation_issues, context, {"page": 0, "limit": 20}))
+    assert result["issues"] == list(issues)
+    exhausted = json.loads(invoke(get_validation_issues, context, {"page": 0, "limit": 20}))
+    assert exhausted["error"] == "tool_budget_exhausted"
+    assert request.casefile == make_casefile()

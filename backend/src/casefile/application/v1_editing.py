@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from casefile.application.casefile_v1 import (
+    KNOWLEDGE_STATE_COUNT_ATTRIBUTE,
     build_casefile_document,
     casefile_content_hash,
     create_casefile_objects,
@@ -104,6 +105,7 @@ EDITABLE_FIELDS = {
         "goals",
         "secrets",
         "capabilities",
+        "knowledge_states",
     },
     "relationship": COMMON_EDITABLE_FIELDS
     | {
@@ -1061,6 +1063,10 @@ class V1EditingService:
         row.goals_jsonb = value["goals"]
         row.secrets_jsonb = value["secrets"]
         row.capabilities_jsonb = value["capabilities"]
+        row.attributes_jsonb = {
+            **row.attributes_jsonb,
+            KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(value["knowledge_states"]),
+        }
 
     def _apply_relationship(self, registry: CaseFileObject, value: dict[str, Any]) -> None:
         row = self._content_row(Relationship, registry, "Relationship")

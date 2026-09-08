@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import CompileInputManifest
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -54,10 +53,12 @@ from casefile.domain.narrative_compiler import (
     validate_compile_input_manifest,
 )
 from casefile.worker.executors.compiler_artifacts import materialize_json_artifact_component
+from casefile.worker.executors.compiler_evidence import compiler_error_evidence
 from casefile.worker.executors.completion import CompletionExecutor
 from casefile.worker.executors.prose_store import ProseLeaseLost, assert_prose_owner
 from casefile.worker.failures import CompilerExecutionError, TaskCancellationRequested
 from casefile.worker.provider_resolution import ProviderFactory
+from casefile_contracts import CompileInputManifest
 
 
 def _normalize_compiler_error(error: Exception, *, fallback_code: str) -> CompilerExecutionError:
@@ -250,6 +251,7 @@ class CompilerExecutor:
                     task_run_id,
                     attempt_id,
                     normalized.error_code,
+                    failure_evidence=compiler_error_evidence(error),
                     provider_failure=error
                     if isinstance(error, CompilerProviderOutputError)
                     else None,
@@ -329,6 +331,7 @@ class CompilerExecutor:
                     fail_scene_compiler_component(
                         self.session_factory, self.config.worker_id,
                         task_run_id, attempt_id, normalized.error_code,
+                        failure_evidence=compiler_error_evidence(error),
                     )
                 self._record_compile_failure_step(
                     task_run_id,

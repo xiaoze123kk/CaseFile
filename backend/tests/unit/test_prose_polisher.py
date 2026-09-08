@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import (
     PROSE_COUNCIL_MODEL_ID,
     FakeProseJudgeProvider,
@@ -79,8 +80,7 @@ def _pairwise(overall: str) -> dict[str, Any]:
         "schema_id": "compiler.prose-quality-pairwise-candidate.v1",
         "overall_preference": overall,
         "dimension_preferences": [
-            {"dimension": dimension, "preference": overall}
-            for dimension in QUALITY_DIMENSIONS
+            {"dimension": dimension, "preference": overall} for dimension in QUALITY_DIMENSIONS
         ],
     }
 
@@ -144,12 +144,8 @@ def test_request_is_exact_semantic_findings_bound_and_redacted(
     assert request.network_retries == 0
     serialized = json.dumps(request.input_payload, ensure_ascii=False)
     assert "credential-canary" not in serialized
-    assert request.input_payload["untrusted_data"]["current_render"] == polish_case[
-        "original"
-    ]
-    assert request.input_payload["untrusted_data"]["quality_findings"] == polish_case[
-        "findings"
-    ]
+    assert request.input_payload["untrusted_data"]["current_render"] == polish_case["original"]
+    assert request.input_payload["untrusted_data"]["quality_findings"] == polish_case["findings"]
 
 
 def test_candidate_becomes_polished_with_direct_lineage(
@@ -157,9 +153,7 @@ def test_candidate_becomes_polished_with_direct_lineage(
 ) -> None:
     render = _polished_render(polish_case)
     assert (render["stage"], render["round"]) == ("polished", 0)
-    assert render["previous_render_hash"] == canonical_json_sha256(
-        polish_case["original"]
-    )
+    assert render["previous_render_hash"] == canonical_json_sha256(polish_case["original"])
     assert render["selection_reason"] is None
 
 
@@ -182,15 +176,14 @@ def test_polisher_target_length_is_model_guidance_not_server_rejection(
     )
     assert execution.status == "completed"
     assert execution.render is not None
-    assert execution.render["character_count"] < polish_case["profile"]["prose"][
-        "target_scene_chars"
-    ]["min"]
+    assert (
+        execution.render["character_count"]
+        < polish_case["profile"]["prose"]["target_scene_chars"]["min"]
+    )
 
 
 @pytest.mark.parametrize("mutation", ("consensus", "findings", "stage"))
-def test_invalid_upstream_stops_before_polisher(
-    polish_case: dict[str, Any], mutation: str
-) -> None:
+def test_invalid_upstream_stops_before_polisher(polish_case: dict[str, Any], mutation: str) -> None:
     consensus = deepcopy(polish_case["consensus"])
     findings = deepcopy(polish_case["findings"])
     original = deepcopy(polish_case["original"])
@@ -316,9 +309,7 @@ def test_exact_recovery_avoids_second_provider_call(polish_case: dict[str, Any])
         model_id=PROSE_POLISHER_MODEL_ID,
         api_key="fake",
     )
-    saved = FakeProsePolisherProvider(
-        candidates=(polish_case["candidate"],)
-    ).polish_scene(request)
+    saved = FakeProsePolisherProvider(candidates=(polish_case["candidate"],)).polish_scene(request)
     provider = FakeProsePolisherProvider()
     execution = execute_prose_polisher(
         provider,
@@ -329,9 +320,9 @@ def test_exact_recovery_avoids_second_provider_call(polish_case: dict[str, Any])
         quality_findings=polish_case["findings"],
         model_id=PROSE_POLISHER_MODEL_ID,
         api_key="fake",
-        recover_call=lambda fingerprint: saved
-        if fingerprint == request.request_fingerprint
-        else None,
+        recover_call=lambda fingerprint: (
+            saved if fingerprint == request.request_fingerprint else None
+        ),
     )
     assert execution.status == "completed"
     assert execution.call is not None and execution.call.recovered is True
@@ -343,9 +334,7 @@ def test_deepseek_adapter_is_single_json_call(
 ) -> None:
     response = SimpleNamespace(
         choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=json.dumps(polish_case["candidate"]))
-            )
+            SimpleNamespace(message=SimpleNamespace(content=json.dumps(polish_case["candidate"])))
         ],
         usage=SimpleNamespace(
             prompt_tokens=10,
@@ -370,3 +359,24 @@ def test_deepseek_adapter_is_single_json_call(
     assert execution.call is not None
     assert execution.call.usage["total_tokens"] == 30
     assert len(execution.call.transport_attempts) == 1
+
+
+def test_production_polisher_repairs_length_before_preservation(polish_case):
+    short = {"schema_id": "compiler.scene-render-candidate.v1", "blocks": [{"text": "过短。"}]}
+    provider = FakeProsePolisherProvider(candidates=(short, polish_case["candidate"]))
+    provider.allow_generation_repair = True
+    failures = []
+    provider.record_generation_failure = lambda fp, issue: failures.append(issue)
+    execution = execute_prose_polisher(
+        provider,
+        profile=polish_case["profile"],
+        checklist=polish_case["checklist"],
+        current_render=polish_case["original"],
+        semantic_consensus=polish_case["consensus"],
+        quality_findings=polish_case["findings"],
+        model_id=PROSE_POLISHER_MODEL_ID,
+        api_key="fake",
+    )
+    assert execution.status == "completed"
+    assert provider.call_count == execution.call.generation_call_count == 2
+    assert failures[0]["actual_chars"] == 3

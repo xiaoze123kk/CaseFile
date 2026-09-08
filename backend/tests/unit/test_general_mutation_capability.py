@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
+import pytest
+from benchmark_preparation import reuse_document_findings
 from casefile.agent_runtime.closure_repair import (
     ClosureRepairOutputV3,
     ClosureRepairProviderResult,
@@ -12,11 +15,14 @@ from casefile.agent_runtime.general_mutation import (
     MutationPlanV2,
 )
 from casefile.benchmark.general_mutation_capability import (
+    _calibration_gate,
+    _dev_gate,
     _matches,
+    _metrics,
     _pointer_get,
+    _transport_gate,
     load_capability_suite,
     run_capability_benchmark,
-    validate_references,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -70,14 +76,6 @@ class FallbackReferenceProvider(OrderedReferenceProvider):
         return super().plan_general_mutation(request)
 
 
-def test_general_mutation_capability_references_prove_tasks() -> None:
-    suite = load_capability_suite()
-
-    assert len(suite.tasks) == 40
-    assert len(suite.fingerprint) == 64
-    validate_references(suite)
-
-
 def test_general_mutation_capability_missing_list_item_is_not_a_harness_failure() -> None:
     assert _pointer_get({"aliases": []}, "/aliases/0") is None
     assert _matches(["读取日志", "检修备用系统"], {"$contains": "检修备用系统"})
@@ -92,15 +90,25 @@ def test_text_equivalent_ignores_only_terminal_punctuation_when_oracle_opts_in()
     assert not _matches("备用系统执行安全重启。", "备用系统执行安全重启")
 
 
-def test_general_mutation_capability_grades_final_state_not_plan_path() -> None:
+@pytest.fixture(scope="module")
+def capability_report() -> dict[str, Any]:
     suite = load_capability_suite()
-    report = run_capability_benchmark(
-        model_id="deepseek-v4-pro",
-        api_key="test-key-not-sent",
-        trials=1,
-        provider=OrderedReferenceProvider(suite),
-    )
+    with reuse_document_findings():
+        return run_capability_benchmark(
+            model_id="deepseek-v4-pro",
+            api_key="test-key-not-sent",
+            trials=1,
+            provider=OrderedReferenceProvider(suite),
+        )
 
+
+def test_general_mutation_capability_grades_final_state_not_plan_path(
+    capability_report: dict[str, Any],
+) -> None:
+    report = capability_report
+    # The runner validates all references before exercising the real pipeline once.
+    assert report["suite"]["task_count"] == 40
+    assert len(report["suite"]["suite_fingerprint"]) == 64
     assert report["status"] == "completed"
     assert report["formal_capability"] is False
     assert report["release_gate_eligible"] is False
@@ -109,37 +117,26 @@ def test_general_mutation_capability_grades_final_state_not_plan_path() -> None:
     assert report["metrics"]["classification_counts"] == {"success": 40}
 
 
-def test_general_mutation_07a_gate_requires_complete_7_by_5() -> None:
+def test_general_mutation_07a_and_07b_gates_require_complete_frozen_7_by_5() -> None:
     suite = load_capability_suite(
         suite_path=V1_SUITE
     )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
-        trials=5,
-        provider=OrderedReferenceProvider(suite, trials=5),
+        trials=1,
+        provider=OrderedReferenceProvider(suite),
         suite_path=V1_SUITE,
     )
 
-    gate = report["gates"]["m3_4_07a"]
+    rows = _repeat_rows(report["rows"], 5)
+    metrics = _metrics(rows, suite.tasks, 5)
+    gate = _calibration_gate(rows, suite.tasks, 5, metrics)
     assert gate["passed"] is True
     assert gate["cross_reference_passed"] == 5
     assert gate["general_mutation_ref_shape_invalid_count"] == 0
 
-
-def test_general_mutation_07b_gate_requires_frozen_transport_metrics() -> None:
-    suite = load_capability_suite(
-        suite_path=V1_SUITE
-    )
-    report = run_capability_benchmark(
-        model_id="deepseek-v4-pro",
-        api_key="test-key-not-sent",
-        trials=5,
-        provider=OrderedReferenceProvider(suite, trials=5),
-        suite_path=V1_SUITE,
-    )
-
-    gate = report["gates"]["m3_4_07b"]
+    gate = _transport_gate(rows, suite.tasks, 5, metrics)
     assert gate["passed"] is True
     assert gate["checks"]["fallback_event_zero"] is True
     assert gate["output_protocol_fallback_event_count"] == 0
@@ -153,26 +150,43 @@ def test_general_mutation_07b_gate_counts_transcript_fallback_events() -> None:
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
-        trials=5,
-        provider=FallbackReferenceProvider(suite, trials=5),
+        trials=1,
+        provider=FallbackReferenceProvider(suite),
         suite_path=V1_SUITE,
     )
 
-    gate = report["gates"]["m3_4_07b"]
+    rows = _repeat_rows(report["rows"], 5)
+    gate = _transport_gate(rows, suite.tasks, 5, _metrics(rows, suite.tasks, 5))
     assert gate["passed"] is False
     assert gate["output_protocol_fallback_event_count"] == 35
 
 
-def test_general_mutation_07c_gate_requires_complete_40_by_5() -> None:
+def test_general_mutation_07c_gate_requires_complete_safe_40_by_5(
+    capability_report: dict[str, Any],
+) -> None:
     suite = load_capability_suite()
-    report = run_capability_benchmark(
-        model_id="deepseek-v4-pro",
-        api_key="test-key-not-sent",
-        trials=5,
-        provider=OrderedReferenceProvider(suite, trials=5),
-    )
+    # Each task has already run through the real pipeline once. Repeated rows
+    # exercise report aggregation, not model reliability or live qualification.
+    rows = _repeat_rows(capability_report["rows"], 5)
+    metrics = _metrics(rows, suite.tasks, 5)
+    assert _dev_gate(rows, suite.tasks, 5, metrics)["passed"] is True
+    assert metrics["family_min_pass_at_1"] == 1
+    assert metrics["reliable_task_rate_at_5"] == 1
 
-    gate = report["gates"]["m3_4_07c"]
-    assert gate["passed"] is True
-    assert report["metrics"]["family_min_pass_at_1"] == 1
-    assert report["metrics"]["reliable_task_rate_at_5"] == 1
+    incomplete = rows[:-1]
+    assert _dev_gate(incomplete, suite.tasks, 5, _metrics(incomplete, suite.tasks, 5))[
+        "passed"
+    ] is False
+    unsafe = [{**rows[0], "classification": "unsafe_escape", "passed": False}, *rows[1:]]
+    assert _dev_gate(unsafe, suite.tasks, 5, _metrics(unsafe, suite.tasks, 5))[
+        "passed"
+    ] is False
+
+
+def _repeat_rows(rows: list[dict[str, Any]], trials: int) -> list[dict[str, Any]]:
+    """Exercise gate denominators using real rows, without repeating deterministic execution."""
+    return [
+        {**row, "trial_id": f"{row['task_id']}:{trial}", "trial_index": trial}
+        for row in rows
+        for trial in range(1, trials + 1)
+    ]

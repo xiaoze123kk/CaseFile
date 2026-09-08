@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -14,8 +14,8 @@ GENERAL_MUTATION_PLAN_VERSION_V1: Literal["general-mutation-planner-v1"] = (
 GENERAL_MUTATION_PLAN_VERSION: Literal["general-mutation-planner-v2"] = (
     "general-mutation-planner-v2"
 )
-GENERAL_MUTATION_PROMPT_VERSION: Literal["general-mutation-planner-v7"] = (
-    "general-mutation-planner-v7"
+GENERAL_MUTATION_PROMPT_VERSION: Literal["general-mutation-planner-v8"] = (
+    "general-mutation-planner-v8"
 )
 GENERAL_MUTATION_SCHEMA_ID_V1 = "general-mutation-plan-v1"
 GENERAL_MUTATION_SCHEMA_ID = "general-mutation-plan-v2"
@@ -172,6 +172,13 @@ class GeneralMutationPromptInput(StrictMutationModel):
     editable_fields_by_collection: dict[str, tuple[str, ...]]
 
 
+class GeneralMutationPromptInputV2(GeneralMutationPromptInput):
+    thread_history: list[dict[str, str]] = Field(default_factory=list, max_length=20)
+    focus: dict[str, Any] = Field(default_factory=dict)
+    validation_issues: list[dict[str, Any]] = Field(default_factory=list)
+    canonical_query: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class GeneralMutationPlannerRequest:
     task_run_id: int
@@ -183,6 +190,10 @@ class GeneralMutationPlannerRequest:
     editable_fields_by_collection: dict[str, tuple[str, ...]]
     emit: Any
     network_retries: int = 2
+    thread_history: tuple[dict[str, str], ...] = ()
+    focus: dict[str, Any] = field(default_factory=dict)
+    validation_issues: tuple[dict[str, Any], ...] = ()
+    canonical_query: str | None = None
     prompt_version: str = GENERAL_MUTATION_PROMPT_VERSION
     max_turns: int = 1
 

@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_pairwise",
+  "version": "novel-pairwise-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "05a70b860b9a4402aac4e92060b28bf973baeb5514f1eafd2e5c3f9cb03f5602",
+  "previous_version": null,
+  "change_summary": "复用正文重链路组件并适配整章编辑。"
+}

@@ -150,7 +150,7 @@
             "brief_to_draft",
             "casefile_chat",
             "reverse_parse",
-            "novel_compile",
+            "novel_compile", "novel_collaborate",
             "idea_generation"
           ]
         },

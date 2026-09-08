@@ -8,6 +8,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
     GeneralMutationPlannerRequest,
     GeneralMutationPromptInput,
+    GeneralMutationPromptInputV2,
     MutationPlanV1,
     MutationPlanV2,
 )
@@ -24,11 +25,7 @@ def render_general_mutation_prompt(
     return render_prompt_package(
         definition.package,
         GENERAL_MUTATION_COMPONENT_ID,
-        GeneralMutationPromptInput(
-            message=request.message,
-            casefile=request.casefile,
-            editable_fields_by_collection=request.editable_fields_by_collection,
-        ),
+        _prompt_input(request),
         agent_version=definition.package.runtime_agent_version,
         toolset_version=definition.package.runtime_toolset_version,
     )
@@ -36,14 +33,27 @@ def render_general_mutation_prompt(
 
 def general_mutation_input(request: GeneralMutationPlannerRequest) -> str:
     return json.dumps(
-        {
-            "message": request.message,
-            "casefile": request.casefile,
-            "editable_fields_by_collection": request.editable_fields_by_collection,
-        },
+        _prompt_input(request).model_dump(mode="json"),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+    )
+
+
+def _prompt_input(request: GeneralMutationPlannerRequest) -> GeneralMutationPromptInput:
+    common = GeneralMutationPromptInput(
+        message=request.message,
+        casefile=request.casefile,
+        editable_fields_by_collection=request.editable_fields_by_collection,
+    )
+    if request.prompt_version != "general-mutation-planner-v8":
+        return common
+    return GeneralMutationPromptInputV2(
+        **common.model_dump(),
+        thread_history=list(request.thread_history)[-20:],
+        focus=request.focus,
+        validation_issues=list(request.validation_issues),
+        canonical_query=request.canonical_query,
     )
 
 

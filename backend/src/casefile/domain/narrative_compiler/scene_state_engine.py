@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from casefile_contracts import SceneCompilerInputBundleV2, ScenePlanIRV2
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -22,6 +21,7 @@ from casefile.domain.narrative_compiler.scene_fill import validate_scene_semanti
 from casefile.domain.narrative_compiler.scene_runtime_state import (
     allowed_scene_knowledge_operations,
 )
+from casefile_contracts import SceneCompilerInputBundleV2, ScenePlanIRV2
 
 SCENE_PLAN_V2_SCHEMA_ID = "compiler.scene-plan.v2"
 SCENE_EXECUTION_COMPILER_V2_VERSION = "compiler.scene-execution.v2"
@@ -255,6 +255,7 @@ def _compile_scene_plan_v2_raw(
                     scene=scene,
                     narrative=narrative,
                     source_refs=source_refs,
+                    observers=_observer_refs(bundle["state_seed"]),
                 )
                 if diagnostic is not None:
                     diagnostics.append(diagnostic)
@@ -501,9 +502,11 @@ def _apply_location_assertion(
     scene: dict[str, Any],
     narrative: dict[str, Any],
     source_refs: dict[str, dict[str, Any]],
+    observers: set[str],
 ) -> dict[str, Any] | None:
     subject_key = _ref_key(assertion["subject_ref"])
-    if subject_key not in {_ref_key(ref) for ref in scene["participant_refs"]}:
+    allowed_subjects = {_ref_key(ref) for ref in scene["participant_refs"]} | observers
+    if subject_key not in allowed_subjects:
         raise CompilerContractError("compiler_scene_location_subject_invalid")
     if scene["location_ref"] is None or _ref_key(assertion["location_ref"]) != _ref_key(
         scene["location_ref"]

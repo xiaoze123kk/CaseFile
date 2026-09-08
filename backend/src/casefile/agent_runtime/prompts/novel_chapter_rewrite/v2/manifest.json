@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_chapter_rewrite",
+  "version": "novel-chapter-rewrite-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "50206733a465acfc7df6653a086bbb1db9302719271740b56c4c53cb26489bfa",
+  "previous_version": "novel-chapter-rewrite-v1",
+  "change_summary": "小说整章要求绑定与有界编辑审阅。"
+}

@@ -4,6 +4,8 @@
 
 ![CaseFile](apps/web/public/casefile-brand.png)
 
+开发者评测入口：[Benchmark 总目录](benchmarks/README.md)——按能力方向查找评测目标、运行入口、套件和证据管理规则。
+
 CaseFile 把零散的创作想法、文本材料和推理设定，整理成一份可编辑、可验证、可追溯的数字卷宗。它面向推理小说、互动叙事、剧本杀及其他依赖人物、事件、线索、假设与结论关系的内容创作，让作者能够从建案开始，逐步完成 Brief、结构化工作稿、逻辑审阅、叙事规划和场景执行计划。
 
 项目不是一个“输入提示词后直接生成全文”的写作器。CaseFile 的核心是让人、模型与确定性规则共同工作：模型负责提出候选和建议，服务端负责契约、引用、并发与一致性门禁，作者始终拥有采用、修改与确认的最终决定权。
@@ -150,6 +152,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1 -SkipDepen
 
 脚本会启动或连接 Docker Desktop，准备数据库，并在后台启动 Web、API 与独立 Worker。日志写入 `var/dev/`。默认端口可通过 `-WebPort` 和 `-ApiPort` 调整。
 
+重复运行会复用当前仓库的已有服务，保留正在执行的任务；端口被其他程序占用时会报错，不会强制结束该程序。同一仓库只允许一个启动流程运行。复用服务不会重新加载 API/Worker 代码，修改后需要在任务结束后手动停止对应服务再启动。已有服务运行时会跳过依赖同步；冷启动不带 `-SkipDependencySync` 时使用 pnpm 和 uv 同步依赖。
+
+Docker 检查单次最多 8 秒，启动等待每轮最多约 130 秒。检测到当前 Docker 会话的 `dockerInference` 或 `engine.sock` 无法访问错误时，脚本停止 Docker Desktop，将 `%LOCALAPPDATA%\Docker\run` 和 `%LOCALAPPDATA%\docker-secrets-engine` 同时改名为带时间戳的 `*-recovery-*` 备份，然后重试一次。数据库、镜像和卷不会被清理；未知目录内容或其他 Docker 故障会保留现场并明确报错。这是对已知故障的自动恢复，不能保证 Docker 自身永不报错。
+
+完整启动记录位于 `var/dev/startup-*.log`；数据库准备最多等待 240 秒。可用下面的命令验证超时、恢复备份和端口保护逻辑（使用临时目录，不停止真实 Docker）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-startup.ps1
+```
+
 ### 分别启动
 
 只启动 Web：
@@ -212,6 +224,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -SkipPostg
 $env:CASEFILE_TEST_DATABASE_URL = "postgresql+psycopg://casefile:casefile_test_local_only@127.0.0.1:55433/casefile_test"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
+
+统一检查中的完整确定性矩阵由 pytest 执行一次：Closure Repair、Novel Plan regression/safety、General Mutation、Chat Outcome calibration、Context Boundary 和 Context Tier 均复用对应测试；独立的 Chat Goal 门禁仍由脚本运行。架构扫描由 `test_backend_architecture.py` 执行，不再在脚本中预先重复扫描。
+
+日常定位可在 `backend` 下运行 `.venv/Scripts/python.exe -m pytest tests/unit tests/contract --durations=20`，或指定受影响的测试文件。独立 Benchmark CLI 保留用于显式生成报告、诊断和正式资格评测；`check.ps1` 不再额外生成 General Mutation、Context Boundary、Context Tier 的固定路径 JSON 报告。正式资格评测的完整矩阵、次数和门槛不变。
+
+每次 `check.ps1` 都打印 static / evaluation / tests 阶段耗时，并在 `var/checks/<UTC时间-随机后缀>/` 保存独立报告：
+
+- `summary.json`：整轮与各阶段耗时、类别汇总、通过/失败状态及 pytest 报告路径；中途失败也保存已经执行的阶段。
+- `pytest.json`：每条测试的 setup/call/teardown 耗时与结果，按耗时降序排列，并分别汇总三个阶段。完整数据库检查的两次 rollout 验收另存 `pytest-phase3.json` 和 `pytest-phase4.json`。
+- 控制台自动显示最慢 20 个 pytest 阶段。pytest 内执行的完整 benchmark 仍计入 tests，具体耗时通过其文件名和 nodeid 定位；evaluation 类别只计独立的 Goal 门禁，不重复运行矩阵来计时。
+
+单独运行 pytest 时可添加 `--timing-report var/check-timing.json --durations=20`；未指定时不生成时序报告。阶段总和不包含 Python 启动、收集和其他框架开销，因此不等于整轮墙钟时间；计时文件只记录 nodeid、状态与耗时，不保存测试内容或凭据。比较性能时应使用同一测试范围，并注意后台负载和冷/热缓存差异。
+
+数据库业务测试统一复用 `workflow_database`：保留迁移后的 schema，清理独立提交的数据；只有迁移专项测试执行升降级。不要给共用同一测试库的测试直接启用并行执行。
+
+Fixture 的活动/兼容/历史用途和维护规则见 [fixtures/README.md](fixtures/README.md)。
 
 浏览器黄金路径使用真实 Web、API、Worker 和隔离测试库，但固定使用 FakeProvider：
 

@@ -378,6 +378,31 @@ def fake_router_resolver(fixture: ChatRouterFixture) -> CaseFileChatRequest:
     )
 
 
+def match_chat_router_outcome(
+    fixture: ChatRouterFixture,
+    resolved: CaseFileChatRequest,
+) -> tuple[bool, bool]:
+    """Return intent and route matches shared by summary metrics and live rows."""
+
+    understanding = resolved.task_understanding
+    route = resolved.route
+    if understanding is None or route is None:
+        return False, False
+    actual_intent = understanding.primary_intent
+    if fixture.expected_primary_intent == "fallback":
+        # Preserve the legacy fixture convention: a resolved question is safe.
+        matched = actual_intent == "question"
+        return matched, matched
+    safe_expected_fallback = (
+        fixture.expected_primary_intent in {"question", "clarify"}
+        and route.route_source == "fallback"
+        and route.execution_profile.get("primary_intent") == fixture.expected_primary_intent
+    )
+    intent_matched = actual_intent == fixture.expected_primary_intent or safe_expected_fallback
+    component = str(route.execution_profile.get("prompt_component") or "chat")
+    return intent_matched, intent_matched and component == fixture.expected_prompt_component
+
+
 def evaluate_chat_router(
     resolver: IntentResolver,
     fixtures: tuple[ChatRouterFixture, ...] | list[ChatRouterFixture],
@@ -399,34 +424,13 @@ def evaluate_chat_router(
         route = resolved.route
         if understanding is None or route is None:
             actual_intent = "unresolved"
-            actual_component = "unresolved"
         else:
             actual_intent = understanding.primary_intent
-            actual_component = str(
-                route.execution_profile.get("prompt_component") or "chat"
-            )
             if route.route_source == "fallback":
                 fallback_ids.append(fixture.fixture_id)
-        if fixture.expected_primary_intent == "fallback":
-            if actual_intent == "question" and route is not None:
-                intent_hits += 1
-                route_hits += 1
-        else:
-            # Score the expected safe outcome of a gated route, while retaining
-            # the model's original semantic label for ordinary intent scoring.
-            safe_expected_fallback = (
-                fixture.expected_primary_intent in {"question", "clarify"}
-                and route is not None
-                and route.route_source == "fallback"
-                and route.execution_profile.get("primary_intent")
-                == fixture.expected_primary_intent
-            )
-            if actual_intent == fixture.expected_primary_intent or safe_expected_fallback:
-                intent_hits += 1
-            if (
-                actual_intent == fixture.expected_primary_intent or safe_expected_fallback
-            ) and actual_component == fixture.expected_prompt_component:
-                route_hits += 1
+        intent_matched, route_matched = match_chat_router_outcome(fixture, resolved)
+        intent_hits += intent_matched
+        route_hits += route_matched
         if fixture.dangerous_pair is not None:
             dangerous_expected += 1
             # A safe fallback (no patch proposal, no gate verdict) is the gate
@@ -472,5 +476,6 @@ __all__ = [
     "build_eval_fixtures",
     "evaluate_chat_router",
     "fake_router_resolver",
+    "match_chat_router_outcome",
     "run_fake_baseline",
 ]

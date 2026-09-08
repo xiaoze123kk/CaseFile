@@ -12,11 +12,13 @@ from casefile.agent_runtime.prose_judge import (
     ProseJudgeProvider,
     execute_semantic_council,
 )
+from casefile.agent_runtime.prose_revision import execute_revision_decision
 from casefile.agent_runtime.prose_rewriter import (
     PROSE_REWRITER_MAX_CALLS_PER_SCENE,
     PROSE_REWRITER_MODEL_ID,
     ProseRewriterExecution,
     ProseRewriterProvider,
+    build_prose_rewriter_request,
     execute_prose_rewriter,
 )
 from casefile.agent_runtime.prose_runtime import ComponentObserver, ignore_component
@@ -26,7 +28,7 @@ from casefile.domain.narrative_compiler import (
     validate_scene_render,
 )
 
-PROSE_REWRITE_SUPERVISOR_VERSION = "prose-rewrite-supervisor-v1"
+PROSE_REWRITE_SUPERVISOR_VERSION = "prose-rewrite-supervisor-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,16 +41,23 @@ class ProseRewriteRoundExecution:
 
 @dataclass(frozen=True, slots=True)
 class ProseRewriteSupervisorExecution:
-    status: Literal["semantic_accepted", "semantic_rejected", "protocol_failed", "inconclusive"]
+    status: Literal[
+        "semantic_accepted",
+        "product_accepted",
+        "semantic_rejected",
+        "protocol_failed",
+        "inconclusive",
+    ]
     rounds: tuple[ProseRewriteRoundExecution, ...]
     final_render: dict[str, Any] | None
     rewrite_count: int
     model_call_count: int
     remaining_scene_call_budget: int
     error_code: str | None = None
+    revision_reports: tuple[dict[str, Any], ...] = ()
 
 
-def execute_bounded_prose_rewrite(
+def _execute_bounded_prose_rewrite(
     rewriter_provider: ProseRewriterProvider,
     judge_provider: ProseJudgeProvider,
     *,
@@ -62,6 +71,8 @@ def execute_bounded_prose_rewrite(
     api_key: str,
     remaining_scene_call_budget: int,
     observe: ComponentObserver = ignore_component,
+    llm_revision: bool = False,
+    delivery_mode: Literal["strict", "product"] = "strict",
 ) -> ProseRewriteSupervisorExecution:
     """Review an initial Writer render and allow at most two complete rewrites."""
 
@@ -111,6 +122,49 @@ def execute_bounded_prose_rewrite(
     current = initial
     remaining = remaining_scene_call_budget
     rewrite_execution: ProseRewriterExecution | None = None
+
+    def editorial(exhausted: bool) -> Any:
+        nonlocal remaining
+        if remaining < 1:
+            return None
+        assert council.consensus is not None
+        source = build_prose_rewriter_request(
+            scene_plan=scene_plan,
+            narrative_ir=narrative_ir,
+            profile=profile,
+            checklist=checklist_json,
+            previous_scene_render=previous_scene_render,
+            current_render=current,
+            consensus=council.consensus,
+            judge_reports=council.judge_reports,
+            model_id=model_id,
+            api_key=api_key,
+            remaining_scene_call_budget=remaining,
+            review_only=True,
+        )
+        decision = execute_revision_decision(rewriter_provider, source, exhausted=exhausted)
+        observe("revision_decision", decision)
+        remaining -= 1
+        return decision
+
+    def decision_terminal(decision: Any) -> ProseRewriteSupervisorExecution | None:
+        if decision is None:
+            return _terminal(
+                "semantic_rejected", rounds, current, remaining, "prose_repair_budget_exhausted"
+            )
+        if decision.status != "completed":
+            return _terminal(decision.status, rounds, current, remaining, decision.error_code)
+        if decision.report["action"] in {"retain", "stop"}:
+            accepted = decision.report["action"] == "retain" and delivery_mode == "product"
+            return _terminal(
+                "product_accepted" if accepted else "semantic_rejected",
+                rounds,
+                current,
+                remaining,
+                "prose_editorial_retained" if accepted else "prose_semantic_repair_exhausted",
+            )
+        return None
+
     for round_index in range(PROSE_REWRITER_MAX_CALLS_PER_SCENE + 1):
         if remaining < 1:
             return _terminal(
@@ -150,6 +204,16 @@ def execute_bounded_prose_rewrite(
             )
         if council.consensus["scene_verdict"] == "pass":
             return _terminal("semantic_accepted", rounds, current, remaining, None)
+        decision = None
+        if llm_revision:
+            decision = editorial(
+                round_index == PROSE_REWRITER_MAX_CALLS_PER_SCENE
+                or remaining < 3
+                or getattr(judge_provider, "remaining_judge_calls", 1) < 1
+            )
+            terminal = decision_terminal(decision)
+            if terminal is not None:
+                return terminal
         if round_index == PROSE_REWRITER_MAX_CALLS_PER_SCENE:
             return _terminal("semantic_rejected", rounds, current, remaining, None)
         if remaining < 2:
@@ -173,9 +237,17 @@ def execute_bounded_prose_rewrite(
             model_id=model_id,
             api_key=api_key,
             remaining_scene_call_budget=remaining,
+            revision_decision=decision.report if decision else None,
         )
         observe("rewrite", rewrite_execution)
         remaining -= _rewrite_call_count(rewrite_execution)
+        if rewrite_execution.status == "semantic_rejected" and llm_revision:
+            terminal = decision_terminal(editorial(True))
+            assert terminal is not None
+            return replace(
+                terminal,
+                model_call_count=terminal.model_call_count + _rewrite_call_count(rewrite_execution),
+            )
         if rewrite_execution.status != "completed" or rewrite_execution.render is None:
             terminal = _terminal(
                 rewrite_execution.status,
@@ -194,12 +266,43 @@ def execute_bounded_prose_rewrite(
     raise AssertionError("bounded prose rewrite loop exceeded")
 
 
+def execute_bounded_prose_rewrite(
+    rewriter_provider: ProseRewriterProvider,
+    judge_provider: ProseJudgeProvider,
+    **kwargs: Any,
+) -> ProseRewriteSupervisorExecution:
+    observe = kwargs.pop("observe", ignore_component)
+    revision_calls = 0
+    revision_reports: list[dict[str, Any]] = []
+
+    def observer(name: str, execution: Any) -> None:
+        nonlocal revision_calls
+        if name == "revision_decision":
+            revision_calls += 1
+            if execution.report is not None:
+                revision_reports.append(execution.report)
+        observe(name, execution)
+
+    result = _execute_bounded_prose_rewrite(
+        rewriter_provider, judge_provider, observe=observer, **kwargs
+    )
+    return replace(
+        result,
+        model_call_count=result.model_call_count + revision_calls,
+        revision_reports=tuple(revision_reports),
+    )
+
+
 def _council_call_count(execution: ProseCouncilExecution) -> int:
     return len(execution.calls) + (1 if execution.failed_call is not None else 0)
 
 
 def _rewrite_call_count(execution: ProseRewriterExecution) -> int:
-    return int(execution.call is not None or execution.failed_call is not None)
+    return (
+        execution.call.generation_call_count
+        if execution.call is not None
+        else int(execution.failed_call is not None)
+    )
 
 
 def _terminal(

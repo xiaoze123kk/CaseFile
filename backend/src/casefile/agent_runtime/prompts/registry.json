@@ -41,28 +41,28 @@
       "current_version": "story-planner-skeleton-v1"
     },
     "story_planner_semantic_fill": {
-      "current_version": "story-planner-semantic-fill-v1"
+      "current_version": "story-planner-semantic-fill-v2"
     },
     "scene_compiler_semantic_fill": {
-      "current_version": "scene-compiler-semantic-fill-v6"
+      "current_version": "scene-compiler-semantic-fill-v7"
     },
     "prose_writer": {
-      "current_version": "prose-writer-v1"
+      "current_version": "prose-writer-v4"
     },
     "prose_rewriter": {
-      "current_version": "prose-rewriter-v3"
+      "current_version": "prose-rewriter-v7"
     },
     "prose_fidelity_judge": {
-      "current_version": "prose-fidelity-judge-v6"
+      "current_version": "prose-fidelity-judge-v8"
     },
     "prose_adversarial_judge": {
-      "current_version": "prose-adversarial-judge-v5"
+      "current_version": "prose-adversarial-judge-v7"
     },
     "prose_coherence_judge": {
-      "current_version": "prose-coherence-judge-v5"
+      "current_version": "prose-coherence-judge-v7"
     },
     "prose_arbiter": {
-      "current_version": "prose-arbiter-v5"
+      "current_version": "prose-arbiter-v7"
     },
     "prose_quality_critic": {
       "current_version": "prose-quality-critic-v1"
@@ -71,10 +71,49 @@
       "current_version": "prose-quality-pairwise-v1"
     },
     "prose_polisher": {
-      "current_version": "prose-polisher-v2"
+      "current_version": "prose-polisher-v5"
     },
     "general_mutation_planner": {
-      "current_version": "general-mutation-planner-v7"
+      "current_version": "general-mutation-planner-v8"
+    },
+    "prose_continuity": {
+      "current_version": "prose-continuity-v1"
+    },
+    "prose_revision": {
+      "current_version": "prose-revision-v3"
+    },
+    "novel_collaboration": {
+      "current_version": "novel-collaboration-v1"
+    },
+    "novel_chapter_rewrite": {
+      "current_version": "novel-chapter-rewrite-v2"
+    },
+    "novel_chapter_review": {
+      "current_version": "novel-chapter-review-v2"
+    },
+    "novel_checklist": {
+      "current_version": "novel-checklist-v1"
+    },
+    "novel_judge": {
+      "current_version": "novel-judge-v1"
+    },
+    "novel_revision": {
+      "current_version": "novel-revision-v2"
+    },
+    "novel_rewriter": {
+      "current_version": "novel-rewriter-v1"
+    },
+    "novel_quality_critic": {
+      "current_version": "novel-quality-critic-v1"
+    },
+    "novel_polisher": {
+      "current_version": "novel-polisher-v1"
+    },
+    "novel_pairwise": {
+      "current_version": "novel-pairwise-v1"
+    },
+    "novel_context_compactor": {
+      "current_version": "novel-context-compactor-v1"
     }
   }
 }

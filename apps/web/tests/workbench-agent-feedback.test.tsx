@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { emptyFeedback, reduceFeedback, activeFeedbackRefs } from "@/features/analyst-workbench/workbench-agent-feedback";
 import { AgentAttentionSurface } from "@/features/analyst-workbench/workbench-agent-attention";
@@ -28,6 +28,26 @@ describe("assistant answer layout", () => {
   });
 });
 describe("in-message progress visibility", () => {
+  it("keeps intermediate failures in the collapsed history when a later step completes", () => {
+    let state = emptyFeedback();
+    for (const [index, status] of (["failed", "completed"] as const).entries()) {
+      state = reduceFeedback(state, {
+        event: "run.activity_detail", sequence: index + 1, activity_id: index + 1,
+        activity: "finalizing", status, object_ids: [], draft_id: 3, draft_revision: 4,
+      });
+    }
+    render(<AgentProgress feedback={state} run={{
+      run_id: 80, status: "running", activity: "preparing_changes", cancellable: true, failure: null,
+    }} />);
+    const progress = screen.getByRole("region", { name: "工作记录" });
+    const summary = progress.querySelector(":scope > ul") as HTMLElement;
+    expect(within(summary).queryByText("整理回答未完成")).not.toBeInTheDocument();
+    expect(within(summary).getByText("整理回答已结束")).toBeInTheDocument();
+    const history = progress.querySelector("details")!;
+    expect(history).not.toHaveAttribute("open");
+    expect(within(history).getByText("整理回答未完成")).toBeInTheDocument();
+  });
+
   const feedback = reduceFeedback(emptyFeedback(), {
     event: "run.verification", sequence: 1, verification_status: "blocked",
     summary: "发现需要作者复查的内容。",

@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner_semantic_fill",
+  "version": "story-planner-semantic-fill-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "77b58adafd386ee63631b4792985fba1f7393bb7a28a92715d9df2dce5523b22",
+  "previous_version": "story-planner-semantic-fill-v1",
+  "change_summary": "章节命名采用具体意象与含蓄表达，避免大纲功能标签和泄底。"
+}

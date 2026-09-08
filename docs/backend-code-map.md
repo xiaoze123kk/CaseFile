@@ -1,5 +1,14 @@
 # 后端代码职责地图
 
+## 正文一致性与定向生成修复（runtime v8）
+
+- `backend/src/casefile/agent_runtime/prose_continuity.py`：跨场景审核协议、请求绑定与 Provider 适配，不持有数据库，不改写规划。
+- `backend/src/casefile/agent_runtime/prose_context.py`：生成专用状态投影、去重和变化项，保留完整对象原文，原清单不变。
+- `backend/src/casefile/domain/narrative_compiler/prose_checklist.py` 的 `scene_plan_review_context`：复用状态回放构建未来场景审核上下文，不伪造已接受正文。
+- `backend/src/casefile/worker/executors/prose_store.py`：尝试级不可变产物、恢复与数据库累计调用预算；`prose_shadow.py`：连续性建议留痕、确定性协议门禁和已接受前缀复用；`prose_providers.py`：审核和质量调用的留痕适配。
+- `backend/migrations/versions/V20260907210634__prose_continuity_and_attempt_artifacts.py`：兼容扩展产物身份约束，旧身份及旧数据保留；有新产物时回退约束会拒绝，不删除证据。
+- `backend/tests/unit/test_prose_context.py`、`backend/tests/integration/test_prose_shadow_runtime.py`：输入保真、连续性建议不阻断正文、确定性协议失败关闭、可选质量降级、真实 Worker 续跑及跨尝试累计预算回归；集成测试禁止真实 Provider 网络。
+
 ## Agent 公共反馈
 
 - `backend/src/casefile/application/chat_public_patches.py`：作者侧变更投影保留每项已持久化的具体 reason，完整文本先复用 Public Language 门禁并检查 Patch 内已知 opaque 值，再按公开契约截断；缺失/模板原因明确告知未记录，无法公开的历史原因失败关闭，不从 before/after 编造因果依据。继续只输出 Public DTO，不暴露原始操作。
@@ -371,3 +380,115 @@ TD-009 Story Planner依赖边界：worker/executors/story_planner.py的19个现�
 
 
 TD-009 SceneCompiler与Artifact边界：worker/executors/compiler_artifacts.py拥有原有materialize_json_artifact_component事务，Compiler和SceneCompiler直接调用同一函数；输入产物/IR/ScenePlan的事件、哈希比较、复用与Attempt fencing不变。scene_compiler.py的9函数按需接收sessionmaker[Session]、worker_id、ProviderFactory，禁止向Compiler回调私有方法；原_materialize_json_artifact_component已在生产与测试调用迁移后删除。
+
+
+## 对话指代与验证问题定位修复
+
+`agent_runtime/context/strategies/transformers/validation_trim.py` 的摘要保留规则代码、目标、字段路径和证据引用；`agent_runtime/prompt.py` 复用该投影提供意图识别输入，避免同名验证问题丢失定位。缺失的绑定保持缺失，不从历史或焦点编造。
+
+`agent_runtime/chat_routing.py` 的澄清路径允许有界只读问题与对象检索，继续禁止 suggestion，冻结预算只收紧。`agent_runtime/prompts/casefile_chat/v23/` 继承 v22 并增加当前证据优先、指代核对与真实修改状态要求，澄清证据部件使用既有 chat-issue-v3 工具策略，Finalizer 继续无工具。`application/workflow/tasks.py` 为新 Goal 任务冻结 v23；Provider 与共享版本门禁同步支持，v22 资源保持不可变。相关回归覆盖上下文投影、路由预算、实际工具读取与 Prompt 发布清单。
+
+
+## 角色认知编辑
+
+`application/v1_editing.py` 将 entities.knowledge_states 纳入共享编辑能力，并在唯一物化入口同步已有认知时点数量元数据；引用继续由现有规范化引用表保存，支持空时点、新增/移除时点和嵌套引用列表修改，不增加数据库结构。General Mutation 与旧字段建议共用此能力表及结构/引用/版本/Simulation/Apply 校验。`application/chat_public_patches.py` 为认知时点和三类认知引用提供公共中文标签与具名内容对照。
+
+`backend/tests/integration/test_knowledge_editing.py` 覆盖两个提前获知问题的 Worker→待审补丁→Simulation→Apply→Undo/Redo 全链路、保持事实时间、空时点数量及错误引用/过期修订拒绝；Public Patch 单元测试覆盖可读投影。
+
+
+测试减负：test_general_mutation_capability.py保留40任务真实单轮与v1 7×5真实多轮；07c门槛用单轮真实结果构造聚合输入，不把重复结果当成模型资格证据，验证完整/缺行/不安全结果。07a/07b共用一次7×5执行。test_closure_repair_benchmark.py三项报告检查共享module fixture的真实两轮输出，不安全变异用deepcopy隔离；不缓存生产结果、不修改业务实现。
+
+
+## 正式补丁规划上下文
+
+`agent_runtime/general_mutation.py` 的 Planner v8 request 与 input-v2 保留本轮 message、最近 20 条冻结历史、focus、验证问题定位及 canonical_query。`general_mutation_prompt.py` 按不可变版本选择输入契约，v1–v7 不变；`worker/executors/chat.py` 显式转交 Chat Request 上下文，不把助手正文当作写入权威。`agent_runtime/prompts/general_mutation_planner/v8/` 解释承接确认和当前指令优先级，保留 Binder/Simulation/Apply 边界。正式规划阻断时，`application/workflow/agent.py` 用未生成补丁的真实状态替换提前生成的正文，并撤销预览，避免无 PatchSet 却声称卡片已准备。
+
+
+测试优化：`test_scene_plan_benchmark.py` 在模块内验证完整套件一次并给消费者深拷贝，指纹测试使用单任务；`test_closure_repair_benchmark.py` 保留 61 项 reference 核验，报表/适配器测试选取 agent/manual/ineligible 各一项；`test_general_mutation_capability.py` 复用完整 runner 的 reference 校验，7×5 报表门禁用单次真实执行行扩展验证统计。`test_brief_intake_vertical_slice.py` 的 intake fixture 仅追加第二位用户，数据库生命周期交给 `workflow_database`。`scripts/check-backend-architecture.py` 保留真实代码依赖/公共导出/规模约束，移除对本地文档具体措辞与路径清单的断言。
+
+
+`benchmark/chat_router_eval.py` 的 `match_chat_router_outcome` 统一产生 intent/route 命中判定，`benchmark/chat_live_eval.py` 的逐行 matched 与汇总准确率共享它。预期 question/clarify 的安全 fallback 只在实际路由目标匹配时计分，route 命中仍要求组件匹配；保留历史 fallback fixture 约定。`test_chat_live_eval.py` 保留全量行数/汇总一致性回归，并验证错误 fallback 目标与组件不获计分。
+
+
+`backend/tests/conftest.py` 提供 opt-in `--timing-report`，逐项保存 setup/call/teardown、结果与阶段总时长；`backend/tests/unit/test_check_timing.py` 验证成功、call/setup 失败、跳过以及 PowerShell 静态阶段失败仍保留报告与非零退出。`scripts/check.ps1` 将静态检查、独立 Goal 门禁与各次 pytest 分段计时，报告保存在独立 `var/checks/` 运行目录。
+
+General Mutation 的 `test_general_mutation_capability.py::capability_report` 只在同步 fixture 内复用 `VerificationEngine._deterministic_findings`：缓存键包含完整文档内容、profile、draft revision、closure policy 与 editable fields；每个消费者获取深拷贝。40 个 reference 与 40 个 trial 仍分别绑定并执行全部模拟/修复/门禁，不复用 simulation 或 Provider 输出；离开 fixture 立即恢复原方法，正式评测无缓存改动。
+`scene_compiler.py` 的 Scene Fill 校验失败回调在终态前保留有界原始返回、原始字节数/截断标记、候选哈希、用量和具体校验证据；Worker 使用原 Attempt fencing 写入失败 AgentModelCall，失败收敛保留详细 issues。workflow_views 按编译错误阶段投影公开消息，内部角色引用仅存审计记录。
+CompilerEvidenceProvider 在每次结构/场景模型调用返回后、领域校验前提交完整响应日志，DeepSeek 在 JSON 解析前调用私有 on_response，OpenAI CompilerResponsesModel 在 SDK 结构解释前保存原生输出，不改变输出协议。AgentModelCall.response_jsonb 保存完整原文、SHA256、字节数及响应序列；raw_output_text 保持有界摘要。无响应失败记录异常类型与 response_unavailable，不伪造原文或已知用量；所有写入经过 TaskAttempt fencing，正文沿用 ProseStore 的独立保存/恢复边界。
+
+
+`backend/tests/benchmark_preparation.py` 提取 General Mutation 与 Closure Repair 共用的 `reuse_document_findings` 上下文管理器。只在两个同步报告 fixture 内复用确定性文档检查，按完整文档和 verifier 配置隔离并返回深拷贝，正常/异常退出均恢复原方法；不缓存 simulation、修复流程或 Provider 结果。Closure Repair 继续执行完整 24 场景×2 trial 安全矩阵。
+
+`test_scene_plan_benchmark.py` 的错误证据回归精确核对必需的 batch、JSON path、scene/beat、错误引用、允许引用数量和哈希，并继续核对 usage；允许诊断对象增加字段，不再把整个内部诊断字典的键集合锁死。
+
+
+Prose Judge 的 `test_prose_judge_benchmark.py` 通过模块级 fixture 完整验证默认 24×3 套件一次。`benchmark_preparation.py::reuse_prose_judge_inputs` 在测试上下文内复用默认已验证套件，并按完整 Profile、Render、Checklist 内容复用输入校验模型；返回深拷贝并在退出时还原。自定义/漂移文件仍进入真实 loader，所有 Judge 输出校验、Council 角色执行和 432 次 Fake 调用继续执行。报表与 policy freeze 用例复用已有完整报告，不增加第二轮 ablation。
+
+`test_backend_architecture.py` 保留一次真实全仓架构检查；非字面量 TaskType 集合的反例使用只包含 dispatch、必要稳定导出和最小 Worker 的临时仓库，仍调用真实 collect_violations，不再 mock 解析器后重扫全仓。
+编译稳定性：scene-compiler-semantic-fill-v7 与 ModelView projection v4 显式传递 NovelPlan.intent 和逐场景 actor_allowlist，保留旧 Prompt/冻结输入。Scene Fill 每批最多一次保留其他场景的定向修复，失败与修复分别记账；修复成功保存 validated_output、原始输入哈希供精确恢复，失败调用用量纳入汇总。CompilerService.resume_run 仅允许同一工作稿、配置/Prompt版本一致的失败场景任务显式继续一次，原 Attempt/调用记录不变。compiler/stability.py 用正文状态与完整候选判断小说交付，另统计首次通过、修复及失败阶段。
+正文运行时升级 prose-shadow-runtime-v2；Judge 冻结版本由同一 Prompt registry 解析，避免注册表更新而冻结清单仍为旧版导致 component_binding_mismatch。历史 runtime/资格包不改写。
+
+Judge 协议修复由 agent_runtime/prose_judge.py 拥有：一次引用修复、全量重验、保留判定及完整失败明细。worker/executors/prose_providers.py 拥有跨阶段逐场景三次调用上限，prose_store.py 用 Attempt fencing 保留失败响应和校验证据；prose_shadow.py 将成功报告绑定到修复后的调用。prose_polish_supervisor.py 支持生产指定 Preservation policy，并在预算用尽时保留已校验原稿。
+
+## 生产正文生成纠偏（runtime v4）
+
+`backend/src/casefile/agent_runtime/prose_generation.py` 拥有无数据库的生成输出诊断、一次有界生成修复和 Provider ModelView 去重。Writer/Rewriter 的完整 scene_context 只传一次，Checklist 其余字段和服务端哈希保持完整。生产端通过 DurableProseProvider 显式启用，旧组件实验仍可执行单调用协议。
+
+Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围硬限制，并在重复上场、重写原样返回或长度错误时最多再调用一次相同组件；所有原始失败与修复响应独立保留。修复后的完整候选仍经过原有契约及语义校验，不能通过截断正文/证据放行。生成修复不重置 Judge 三次额度；全场全部物理调用另受23次硬上限约束，正常有界结构最多14次。repair request绑定原请求、失败输出、问题明细与新component input hash，支持原样恢复。
+
+`prose_polish_supervisor.py` 在生产可选润色失败时保留已经语义通过的原稿，并保留失败记录。历史已接受稿仍可读取：`prose_checklist.py` 的下一场入口验证既有稿件的来源、身份和字符统计，不重新施加另一版本的生成长度政策；新生产稿件的范围约束已在统一出口执行。
+
+生产 runtime v5 将 ModelView 中完整前场正文转换为单份 continuity_reference.text（不裁剪文本，并保留原render hash），避免把历史SceneRender当作待输出示例。当前任务摘要在请求末尾重新列出，仍属于受Prompt注入边界约束的数据。Rewriter的段数计划降为建议，不得为了凑段追加旧稿。第一次定向Live失败记录保留在novel-e2e-20260907-v3/focused，后续版本使用独立冻结目录。
+
+## LLM 修订决策（runtime v9）
+
+当前新增 runtime v10 两档执行策略：`prose_runtime.py` 冻结 `quick_draft` / `full_polish` 与各自预算；CompilerService 将选择加入输入哈希，恢复时校验同一策略。`prose_shadow.py` 在 Writer 成功后按快速模式直接形成带 `quick_draft_unreviewed` 标记的交付稿，跳过 Continuity、Judge、Rewrite 和润色；完整精修保持原有顺序。快速每场最多两次 Writer 调用（含一次生成纠偏），完整每场仍最多23次。持久化预算、取消、lease 与 accepted-prefix 恢复复用原实现。投影将未审核与严格通过分开；历史 v9 产物继续可读，跨 runtime 续跑拒绝，不改写历史证据。不涉及数据库迁移。
+
+- agent_runtime/prose_revision.py：使用生成契约验证编辑候选，冻结请求及正文绑定，不持有数据库，不决定文学严重程度。
+- agent_runtime/prose_rewrite_supervisor.py：编排编辑决策、全文替代稿及复审；有限预算和产品/严格结果分离。
+- agent_runtime/prose_generation.py：检测原样返回后结束生成纠偏，不把文学修复失败归入协议/基础设施重试。
+- worker/executors/prose_shadow.py：编辑报告持久化、产品接受正文与报告绑定；application/compiler/prose_projection.py 分别投影产品完成与严格通过。
+- tests/unit/test_prose_revision.py 与 tests/integration/test_prose_shadow_runtime.py：意见绑定、fatal 禁止保留、耗尽不再重写、产品保留不篡改 Judge、无进展无续跑及累计留痕。
+
+- migrations/versions/V20260908121826__prose_revision_decision_artifacts.py：编辑报告键、scene 与 input_hash 身份约束，ORM 与 EXPECTED_DATABASE_REVISION 同步；既有报告不删除。
+
+
+## 小说正文协作与版本
+
+新增 `novel_manuscripts`、`novel_versions`、`novel_chapters`、`novel_exchanges`、`novel_edits`、`novel_edit_decisions`，业务表总数82。小说稿件拥有独立的服务端版本链；原始稿、版本正文、对话请求、模型修改组和采纳记录只追加，模型任务复用 TaskRun/TaskAttempt、AgentModelCall 与 TaskEvent。稿件属于原项目与工作稿，但不写回 CaseFile，也不改写 CompileArtifact。数据库通过复合外键绑定项目；历史表拒绝普通 UPDATE/DELETE。V20260908161410 增加这些表并允许 novel_collaborate 任务；存在小说稿件时拒绝 downgrade，避免删除历史。
+
+## 整章重写协作
+
+`agent_runtime/novel_collaboration.py` 为显式 `chapter_rewrite` 范围准备完整原章与相邻章各 2000 字节选；输入上限 12000 字，输出上限 16000 字。独立 `novel_chapter_rewrite/v1` Prompt 复用 `DeepSeekProseRewriterProvider`，只返回完整新正文与说明，服务端绑定整章 before 和码点范围。沿用两次调用总额、冻结输入、Worker lease、调用留痕及原子候选保存；截断输出不允许进入候选。既有 ScenePlan/Checklist/Judge 编排不进入编辑稿协作，不宣称文学审核通过。采纳仍由 NovelEditorService 检查稿件版本并追加新版本，保留原始稿与历史，无数据库迁移。
+
+`NovelEditorService.version_detail` 与 GET novels/{id}/versions/{revision} 只读获取指定稿件版本及上一版正文，复用项目归属与版本存在性校验，不创建版本、不修改稿件。
+
+## 小说章节命名
+
+`backend/src/casefile/agent_runtime/prompts/story_planner_semantic_fill/v2/` 指导 LLM 生成贴合本章内容、含蓄且不泄底的章名；`constraint_first_story_planner.py` 使用 v2，Worker 组件指纹包含版本与哈希。历史 v1 保留，已有方案不自动改名，不增加服务端文学门禁。
+
+## 整章编辑审阅与一次修订
+
+`novel_chapter_review.py` 复用重链路的 ProseRewriterRequest 与 DeepSeekProseRewriterProvider，用独立版本化 Prompt 对原章、作者要求、保留项、允许调整项、相邻章节节选和候选做 LLM 审阅。服务端只校验协议、证据原文引用与修订次数；不以文学规则代替模型。`worker/handlers/novel_model_calls.py` 集中记录每次生成/审阅/修订调用，数据库累计调用是预算权威，保留失败输出与 usage，调用前后检查 lease。`novel_editorial.py` 最多一次内容修订，随后复核；四阶段各最多两次协议尝试，总预算八次，无网络自动重试。审阅或修订失败保留最后一个协议有效候选并明确标记 incomplete/revision_failed，旧意见不得冒充新稿的审阅结论。每份报告绑定候选正文哈希与轮次，任务结果保存报告序列；不增加数据库表。历史 chapter rewrite v1 冻结任务仍使用旧 Prompt 和两次预算。
+
+## 显式保存小说版本
+
+小说编辑的自动修订继续用于并发控制、AI 冻结上下文和撤销；NovelEditorService.checkpoint 通过显式 POST /novels/{id}/versions 保存 checkpoint。history 仅列出 original、local_import 和 checkpoint；版本对比以此前最近的正式版本为基准。保存、采纳、恢复不新增用户版本记录。
+
+
+整章编辑策略 chapter-editorial-v2 使用不可变 novel-chapter-review-v2：审阅输入附带真实 Unicode 字符数、未变字符数和有界差异节选，用于 LLM 判断作者目标是否实际完成；相似度不作为文学硬门禁。v1 冻结任务仍按原 Prompt 读取。
+
+
+整章编辑 chapter-prose-v1：agent_runtime/novel_prose.py 适配重链路 Judge、Rewriter、Polisher、Quality Critic 的 Provider，以及共用证据绑定、编辑决策验证和双稿选择规则；worker/handlers/novel_prose.py 负责检查清单→逐项审核→编辑决策→最多两次修订与复审。润色通过 Critic→Polisher→保真审核/编辑决策→两次匿名交换顺序比较选择候选。每阶段最多一次协议修复，任务最多18次实际调用；所有 Prompt 哈希随任务冻结，历史 editorial-v1/v2 不变。候选不自动采纳，失败保留阶段记录；润色审核或比较失败保留原章。
+
+检查清单仅接收本章与作者要求，防止相邻章/设定被误标为本章原文；失败修复携带被拒候选与具体来源字段。新任务在context冻结每个组件的Prompt版本，novel-revision-v2明确retain与stop的候选处置含义，旧任务仍读取v1。Polisher支持显式generation_instruction，整章适配不构造虚假的编译profile。
+
+组件接入复查：Judge证据修复共用judge_evidence_repair_baseline，完整判定字段已合法时修复只可改变evidence_ids，禁止修改原verdict/rationale；Rewriter原样返回投影为revision_failed；用量缺失根据真实transport_attempts识别，不将Provider归一化的零值当作已知用量。
+
+## 小说对话上下文治理
+
+- `agent_runtime/novel_context.py`：复用 Context 工程的 token 估算，保留当前指令和目标正文；近期至多三轮完整对话（3,000 估算 tokens），较早对话按 12,000 tokens 分批交给 LLM 合并成有来源的记忆（2,000 tokens）。每请求至多四次整理，不切断原始消息，超额明确报错；原始消息不删除。
+- `application/novel_context.py`：按稿件、章节、原稿/编辑稿隔离读取成功对话与上一成功任务的记忆检查点；历史修改状态来自真实采纳记录，摘要不充当正文权威。
+- `worker/handlers/novel_collaboration.py`：压缩使用既有 `NovelModelJournal`，计入冻结预算和实际用量；校验来源、输出预算及 Prompt hash。只有成功任务发布记忆检查点，失败不前移；新上下文策略不补写历史任务。
+- `prompts/novel_context_compactor/v1`：小说专用记忆协议，仅保留作者偏好、讨论与未解决问题。复用主工作台的治理原则和估算器，不复用其卷宗事实/Patch 专用状态。
+- `tests/unit/test_novel_context.py`、`tests/integration/test_novel_context_runtime.py`：近期完整性、预算、来源、正文保真、真实 PostgreSQL 检查点复用与失败不前移；模型均为 Fake，无真实 Provider 资格结论。

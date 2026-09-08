@@ -5,6 +5,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, cast
 
+from pydantic import ValidationError
+
+from casefile.domain.narrative_compiler.foundation import (
+    CompilerContractError,
+    canonical_json_sha256,
+)
 from casefile_contracts import (
     CompilerProfileBinding,
     ExposureBinding,
@@ -13,18 +19,10 @@ from casefile_contracts import (
     SceneCompilerInputBundleV2,
     SceneCompilerModelView,
 )
-from pydantic import ValidationError
-
-from casefile.domain.narrative_compiler.foundation import (
-    CompilerContractError,
-    canonical_json_sha256,
-)
 
 SCENE_COMPILER_INPUT_V2_SCHEMA_ID = "compiler.scene-compiler-input.v2"
 SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID = "compiler.scene-compiler-model-view.v1"
-SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION = (
-    "compiler.scene-compiler-model-view-projection.v3"
-)
+SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION = "compiler.scene-compiler-model-view-projection.v4"
 SCENE_COMPILER_BATCH_SIZE = 8
 
 
@@ -38,15 +36,11 @@ def build_scene_compiler_input_v2(
     """Bind all authoritative N4.4 inputs and derive hard execution obligations."""
 
     plan = _model_json(NovelPlanIR, novel_plan, "compiler_scene_input_novel_plan_invalid")
-    narrative = _model_json(
-        NarrativeIR, narrative_ir, "compiler_scene_input_narrative_ir_invalid"
-    )
+    narrative = _model_json(NarrativeIR, narrative_ir, "compiler_scene_input_narrative_ir_invalid")
     exposure_json = (
         None
         if exposure is None
-        else _model_json(
-            ExposureBinding, exposure, "compiler_scene_input_exposure_invalid"
-        )
+        else _model_json(ExposureBinding, exposure, "compiler_scene_input_exposure_invalid")
     )
     profile_json = _model_json(
         CompilerProfileBinding, profile, "compiler_scene_input_profile_invalid"
@@ -104,9 +98,7 @@ def validate_scene_compiler_input_v2(
     payload = {key: value[key] for key in value if key not in {"schema_id", "source"}}
     if source["input_hash"] != canonical_json_sha256(payload):
         raise CompilerContractError("compiler_scene_input_hash_mismatch")
-    _validate_bindings(
-        value["novel_plan"], value["narrative_ir"], exposure, value["profile"]
-    )
+    _validate_bindings(value["novel_plan"], value["narrative_ir"], exposure, value["profile"])
     if value["execution_constraints"] != _execution_constraints(value["novel_plan"]):
         raise CompilerContractError("compiler_scene_input_constraints_mismatch")
     if value["state_seed"] != _state_seed(value["narrative_ir"]):
@@ -116,10 +108,15 @@ def validate_scene_compiler_input_v2(
 
 def build_scene_compiler_model_view(
     bundle: SceneCompilerInputBundleV2 | dict[str, Any],
+    *,
+    batch_size: int = SCENE_COMPILER_BATCH_SIZE,
 ) -> dict[str, Any]:
     """Project chapter-local batches without leaking the complete audit payload."""
 
     value = validate_scene_compiler_input_v2(bundle).model_dump(mode="json")
+    if not 1 <= batch_size <= SCENE_COMPILER_BATCH_SIZE:
+        raise CompilerContractError("compiler_scene_batch_size_invalid")
+    intents = {scene["scene_id"]: scene["intent"] for scene in value["novel_plan"]["scenes"]}
     constraints_by_chapter: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for constraint in value["execution_constraints"]:
         constraints_by_chapter[constraint["chapter_id"]].append(constraint)
@@ -132,26 +129,29 @@ def build_scene_compiler_model_view(
         scenes = sorted(
             constraints_by_chapter[chapter_id], key=lambda item: item["discourse_order"]
         )
-        for chapter_batch_ordinal, offset in enumerate(
-            range(0, len(scenes), SCENE_COMPILER_BATCH_SIZE), start=1
-        ):
+        for chapter_batch_ordinal, offset in enumerate(range(0, len(scenes), batch_size), start=1):
             batch_ordinal += 1
-            batch_scenes = scenes[offset : offset + SCENE_COMPILER_BATCH_SIZE]
+            batch_scenes = scenes[offset : offset + batch_size]
             selected_refs = _constraint_refs(batch_scenes)
             batch_state_seed = _filter_state_seed(value["state_seed"], selected_refs)
             visible_refs = selected_refs | _object_refs(batch_state_seed)
             object_catalog = _object_catalog(value["narrative_ir"], visible_refs)
             catalog_refs = {_ref_key(item["object_ref"]) for item in object_catalog}
             if catalog_refs != visible_refs:
-                raise CompilerContractError(
-                    "compiler_scene_model_view_reference_closure_invalid"
-                )
+                raise CompilerContractError("compiler_scene_model_view_reference_closure_invalid")
             batch = {
                 "batch_id": f"scene_batch_{chapter_id}_{chapter_batch_ordinal:03d}",
                 "ordinal": batch_ordinal,
                 "chapter_id": chapter_id,
                 "scene_ids": [scene["scene_id"] for scene in batch_scenes],
-                "scenes": [_model_view_scene(scene) for scene in batch_scenes],
+                "scenes": [
+                    {
+                        **_model_view_scene(scene),
+                        "intent": intents[scene["scene_id"]],
+                        "actor_allowlist": scene["participant_refs"],
+                    }
+                    for scene in batch_scenes
+                ],
                 "object_catalog": object_catalog,
                 "state_seed": batch_state_seed,
             }
@@ -229,9 +229,7 @@ def _execution_constraints(plan: dict[str, Any]) -> list[dict[str, Any]]:
             )
         for ordinal, exposure in enumerate(scene["exposure"], start=1):
             obligations.append(
-                _obligation(
-                    scene, "exposure", ordinal, scene["basis_refs"], exposure=exposure
-                )
+                _obligation(scene, "exposure", ordinal, scene["basis_refs"], exposure=exposure)
             )
         for ordinal, resolution in enumerate(scene["resolutions"], start=1):
             obligations.append(
@@ -244,9 +242,7 @@ def _execution_constraints(plan: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
         if not obligations:
-            obligations.append(
-                _obligation(scene, "transition", 1, scene["basis_refs"])
-            )
+            obligations.append(_obligation(scene, "transition", 1, scene["basis_refs"]))
         constraints.append(
             {
                 "scene_id": scene["scene_id"],
@@ -344,11 +340,7 @@ def _model_view_scene(scene: dict[str, Any]) -> dict[str, Any]:
         _ref_key(ref): ref
         for ref in [
             *scene["basis_refs"],
-            *(
-                ref
-                for obligation in scene["obligations"]
-                for ref in obligation["basis_refs"]
-            ),
+            *(ref for obligation in scene["obligations"] for ref in obligation["basis_refs"]),
         ]
     }
     return {
@@ -357,9 +349,7 @@ def _model_view_scene(scene: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _object_catalog(
-    narrative: dict[str, Any], selected_refs: set[str]
-) -> list[dict[str, Any]]:
+def _object_catalog(narrative: dict[str, Any], selected_refs: set[str]) -> list[dict[str, Any]]:
     catalog: list[dict[str, Any]] = []
     for envelopes in narrative["objects"].values():
         for envelope in envelopes:
@@ -389,9 +379,7 @@ def _object_catalog(
     return sorted(catalog, key=lambda item: _ref_key(item["object_ref"]))
 
 
-def _filter_state_seed(
-    state_seed: dict[str, Any], selected_refs: set[str]
-) -> dict[str, Any]:
+def _filter_state_seed(state_seed: dict[str, Any], selected_refs: set[str]) -> dict[str, Any]:
     return {
         "character_knowledge": [
             item
@@ -399,9 +387,7 @@ def _filter_state_seed(
             if _ref_key(item["subject_ref"]) in selected_refs
         ],
         "events": [
-            item
-            for item in state_seed["events"]
-            if _ref_key(item["event_ref"]) in selected_refs
+            item for item in state_seed["events"] if _ref_key(item["event_ref"]) in selected_refs
         ],
     }
 

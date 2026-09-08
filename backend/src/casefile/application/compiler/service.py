@@ -6,13 +6,13 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
     CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
-from casefile.agent_runtime.prose_runtime import prose_runtime_binding
+from casefile.agent_runtime.prose_runtime import PROSE_RUNTIME_VERSION, prose_runtime_binding
 from casefile.agent_runtime.scene_compiler import (
     SCENE_COMPILER_PIPELINE_VERSION,
     SCENE_COMPILER_PROMPT_BUNDLE_VERSION,
@@ -30,6 +30,7 @@ from casefile.application.task_events import append_task_event
 from casefile.application.workflow_views import task_view
 from casefile.data_postgres.compiler_repository import CompilerRepository
 from casefile.data_postgres.models import (
+    AgentModelCall,
     AuditEvent,
     CanonVersion,
     CompilerProfile,
@@ -67,6 +68,133 @@ class CompilerService:
         self.projects = ProjectRepository(session)
         self.snapshots = SnapshotRepository(session)
         self.compiler = CompilerRepository(session)
+
+    def resume_run(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        run_id: int,
+        *,
+        expected_draft_id: int,
+        expected_draft_revision: int,
+    ) -> dict[str, Any]:
+        """Resume the same frozen build once; successful exact inputs remain reusable."""
+        from casefile.agent_runtime.prompt_repository import load_prompt
+        from casefile.agent_runtime.scene_compiler import SCENE_SEMANTIC_FILL_PROMPT_VERSION
+
+        with self.session.begin():
+            owned = self.projects.get_owned(actor_user_id, project_id, lock=True)
+            if owned is None:
+                raise not_found("Project")
+            run = self.session.get(CompileRun, run_id)
+            if run is None or run.project_id != project_id:
+                raise not_found("CompileRun")
+            task = self.session.scalar(
+                select(TaskRun).where(TaskRun.id == run.task_run_id).with_for_update()
+            )
+            draft = owned.draft
+            if (
+                draft is None
+                or draft.id != expected_draft_id
+                or draft.project_id != project_id
+                or run.draft_id != draft.id
+                or draft.revision != expected_draft_revision
+                or task is None
+                or task.input_draft_revision != expected_draft_revision
+            ):
+                raise ApplicationError(
+                    "compiler_resume_stale", "工作稿已变化，请重新规划。", status_code=409
+                )
+            artifacts = self.compiler.list_artifacts(run.id)
+            prose_manifest = max(
+                (a for a in artifacts if a.artifact_key.startswith("compiler.compile_manifest")),
+                key=lambda a: a.id,
+                default=None,
+            )
+            prose_resume = bool(
+                run.prose_renderer_shadow
+                and prose_manifest is not None
+                and prose_manifest.content_jsonb["shadow_status"] != "succeeded"
+            )
+            if (
+                task.status != "failed" and not (prose_resume and task.status == "succeeded")
+            ) or task.attempt_count >= 2:
+                raise ApplicationError(
+                    "compiler_resume_unavailable", "仅失败任务可继续一次。", status_code=409
+                )
+            setting = self.session.get(UserProviderSetting, task.provider_setting_id)
+            if (
+                setting is None
+                or setting.credential_status == "deleted"
+                or setting.config_version != task.provider_config_version
+            ):
+                raise ApplicationError(
+                    "compiler_resume_provider_changed",
+                    "模型配置已变化，请重新规划。",
+                    status_code=409,
+                )
+            prompt = load_prompt("scene_compiler_semantic_fill", SCENE_SEMANTIC_FILL_PROMPT_VERSION)
+            calls = list(
+                self.session.scalars(
+                    select(AgentModelCall).where(
+                        AgentModelCall.task_run_id == task.id,
+                        AgentModelCall.prompt_component_id.like("scene_semantic_fill.%"),
+                    )
+                )
+            )
+            if prose_resume:
+                frozen = next(
+                    (a.content_jsonb for a in artifacts if a.schema_id == INPUT_MANIFEST_SCHEMA_ID),
+                    {},
+                )
+                runtime = frozen.get("prose_runtime", {})
+                if runtime != prose_runtime_binding(
+                    runtime.get("scene_count"), frozen.get("prose_mode", "full_polish")
+                ):
+                    raise ApplicationError(
+                        "compiler_resume_version_changed",
+                        "生成协议已更新，请重新规划。",
+                        status_code=409,
+                    )
+                assert prose_manifest is not None
+                if (
+                    prose_manifest.content_jsonb.get("incomplete_reason")
+                    == "compiler_prose_local_plan_conflict"
+                ):
+                    raise ApplicationError(
+                        "compiler_resume_plan_conflict",
+                        "场景规划存在冲突，请先调整方案。",
+                        status_code=409,
+                    )
+            elif (
+                not calls
+                or any(call.prompt_sha256 != prompt.system_prompt_sha256 for call in calls)
+                or int(task.budget_jsonb.get("max_repairs", 0)) != 1
+            ):
+                raise ApplicationError(
+                    "compiler_resume_version_changed",
+                    "生成协议已更新，请重新规划。",
+                    status_code=409,
+                )
+            append_task_event(
+                self.session,
+                task,
+                "task.resumed",
+                "queued",
+                {
+                    "previous_error_code": task.error_code,
+                    "previous_attempt_count": task.attempt_count,
+                },
+            )
+            task.status = "queued"
+            task.stage = "queued"
+            task.completed_at = None
+            task.error_code = None
+            task.error_details_jsonb = {}
+            task.leased_by = None
+            task.lease_expires_at = None
+            task.cancel_requested_at = None
+            return self._run_view(run, task)
 
     def create_profile(
         self,
@@ -179,6 +307,7 @@ class CompilerService:
         planner_provider: str | None = None,
         scene_compiler_shadow: bool = False,
         prose_renderer_shadow: bool = False,
+        prose_mode: Literal["quick_draft", "full_polish"] = "full_polish",
         approved_plan_run_id: int | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
@@ -367,10 +496,15 @@ class CompilerService:
                     approved_plan_run_id,
                     manifest_json,
                 )
+            if prose_mode not in {"quick_draft", "full_polish"}:
+                raise ApplicationError(
+                    "compiler_prose_mode_invalid", "请选择有效的生成方式。", status_code=422
+                )
+            manifest_json["prose_mode"] = prose_mode
             if prose_renderer_shadow:
                 manifest_json["prose_renderer_shadow"] = True
                 manifest_json["prose_runtime"] = prose_runtime_binding(
-                    profile.payload_jsonb["structure"]["target_scenes"]
+                    profile.payload_jsonb["structure"]["target_scenes"], prose_mode
                 )
             input_hash = canonical_json_sha256(manifest_json)
             task = TaskRun(
@@ -431,8 +565,8 @@ class CompilerService:
                     if setting is None
                     else {
                         **setting.default_budget_jsonb,
-                        "max_turns": (2 + scene_batch_count if scene_compiler_shadow else 2),
-                        "max_repairs": 0,
+                        "max_turns": (2 + 2 * scene_batch_count if scene_compiler_shadow else 2),
+                        "max_repairs": 1 if scene_compiler_shadow else 0,
                     }
                 ),
                 usage_jsonb={},
@@ -683,11 +817,15 @@ class CompilerService:
             return {"prose_shadow": {"status": "disabled"}}
         artifacts = self.compiler.list_artifacts(run.id)
         main_ready = any(a.schema_id == "compiler.scene-plan.v2" for a in artifacts)
-        manifest = next(
-            (a for a in artifacts if a.artifact_key == "compiler.compile_manifest"), None
+        manifest = max(
+            (a for a in artifacts if a.artifact_key.startswith("compiler.compile_manifest")),
+            key=lambda a: a.id,
+            default=None,
         )
         status = (
-            manifest.content_jsonb["shadow_status"]
+            "running"
+            if task.status in {"queued", "running", "cancelling"} and main_ready
+            else manifest.content_jsonb["shadow_status"]
             if manifest
             else "inconclusive_infrastructure"
             if task.status in {"failed", "cancelled"}
@@ -700,13 +838,24 @@ class CompilerService:
             "prose_shadow": {
                 "status": status,
                 "manifest_artifact_id": manifest.id if manifest else None,
-                "completed_scene_count": (
-                    sum(
-                        s["final_state"].startswith("finalized_")
-                        for s in manifest.content_jsonb["scenes"]
-                    )
-                    if manifest
-                    else 0
+                "plan_issues": [
+                    issue["required_plan_change"]
+                    for artifact in artifacts
+                    if artifact.schema_id == "compiler.prose-continuity-review.v1"
+                    and artifact.content_jsonb.get("verdict") == "blocked"
+                    for issue in artifact.content_jsonb["issues"]
+                ],
+                "resume_available": bool(
+                    task.status in {"succeeded", "failed"}
+                    and task.attempt_count < 2
+                    and manifest is not None
+                    and manifest.content_jsonb["shadow_status"] == "inconclusive_infrastructure"
+                    and manifest.content_jsonb.get("runtime", {}).get("version")
+                    == PROSE_RUNTIME_VERSION
+                ),
+                "completed_scene_count": sum(
+                    a.artifact_key.endswith(".accepted") and a.artifact_kind == "scene_render"
+                    for a in artifacts
                 ),
                 "is_adopted": False,
             },
@@ -715,6 +864,23 @@ class CompilerService:
     def _run_view(self, run: CompileRun, task: TaskRun | None) -> dict[str, Any]:
         if task is None:
             raise RuntimeError("CompileRun TaskRun is missing")
+        from casefile.application.compiler.stability import compiler_stability
+
+        shadow = self._shadow_view(run, task)
+        artifacts = self.compiler.list_artifacts(run.id)
+        calls = list(
+            self.session.scalars(
+                select(AgentModelCall)
+                .where(AgentModelCall.task_run_id == task.id)
+                .options(
+                    load_only(
+                        AgentModelCall.prompt_component_id,
+                        AgentModelCall.call_no,
+                        AgentModelCall.status,
+                    )
+                )
+            )
+        )
         return {
             "compile_run_id": run.id,
             "task_run_id": run.task_run_id,
@@ -729,7 +895,16 @@ class CompilerService:
             "compiler_profile_version_id": run.compiler_profile_version_id,
             "compiler_version": run.compiler_version,
             "prose_renderer_shadow": run.prose_renderer_shadow,
-            **self._shadow_view(run, task),
+            "prose_mode": task.input_jsonb.get("prose_mode", "full_polish"),
+            **shadow,
+            "stability": compiler_stability(
+                task_status=task.status,
+                attempt_count=task.attempt_count,
+                prose_requested=run.prose_renderer_shadow,
+                shadow_status=shadow["prose_shadow"]["status"],
+                schema_ids={artifact.schema_id for artifact in artifacts},
+                calls=calls,
+            ),
             "input_hash": run.input_hash,
             "execution": task_view(task),
             "artifacts": [
@@ -741,7 +916,7 @@ class CompilerService:
                     "content_hash": artifact.content_hash,
                     "agent_step_run_id": artifact.agent_step_run_id,
                 }
-                for artifact in self.compiler.list_artifacts(run.id)
+                for artifact in artifacts
             ],
             "created_at": run.created_at.isoformat(),
         }

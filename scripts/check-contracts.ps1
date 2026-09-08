@@ -98,8 +98,9 @@ try {
         Copy-Item -LiteralPath (Join-Path $rootSchemaRoot $schemaDirectory) `
             -Destination $temporaryRuntimeSchemaRoot -Recurse
     }
-    Copy-Item -LiteralPath (Join-Path $rootSchemaRoot "editing-contracts.schema.json") `
-        -Destination $temporaryRuntimeSchemaRoot
+    foreach ($rootSchema in Get-ChildItem -LiteralPath $rootSchemaRoot -Filter "*.schema.json" -File) {
+        Copy-Item -LiteralPath $rootSchema.FullName -Destination $temporaryRuntimeSchemaRoot
+    }
     [System.IO.File]::WriteAllText(
         (Join-Path $temporaryRuntimeSchemaRoot "GENERATED_FROM_ROOT_SCHEMAS.txt"),
         "Generated from current v2 contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand. The adjacent v1 mirror is retained for historical reads.`n",

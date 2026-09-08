@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.agent_runtime.scene_compiler import (
     SceneFillBatchRequest,
@@ -94,6 +95,91 @@ def test_fake_scene_fill_is_bounded_chained_and_deterministic() -> None:
     assert all(not stage.recovered for stage in execution.stages)
 
 
+def test_rejected_actor_keeps_raw_result_and_evidence_before_stopping() -> None:
+    failures = []
+    completed = []
+
+    class InvalidActorProvider(FakeProvider):
+        def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+            result = super().fill_scene_batch(request)
+            result.proposal["scenes"][0]["beats"][0]["actor_refs"] = [_ref("entity", "other")]
+            return SceneFillBatchResult(result.proposal, {"total_tokens": 12}, "raw rejection")
+
+    with pytest.raises(SceneFillValidationError, match="compiler_scene_fill_actor_invalid"):
+        execute_scene_semantic_fill(
+            InvalidActorProvider(),
+            task_run_id=7,
+            model_view=_model_view(2),
+            component_hash="2" * 64,
+            model_id="fake",
+            api_key="unused",
+            on_failure=failures.append,
+            after_stage=completed.append,
+        )
+    assert completed == []
+    assert len(failures) == 1
+    assert failures[0].result.raw_output == "raw rejection"
+    assert failures[0].result.usage == {"total_tokens": 12}
+    assert failures[0].evidence["allowed_refs"] == ["entity:ent_actor"]
+    assert failures[0].evidence["json_path"] == "/scenes/0/beats/0/actor_refs/0"
+
+
+@pytest.mark.parametrize("repair_succeeds", [True, False])
+def test_scene_repair_is_single_bounded_and_preserves_failed_observation(repair_succeeds):
+    requests = []
+    failures = []
+
+    class RepairProvider(FakeProvider):
+        def fill_scene_batch(self, request):
+            requests.append(request)
+            result = super().fill_scene_batch(request)
+            if not request.repair_context or not repair_succeeds:
+                result.proposal["scenes"][0]["beats"][0]["actor_refs"] = [_ref("entity", "other")]
+            return result
+
+    def execute():
+        return execute_scene_semantic_fill(
+            RepairProvider(),
+            task_run_id=7,
+            model_view=_model_view(),
+            component_hash="2" * 64,
+            model_id="fake",
+            api_key="unused",
+            max_repairs=1,
+            on_failure=failures.append,
+        )
+
+    if repair_succeeds:
+        assert execute().stages[0].call_no == 10001
+    else:
+        with pytest.raises(SceneFillValidationError):
+            execute()
+    assert len(requests) == 2
+    assert requests[1].input_hash != requests[0].input_hash
+    assert requests[1].repair_context["error"]["allowed_refs"] == ["entity:ent_actor"]
+    assert len(failures) == (1 if repair_succeeds else 2)
+
+
+@pytest.mark.parametrize(
+    ("code", "phrase"),
+    [
+        ("compiler_snapshot_binding_mismatch", "冻结输入"),
+        ("compiler_scene_fill_actor_invalid", "角色"),
+        ("compiler_scene_fill_reference_invalid", "场景"),
+        ("compiler_narrative_ir_invalid", "卷宗内容转换"),
+        ("compiler_skeleton_proposal_invalid", "小说结构"),
+        ("compiler_prose_failed", "正文"),
+        ("compiler_unknown", "编译未能完成"),
+    ],
+)
+def test_compiler_failure_reports_actual_phase(code: str, phrase: str) -> None:
+    from casefile.application.workflow_views import task_failure_view
+
+    failure = task_failure_view(code)
+    assert failure is not None and phrase in failure["message"]
+    assert failure["issues"] == []
+
+
 def test_exact_recovery_skips_provider_and_preserves_hash_chain() -> None:
     baseline = execute_scene_semantic_fill(
         FakeProvider(),
@@ -128,9 +214,7 @@ def test_exact_recovery_skips_provider_and_preserves_hash_chain() -> None:
 
 
 def test_typed_state_rejects_an_unbound_initial_hash() -> None:
-    with pytest.raises(
-        CompilerContractError, match="compiler_scene_initial_state_hash_mismatch"
-    ):
+    with pytest.raises(CompilerContractError, match="compiler_scene_initial_state_hash_mismatch"):
         execute_scene_semantic_fill(
             FakeProvider(),
             task_run_id=8,

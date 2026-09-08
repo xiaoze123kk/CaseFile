@@ -17,6 +17,8 @@ def render_scene_fill_prompt(
         "inbound_state_hash": request.inbound_state_hash,
         "inbound_state": request.inbound_state,
     }
+    if request.repair_context is not None:
+        payload["repair_context"] = request.repair_context
     return (
         definition.system_prompt,
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")),

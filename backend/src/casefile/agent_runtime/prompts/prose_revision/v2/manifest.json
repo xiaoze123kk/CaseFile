@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_revision",
+  "version": "prose-revision-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "c62d68c88156fa7823f117f03cfe12e727f07944050c8dfd25df98fc2b361e76",
+  "previous_version": "prose-revision-v1",
+  "change_summary": "根据首场诊断明确编辑计划不代写正文，并审核 POV 与新增衔接的来源。"
+}

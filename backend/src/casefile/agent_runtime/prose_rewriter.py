@@ -10,11 +10,17 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 from openai import OpenAI
 from pydantic import ValidationError
 
 from casefile.agent_runtime.prompt_repository import load_prompt
+from casefile.agent_runtime.prose_generation import (
+    generation_focus,
+    generation_length_contract,
+    generation_view,
+    prepare_generation_result,
+    validate_generation_result,
+)
 from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
@@ -25,11 +31,12 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
+from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 
 PROSE_REWRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v3"
-PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v3"
-PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v3"
+PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v7"
+PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v7"
+PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v7"
 PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v2"
 PROSE_REWRITER_MAX_TURNS: Final = 1
 PROSE_REWRITER_MAX_CALLS_PER_SCENE: Final = 2
@@ -40,12 +47,8 @@ PROSE_REWRITER_THINKING_ENABLED: Final = False
 PROSE_REWRITER_CANDIDATE_SCHEMA_ID: Final = "compiler.scene-render-candidate.v1"
 PROSE_REWRITER_RENDER_SCHEMA_ID: Final = "compiler.scene-render.v1"
 PROSE_REWRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
-PROSE_REWRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(
-    PROSE_REWRITER_CANDIDATE_SCHEMA
-)
-PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(
-    SceneRender.model_json_schema()
-)
+PROSE_REWRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_REWRITER_CANDIDATE_SCHEMA)
+PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
 PROSE_REWRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
         "component_version": PROSE_REWRITER_COMPONENT_VERSION,
@@ -71,9 +74,7 @@ class ProseRewriterProtocolError(ProseRewriterError):
 class ProseRewriterInfrastructureError(ProseRewriterError):
     """A Provider failure made the Rewrite call inconclusive."""
 
-    def __init__(
-        self, message: str, *, failed_call: ProseRewriterFailedCall | None = None
-    ) -> None:
+    def __init__(self, message: str, *, failed_call: ProseRewriterFailedCall | None = None) -> None:
         super().__init__(message)
         self.failed_call = failed_call
 
@@ -124,6 +125,8 @@ class ProseRewriterProviderResult:
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProseRewriterTransportAttempt, ...]
     recovered: bool = False
+    generation_call_count: int = 1
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,14 +143,12 @@ class ProseRewriterFailedCall:
 
 
 class ProseRewriterProvider(Protocol):
-    def rewrite_scene(
-        self, request: ProseRewriterRequest
-    ) -> ProseRewriterProviderResult: ...
+    def rewrite_scene(self, request: ProseRewriterRequest) -> ProseRewriterProviderResult: ...
 
 
 @dataclass(frozen=True, slots=True)
 class ProseRewriterExecution:
-    status: Literal["completed", "protocol_failed", "inconclusive"]
+    status: Literal["completed", "semantic_rejected", "protocol_failed", "inconclusive"]
     render: dict[str, Any] | None
     call: ProseRewriterProviderResult | None
     failed_call: ProseRewriterFailedCall | None = None
@@ -160,9 +161,7 @@ class DeepSeekProseRewriterProvider:
     def __init__(self, *, base_url: str = "https://api.deepseek.com") -> None:
         self.base_url = base_url
 
-    def rewrite_scene(
-        self, request: ProseRewriterRequest
-    ) -> ProseRewriterProviderResult:
+    def rewrite_scene(self, request: ProseRewriterRequest) -> ProseRewriterProviderResult:
         if not request.api_key:
             raise ProseRewriterInfrastructureError("prose_rewriter_api_key_missing")
         started = perf_counter()
@@ -215,6 +214,7 @@ class DeepSeekProseRewriterProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
             transport_attempts=(attempt,),
+            finish_reason=response.choices[0].finish_reason if len(response.choices) == 1 else None,
         )
 
     def _create_completion(self, request: ProseRewriterRequest) -> Any:
@@ -228,7 +228,9 @@ class DeepSeekProseRewriterProvider:
                         "content": request.system_prompt
                         + "\n\n必须严格遵守以下 JSON Schema：\n"
                         + json.dumps(
-                            PROSE_REWRITER_CANDIDATE_SCHEMA,
+                            request.input_payload.get(
+                                "response_schema", PROSE_REWRITER_CANDIDATE_SCHEMA
+                            ),
                             ensure_ascii=False,
                             sort_keys=True,
                             separators=(",", ":"),
@@ -241,6 +243,16 @@ class DeepSeekProseRewriterProvider:
                             ensure_ascii=False,
                             sort_keys=True,
                             separators=(",", ":"),
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "请按系统职责完成本次任务。"
+                            if request.prompt_version.startswith("novel-")
+                            else "请完成编辑决策。"
+                            if "response_schema" in request.input_payload
+                            else generation_focus(request)
                         ),
                     },
                 ],
@@ -266,9 +278,7 @@ class FakeProseRewriterProvider:
         self._failure_at_call = failure_at_call
         self.call_count = 0
 
-    def rewrite_scene(
-        self, request: ProseRewriterRequest
-    ) -> ProseRewriterProviderResult:
+    def rewrite_scene(self, request: ProseRewriterRequest) -> ProseRewriterProviderResult:
         self.call_count += 1
         if self.call_count == self._failure_at_call:
             raise ProseRewriterInfrastructureError("prose_rewriter_fake_infrastructure")
@@ -309,6 +319,7 @@ def execute_prose_rewriter(
     api_key: str,
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseRewriterProviderResult | None] | None = None,
+    revision_decision: dict[str, Any] | None = None,
 ) -> ProseRewriterExecution:
     """Validate one failed semantic round and produce its complete replacement."""
 
@@ -326,13 +337,21 @@ def execute_prose_rewriter(
             model_id=model_id,
             api_key=api_key,
             remaining_scene_call_budget=remaining_scene_call_budget,
+            revision_decision=revision_decision,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
             call = (
-                replace(recovered, recovered=True)
-                if recovered
-                else provider.rewrite_scene(request)
+                replace(recovered, recovered=True) if recovered else provider.rewrite_scene(request)
+            )
+            call, request = prepare_generation_result(
+                provider,
+                provider.rewrite_scene,
+                request,
+                call,
+                "prose_rewrite",
+                _validate_result_binding,
+                recover_call,
             )
         except ProseRewriterInfrastructureError as error:
             failed = error.failed_call or _failed_call_from_request(
@@ -344,6 +363,7 @@ def execute_prose_rewriter(
                 "inconclusive", None, None, failed_call=failed, error_code=str(error)
             )
         _validate_result_binding(call, request)
+        validate_generation_result(provider, call, request, "prose_rewrite")
         if call.candidate is None:
             raise ProseRewriterProtocolError("prose_rewriter_empty_or_invalid_json")
         render = normalize_scene_rewrite_candidate(
@@ -355,9 +375,12 @@ def execute_prose_rewriter(
             component_input_hash=request.component_input_hash,
         ).model_dump(mode="json")
     except (CompilerContractError, ProseRewriterProtocolError) as error:
-        return ProseRewriterExecution(
-            "protocol_failed", None, call, error_code=str(error)
+        status: Literal["semantic_rejected", "protocol_failed"] = (
+            "semantic_rejected"
+            if str(error) == "prose_generation_no_progress"
+            else "protocol_failed"
         )
+        return ProseRewriterExecution(status, None, call, error_code=str(error))
     return ProseRewriterExecution("completed", render, call)
 
 
@@ -374,14 +397,18 @@ def build_prose_rewriter_request(
     model_id: str,
     api_key: str,
     remaining_scene_call_budget: int,
+    revision_decision: dict[str, Any] | None = None,
+    review_only: bool = False,
 ) -> ProseRewriterRequest:
     """Build the minimal full-Rewrite Provider view after exact validation."""
 
     if model_id != PROSE_REWRITER_MODEL_ID:
         raise ProseRewriterProtocolError("prose_rewriter_model_id_not_frozen")
-    if not isinstance(remaining_scene_call_budget, int) or isinstance(
-        remaining_scene_call_budget, bool
-    ) or not (1 <= remaining_scene_call_budget <= 23):
+    if (
+        not isinstance(remaining_scene_call_budget, int)
+        or isinstance(remaining_scene_call_budget, bool)
+        or not (1 <= remaining_scene_call_budget <= 23)
+    ):
         raise ProseRewriterProtocolError("prose_rewriter_call_budget_invalid")
     checklist_json = validate_prose_judge_checklist(
         checklist,
@@ -395,8 +422,11 @@ def build_prose_rewriter_request(
         current_render, checklist=checklist_json, profile=profile_json
     ).model_dump(mode="json")
     rewrite_round = render_json["round"] + 1
-    expected_stage = "writer" if rewrite_round == 1 else "rewrite_1"
-    if rewrite_round not in {1, 2} or render_json["stage"] != expected_stage:
+    expected_stage = "writer" if rewrite_round == 1 else f"rewrite_{rewrite_round - 1}"
+    if (
+        rewrite_round not in ({1, 2, 3} if review_only else {1, 2})
+        or render_json["stage"] != expected_stage
+    ):
         raise ProseRewriterProtocolError("prose_rewriter_source_stage_invalid")
     consensus_json, reports_json = _validate_review_inputs(
         consensus=consensus,
@@ -406,18 +436,12 @@ def build_prose_rewriter_request(
         profile=profile_json,
     )
     checks_by_id = {item["check_id"]: item for item in checklist_json["checks"]}
-    assessment_by_id = {
-        item["check_id"]: item for item in reports_json[0]["assessments"]
-    }
+    assessment_by_id = {item["check_id"]: item for item in reports_json[0]["assessments"]}
     repair_ids = [
-        item["check_id"]
-        for item in consensus_json["checks"]
-        if item["final_verdict"] != "pass"
+        item["check_id"] for item in consensus_json["checks"] if item["final_verdict"] != "pass"
     ]
     preserve_ids = [
-        item["check_id"]
-        for item in consensus_json["checks"]
-        if item["final_verdict"] == "pass"
+        item["check_id"] for item in consensus_json["checks"] if item["final_verdict"] == "pass"
     ]
     repair_findings = [
         {
@@ -451,9 +475,7 @@ def build_prose_rewriter_request(
         "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
         "narrative_ir_hash": checklist_json["source"]["narrative_ir_hash"],
         "profile_hash": checklist_json["source"]["profile_hash"],
-        "previous_scene_render_hash": checklist_json["source"][
-            "previous_scene_render_hash"
-        ],
+        "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
         "checklist_hash": canonical_json_sha256(checklist_json),
         "current_render_hash": canonical_json_sha256(render_json),
         "consensus_hash": canonical_json_sha256(consensus_json),
@@ -476,6 +498,7 @@ def build_prose_rewriter_request(
     )
     block_count = max(3, min(8, (target_chars + 124) // 125))
     length_contract = {
+        **generation_length_contract(profile_json),
         "policy_version": PROSE_REWRITER_LENGTH_POLICY_VERSION,
         "unit": "unicode_code_points_in_block_text_only",
         "min_chars": min_chars,
@@ -499,13 +522,13 @@ def build_prose_rewriter_request(
             "length_contract": length_contract,
         },
         "untrusted_data": {
-            "checklist": checklist_json,
-            "scene_context": checklist_json["scene_context"],
+            **generation_view(checklist_json),
             "profile": profile_json,
             "current_render": render_json,
             "consensus": consensus_json,
             "repair_findings": repair_findings,
             "preserve_checks": preserve_checks,
+            **({"revision_decision": revision_decision} if revision_decision else {}),
         },
         "output_schema_id": PROSE_REWRITER_CANDIDATE_SCHEMA_ID,
     }
@@ -550,9 +573,7 @@ def _validate_review_inputs(
     profile: dict[str, Any],
 ) -> tuple[dict[str, Any], tuple[dict[str, Any], ...]]:
     try:
-        consensus_json = ProseConsensusReport.model_validate(consensus).model_dump(
-            mode="json"
-        )
+        consensus_json = ProseConsensusReport.model_validate(consensus).model_dump(mode="json")
     except ValidationError as error:
         raise ProseRewriterProtocolError("prose_rewriter_consensus_invalid") from error
     if len(judge_reports) != 1:
@@ -567,9 +588,7 @@ def _validate_review_inputs(
         raise ProseRewriterProtocolError("prose_rewriter_frozen_policy_mismatch")
     check_ids = [item["check_id"] for item in checklist["checks"]]
     report_hash = canonical_json_sha256(reports_json[0])
-    verdict_by_id = {
-        item["check_id"]: item["verdict"] for item in reports_json[0]["assessments"]
-    }
+    verdict_by_id = {item["check_id"]: item["verdict"] for item in reports_json[0]["assessments"]}
     expected_checks = [
         {
             "check_id": check_id,

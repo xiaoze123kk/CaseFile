@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_quality_critic",
+  "version": "novel-quality-critic-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "1c8f66a9f236f627d65ac9d192570beb655bce1879eb805e042b0ba14a2c8d01",
+  "previous_version": null,
+  "change_summary": "复用正文重链路组件并适配整章编辑。"
+}

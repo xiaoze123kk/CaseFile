@@ -118,7 +118,7 @@ def new_task(
                 "goal_runtime": goal_runtime.model_dump(mode="json"),
             }
             input_hash = _json_hash(input_jsonb)
-            prompt_version = "casefile-chat-v22"
+            prompt_version = "casefile-chat-v23"
     return TaskRun(
         project_id=owned.project.id,
         casefile_id=owned.casefile.id,

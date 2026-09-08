@@ -10,10 +10,16 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import SceneRender, SceneRenderCandidate
 from openai import OpenAI
 
 from casefile.agent_runtime.prompt_repository import load_prompt
+from casefile.agent_runtime.prose_generation import (
+    generation_focus,
+    generation_length_contract,
+    generation_view,
+    prepare_generation_result,
+    validate_generation_result,
+)
 from casefile.agent_runtime.prose_judge import FULL_COUNCIL_POLICY
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
@@ -24,23 +30,20 @@ from casefile.domain.narrative_compiler import (
     validate_scene_render,
     validate_semantic_acceptance,
 )
+from casefile_contracts import SceneRender, SceneRenderCandidate
 
 PROSE_POLISHER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v2"
-PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v2"
-PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v2"
+PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v5"
+PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v5"
+PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v5"
 PROSE_POLISHER_MAX_TURNS: Final = 1
 PROSE_POLISHER_NETWORK_RETRIES: Final = 0
 PROSE_POLISHER_TEMPERATURE: Final = 0
 PROSE_POLISHER_MAX_OUTPUT_TOKENS: Final = 16_384
 PROSE_POLISHER_THINKING_ENABLED: Final = False
 PROSE_POLISHER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
-PROSE_POLISHER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(
-    PROSE_POLISHER_CANDIDATE_SCHEMA
-)
-PROSE_POLISHER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(
-    SceneRender.model_json_schema()
-)
+PROSE_POLISHER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_POLISHER_CANDIDATE_SCHEMA)
+PROSE_POLISHER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
 PROSE_POLISHER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
         "component_version": PROSE_POLISHER_COMPONENT_VERSION,
@@ -65,9 +68,7 @@ class ProsePolisherProtocolError(ProsePolisherError):
 class ProsePolisherInfrastructureError(ProsePolisherError):
     """A Provider failure made the Polisher call inconclusive."""
 
-    def __init__(
-        self, message: str, *, failed_call: ProsePolisherFailedCall | None = None
-    ) -> None:
+    def __init__(self, message: str, *, failed_call: ProsePolisherFailedCall | None = None) -> None:
         super().__init__(message)
         self.failed_call = failed_call
 
@@ -98,6 +99,7 @@ class ProsePolisherRequest:
     temperature: int = PROSE_POLISHER_TEMPERATURE
     max_output_tokens: int = PROSE_POLISHER_MAX_OUTPUT_TOKENS
     thinking_enabled: bool = PROSE_POLISHER_THINKING_ENABLED
+    generation_instruction: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +118,8 @@ class ProsePolisherProviderResult:
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProsePolisherTransportAttempt, ...]
     recovered: bool = False
+    generation_call_count: int = 1
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,9 +135,7 @@ class ProsePolisherFailedCall:
 
 
 class ProsePolisherProvider(Protocol):
-    def polish_scene(
-        self, request: ProsePolisherRequest
-    ) -> ProsePolisherProviderResult: ...
+    def polish_scene(self, request: ProsePolisherRequest) -> ProsePolisherProviderResult: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,9 +153,7 @@ class DeepSeekProsePolisherProvider:
     def __init__(self, *, base_url: str = "https://api.deepseek.com") -> None:
         self.base_url = base_url
 
-    def polish_scene(
-        self, request: ProsePolisherRequest
-    ) -> ProsePolisherProviderResult:
+    def polish_scene(self, request: ProsePolisherRequest) -> ProsePolisherProviderResult:
         if not request.api_key:
             raise ProsePolisherInfrastructureError("prose_polisher_api_key_missing")
         started = perf_counter()
@@ -206,6 +206,9 @@ class DeepSeekProsePolisherProvider:
             request.prompt_version,
             request.input_payload,
             (attempt,),
+            finish_reason=getattr(response.choices[0], "finish_reason", None)
+            if response.choices
+            else None,
         )
 
     def _create_completion(self, request: ProsePolisherRequest) -> Any:
@@ -234,6 +237,10 @@ class DeepSeekProsePolisherProvider:
                             separators=(",", ":"),
                         ),
                     },
+                    {
+                        "role": "user",
+                        "content": request.generation_instruction or generation_focus(request),
+                    },
                 ],
                 response_format={"type": "json_object"},
                 temperature=request.temperature,
@@ -257,9 +264,7 @@ class FakeProsePolisherProvider:
         self._failure_at_call = failure_at_call
         self.call_count = 0
 
-    def polish_scene(
-        self, request: ProsePolisherRequest
-    ) -> ProsePolisherProviderResult:
+    def polish_scene(self, request: ProsePolisherRequest) -> ProsePolisherProviderResult:
         self.call_count += 1
         if self.call_count == self._failure_at_call:
             raise ProsePolisherInfrastructureError("prose_polisher_fake_infrastructure")
@@ -315,6 +320,15 @@ def execute_prose_polisher(
                 if recovered is not None
                 else provider.polish_scene(request)
             )
+            call, request = prepare_generation_result(
+                provider,
+                provider.polish_scene,
+                request,
+                call,
+                "prose_polisher",
+                _validate_result_binding,
+                recover_call,
+            )
         except ProsePolisherInfrastructureError as error:
             failed = error.failed_call or _failed_call_from_request(
                 request,
@@ -325,6 +339,7 @@ def execute_prose_polisher(
                 "inconclusive", None, None, failed_call=failed, error_code=str(error)
             )
         _validate_result_binding(call, request)
+        validate_generation_result(provider, call, request, "prose_polisher")
         if call.candidate is None:
             raise ProsePolisherProtocolError("prose_polisher_empty_or_invalid_json")
         render = normalize_scene_polish_candidate(
@@ -393,15 +408,11 @@ def build_prose_polisher_request(
             **binding,
             "component_input_hash": component_input_hash,
             "candidate_schema_id": "compiler.scene-render-candidate.v1",
-            "length_contract": {
-                "unit": "unicode_code_points_in_block_text_only",
-                **profile_json["prose"]["target_scene_chars"],
-                "enforcement": "model_quality_guidance",
-            },
+            "length_contract": generation_length_contract(profile_json),
         },
         "untrusted_data": {
             "profile": profile_json,
-            "checklist": checklist,
+            **generation_view(checklist),
             "current_render": render,
             "quality_findings": findings,
         },

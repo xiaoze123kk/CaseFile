@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_chapter_review",
+  "version": "novel-chapter-review-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "7ba3f5ab5c24de94309f64f0f3a6a573daa6549530062e79d4e3dca32b80a72f",
+  "previous_version": "novel-chapter-review-v1",
+  "change_summary": "使用准确字数与改写差异审核实际目标完成情况。"
+}

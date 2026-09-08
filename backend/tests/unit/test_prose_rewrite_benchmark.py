@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider
 from casefile.agent_runtime.prose_rewriter import FakeProseRewriterProvider
 from casefile.benchmark.prose_rewrite_eval import (
@@ -29,22 +30,43 @@ ROOT = Path(__file__).resolve().parents[3]
 GENERATOR = ROOT / "fixtures/prose_rewrite_benchmark/v1/generate.py"
 
 
-@pytest.fixture(scope="module")
-def loaded_suite() -> dict[str, Any]:
-    return load_prose_rewrite_dev_suite()
+def _generated_package():
+    spec = importlib.util.spec_from_file_location("prose_rewrite_fixture_generator", GENERATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    assert isinstance(module, ModuleType)
+    spec.loader.exec_module(module)
+    return module.build_suite()
 
 
 @pytest.fixture(scope="module")
-def fake_report() -> dict[str, Any]:
-    return run_prose_rewrite_development_baseline()
+def current_package(tmp_path_factory):
+    # Synthetic current-runtime test inputs; never rewrite the frozen public package.
+    folder = tmp_path_factory.mktemp("rewrite-current-runtime")
+    suite, attestation, assets = _generated_package()
+    paths = folder / "suite.json", folder / "attestation.json"
+    for path, value in zip(paths, (suite, attestation), strict=True):
+        path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+    return paths
+
+
+@pytest.fixture(scope="module")
+def loaded_suite(current_package) -> dict[str, Any]:
+    return load_prose_rewrite_dev_suite(*current_package)
+
+
+@pytest.fixture(scope="module")
+def fake_report(current_package) -> dict[str, Any]:
+    return run_prose_rewrite_development_baseline(
+        suite_path=current_package[0], attestation_path=current_package[1]
+    )
 
 
 def test_suite_is_exact_8x3_bad_render_matrix(loaded_suite: dict[str, Any]) -> None:
     tasks = loaded_suite["tasks"]
     assert len(tasks) == 24
     assert {
-        (task["descriptor"]["defect_family"], task["descriptor"]["variant"])
-        for task in tasks
+        (task["descriptor"]["defect_family"], task["descriptor"]["variant"]) for task in tasks
     } == {(family, variant) for family in FAMILIES for variant in VARIANTS}
     assert len({task["descriptor"]["input_fingerprint"] for task in tasks}) == 24
     assert len({canonical_hash(task["asset"]["initial_render"]) for task in tasks}) == 24
@@ -58,25 +80,21 @@ def test_each_task_binds_failed_consensus_and_previous_passes(
     for task in loaded_suite["tasks"]:
         asset = task["asset"]
         consensus = asset["initial_consensus"]
-        final_by_id = {
-            item["check_id"]: item["final_verdict"] for item in consensus["checks"]
-        }
+        final_by_id = {item["check_id"]: item["final_verdict"] for item in consensus["checks"]}
         assert consensus["scene_verdict"] == "fail"
         assert asset["original_issue_check_ids"]
         assert all(final_by_id[item] == "fail" for item in asset["original_issue_check_ids"])
         assert all(final_by_id[item] == "pass" for item in asset["initial_passed_check_ids"])
-        assert set(asset["original_issue_check_ids"]).isdisjoint(
-            asset["initial_passed_check_ids"]
-        )
+        assert set(asset["original_issue_check_ids"]).isdisjoint(asset["initial_passed_check_ids"])
         assert asset["initial_render"]["stage"] == "writer"
 
 
 @pytest.mark.parametrize("target", ("suite", "attestation", "descriptor", "asset"))
 def test_suite_attestation_and_every_asset_are_hash_bound(
-    tmp_path: Path, target: str
+    tmp_path: Path, target: str, current_package
 ) -> None:
-    suite = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
-    attestation = json.loads(DEFAULT_ATTESTATION.read_text(encoding="utf-8"))
+    suite = json.loads(current_package[0].read_text(encoding="utf-8"))
+    attestation = json.loads(current_package[1].read_text(encoding="utf-8"))
     if target == "suite":
         suite["suite_id"] += "-drift"
     elif target == "attestation":
@@ -88,29 +106,23 @@ def test_suite_attestation_and_every_asset_are_hash_bound(
     suite_path = tmp_path / "suite.json"
     attestation_path = tmp_path / "attestation.json"
     suite_path.write_text(json.dumps(suite, ensure_ascii=False), encoding="utf-8")
-    attestation_path.write_text(
-        json.dumps(attestation, ensure_ascii=False), encoding="utf-8"
-    )
+    attestation_path.write_text(json.dumps(attestation, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ProseRewriteSuiteError):
         load_prose_rewrite_dev_suite(suite_path, attestation_path)
 
 
-def test_development_suite_rejects_private_asset_reference(tmp_path: Path) -> None:
-    suite = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
+def test_development_suite_rejects_private_asset_reference(tmp_path: Path, current_package) -> None:
+    suite = json.loads(current_package[0].read_text(encoding="utf-8"))
     suite["tasks"][0]["task_asset"]["path"] = (
         "backend/var/benchmark/private/prose-rewrite/leak.json"
     )
     suite["tasks"][0]["content_hash"] = canonical_hash(
-        {
-            key: value
-            for key, value in suite["tasks"][0].items()
-            if key != "content_hash"
-        }
+        {key: value for key, value in suite["tasks"][0].items() if key != "content_hash"}
     )
     suite["suite_hash"] = canonical_hash(
         {key: value for key, value in suite.items() if key != "suite_hash"}
     )
-    attestation = json.loads(DEFAULT_ATTESTATION.read_text(encoding="utf-8"))
+    attestation = json.loads(current_package[1].read_text(encoding="utf-8"))
     attestation["suite_hash"] = suite["suite_hash"]
     attestation["attestation_hash"] = canonical_hash(
         {key: value for key, value in attestation.items() if key != "attestation_hash"}
@@ -118,26 +130,26 @@ def test_development_suite_rejects_private_asset_reference(tmp_path: Path) -> No
     suite_path = tmp_path / "suite.json"
     attestation_path = tmp_path / "attestation.json"
     suite_path.write_text(json.dumps(suite, ensure_ascii=False), encoding="utf-8")
-    attestation_path.write_text(
-        json.dumps(attestation, ensure_ascii=False), encoding="utf-8"
-    )
+    attestation_path.write_text(json.dumps(attestation, ensure_ascii=False), encoding="utf-8")
     with pytest.raises(ProseRewriteSuiteError, match="task_asset_path_invalid"):
         load_prose_rewrite_dev_suite(suite_path, attestation_path)
 
 
-def test_generator_rebuilds_all_public_assets_without_writing() -> None:
-    spec = importlib.util.spec_from_file_location("prose_rewrite_fixture_generator", GENERATOR)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    assert isinstance(module, ModuleType)
-    spec.loader.exec_module(module)
-    suite, attestation, assets = module.build_suite()
-    assert suite == json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
-    assert attestation == json.loads(DEFAULT_ATTESTATION.read_text(encoding="utf-8"))
+def test_generator_is_deterministic_without_rewriting_frozen_assets() -> None:
+    before = DEFAULT_SUITE.read_bytes(), DEFAULT_ATTESTATION.read_bytes()
+    suite, attestation, assets = _generated_package()
+    assert (suite, attestation, assets) == _generated_package()
     assert len(assets) == 24
     for task_id, asset in assets.items():
         path = ROOT / f"fixtures/prose_rewrite_benchmark/v1/tasks/{task_id}.json"
         assert asset == json.loads(path.read_text(encoding="utf-8"))
+    assert (DEFAULT_SUITE.read_bytes(), DEFAULT_ATTESTATION.read_bytes()) == before
+    assert suite["rewriter_prompt_version"] != json.loads(before[0])["rewriter_prompt_version"]
+
+
+def test_frozen_package_rejects_incompatible_current_runtime() -> None:
+    with pytest.raises(ProseRewriteSuiteError, match="rewriter_prompt_version_invalid"):
+        load_prose_rewrite_dev_suite()
 
 
 def test_fake_baseline_reports_round_rescue_and_hard_gates(
@@ -185,6 +197,7 @@ def test_report_is_hash_only_and_contains_no_private_or_model_prose(
 
 def test_semantic_protocol_and_infrastructure_failures_keep_denominator(
     loaded_suite: dict[str, Any],
+    current_package,
 ) -> None:
     tasks = loaded_suite["tasks"]
     ids = [task["descriptor"]["task_id"] for task in tasks]
@@ -194,21 +207,16 @@ def test_semantic_protocol_and_infrastructure_failures_keep_denominator(
         if task_id == ids[0]:
             return FakeProseRewriterProvider(failure_at_call=1)
         if task_id == ids[1]:
-            return FakeProseRewriterProvider(
-                candidates=({"schema_id": "invalid", "blocks": []},)
-            )
+            return FakeProseRewriterProvider(candidates=({"schema_id": "invalid", "blocks": []},))
         if task_id == ids[4]:
             candidate = {
                 "schema_id": "compiler.scene-render-candidate.v1",
                 "blocks": [
-                    {"text": block["text"]}
-                    for block in task["asset"]["initial_render"]["blocks"]
+                    {"text": block["text"]} for block in task["asset"]["initial_render"]["blocks"]
                 ],
             }
             return FakeProseRewriterProvider(candidates=(candidate, candidate))
-        return FakeProseRewriterProvider(
-            candidates=tuple(task["asset"]["fake_rewrite_candidates"])
-        )
+        return FakeProseRewriterProvider(candidates=tuple(task["asset"]["fake_rewrite_candidates"]))
 
     def judge_factory(task: dict[str, Any]) -> FakeProseJudgeProvider:
         task_id = task["descriptor"]["task_id"]
@@ -222,6 +230,8 @@ def test_semantic_protocol_and_infrastructure_failures_keep_denominator(
         return FakeProseJudgeProvider(judge_reports=tuple(task["judge_candidates"]))
 
     report = run_prose_rewrite_development_baseline(
+        suite_path=current_package[0],
+        attestation_path=current_package[1],
         rewriter_provider_factory=rewriter_factory,
         judge_provider_factory=judge_factory,
     )
@@ -239,39 +249,32 @@ def test_semantic_protocol_and_infrastructure_failures_keep_denominator(
 def test_unreviewed_qualification_is_blocked_before_package_read_or_provider_call(
     tmp_path: Path,
 ) -> None:
-    descriptor = json.loads(
-        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
-    )
+    descriptor = json.loads(DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8"))
     descriptor["review_status"] = "pending_codex_review"
     descriptor["qualification_eligible"] = False
     descriptor["descriptor_hash"] = canonical_hash(
         {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
     )
     descriptor_path = tmp_path / "descriptor.json"
-    descriptor_path.write_text(
-        json.dumps(descriptor, ensure_ascii=False), encoding="utf-8"
-    )
+    descriptor_path.write_text(json.dumps(descriptor, ensure_ascii=False), encoding="utf-8")
     missing_private_suite = tmp_path / "missing-suite.json"
     with pytest.raises(
         ProseRewriteQualificationBlocked,
         match="qualification_review_pending",
     ):
-        load_prose_rewrite_qualification_suite(
-            missing_private_suite, descriptor_path
-        )
+        load_prose_rewrite_qualification_suite(missing_private_suite, descriptor_path)
 
 
 def test_qualification_descriptor_is_self_hashed_and_fail_closed(tmp_path: Path) -> None:
-    descriptor = json.loads(
-        DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8")
-    )
+    descriptor = json.loads(DEFAULT_QUALIFICATION_DESCRIPTOR.read_text(encoding="utf-8"))
     assert descriptor["task_count"] == 24
     assert descriptor["review_policy"] == "codex-owner-accepted-review-v1"
     assert descriptor["review_status"] == "codex_reviewed"
     assert descriptor["qualification_eligible"] is True
-    assert descriptor["public_development_suite_hash"] == json.loads(
-        DEFAULT_SUITE.read_text(encoding="utf-8")
-    )["suite_hash"]
+    assert (
+        descriptor["public_development_suite_hash"]
+        == json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))["suite_hash"]
+    )
     assert descriptor["descriptor_hash"] == canonical_hash(
         {key: value for key, value in descriptor.items() if key != "descriptor_hash"}
     )

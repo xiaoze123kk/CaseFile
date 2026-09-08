@@ -25,8 +25,29 @@ class NovelRecommendationRequest(StrictRequest):
     preferences: str = Field(default="", max_length=2000)
 
 
+class CompileResumeRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+
+
 def compiler_router() -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["narrative-compiler"])
+
+    @router.post("/projects/{project_id}/compile-runs/{run_id}/resume")
+    def resume_run(
+        project_id: int,
+        run_id: int,
+        payload: CompileResumeRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return CompilerService(session).resume_run(
+            actor,
+            project_id,
+            run_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_draft_revision=payload.expected_draft_revision,
+        )
 
     @router.post("/projects/{project_id}/novel-recommendation", response_model=NovelRecommendation)
     def recommend(
@@ -115,6 +136,7 @@ def compiler_router() -> APIRouter:
             compiler_profile_version_id=payload.compiler_profile_version_id,
             planner_provider=payload.planner_provider,
             prose_renderer_shadow=payload.prose_renderer_shadow,
+            prose_mode=payload.prose_mode,
             scene_compiler_shadow=payload.scene_compiler_shadow,
             approved_plan_run_id=payload.approved_plan_run_id,
         )

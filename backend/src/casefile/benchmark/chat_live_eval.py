@@ -36,6 +36,7 @@ from casefile.benchmark.chat_router_eval import (
     _request_for_fixture,
     build_eval_fixtures,
     evaluate_chat_router,
+    match_chat_router_outcome,
 )
 from casefile.data_postgres.models import UserProviderSetting
 from casefile.data_postgres.session import create_database_engine, create_session_factory
@@ -128,14 +129,7 @@ def _resolver_for_provider(
             if route is None
             else str(route.execution_profile.get("prompt_component") or "chat")
         )
-        safe_question_fallback = (
-            fixture.expected_primary_intent == "question"
-            and route is not None
-            and route.route_source == "fallback"
-        )
-        matched = (
-            actual_intent == fixture.expected_primary_intent or safe_question_fallback
-        ) and actual_component == fixture.expected_prompt_component
+        _, matched = match_chat_router_outcome(fixture, resolved)
         row: dict[str, Any] = {
             "fixture_id": fixture.fixture_id,
             "expected_intent": fixture.expected_primary_intent,

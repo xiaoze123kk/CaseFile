@@ -501,3 +501,29 @@ def test_conditional_noop_does_not_cancel_audit_repairs() -> None:
     assert request.route is not None
     assert request.route.execution_profile["primary_intent"] == "logic_audit"
     assert request.route.execution_profile["suggestion_policy"] == "allow"
+
+
+def test_v23_router_receives_current_issue_targets_despite_stale_history() -> None:
+    issues = tuple(
+        {
+            "issue_id": f"issue:{index}",
+            "message": "角色提前知道信息",
+            "target": {
+                "object_ref": {"object_id": object_id, "object_type": "entity"},
+                "field_path": "/knowledge_states/0/knows_refs/1",
+            },
+            "path": f"/entities/{index}/knowledge_states/0/knows_refs/1",
+            "evidence_refs": [{"object_id": "info_future", "object_type": "information_unit"}],
+        }
+        for index, object_id in enumerate(("ent_1", "ent_2"))
+    )
+    request = replace(
+        make_request(hint={"entrypoint": "free_text"}, prompt_version="casefile-chat-v23"),
+        message="好，你帮我处理这个问题",
+        history=({"role": "assistant", "content": "另一处没有绑定到具体角色或字段"},),
+        validation_issues=issues,
+    )
+    _instructions, input_text = render_chat_router_prompt(request)
+    payload = json.loads(input_text)
+    assert payload["validation_issues"] == list(issues)
+    assert payload["thread_history"] == list(request.history)

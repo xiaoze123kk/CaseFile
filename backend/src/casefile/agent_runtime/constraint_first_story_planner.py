@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Protocol
 
-from casefile_contracts import SemanticFillProposal, SkeletonProposal
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler import (
@@ -21,11 +20,12 @@ from casefile.domain.narrative_compiler import (
     repair_novel_plan_candidate,
     validate_novel_plan_candidate,
 )
+from casefile_contracts import SemanticFillProposal, SkeletonProposal
 
 CONSTRAINT_FIRST_PIPELINE_VERSION = "compiler.story-planner.constraint-first.v1"
 CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION = "story-planner-constraint-first-v1"
 SKELETON_PROMPT_VERSION = "story-planner-skeleton-v1"
-SEMANTIC_FILL_PROMPT_VERSION = "story-planner-semantic-fill-v1"
+SEMANTIC_FILL_PROMPT_VERSION = "story-planner-semantic-fill-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +40,7 @@ class SkeletonProposalRequest:
     max_turns: int = 1
     network_retries: int = 0
     emit: Callable[[str, str, dict[str, Any]], None] = lambda *_: None
+    on_response: Callable[[str, dict[str, Any], str], None] = lambda *_: None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +62,7 @@ class SemanticFillRequest:
     max_turns: int = 1
     network_retries: int = 0
     emit: Callable[[str, str, dict[str, Any]], None] = lambda *_: None
+    on_response: Callable[[str, dict[str, Any], str], None] = lambda *_: None
 
 
 @dataclass(frozen=True, slots=True)

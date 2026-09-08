@@ -1630,16 +1630,13 @@ def test_v1_editing_supports_all_eleven_object_collections(
             assert next_revision == revision + 1
             revision = next_revision
 
-        with factory() as session, pytest.raises(ApplicationError) as knowledge_state:
-            V1EditingService(session).patch_object(
-                actor_id,
-                project_id,
-                content["entities"][0]["id"],
-                expected_draft_id=draft_id,
-                expected_revision=revision,
+        with factory() as session:
+            updated, revision = V1EditingService(session).patch_object(
+                actor_id, project_id, content["entities"][0]["id"],
+                expected_draft_id=draft_id, expected_revision=revision,
                 changes={"knowledge_states": []},
             )
-        assert knowledge_state.value.code == "field_read_only"
+            assert updated["knowledge_states"] == []
 
         with factory() as session:
             final = CaseFileService(session).get_draft(actor_id, project_id)
@@ -1653,7 +1650,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                     )
                 )
             )
-            assert len(edit_operations) == len(edits) + 1
+            assert len(edit_operations) == len(edits) + 2
             assert {
                 operation.result_revision - operation.base_revision for operation in edit_operations
             } == {1}

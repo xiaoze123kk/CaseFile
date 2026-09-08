@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_arbiter",
+  "version": "prose-arbiter-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "1dcb59fb476bcb9f4c1d9f5786547964595f6139a72e5b9b3a78ff85f99d5069",
+  "previous_version": "prose-arbiter-v6",
+  "change_summary": "证据上限扩展为64；支持一次保留判定的证据协议修复。"
+}

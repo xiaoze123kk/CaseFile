@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from casefile_contracts import NovelCandidate
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.agent_runtime.prose_context import scene_generation_context
+from casefile.agent_runtime.prose_continuity import ContinuityReview, continuity_request
+from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
 from casefile.agent_runtime.prose_polish_supervisor import execute_prose_polish_supervisor
 from casefile.agent_runtime.prose_rewrite_supervisor import execute_bounded_prose_rewrite
 from casefile.agent_runtime.prose_runtime import prose_runtime_binding
@@ -18,10 +21,13 @@ from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_prose_judge_checklist,
     canonical_json_sha256,
+    finalize_scene_render,
 )
+from casefile.domain.narrative_compiler.prose_checklist import scene_plan_review_context
 from casefile.worker.executors.prose_providers import DurableProseProvider, ProseProviders
 from casefile.worker.executors.prose_store import ProseLeaseLost, ProseResultUnknown, ProseStore
 from casefile.worker.failures import TaskCancellationRequested
+from casefile_contracts import NovelCandidate
 
 
 class ProseShadowExecutor:
@@ -43,7 +49,8 @@ class ProseShadowExecutor:
             existing = session.scalar(
                 select(CompileArtifact).where(
                     CompileArtifact.compile_run_id == store.run.id,
-                    CompileArtifact.artifact_key == "compiler.compile_manifest",
+                    CompileArtifact.artifact_key
+                    == store.artifact_key("compiler.compile_manifest", "compile_manifest"),
                 )
             )
             if existing is not None:
@@ -54,7 +61,8 @@ class ProseShadowExecutor:
                 or store.run.compile_mode != "preview"
                 or manifest.get("prose_runtime")
                 != prose_runtime_binding(
-                    manifest["profile"]["frozen_payload"]["structure"]["target_scenes"]
+                    manifest["profile"]["frozen_payload"]["structure"]["target_scenes"],
+                    manifest.get("prose_mode", "full_polish"),
                 )
             ):
                 raise CompilerContractError("compiler_prose_runtime_binding_mismatch")
@@ -136,6 +144,7 @@ class ProseShadowExecutor:
             except (ProseLeaseLost, TaskCancellationRequested):
                 raise
             except Exception as error:
+                logging.getLogger(__name__).exception("Prose scene execution failed")
                 # Persistence errors must not be converted to a successful TaskRun.
                 if isinstance(error, SQLAlchemyError):
                     raise
@@ -188,12 +197,88 @@ class ProseShadowExecutor:
             scene_id=store.scene_id,
             previous_scene_render=previous,
         )
+        with store.factory() as session:
+            saved = session.scalar(
+                select(CompileArtifact).where(
+                    CompileArtifact.compile_run_id == store.run.id,
+                    CompileArtifact.artifact_key
+                    == f"compiler.scene_render.{store.scene_id}.accepted",
+                )
+            )
+            if saved is not None:
+                from casefile_contracts import SceneRender
+
+                render = SceneRender.model_validate(saved.content_jsonb).model_dump(mode="json")
+                if (
+                    canonical_json_sha256(saved.content_jsonb) != saved.content_hash
+                    or render["source"]["checklist_hash"] != canonical_json_sha256(checklist)
+                    or render["stage"] != "accepted"
+                ):
+                    raise ProseResultUnknown("compiler_prose_checkpoint_binding_mismatch")
+                return (
+                    (
+                        "finalized_polished"
+                        if render["selection_reason"] == "polished_accepted"
+                        else "finalized_original"
+                    ),
+                    render,
+                    None,
+                )
         store.artifact(
             "scene_context",
             f"compiler.scene_context.{store.scene_id}",
             checklist,
             "prose_checklist",
         )
+        continuity_advisories: list[dict[str, Any]] = []
+        quick = store.runtime.get("prose_mode") == "quick_draft"
+        if not quick and self.provider.sources.continuity is not None:
+            contexts = []
+            ordinal = next(i for i, s in enumerate(self.ordered) if s["scene_id"] == store.scene_id)
+            for item in self.ordered[ordinal : ordinal + 2]:
+                context = scene_plan_review_context(plan, narrative, item["scene_id"])
+                contexts.append({"scene_id": item["scene_id"], **scene_generation_context(context)})
+            request = continuity_request(contexts, previous, api_key=api_key)
+            call = self.provider.review_continuity(request)
+            try:
+                if (
+                    call.request_fingerprint != request.request_fingerprint
+                    or call.input_hash != request.input_hash
+                    or call.prompt_hash != request.prompt_hash
+                ):
+                    raise ValueError("continuity_response_binding_invalid")
+                review = ContinuityReview.model_validate(call.candidate)
+                allowed = {item["scene_id"] for item in contexts}
+                if previous is not None:
+                    allowed.add(previous["scene_id"])
+                if any(set(issue.scene_ids) - allowed for issue in review.issues):
+                    raise ValueError("continuity_scene_ref_invalid")
+            except ValueError:
+                self.provider.record_protocol_failure(
+                    request.request_fingerprint,
+                    {
+                        "code": "compiler_prose_continuity_protocol_failed",
+                    },
+                )
+                return "blocked_precondition", None, "compiler_prose_continuity_protocol_failed"
+            store.finish_steps(error_code=None)
+            store.artifact(
+                "validation_report",
+                f"compiler.continuity.{store.scene_id}",
+                {
+                    "schema_id": "compiler.prose-continuity-review.v1",
+                    "scene_id": store.scene_id,
+                    "input_hash": request.input_hash,
+                    **review.model_dump(mode="json"),
+                },
+                "prose_continuity",
+                source_step=self.provider.steps[call.request_fingerprint],
+            )
+            # Continuity is a literary judgment, not a server-owned execution
+            # invariant. Persist the model's findings for observability and let
+            # Writer resolve them from the same frozen context. Protocol and
+            # reference-binding failures above remain fail-closed.
+            continuity_advisories = [issue.model_dump(mode="json") for issue in review.issues]
         writer = execute_prose_writer(
             self.provider,
             scene_plan=plan,
@@ -203,11 +288,34 @@ class ProseShadowExecutor:
             previous_scene_render=previous,
             model_id="deepseek-v4-pro",
             api_key=api_key,
-            remaining_scene_call_budget=23,
+            remaining_scene_call_budget=store.runtime["limits"]["logical_calls_per_scene"],
+            continuity_advisories=continuity_advisories,
         )
         self.observe("writer", writer)
         if writer.status != "completed" or writer.render is None:
             return "inconclusive_infrastructure", None, writer.error_code
+        if quick:
+            accepted = finalize_scene_render(
+                writer.render,
+                original_render=writer.render,
+                checklist=checklist,
+                profile=profile,
+                component_input_hash=canonical_json_sha256(
+                    {
+                        "runtime": store.runtime,
+                        "render": writer.render,
+                        "selection": "quick_draft_unreviewed",
+                    }
+                ),
+                selection_reason="quick_draft_unreviewed",
+            ).model_dump(mode="json")
+            store.artifact(
+                "scene_render",
+                f"compiler.scene_render.{store.scene_id}.accepted",
+                accepted,
+                "prose_manifest",
+            )
+            return "finalized_original", accepted, None
         rewrite = execute_bounded_prose_rewrite(
             self.provider,
             self.provider,
@@ -219,9 +327,35 @@ class ProseShadowExecutor:
             initial_render=writer.render,
             model_id="deepseek-v4-pro",
             api_key=api_key,
-            remaining_scene_call_budget=22,
+            remaining_scene_call_budget=23
+            - (writer.call.generation_call_count if writer.call else 1),
             observe=self.observe,
+            llm_revision=True,
+            delivery_mode="product",
         )
+        if rewrite.status == "product_accepted" and rewrite.final_render is not None:
+            accepted = finalize_scene_render(
+                rewrite.final_render,
+                original_render=rewrite.final_render,
+                checklist=checklist,
+                profile=profile,
+                component_input_hash=canonical_json_sha256(
+                    {
+                        "runtime": store.runtime,
+                        "render": rewrite.final_render,
+                        "selection": "llm_nonfatal_retained",
+                        "revision_reports": rewrite.revision_reports,
+                    }
+                ),
+                selection_reason="llm_nonfatal_retained",
+            ).model_dump(mode="json")
+            store.artifact(
+                "scene_render",
+                f"compiler.scene_render.{store.scene_id}.accepted",
+                accepted,
+                "prose_manifest",
+            )
+            return "finalized_original", accepted, "prose_editorial_retained"
         if rewrite.status != "semantic_accepted" or rewrite.final_render is None:
             return (
                 (
@@ -242,6 +376,7 @@ class ProseShadowExecutor:
             profile=profile,
             original_render=rewrite.final_render,
             semantic_consensus=consensus,
+            preservation_policy=FIDELITY_ONLY_POLICY,
             quality_model_id="deepseek-v4-flash",
             generation_model_id="deepseek-v4-pro",
             api_key=api_key,
@@ -275,7 +410,7 @@ class ProseShadowExecutor:
         if name in {"semantic", "preservation"}:
             for report in (*execution.judge_reports, execution.arbiter_report):
                 if report is not None:
-                    call = next(c for c in execution.calls if c.role == report["role"])
+                    call = next(c for c in reversed(execution.calls) if c.role == report["role"])
                     outputs[call.request_fingerprint] = canonical_json_sha256(report)
         if name == "pairwise":
             outputs.update(
@@ -285,6 +420,15 @@ class ProseShadowExecutor:
                 }
             )
         store.finish_steps(error_code=error, outputs=outputs)
+        if name == "revision_decision" and execution.report is not None:
+            call = execution.call
+            store.artifact(
+                "validation_report",
+                f"compiler.validation_report.{store.scene_id}.revision.{execution.report['input_hash']}",
+                execution.report,
+                "prose_revision",
+                source_step=self.provider.steps.get(call.request_fingerprint),
+            )
         render = getattr(execution, "render", None)
         if render is not None:
             call = execution.call
@@ -302,7 +446,9 @@ class ProseShadowExecutor:
             prefix = "preservation" if name == "preservation" else store.phase
             for report in (*execution.judge_reports, execution.arbiter_report):
                 if report is not None:
-                    call = next((c for c in execution.calls if c.role == report["role"]), None)
+                    call = next(
+                        (c for c in reversed(execution.calls) if c.role == report["role"]), None
+                    )
                     store.artifact(
                         "validation_report",
                         f"compiler.validation_report.{store.scene_id}.{prefix}.{report['role']}",
@@ -352,7 +498,7 @@ class ProseShadowExecutor:
                     "prose_quality_critic",
                     source_step=self.provider.steps.get(call.request_fingerprint),
                 )
-        if error and name in {"semantic", "preservation"}:
+        if error and name == "semantic":
             raise ProseResultUnknown(error)
 
     def _scene_manifest(

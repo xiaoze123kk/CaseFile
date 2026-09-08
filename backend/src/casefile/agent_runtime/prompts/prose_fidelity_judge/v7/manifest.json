@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_fidelity_judge",
+  "version": "prose-fidelity-judge-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "6a93626c346d96db865c595d2c88f415a1a7876186fb96ce5ba38b16eebe2042",
+  "previous_version": "prose-fidelity-judge-v6",
+  "change_summary": "明确逐场景角色与意图权限及有界修复；Judge 显式约束证据数量。"
+}

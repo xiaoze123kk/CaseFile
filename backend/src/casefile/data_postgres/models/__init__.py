@@ -63,6 +63,14 @@ from casefile.data_postgres.models.goal_session import (
 )
 from casefile.data_postgres.models.idea import IdeaCandidate
 from casefile.data_postgres.models.identity import Project, User, UserProviderSetting
+from casefile.data_postgres.models.novel_editor import (
+    NovelChapterRecord,
+    NovelEdit,
+    NovelEditDecision,
+    NovelExchange,
+    NovelManuscriptRecord,
+    NovelVersion,
+)
 from casefile.data_postgres.models.reasoning import (
     CaseFileConstraint,
     Hypothesis,
@@ -92,6 +100,12 @@ from casefile.data_postgres.models.workflow import (
 )
 
 __all__ = [
+    "NovelManuscriptRecord",
+    "NovelVersion",
+    "NovelChapterRecord",
+    "NovelExchange",
+    "NovelEdit",
+    "NovelEditDecision",
     "AgentModelCall",
     "AgentStepRun",
     "AgentGoalDelivery",

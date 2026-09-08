@@ -1,0 +1,8 @@
+{
+  "agent_id": "novel_chapter_rewrite",
+  "version": "novel-chapter-rewrite-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "3e70b45169c9cfb43bc88c5b7cf94d9184c2a2b26ac18c66a7b55ecf8fb979c3",
+  "previous_version": null,
+  "change_summary": "复用重写传输，输出完整章节候选并绑定原章供显式采纳。"
+}

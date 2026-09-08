@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from casefile_contracts import CompileManifest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,6 +18,7 @@ from casefile.data_postgres.models import (
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
 from casefile.domain.narrative_compiler.prose_checklist import PROSE_CHECKLIST_POLICY_HASH
+from casefile_contracts import CompileManifest
 
 
 def scene_usage(
@@ -95,6 +95,15 @@ def project_prose_scene(
             (a.content_hash for a in renders if a.content_jsonb["stage"] == "accepted"), None
         ),
         "rewrite_count": sum(a.content_jsonb["stage"].startswith("rewrite_") for a in renders),
+        "literary_review": "completed" if hashes("prose-consensus-report") else "not_run",
+        "strict_semantic_pass": any(
+            a.content_jsonb["stage"] == "accepted"
+            and a.content_jsonb["selection_reason"]
+            not in {"llm_nonfatal_retained", "quick_draft_unreviewed"}
+            for a in renders
+        ),
+        "product_accepted": any(a.content_jsonb["stage"] == "accepted" for a in renders),
+        "revision_report_hashes": hashes("prose-revision-decision"),
         "failure_reason": reason,
         **scene_usage(session, task_id, scene["scene_id"], recovered),
     }
@@ -162,7 +171,12 @@ def finalize_prose_cancellation(
     artifacts = list(
         session.scalars(select(CompileArtifact).where(CompileArtifact.compile_run_id == run.id))
     )
-    if any(a.artifact_key == "compiler.compile_manifest" for a in artifacts):
+    manifest_key = (
+        "compiler.compile_manifest"
+        if attempt.attempt_no == 1
+        else f"compiler.compile_manifest.attempt_{attempt.id}"
+    )
+    if any(a.artifact_key == manifest_key for a in artifacts):
         return
     plan = next((a for a in artifacts if a.schema_id == "compiler.scene-plan.v2"), None)
     if plan is None:
@@ -262,7 +276,7 @@ def finalize_prose_cancellation(
             task_run_id=task.id,
             agent_step_run_id=step.id,
             artifact_kind="compile_manifest",
-            artifact_key="compiler.compile_manifest",
+            artifact_key=manifest_key,
             schema_id=data["schema_id"],
             content_hash=digest,
             content_jsonb=data,
