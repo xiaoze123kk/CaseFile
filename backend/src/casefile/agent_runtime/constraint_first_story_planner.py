@@ -25,7 +25,7 @@ from casefile_contracts import SemanticFillProposal, SkeletonProposal
 CONSTRAINT_FIRST_PIPELINE_VERSION = "compiler.story-planner.constraint-first.v1"
 CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION = "story-planner-constraint-first-v1"
 SKELETON_PROMPT_VERSION = "story-planner-skeleton-v1"
-SEMANTIC_FILL_PROMPT_VERSION = "story-planner-semantic-fill-v1"
+SEMANTIC_FILL_PROMPT_VERSION = "story-planner-semantic-fill-v2"
 
 
 @dataclass(frozen=True, slots=True)

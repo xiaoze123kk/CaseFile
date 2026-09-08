@@ -41,7 +41,7 @@
       "current_version": "story-planner-skeleton-v1"
     },
     "story_planner_semantic_fill": {
-      "current_version": "story-planner-semantic-fill-v1"
+      "current_version": "story-planner-semantic-fill-v2"
     },
     "scene_compiler_semantic_fill": {
       "current_version": "scene-compiler-semantic-fill-v7"
@@ -84,6 +84,36 @@
     },
     "novel_collaboration": {
       "current_version": "novel-collaboration-v1"
+    },
+    "novel_chapter_rewrite": {
+      "current_version": "novel-chapter-rewrite-v2"
+    },
+    "novel_chapter_review": {
+      "current_version": "novel-chapter-review-v2"
+    },
+    "novel_checklist": {
+      "current_version": "novel-checklist-v1"
+    },
+    "novel_judge": {
+      "current_version": "novel-judge-v1"
+    },
+    "novel_revision": {
+      "current_version": "novel-revision-v2"
+    },
+    "novel_rewriter": {
+      "current_version": "novel-rewriter-v1"
+    },
+    "novel_quality_critic": {
+      "current_version": "novel-quality-critic-v1"
+    },
+    "novel_polisher": {
+      "current_version": "novel-polisher-v1"
+    },
+    "novel_pairwise": {
+      "current_version": "novel-pairwise-v1"
+    },
+    "novel_context_compactor": {
+      "current_version": "novel-context-compactor-v1"
     }
   }
 }

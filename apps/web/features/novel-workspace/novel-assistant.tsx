@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -11,6 +11,7 @@ import { novelEditorApi as api } from "./novel-editor-api";
 import type { useNovelEditor } from "./use-novel-editor";
 import styles from "./novel-collaboration.module.css";
 import desk from "./novel-workspace.module.css";
+import { NovelEditorialSummary } from "./novel-editorial-summary";
 import { WorkbenchIcon as Icon } from "@/features/analyst-workbench/workbench-icon";
 
 export type EditorMode = "discuss" | "rewrite" | "polish";
@@ -18,6 +19,16 @@ export type EditorSelection = NovelEditorAnchor & {
   localRevision: number;
   manuscriptKey: string;
 };
+const conversationEvent = "casefile:novel-conversation";
+function subscribeConversation(listener: () => void) {
+  window.addEventListener("storage", listener);
+  window.addEventListener(conversationEvent, listener);
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener(conversationEvent, listener);
+  };
+}
+const serverConversation = () => 0;
 type Editor = ReturnType<typeof useNovelEditor>;
 export function NovelAssistant({
   project,
@@ -47,6 +58,9 @@ export function NovelAssistant({
   onChapter?: (id: string) => void;
 }) {
   const [instruction, setInstruction] = useState("");
+  const [chapterScope, setChapterScope] = useState<"chapter" | "chapter_rewrite">("chapter");
+  const [preserve, setPreserve] = useState("");
+  const [allowChanges, setAllowChanges] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [activity, setActivity] = useState<{task: number; text: string} | null>(null);
@@ -60,6 +74,39 @@ export function NovelAssistant({
   const active = editor.view?.exchanges.find((e) =>
     ["queued", "running", "cancelling"].includes(e.status),
   );
+  const conversationKey = `casefile:novel-conversation:${project}:${editor.view?.id ?? "loading"}`;
+  const [conversation, setConversation] = useState<{key: string; after: number} | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const savedBoundary = editor.view?.exchanges.at(-1)?.history_after_exchange_id ?? 0;
+  const storedBoundary = useSyncExternalStore(subscribeConversation, useCallback(() => {
+    try {
+      const value = Number(localStorage.getItem(conversationKey));
+      return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+    } catch { return 0; }
+  }, [conversationKey]), serverConversation);
+  const historyAfter = Math.max(savedBoundary, storedBoundary,
+    conversation?.key === conversationKey ? conversation.after : 0);
+  const exchanges = editor.view?.exchanges ?? [];
+  const visibleExchanges = showHistory ? exchanges : exchanges.filter(
+    (reply) => reply.id > historyAfter && (reply.history_after_exchange_id ?? 0) === historyAfter,
+  );
+
+  function newConversation() {
+    if (active || sending || !editor.view) return;
+    const after = Math.max(0, ...exchanges.map((reply) => reply.id));
+    try { localStorage.setItem(conversationKey, String(after)); window.dispatchEvent(new Event(conversationEvent)); } catch { /* Session-local fallback. */ }
+    setConversation({key: conversationKey, after});
+    setShowHistory(false);
+    setInstruction("");
+    setPreserve("");
+    setAllowChanges("");
+    setError("");
+    setStreamed(null);
+    setActivity(null);
+    requestKey.current = null;
+    onAnchor(null);
+    composer.current?.focus();
+  }
   const refresh = editor.refresh;
   const activeTaskId = active?.task_id;
   useEffect(() => {
@@ -122,10 +169,14 @@ export function NovelAssistant({
           : null);
       const request = {
         expected_revision: view.revision,
+        history_after_exchange_id: historyAfter,
         mode: requestMode,
-        scope: target ? ("selection" as const) : ("chapter" as const),
+        scope: target ? ("selection" as const)
+          : !reply && requestMode !== "discuss" ? chapterScope : ("chapter" as const),
         chapter_id: target?.chapter_id ?? targetChapterId,
         instruction: text,
+        ...(!reply && !target && requestMode !== "discuss" && chapterScope === "chapter_rewrite"
+          ? { requirements: { preserve: preserve.trim(), allow_changes: allowChanges.trim() } } : {}),
         anchor: target
           ? {
               chapter_id: target.chapter_id,
@@ -136,6 +187,12 @@ export function NovelAssistant({
             }
           : null,
       };
+      if (request.scope === "chapter_rewrite") {
+        const chapter = view.chapters.find((c) => c.id === request.chapter_id);
+        if (!chapter?.text.trim()) throw new Error("当前章节没有正文，请先添加正文。");
+        if (Array.from(chapter.text).length > 12000)
+          throw new Error("整章处理目前支持最多 12,000 字，请拆分章节后再试。");
+      }
       const fingerprint = JSON.stringify(request);
       if (requestKey.current?.text !== fingerprint)
         requestKey.current = { text: fingerprint, key: crypto.randomUUID() };
@@ -149,6 +206,10 @@ export function NovelAssistant({
         onChapter?.(reply.chapter_id);
       } else {
         setInstruction("");
+        if (request.scope === "chapter_rewrite") {
+          setPreserve("");
+          setAllowChanges("");
+        }
       }
       await refresh();
     } catch (cause) {
@@ -189,7 +250,16 @@ export function NovelAssistant({
             </button>
           ))}
         </div>
-        <span className={desk.companionLabel}>创作搭档</span>
+        <div className={styles.conversationActions}>
+          {exchanges.some((reply) => reply.id <= historyAfter) ? (
+            <button type="button" onClick={() => setShowHistory(!showHistory)}>
+              {showHistory ? "返回当前对话" : "历史对话"}
+            </button>
+          ) : null}
+          <button type="button" onClick={newConversation}
+            disabled={!!active || sending || editor.loading || !editor.view}
+            title="从空对话开始，保留小说正文">新对话</button>
+        </div>
       </header>
       <div className={desk.modeNote}>
         <Icon name="lightbulb" />
@@ -202,7 +272,7 @@ export function NovelAssistant({
         </span>
       </div>
       <div className={desk.messages} aria-live="polite">
-        {!editor.view?.exchanges.length ? (
+        {!visibleExchanges.length ? (
           <>
             <article className={desk.welcome}>
               <span className={desk.eyebrow}>从初稿，到你的作品</span>
@@ -234,13 +304,15 @@ export function NovelAssistant({
             </div>
           </>
         ) : null}
-        {editor.view?.exchanges.map((reply) => (
+        {visibleExchanges.map((reply) => (
           <article className={styles.exchange} key={reply.id}>
             <div className={desk.message} data-role="user">
               <small>
                 你 ·{" "}
                 {reply.mode === "discuss"
                   ? "讨论"
+                  : reply.scope === "chapter_rewrite"
+                    ? reply.mode === "polish" ? "整章润色" : "整章重写"
                   : reply.mode === "rewrite"
                     ? "改写"
                     : "润色"}
@@ -255,6 +327,8 @@ export function NovelAssistant({
                 </button>
               ) : null}
               <p>{reply.instruction}</p>
+              {reply.requirements?.preserve ? <p>必须保留：{reply.requirements.preserve}</p> : null}
+              {reply.requirements?.allow_changes ? <p>允许调整：{reply.requirements.allow_changes}</p> : null}
             </div>
             <div className={desk.message} data-role="assistant">
               <small>创作搭档</small>
@@ -272,6 +346,7 @@ export function NovelAssistant({
                         : "等待结果")}
               </ReactMarkdown>
               </div>
+              {reply.editorial_review ? <NovelEditorialSummary review={reply.editorial_review} /> : null}
               {reply.status === "succeeded" && reply.mode === "discuss" ? (
                 <button type="button"
                   disabled={sending || !!active || editor.loading || !!editor.error || original || !!reply.anchor?.original}
@@ -305,6 +380,7 @@ export function NovelAssistant({
                 <small>
                   本次 {reply.usage.total_tokens.toLocaleString()} tokens ·{" "}
                   {reply.usage.requests ?? 1} 次调用
+                  {reply.usage.unknown_usage_count ? " · 部分用量未返回" : ""}
                 </small>
               ) : null}
             </div>
@@ -321,8 +397,11 @@ export function NovelAssistant({
         {anchor ? (
           <div className={styles.reference}>
             <button type="button" onClick={() => onLocate(anchor)}>
-              {anchor.original ? "原始稿引用" : "已引用选段"} ·{" "}
-              {Array.from(anchor.text).length} 字<q>{anchor.text}</q>
+              <span className={styles.referenceLabel}>
+                {anchor.original ? "原始稿引用" : "已引用选段"} ·{" "}
+                {Array.from(anchor.text).length} 字
+              </span>
+              <q>{anchor.text}</q>
             </button>
             <button
               type="button"
@@ -336,12 +415,35 @@ export function NovelAssistant({
           <div className={desk.scopeRow}>
             <label>
               修改范围
-              <select aria-label="修改范围" value="chapter" onChange={() => {}}>
-                <option value="chapter">当前章节</option>
+              <select aria-label="修改范围"
+                value={mode !== "discuss" ? chapterScope : "chapter"}
+                onChange={(e) => setChapterScope(e.target.value as "chapter" | "chapter_rewrite")}
+                disabled={sending || !!active}>
+                <option value="chapter">当前章节 · 按需修改</option>
+                {mode !== "discuss" ? <option value="chapter_rewrite">当前章节 · {mode === "polish" ? "整章润色" : "整章重写"}</option> : null}
               </select>
             </label>
           </div>
         )}
+        {!anchor && mode !== "discuss" && chapterScope === "chapter_rewrite" ? (
+          <details className={styles.rewriteOptions}>
+            <summary>改写边界（选填）{preserve.trim() || allowChanges.trim() ? " · 已设置" : ""}</summary>
+          <fieldset className={styles.rewriteRequirements} disabled={sending || !!active}>
+            <legend>改写边界</legend>
+            <label>必须保留
+              <textarea aria-label="必须保留" value={preserve} maxLength={3000}
+                onChange={(e) => setPreserve(e.target.value)}
+                placeholder="例如：人物动机、关键情节、伏笔与结局" />
+            </label>
+            <label>允许调整
+              <textarea aria-label="允许调整" value={allowChanges} maxLength={3000}
+                onChange={(e) => setAllowChanges(e.target.value)}
+                placeholder="例如：叙述顺序、对白、节奏和描写" />
+            </label>
+            <p>也可以直接在输入框中说明要保留和调整的内容，无需重复填写。</p>
+          </fieldset>
+          </details>
+        ) : null}
         {error || editor.error ? (
           <p role="alert">{error || editor.error}</p>
         ) : null}
@@ -395,7 +497,9 @@ export function NovelAssistant({
             placeholder={
               mode === "discuss"
                 ? "说说你想怎么修改这篇小说…"
-                : "描述希望调整的地方…"
+                : chapterScope === "chapter_rewrite" && !anchor
+                  ? mode === "polish" ? "描述文笔和节奏的润色目标，以及需要保留的内容…" : "描述整章改写要求，也可以说明要保留和调整的内容…"
+                  : "描述希望调整的地方…"
             }
           />
           {active ? (

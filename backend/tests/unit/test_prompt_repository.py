@@ -35,6 +35,17 @@ from casefile.agent_runtime.prompt_repository import (
 from casefile_contracts import TaskType
 
 EXPECTED_CURRENT_VERSIONS = {
+    'novel_pairwise': 'novel-pairwise-v1',
+    'novel_polisher': 'novel-polisher-v1',
+    'novel_quality_critic': 'novel-quality-critic-v1',
+    'novel_rewriter': 'novel-rewriter-v1',
+    'novel_revision': 'novel-revision-v2',
+    'novel_judge': 'novel-judge-v1',
+    'novel_checklist': 'novel-checklist-v1',
+    "novel_context_compactor": "novel-context-compactor-v1",
+    "novel_collaboration": "novel-collaboration-v1",
+    "novel_chapter_rewrite": "novel-chapter-rewrite-v2",
+    "novel_chapter_review": "novel-chapter-review-v2",
     "prose_continuity": "prose-continuity-v1",
     "brief_polish": "brief-polish-v3",
     "brief_anchor_extract": "brief-anchor-extract-v3",
@@ -49,7 +60,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "closure_repair": "closure-repair-v3",
     "story_planner": "story-planner-v3",
     "story_planner_skeleton": "story-planner-skeleton-v1",
-    "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
+    "story_planner_semantic_fill": "story-planner-semantic-fill-v2",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v7",
     "prose_writer": "prose-writer-v4",
     "prose_rewriter": "prose-rewriter-v7",
@@ -66,6 +77,24 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("novel_context_compactor", "novel-context-compactor-v1"): {"system": "1d08292f25f0357c000f54ad19b8bf2b905e2ead2cb04e973d7349c8422789ae"},
+    ("novel_revision", "novel-revision-v2"): {"system": "925687b40b09c5163db2d7fcbba51ec1dd9b99f1dc64ae235f89144458ddb982"},
+    ('novel_pairwise', 'novel-pairwise-v1'): {"system": '05a70b860b9a4402aac4e92060b28bf973baeb5514f1eafd2e5c3f9cb03f5602'},
+    ('novel_polisher', 'novel-polisher-v1'): {"system": '03c4ca5e6f5013ad1a249d7a629cfc5ebab874e88684a312ede5c083c47d14f5'},
+    ('novel_quality_critic', 'novel-quality-critic-v1'): {"system": '1c8f66a9f236f627d65ac9d192570beb655bce1879eb805e042b0ba14a2c8d01'},
+    ('novel_rewriter', 'novel-rewriter-v1'): {"system": 'bfdd45752c5d3f2768c1156e2a78a8e6d417bf3417ad043badb88a5054a307c2'},
+    ('novel_revision', 'novel-revision-v1'): {"system": 'a7e0ddbeca80c3bca7837a00b32c6d2894d5f766820eace12c7817acedfefd49'},
+    ('novel_judge', 'novel-judge-v1'): {"system": '0460c5f603c39b190f73a98b803aab9245bb5e8f93572cb27a234ad03358015a'},
+    ('novel_checklist', 'novel-checklist-v1'): {"system": 'ebe3951845534043368d482a7ca5eefa1f691d1bae882a9335d83b933dfe8819'},
+    ("novel_chapter_review", "novel-chapter-review-v2"): {"system": "7ba3f5ab5c24de94309f64f0f3a6a573daa6549530062e79d4e3dca32b80a72f"},
+    ("novel_chapter_review", "novel-chapter-review-v1"): {"system": "d234dcae5252e2c1b671577909e98b4a98b95ba0dd1c79d3677538f805000007"},
+    ("novel_chapter_rewrite", "novel-chapter-rewrite-v2"): {"system": "50206733a465acfc7df6653a086bbb1db9302719271740b56c4c53cb26489bfa"},
+    ("novel_collaboration", "novel-collaboration-v1"): {
+        "system": "d4ef482368971a1f94f80680554eadafc720cd293f7e59b43dc2cbb0ad2cd6ca",
+    },
+    ("novel_chapter_rewrite", "novel-chapter-rewrite-v1"): {
+        "system": "3e70b45169c9cfb43bc88c5b7cf94d9184c2a2b26ac18c66a7b55ecf8fb979c3",
+    },
     ("prose_revision", "prose-revision-v3"): {
         "system": "3e251cadf112f403f34f37cc26bfecc8256ca712ed9282087fab06cca0b06baf"
     },
@@ -250,6 +279,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("story_planner_skeleton", "story-planner-skeleton-v1"): {
         "system": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5"
+    },
+    ("story_planner_semantic_fill", "story-planner-semantic-fill-v2"): {
+        "system": "77b58adafd386ee63631b4792985fba1f7393bb7a28a92715d9df2dce5523b22"
     },
     ("story_planner_semantic_fill", "story-planner-semantic-fill-v1"): {
         "system": "2106595dade90f5a79a54be34208c757f24adeab8b3c68c246efd5f6971fe73c"
@@ -908,6 +940,17 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
     deterministic_task_types = {"novel_compile"}
     auxiliary_agent_ids = {
+        "novel_context_compactor",
+        'novel_checklist',
+        'novel_judge',
+        'novel_revision',
+        'novel_rewriter',
+        'novel_quality_critic',
+        'novel_polisher',
+        'novel_pairwise',
+
+        "novel_chapter_review",
+        "novel_chapter_rewrite",
         "prose_continuity",
         "casefile_chat_context_compactor",
         "closure_repair",
@@ -929,10 +972,11 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     }
 
     assert deterministic_task_types <= contract_task_types
-    assert (
-        set(SUPPORTED_AGENT_IDS)
-        == (contract_task_types - deterministic_task_types) | auxiliary_agent_ids
-    )
+    task_agent_ids = {
+        "novel_collaboration" if task == "novel_collaborate" else task
+        for task in contract_task_types - deterministic_task_types
+    }
+    assert set(SUPPORTED_AGENT_IDS) == task_agent_ids | auxiliary_agent_ids
     assert deterministic_task_types.isdisjoint(SUPPORTED_AGENT_IDS)
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
     assert {
@@ -1073,6 +1117,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     }
 
     for agent_id, prompt in prompts.items():
+        if agent_id.startswith("novel_"):
+            assert "不可信" in prompt and "不能覆盖" in prompt
+            assert "instruction" in prompt and "JSON" in prompt
+            continue
         if agent_id in {"prose_rewriter", "prose_revision"}:
             assert "数据" in prompt and "不是控制指令" in prompt
             assert "JSON" in prompt

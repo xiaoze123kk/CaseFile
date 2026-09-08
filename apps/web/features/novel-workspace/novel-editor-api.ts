@@ -5,6 +5,7 @@ import type {
   NovelEditorRequest,
   NovelEditorExchange,
   NovelEditorVersion,
+  NovelEditorVersionDetail,
 } from "@casefile/contracts";
 import { apiRequest, streamTaskEvents } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -25,8 +26,12 @@ export const novelEditorApi = {
   get: (p: number, id: number) => call<NovelEditorView>(`${root(p)}/${id}`),
   save: (p: number, id: number, data: NovelEditorSave) =>
     call<NovelEditorView>(`${root(p)}/${id}`, "PUT", data),
+  checkpoint: (p: number, id: number, data: NovelEditorSave) =>
+    call<NovelEditorView>(`${root(p)}/${id}/versions`, "POST", data),
   history: (p: number, id: number) =>
     call<NovelEditorVersion[]>(`${root(p)}/${id}/versions`),
+  version: (p: number, id: number, revision: number) =>
+    call<NovelEditorVersionDetail>(`${root(p)}/${id}/versions/${revision}`),
   restore: (p: number, id: number, expected: number, revision: number) =>
     call<NovelEditorView>(`${root(p)}/${id}/restore`, "POST", {
       expected_revision: expected,

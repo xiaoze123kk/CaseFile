@@ -336,7 +336,7 @@ export function NovelWorkspace({
           {status}
         </span>
         <div className={styles.topActions}>
-          {compileScope && editor.view ? <button type="button" onClick={() => setServerHistory(true)}>服务器版本记录</button> : null}
+          {compileScope && editor.view ? <button type="button" onClick={() => setServerHistory(true)}>版本记录 · V{editor.view.revision}</button> : null}
           {compileScope ? <button disabled={busy || storageBlocked} onClick={() => setCompilerOpen(true)} type="button">
             <Icon name="document" />小说编译
           </button> : null}

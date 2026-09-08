@@ -456,3 +456,39 @@ Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围�
 ## 小说正文协作与版本
 
 新增 `novel_manuscripts`、`novel_versions`、`novel_chapters`、`novel_exchanges`、`novel_edits`、`novel_edit_decisions`，业务表总数82。小说稿件拥有独立的服务端版本链；原始稿、版本正文、对话请求、模型修改组和采纳记录只追加，模型任务复用 TaskRun/TaskAttempt、AgentModelCall 与 TaskEvent。稿件属于原项目与工作稿，但不写回 CaseFile，也不改写 CompileArtifact。数据库通过复合外键绑定项目；历史表拒绝普通 UPDATE/DELETE。V20260908161410 增加这些表并允许 novel_collaborate 任务；存在小说稿件时拒绝 downgrade，避免删除历史。
+
+## 整章重写协作
+
+`agent_runtime/novel_collaboration.py` 为显式 `chapter_rewrite` 范围准备完整原章与相邻章各 2000 字节选；输入上限 12000 字，输出上限 16000 字。独立 `novel_chapter_rewrite/v1` Prompt 复用 `DeepSeekProseRewriterProvider`，只返回完整新正文与说明，服务端绑定整章 before 和码点范围。沿用两次调用总额、冻结输入、Worker lease、调用留痕及原子候选保存；截断输出不允许进入候选。既有 ScenePlan/Checklist/Judge 编排不进入编辑稿协作，不宣称文学审核通过。采纳仍由 NovelEditorService 检查稿件版本并追加新版本，保留原始稿与历史，无数据库迁移。
+
+`NovelEditorService.version_detail` 与 GET novels/{id}/versions/{revision} 只读获取指定稿件版本及上一版正文，复用项目归属与版本存在性校验，不创建版本、不修改稿件。
+
+## 小说章节命名
+
+`backend/src/casefile/agent_runtime/prompts/story_planner_semantic_fill/v2/` 指导 LLM 生成贴合本章内容、含蓄且不泄底的章名；`constraint_first_story_planner.py` 使用 v2，Worker 组件指纹包含版本与哈希。历史 v1 保留，已有方案不自动改名，不增加服务端文学门禁。
+
+## 整章编辑审阅与一次修订
+
+`novel_chapter_review.py` 复用重链路的 ProseRewriterRequest 与 DeepSeekProseRewriterProvider，用独立版本化 Prompt 对原章、作者要求、保留项、允许调整项、相邻章节节选和候选做 LLM 审阅。服务端只校验协议、证据原文引用与修订次数；不以文学规则代替模型。`worker/handlers/novel_model_calls.py` 集中记录每次生成/审阅/修订调用，数据库累计调用是预算权威，保留失败输出与 usage，调用前后检查 lease。`novel_editorial.py` 最多一次内容修订，随后复核；四阶段各最多两次协议尝试，总预算八次，无网络自动重试。审阅或修订失败保留最后一个协议有效候选并明确标记 incomplete/revision_failed，旧意见不得冒充新稿的审阅结论。每份报告绑定候选正文哈希与轮次，任务结果保存报告序列；不增加数据库表。历史 chapter rewrite v1 冻结任务仍使用旧 Prompt 和两次预算。
+
+## 显式保存小说版本
+
+小说编辑的自动修订继续用于并发控制、AI 冻结上下文和撤销；NovelEditorService.checkpoint 通过显式 POST /novels/{id}/versions 保存 checkpoint。history 仅列出 original、local_import 和 checkpoint；版本对比以此前最近的正式版本为基准。保存、采纳、恢复不新增用户版本记录。
+
+
+整章编辑策略 chapter-editorial-v2 使用不可变 novel-chapter-review-v2：审阅输入附带真实 Unicode 字符数、未变字符数和有界差异节选，用于 LLM 判断作者目标是否实际完成；相似度不作为文学硬门禁。v1 冻结任务仍按原 Prompt 读取。
+
+
+整章编辑 chapter-prose-v1：agent_runtime/novel_prose.py 适配重链路 Judge、Rewriter、Polisher、Quality Critic 的 Provider，以及共用证据绑定、编辑决策验证和双稿选择规则；worker/handlers/novel_prose.py 负责检查清单→逐项审核→编辑决策→最多两次修订与复审。润色通过 Critic→Polisher→保真审核/编辑决策→两次匿名交换顺序比较选择候选。每阶段最多一次协议修复，任务最多18次实际调用；所有 Prompt 哈希随任务冻结，历史 editorial-v1/v2 不变。候选不自动采纳，失败保留阶段记录；润色审核或比较失败保留原章。
+
+检查清单仅接收本章与作者要求，防止相邻章/设定被误标为本章原文；失败修复携带被拒候选与具体来源字段。新任务在context冻结每个组件的Prompt版本，novel-revision-v2明确retain与stop的候选处置含义，旧任务仍读取v1。Polisher支持显式generation_instruction，整章适配不构造虚假的编译profile。
+
+组件接入复查：Judge证据修复共用judge_evidence_repair_baseline，完整判定字段已合法时修复只可改变evidence_ids，禁止修改原verdict/rationale；Rewriter原样返回投影为revision_failed；用量缺失根据真实transport_attempts识别，不将Provider归一化的零值当作已知用量。
+
+## 小说对话上下文治理
+
+- `agent_runtime/novel_context.py`：复用 Context 工程的 token 估算，保留当前指令和目标正文；近期至多三轮完整对话（3,000 估算 tokens），较早对话按 12,000 tokens 分批交给 LLM 合并成有来源的记忆（2,000 tokens）。每请求至多四次整理，不切断原始消息，超额明确报错；原始消息不删除。
+- `application/novel_context.py`：按稿件、章节、原稿/编辑稿隔离读取成功对话与上一成功任务的记忆检查点；历史修改状态来自真实采纳记录，摘要不充当正文权威。
+- `worker/handlers/novel_collaboration.py`：压缩使用既有 `NovelModelJournal`，计入冻结预算和实际用量；校验来源、输出预算及 Prompt hash。只有成功任务发布记忆检查点，失败不前移；新上下文策略不补写历史任务。
+- `prompts/novel_context_compactor/v1`：小说专用记忆协议，仅保留作者偏好、讨论与未解决问题。复用主工作台的治理原则和估算器，不复用其卷宗事实/Patch 专用状态。
+- `tests/unit/test_novel_context.py`、`tests/integration/test_novel_context_runtime.py`：近期完整性、预算、来源、正文保真、真实 PostgreSQL 检查点复用与失败不前移；模型均为 Fake，无真实 Provider 资格结论。

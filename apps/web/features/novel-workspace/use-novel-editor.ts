@@ -258,6 +258,14 @@ export function useNovelEditor(
     },
     [project, flush, acceptView],
   );
+  const checkpoint = useCallback(async () => {
+    const base = await flush();
+    if (!project || !base || !latest.current.draft) throw new Error("稿件尚未就绪。");
+    const content = draftContent(latest.current.draft);
+    acceptView(await api.checkpoint(project, base.id, {
+      expected_revision: base.revision, title: base.title, chapters: base.chapters,
+    }), content);
+  }, [project, flush, acceptView]);
   const switchNovel = useCallback(
     async (id: number) => {
       if (!project) return;
@@ -284,6 +292,7 @@ export function useNovelEditor(
     reload,
     decide,
     restore,
+    checkpoint,
     switchNovel,
     retry,
   };

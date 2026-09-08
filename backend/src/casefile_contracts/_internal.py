@@ -4239,20 +4239,7 @@ class Mode1(Enum):
 class Scope(Enum):
     chapter = 'chapter'
     selection = 'selection'
-
-
-class NovelEditorRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    request_key: Annotated[str, Field(max_length=100)]
-    expected_revision: Annotated[int, Field(ge=1)]
-    mode: Mode1
-    scope: Scope
-    chapter_id: Annotated[str, Field(max_length=100)]
-    instruction: Annotated[str, Field(max_length=6000)]
-    anchor: NovelEditorAnchor | None
+    chapter_rewrite = 'chapter_rewrite'
 
 
 class NovelEditorCandidateEdit(BaseModel):
@@ -4292,42 +4279,6 @@ class NovelEditorEdit(BaseModel):
     after: Annotated[str, Field(max_length=2000000)]
     reason: Annotated[str, Field(max_length=2000)]
     status: Status12
-
-
-class NovelEditorExchange(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    id: Annotated[int, Field(ge=1)]
-    task_id: Annotated[int, Field(ge=1)]
-    revision: Annotated[int, Field(ge=1)]
-    mode: Mode1
-    chapter_id: Annotated[str, Field(max_length=100)]
-    instruction: Annotated[str, Field(max_length=6000)]
-    anchor: NovelEditorAnchor | None
-    message: Annotated[str, Field(max_length=20000)]
-    status: Annotated[str, Field(max_length=30)]
-    error: str | None
-    usage: dict[str, int]
-    edits: list[NovelEditorEdit]
-
-
-class NovelEditorView(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    id: Annotated[int, Field(ge=1)]
-    source_key: Annotated[str, Field(max_length=160)]
-    source_label: Annotated[str, Field(max_length=200)]
-    revision: Annotated[int, Field(ge=1)]
-    title: Annotated[str, Field(max_length=300)]
-    chapters: Annotated[list[NovelEditorChapter], Field(max_length=500, min_length=1)]
-    original_chapters: Annotated[
-        list[NovelEditorChapter], Field(max_length=500, min_length=1)
-    ]
-    exchanges: list[NovelEditorExchange]
 
 
 class EditId(RootModel[int]):
@@ -4378,6 +4329,114 @@ class NovelEditorSummary(BaseModel):
     title: Annotated[str, Field(max_length=300)]
     source_key: Annotated[str, Field(max_length=160)]
     revision: Annotated[int, Field(ge=1)]
+
+
+class NovelChapterRewriteCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    message: Annotated[str, Field(max_length=2000, min_length=1)]
+    text: Annotated[str, Field(max_length=16000, min_length=1)]
+    reason: Annotated[str, Field(max_length=2000, min_length=1)]
+
+
+class NovelEditorVersionDetail(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    revision: Annotated[int, Field(ge=1)]
+    title: Annotated[str, Field(max_length=300)]
+    previous_title: str | None
+    chapters: list[NovelEditorChapter]
+    previous_chapters: list[NovelEditorChapter]
+
+
+class NovelRewriteRequirements(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    preserve: Annotated[str, Field(max_length=3000)]
+    allow_changes: Annotated[str, Field(max_length=3000)]
+
+
+class Category2(Enum):
+    intent = 'intent'
+    preservation = 'preservation'
+    meaning = 'meaning'
+    continuity = 'continuity'
+
+
+class Severity4(Enum):
+    info = 'info'
+    warning = 'warning'
+    major = 'major'
+
+
+class NovelChapterReviewFinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    category: Category2
+    severity: Severity4
+    message: Annotated[str, Field(max_length=1500)]
+    source_quote: Annotated[str, Field(max_length=1000)]
+    candidate_quote: Annotated[str, Field(max_length=1000)]
+    suggestion: Annotated[str, Field(max_length=1500)]
+
+
+class Action6(Enum):
+    accept = 'accept'
+    revise = 'revise'
+    needs_author = 'needs_author'
+
+
+class NovelChapterReviewCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    summary: Annotated[str, Field(max_length=2000)]
+    action: Action6
+    revision_plan: Annotated[str, Field(max_length=3000)]
+    findings: Annotated[list[NovelChapterReviewFinding], Field(max_length=40)]
+
+
+class NovelChapterReviewReport(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    candidate_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    round: Annotated[int, Field(ge=0, le=2)]
+    review: NovelChapterReviewCandidate
+
+
+class Status13(Enum):
+    completed = 'completed'
+    incomplete = 'incomplete'
+    revision_failed = 'revision_failed'
+
+
+class Status14(Enum):
+    completed = 'completed'
+    incomplete = 'incomplete'
+
+
+class NovelProseStage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    phase: str
+    label: str
+    status: Status14
+    summary: str
+    findings: list[str]
+    candidate_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
 class ResolutionSpec(CoreMetadata):
@@ -4519,6 +4578,37 @@ class SceneContext(BaseModel):
     previous_scene_render: SceneRender | None
 
 
+class NovelEditorRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    request_key: Annotated[str, Field(max_length=100)]
+    expected_revision: Annotated[int, Field(ge=1)]
+    mode: Mode1
+    scope: Scope
+    chapter_id: Annotated[str, Field(max_length=100)]
+    instruction: Annotated[str, Field(max_length=6000)]
+    anchor: NovelEditorAnchor | None
+    requirements: NovelRewriteRequirements | None = None
+    history_after_exchange_id: Annotated[
+        int | None, Field(description='本次对话的历史起点；不读取此位置及以前的对话或摘要。', ge=0)
+    ] = None
+
+
+class NovelEditorialReview(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    status: Status13
+    message: Annotated[str, Field(max_length=2000)]
+    candidate_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    revision_count: Annotated[int, Field(ge=0, le=2)]
+    reports: Annotated[list[NovelChapterReviewReport], Field(max_length=3)]
+    stages: Annotated[list[NovelProseStage] | None, Field(max_length=18)] = None
+
+
 class SceneCompilerInputBundle(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -4528,6 +4618,48 @@ class SceneCompilerInputBundle(BaseModel):
     source: SceneCompilerInputSource
     novel_plan: NovelPlanIR
     narrative_ir: Schema_4
+
+
+class NovelEditorExchange(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    id: Annotated[int, Field(ge=1)]
+    task_id: Annotated[int, Field(ge=1)]
+    revision: Annotated[int, Field(ge=1)]
+    mode: Mode1
+    chapter_id: Annotated[str, Field(max_length=100)]
+    instruction: Annotated[str, Field(max_length=6000)]
+    anchor: NovelEditorAnchor | None
+    message: Annotated[str, Field(max_length=20000)]
+    status: Annotated[str, Field(max_length=30)]
+    error: str | None
+    usage: dict[str, int]
+    edits: list[NovelEditorEdit]
+    scope: Scope | None = None
+    requirements: NovelRewriteRequirements | None = None
+    editorial_review: NovelEditorialReview | None = None
+    history_after_exchange_id: Annotated[
+        int | None, Field(description='本次对话的历史起点；不读取此位置及以前的对话或摘要。', ge=0)
+    ] = None
+
+
+class NovelEditorView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    id: Annotated[int, Field(ge=1)]
+    source_key: Annotated[str, Field(max_length=160)]
+    source_label: Annotated[str, Field(max_length=200)]
+    revision: Annotated[int, Field(ge=1)]
+    title: Annotated[str, Field(max_length=300)]
+    chapters: Annotated[list[NovelEditorChapter], Field(max_length=500, min_length=1)]
+    original_chapters: Annotated[
+        list[NovelEditorChapter], Field(max_length=500, min_length=1)
+    ]
+    exchanges: list[NovelEditorExchange]
 
 
 class EditingContracts(BaseModel):
@@ -4593,6 +4725,17 @@ class EditingContracts(BaseModel):
     novel_editor_restore: NovelEditorRestore
     novel_editor_version: NovelEditorVersion
     novel_editor_summary: NovelEditorSummary
+    novel_chapter_rewrite_candidate: NovelChapterRewriteCandidate | None = None
+    novel_editor_version_detail: NovelEditorVersionDetail | None = None
+    novel_rewrite_requirements: Annotated[
+        NovelRewriteRequirements | None, Field(alias='NovelRewriteRequirements')
+    ] = None
+    novel_chapter_review_candidate: Annotated[
+        NovelChapterReviewCandidate | None, Field(alias='NovelChapterReviewCandidate')
+    ] = None
+    novel_editorial_review: Annotated[
+        NovelEditorialReview | None, Field(alias='NovelEditorialReview')
+    ] = None
 
 
 class CoreSellingPoint(RootModel[str]):

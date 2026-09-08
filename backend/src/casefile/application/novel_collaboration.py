@@ -4,9 +4,16 @@ from typing import Any
 
 from sqlalchemy import select
 
-from casefile.agent_runtime.novel_collaboration import MAX_CONTEXT_CHARS, VERSION, prepare_context
+from casefile.agent_runtime.novel_chapter_review import chapter_review_prompt
+from casefile.agent_runtime.novel_collaboration import (
+    collaboration_prompt,
+    prepare_context,
+)
+from casefile.agent_runtime.novel_context import govern_context, history_messages
+from casefile.agent_runtime.novel_prose import POLICY, prompt_hashes
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.errors import ApplicationError
+from casefile.application.novel_context import load_history
 from casefile.application.novel_editor import NovelEditorService, conflict
 from casefile.application.task_events import append_task_event
 from casefile.data_postgres.models import TaskRun, UserProviderSetting
@@ -18,6 +25,10 @@ class NovelCollaborationService(NovelEditorService):
     def submit(
         self, actor: int, project: int, manuscript: int, request: dict[str, Any]
     ) -> dict[str, Any]:
+        if request.get("history_after_exchange_id") is None:
+            request = {k: v for k, v in request.items() if k != "history_after_exchange_id"}
+        if request.get("requirements") is None:
+            request = {k: v for k, v in request.items() if k != "requirements"}
         with self.session.begin():
             if not request["instruction"].strip():
                 raise ApplicationError(
@@ -50,39 +61,48 @@ class NovelCollaborationService(NovelEditorService):
                 raise ApplicationError(
                     "novel_busy", "请等待当前协作完成或先停止。", status_code=409
                 )
+            boundary = request.get("history_after_exchange_id", 0)
+            if boundary and not self.session.scalar(
+                select(NovelExchange.id).where(
+                    NovelExchange.id == boundary, NovelExchange.manuscript_id == m.id
+                )
+            ):
+                raise ApplicationError(
+                    "novel_history_boundary_invalid",
+                    "对话起点无效，请刷新后重试。",
+                    status_code=422,
+                )
             anchor = request["anchor"]
             if anchor and anchor["original"] and request["mode"] != "discuss":
                 raise ApplicationError(
                     "novel_original_readonly", "原始稿仅支持讨论。", status_code=422
                 )
             version = self.version(m, 1 if anchor and anchor["original"] else m.revision)
-            history: list[dict[str, str]] = []
-            size = 0
-            for e in self.session.scalars(
-                select(NovelExchange)
-                .where(NovelExchange.manuscript_id == m.id)
-                .order_by(NovelExchange.id.desc())
-                .limit(12)
-            ):
-                t = self.session.get(TaskRun, e.task_id)
-                assert t is not None
-                if t.status != "succeeded":
-                    continue
-                pair = [
-                    {"role": "user", "content": e.instruction},
-                    {"role": "assistant", "content": (t.result_jsonb or {}).get("message", "")},
-                ]
-                addition = sum(len(x["content"]) for x in pair)
-                if size + addition > 10000:
-                    break
-                history = pair + history
-                size += addition
+            try:
+                history_plan = load_history(
+                    self.session,
+                    m.id,
+                    request["chapter_id"],
+                    bool(anchor and anchor["original"]),
+                    boundary,
+                )
+            except ValueError as error:
+                raise ApplicationError(
+                    str(error), "历史对话超出单次整理预算，请新建小说副本后继续。", status_code=422
+                ) from None
+            history = history_messages(history_plan["recent"])
             try:
                 context = prepare_context(self.chapters(version), request, history)
             except ValueError as error:
                 raise ApplicationError(
                     str(error),
-                    "选区已变化、正文为空或上下文过长，请重新选择较小范围。",
+                    "整章重写目前支持最多 12,000 字，请拆分章节后再试。"
+                    if str(error) == "novel_chapter_rewrite_too_large"
+                    else "整章重写需使用改写模式，并取消正文选段引用。"
+                    if str(error) == "novel_chapter_rewrite_scope_invalid"
+                    else "必须保留与允许调整目前用于整章重写，请选择整章重写范围。"
+                    if str(error) == "novel_requirements_scope_invalid"
+                    else "选区已变化、正文为空或上下文过长，请重新选择较小范围。",
                     status_code=422,
                 ) from None
             context["novel_title"] = version.title
@@ -117,10 +137,12 @@ class NovelCollaborationService(NovelEditorService):
 
             collect(document)
             context["related_settings"] = related[:8] if owned.draft.id == m.draft_id else []
-            if len(json.dumps(context, ensure_ascii=False)) > MAX_CONTEXT_CHARS:
+            try:
+                context = govern_context(context, history_plan["memory"])
+            except ValueError as error:
                 raise ApplicationError(
-                    "novel_context_too_large", "相关上下文过长，请缩小范围。", status_code=422
-                )
+                    str(error), "当前正文和要求超出上下文预算，请缩小范围。", status_code=422
+                ) from None
             setting = self.session.scalar(
                 select(UserProviderSetting).where(
                     UserProviderSetting.user_id == actor,
@@ -132,13 +154,19 @@ class NovelCollaborationService(NovelEditorService):
                 raise ApplicationError(
                     "provider_setting_required", "请先配置 DeepSeek。", status_code=422
                 )
-            prompt = load_prompt("novel_collaboration")
+            prompt = collaboration_prompt(context)
             frozen = {
                 "request": request,
                 "context": context,
                 "anchor": anchor,
                 "prompt_hash": prompt.system_prompt_sha256,
+                "history_plan": history_plan,
+                "context_prompt_hash": load_prompt("novel_context_compactor").system_prompt_sha256,
             }
+            if context.get("editorial_policy") == POLICY:
+                frozen["prose_prompt_hashes"] = prompt_hashes(context)
+            elif context.get("editorial_policy"):
+                frozen["review_prompt_hash"] = chapter_review_prompt(context).system_prompt_sha256
             task = TaskRun(
                 project_id=project,
                 casefile_id=owned.casefile.id,
@@ -155,10 +183,19 @@ class NovelCollaborationService(NovelEditorService):
                 model_id=setting.model_id,
                 provider_config_version=setting.config_version,
                 schema_version="novel-editor-v1",
-                agent_version=VERSION,
-                prompt_version=VERSION,
+                agent_version=prompt.version,
+                prompt_version=prompt.version,
                 toolset_version="none",
-                budget_jsonb={"max_calls": 2},
+                budget_jsonb={
+                    "max_calls": len(history_plan["batches"])
+                    + (
+                        18
+                        if context.get("editorial_policy") == POLICY
+                        else 8
+                        if context.get("editorial_policy")
+                        else 2
+                    )
+                },
                 usage_jsonb={},
                 attempt_count=0,
                 error_details_jsonb={},

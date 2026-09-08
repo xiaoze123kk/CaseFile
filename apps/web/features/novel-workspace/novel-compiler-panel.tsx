@@ -177,39 +177,46 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
       </> : null}
       {error ? <p role="alert">{error}</p> : null}
       <div className={styles.heading}><h3>编译记录</h3><button type="button" disabled={busy} onClick={() => { setError(""); setPreviewLoad(null); setRefresh((n) => n + 1); }}>刷新</button></div>
-      {novelAttempts.length ? <p aria-label="小说生成统计">
+      {novelAttempts.length ? <p className={styles.runStats} aria-label="小说生成统计">
         完整小说 {novelReady}/{novelAttempts.length} 次（{Math.round(novelReady / novelAttempts.length * 100)}%）
         {measuredAttempts.length ? ` · 首次完成 ${firstPass}/${measuredAttempts.length} 次` : ""}
         {repairs ? ` · 修复调用成功 ${repaired}/${repairs} 次` : ""}。仅统计已结束的正文生成，方案规划与主动取消不计入。
       </p> : null}
       {loading ? <p role="status">正在读取编译记录…</p> : !runs.length ? <p>当前工作稿还没有小说编译记录。</p> : null}
-      <ul className={styles.runs}>{runs.map((run) => <li key={run.compile_run_id} data-execution-state={run.execution.status}>
+      <ul className={styles.runs}>{runs.map((run) => <li key={run.compile_run_id} data-execution-state={run.execution.status} data-completed={!!completedNovelArtifact(run)}>
+        <div className={styles.runMain}>
         {active(run) ? <span className={styles.compileActivity} aria-hidden="true" data-compile-activity>
           <span /><span /><span />
         </span> : null}
-        <div><strong role="status">{novelCompileStatus(run)}</strong><small>{new Date(run.created_at).toLocaleString("zh-CN")} · 工作稿版本 {run.execution.input_draft_revision}</small></div>
-        {run.prose_renderer_shadow ? <small>{run.prose_mode === "quick_draft" ? "快速初稿 · 未做文学审核" : "完整精修"}</small> : null}
-        {run.stability && Object.keys(run.stability.failure_stages).length ? <small>
-          {Object.entries(run.stability.failure_stages).map(([stage, count]) => `${stage}失败 ${count} 次`).join(" · ")}
-        </small> : null}
+        <div className={styles.runIdentity}><strong role="status">{novelCompileStatus(run)}</strong><small>{new Date(run.created_at).toLocaleString("zh-CN")} · 工作稿版本 {run.execution.input_draft_revision}</small></div>
+        {run.prose_renderer_shadow && run.prose_mode !== "quick_draft" ? <span className={styles.runMode}>完整精修</span> : null}
+        </div>
+        <div className={styles.runActions}>
         {run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1") ? <button type="button" disabled={busy}
           onClick={() => { setSelectedId(run.compile_run_id); setRecommendation(null); }}>查看场景方案</button> : null}
         {active(run) ? <button type="button" disabled={busy || run.execution.status === "cancelling"} onClick={() => void action(async () => { await cancelTask(projectId, run.execution.task_run_id); })}>停止编译</button> : null}
-        {run.prose_shadow.plan_issues?.length ? <p role="alert">场景衔接需要调整：{run.prose_shadow.plan_issues.join("；")}</p> : null}
-        {run.prose_renderer_shadow && run.prose_shadow.completed_scene_count ? <p>已保存 {run.prose_shadow.completed_scene_count} 个场景，继续时保留已完成正文。</p> : null}
         {(run.execution.status === "failed" || run.prose_shadow.resume_available) ? <button type="button" disabled={busy || runs.some(active)}
           onClick={() => void action(async () => {
             const resumed = await resumeNovelCompile(scope, run.compile_run_id);
             if (mounted.current) setRuns((items) => items.map((item) =>
               item.compile_run_id === resumed.compile_run_id ? resumed : item));
           })}>从失败处继续</button> : null}
-        {completedNovelArtifact(run) ? <button type="button" disabled={busy} onClick={() => void action(async () => {
+        {completedNovelArtifact(run) ? <button type="button" className={styles.loadNovel} disabled={busy} onClick={() => void action(async () => {
           const manuscript = await loadCompiledNovel(projectId, run, title);
           if (mounted.current) {
             if (onLoad(manuscript)) onClose();
             else throw new Error("旧稿备份失败，请先关闭编译窗口并导出旧稿，再载入小说。");
           }
         })}>载入小说</button> : null}
+        </div>
+        {!completedNovelArtifact(run) ? <div className={styles.runNotes}>
+        {run.prose_shadow.plan_issues?.length ? <p role="alert">场景衔接需要调整：{run.prose_shadow.plan_issues.join("；")}</p> : null}
+        {run.prose_renderer_shadow && run.prose_shadow.completed_scene_count ? <p>已保存 {run.prose_shadow.completed_scene_count} 个场景，继续时保留已完成正文。</p> : null}
+        </div> : null}
+        {run.stability && Object.keys(run.stability.failure_stages).length ? <details className={styles.runHistory}>
+          <summary>查看运行详情</summary>
+          <p>{Object.entries(run.stability.failure_stages).map(([stage, count]) => `${stage}失败 ${count} 次`).join(" · ")}</p>
+        </details> : null}
       </li>)}</ul>
       <p>{hasDraft ? "载入时会备份当前本地编辑稿；可在历史稿中恢复。" : "完成的小说将作为独立初稿载入，不会修改卷宗。"} 使用已配置的 DeepSeek；方案推荐和正文生成会产生模型调用费用。关闭窗口后，已提交的编译仍会继续。</p>
     </div>

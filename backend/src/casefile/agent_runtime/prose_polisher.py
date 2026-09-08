@@ -99,6 +99,7 @@ class ProsePolisherRequest:
     temperature: int = PROSE_POLISHER_TEMPERATURE
     max_output_tokens: int = PROSE_POLISHER_MAX_OUTPUT_TOKENS
     thinking_enabled: bool = PROSE_POLISHER_THINKING_ENABLED
+    generation_instruction: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +119,7 @@ class ProsePolisherProviderResult:
     transport_attempts: tuple[ProsePolisherTransportAttempt, ...]
     recovered: bool = False
     generation_call_count: int = 1
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,6 +206,9 @@ class DeepSeekProsePolisherProvider:
             request.prompt_version,
             request.input_payload,
             (attempt,),
+            finish_reason=getattr(response.choices[0], "finish_reason", None)
+            if response.choices
+            else None,
         )
 
     def _create_completion(self, request: ProsePolisherRequest) -> Any:
@@ -232,7 +237,10 @@ class DeepSeekProsePolisherProvider:
                             separators=(",", ":"),
                         ),
                     },
-                    {"role": "user", "content": generation_focus(request)},
+                    {
+                        "role": "user",
+                        "content": request.generation_instruction or generation_focus(request),
+                    },
                 ],
                 response_format={"type": "json_object"},
                 temperature=request.temperature,

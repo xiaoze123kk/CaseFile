@@ -231,3 +231,19 @@ describe("小说编译工作表面", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "让 Agent 推荐小说方案" })).toBeEnabled());
   });
 });
+
+
+it("完成记录突出载入，将历史失败收起且不再提示继续", async () => {
+  const complete = { ...run(), prose_mode: "quick_draft", prose_shadow: {
+    status: "succeeded", completed_scene_count: 36,
+  }, stability: { novel_ready: true, outcome: "completed", first_pass_success: false,
+    repair_attempts: 1, repair_successes: 1, model_calls: 2, failure_stages: { "正文生成": 1 } } } as NovelCompileRun;
+  vi.mocked(apiRequest).mockResolvedValue([complete]);
+  const { container } = render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+  expect(await screen.findByRole("button", { name: "载入小说" })).toBeEnabled();
+  expect(screen.queryByText(/已保存 36 个场景/)).not.toBeInTheDocument();
+  const history = container.querySelector("details");
+  expect(history).not.toHaveAttribute("open");
+  expect(history).toHaveTextContent("正文生成失败 1 次");
+  expect(screen.getByRole("status")).toHaveTextContent("初稿已完成");
+});

@@ -10,7 +10,6 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from casefile_contracts import ProseQualityReport
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -37,6 +36,7 @@ from casefile.domain.narrative_compiler import (
     validate_scene_render,
     validate_semantic_acceptance,
 )
+from casefile_contracts import ProseQualityReport
 
 PROSE_QUALITY_MODEL_ID: Final = "deepseek-v4-flash"
 PROSE_QUALITY_FINDINGS_PROMPT_VERSION: Final = "prose-quality-critic-v1"
@@ -94,6 +94,17 @@ class _QualityPairwiseCandidate(BaseModel):
     schema_id: Literal["compiler.prose-quality-pairwise-candidate.v1"]
     overall_preference: Literal["a", "b", "tie"]
     dimension_preferences: list[_DimensionPreferenceCandidate] = Field(min_length=5, max_length=5)
+
+
+def parse_quality_findings(candidate: Any) -> dict[str, Any]:
+    return _QualityFindingsCandidate.model_validate(candidate).model_dump(mode="json")
+
+
+def parse_quality_pairwise(candidate: Any) -> dict[str, Any]:
+    parsed = _QualityPairwiseCandidate.model_validate(candidate).model_dump(mode="json")
+    if [item["dimension"] for item in parsed["dimension_preferences"]] != list(QUALITY_DIMENSIONS):
+        raise ValueError("prose_quality_dimension_coverage_mismatch")
+    return parsed
 
 
 PROSE_QUALITY_REPORT_SCHEMA_HASH: Final = canonical_json_sha256(
@@ -185,6 +196,7 @@ class ProseQualityProviderResult:
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProseQualityTransportAttempt, ...]
     recovered: bool = False
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +295,9 @@ class DeepSeekProseQualityCriticProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
             transport_attempts=(attempt,),
+            finish_reason=getattr(response.choices[0], "finish_reason", None)
+            if response.choices
+            else None,
         )
 
     def _create_completion(self, request: ProseQualityRequest) -> Any:
@@ -673,9 +688,7 @@ def _findings_report_from_candidate(
     if result.candidate is None:
         raise ProseQualityProtocolError("prose_quality_empty_or_invalid_json")
     try:
-        candidate = _QualityFindingsCandidate.model_validate(result.candidate).model_dump(
-            mode="json"
-        )
+        candidate = parse_quality_findings(result.candidate)
     except ValidationError as error:
         raise ProseQualityProtocolError("prose_quality_findings_candidate_invalid") from error
     catalog = {item["evidence_id"]: item for item in evidence_catalog}
@@ -733,10 +746,8 @@ def _pairwise_report_from_candidate(
     if result.candidate is None:
         raise ProseQualityProtocolError("prose_quality_empty_or_invalid_json")
     try:
-        candidate = _QualityPairwiseCandidate.model_validate(result.candidate).model_dump(
-            mode="json"
-        )
-    except ValidationError as error:
+        candidate = parse_quality_pairwise(result.candidate)
+    except ValueError as error:
         raise ProseQualityProtocolError("prose_quality_pairwise_candidate_invalid") from error
     if [item["dimension"] for item in candidate["dimension_preferences"]] != list(
         QUALITY_DIMENSIONS

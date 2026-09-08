@@ -157,7 +157,8 @@
         "scope": {
           "enum": [
             "chapter",
-            "selection"
+            "selection",
+            "chapter_rewrite"
           ]
         },
         "chapter_id": {
@@ -177,6 +178,21 @@
               "type": "null"
             }
           ]
+        },
+        "requirements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NovelRewriteRequirements"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "history_after_exchange_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "本次对话的历史起点；不读取此位置及以前的对话或摘要。"
         }
       },
       "required": [
@@ -349,6 +365,38 @@
           "items": {
             "$ref": "#/$defs/NovelEditorEdit"
           }
+        },
+        "scope": {
+          "enum": [
+            "chapter",
+            "selection",
+            "chapter_rewrite"
+          ]
+        },
+        "requirements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NovelRewriteRequirements"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "editorial_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NovelEditorialReview"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "history_after_exchange_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "本次对话的历史起点；不读取此位置及以前的对话或摘要。"
         }
       },
       "required": [
@@ -531,6 +579,285 @@
           "minimum": 1
         }
       }
+    },
+    "NovelChapterRewriteCandidate": {
+      "title": "NovelChapterRewriteCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16000
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "message",
+        "text",
+        "reason"
+      ]
+    },
+    "NovelEditorVersionDetail": {
+      "title": "NovelEditorVersionDetail",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "previous_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          }
+        },
+        "previous_chapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NovelEditorChapter"
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "title",
+        "previous_title",
+        "chapters",
+        "previous_chapters"
+      ]
+    },
+    "NovelRewriteRequirements": {
+      "title": "NovelRewriteRequirements",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preserve": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "allow_changes": {
+          "type": "string",
+          "maxLength": 3000
+        }
+      },
+      "required": [
+        "preserve",
+        "allow_changes"
+      ]
+    },
+    "NovelChapterReviewFinding": {
+      "title": "NovelChapterReviewFinding",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "intent",
+            "preservation",
+            "meaning",
+            "continuity"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "major"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1500
+        },
+        "source_quote": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "candidate_quote": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "suggestion": {
+          "type": "string",
+          "maxLength": 1500
+        }
+      },
+      "required": [
+        "category",
+        "severity",
+        "message",
+        "source_quote",
+        "candidate_quote",
+        "suggestion"
+      ]
+    },
+    "NovelChapterReviewCandidate": {
+      "title": "NovelChapterReviewCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "action": {
+          "enum": [
+            "accept",
+            "revise",
+            "needs_author"
+          ]
+        },
+        "revision_plan": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/NovelChapterReviewFinding"
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "action",
+        "revision_plan",
+        "findings"
+      ]
+    },
+    "NovelChapterReviewReport": {
+      "title": "NovelChapterReviewReport",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "review": {
+          "$ref": "#/$defs/NovelChapterReviewCandidate"
+        }
+      },
+      "required": [
+        "candidate_hash",
+        "round",
+        "review"
+      ]
+    },
+    "NovelEditorialReview": {
+      "title": "NovelEditorialReview",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "completed",
+            "incomplete",
+            "revision_failed"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "candidate_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "revision_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "reports": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/NovelChapterReviewReport"
+          }
+        },
+        "stages": {
+          "type": "array",
+          "maxItems": 18,
+          "items": {
+            "$ref": "#/$defs/NovelProseStage"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "message",
+        "candidate_hash",
+        "revision_count",
+        "reports"
+      ]
+    },
+    "NovelProseStage": {
+      "title": "NovelProseStage",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "incomplete"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "candidate_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "phase",
+        "label",
+        "status",
+        "summary",
+        "findings",
+        "candidate_hash"
+      ]
     }
   }
 }

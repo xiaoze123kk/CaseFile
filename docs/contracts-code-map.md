@@ -118,3 +118,18 @@ CompileInputManifest 兼容增加可选 prose_mode（quick_draft / full_polish�
 prose-rendering.schema.json 新增 ProseRevisionFinding、ProseRevisionDecisionCandidate 和 ProseRevisionDecision。服务端绑定 scene_id、render_hash、input_hash 与 repair_budget_exhausted；模型给出意见解释、严重程度和编辑方案。SceneRender.selection_reason 增加 llm_nonfatal_retained；SceneManifest 兼容增加 product_accepted、strict_semantic_pass、revision_report_hashes。旧字段及旧证据不改写；历史读取不补写新字段重算哈希。生成 Python/TypeScript、运行时镜像及 OpenAPI 统一同步。新增 V20260908121826 兼容扩展数据库产物身份白名单，已有编辑证据时 downgrade 拒绝而不删除。
 
 novel-editor.schema.json 定义 NovelEditor 系列稿件、版本、选区、协作请求、模型候选、修改组与采纳契约。模型 before 必须在目标范围唯一匹配，服务端绑定位置和身份；对话不允许生成修改。TaskRun.task_type 兼容增加 novel_collaborate。生成包、运行时镜像与 OpenAPI 同步。
+
+`novel-editor.schema.json` 的 NovelEditorRequest.scope 增加 chapter_rewrite，限定 rewrite 且 anchor=null；NovelChapterRewriteCandidate 定义完整新章 text、message、reason，由服务端绑定旧正文而不要求模型复制 before。NovelEditorExchange.scope 为兼容可选字段，投影自冻结请求。生成包、运行时镜像及 OpenAPI 同步；现有 chapter/selection 请求与历史记录保持兼容。
+
+NovelEditorVersionDetail 定义历史稿详情及上一版章节，由 novel-editor.schema.json 生成并发布为只读 HTTP 响应；版本列表不携带全文，详情按需加载。
+
+NovelRewriteRequirements 兼容增加于请求与历史投影，限整章重写使用。NovelChapterReviewCandidate/Report 与 NovelEditorialReview 表达 LLM 的 accept/revise/needs_author、分级意见、原章/候选引用以及候选哈希和轮次；editorial_review 为可空的兼容公开字段。新整章任务冻结 editorial_policy 和 review_prompt_hash，历史请求不补写字段以改变身份。
+
+## 显式保存小说版本
+
+POST /novels/{id}/versions 复用 NovelEditorSave 与 NovelEditorView，显式保存稿件版本；revision 仍是乐观并发修订号，版本列表仅返回正式保存点，用户编号由有序列表派生。OpenAPI 同步，不改变 Schema 或数据库结构。
+
+
+NovelEditorialReview 新增可选 stages（NovelProseStage），展示检查清单、Judge、编辑决策、Rewriter、Critic、Polisher、双稿比较阶段摘要与候选哈希。revision_count 上限兼容扩展至2，reports至3，逐项意见至40；chapter_rewrite 允许 rewrite/polish 两种模式。旧请求和旧结果仍可读取，无数据库迁移。
+
+小说对话“新对话”使用兼容可选的 `history_after_exchange_id` 标记上下文起点。起点必须属于当前稿件，服务端同时按起点、章节和原稿/编辑稿隔离历史与压缩检查点。原始对话和小说版本不删除，新增起点后的请求冻结该字段；旧请求缺省继续原对话。

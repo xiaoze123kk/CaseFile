@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from time import perf_counter, sleep
@@ -194,6 +195,7 @@ class ProseJudgeProviderResult:
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProseJudgeTransportAttempt, ...]
     recovered: bool = False
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -357,6 +359,9 @@ class DeepSeekProseJudgeProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
             transport_attempts=tuple(attempts),
+            finish_reason=getattr(response.choices[0], "finish_reason", None)
+            if response.choices
+            else None,
         )
 
     def _create_completion(self, request: ProseJudgeRequest | ProseArbiterRequest) -> Any:
@@ -1081,6 +1086,21 @@ def _failed_call_from_request(
     )
 
 
+def judge_evidence_repair_baseline(candidate: Any, check_ids: list[str]) -> dict[str, Any]:
+    """Freeze all valid Judge fields except evidence IDs before repairing references."""
+    if not isinstance(candidate, dict) or not isinstance(candidate.get("assessments"), list):
+        raise ValueError("prose_judge_repair_candidate_invalid")
+    protected = deepcopy(candidate)
+    for assessment in protected["assessments"]:
+        if not isinstance(assessment, dict) or "evidence_ids" not in assessment:
+            raise ValueError("prose_judge_repair_assessment_invalid")
+        assessment["evidence_ids"] = []
+    _ProseJudgeCandidate.model_validate(protected)
+    if [item["check_id"] for item in protected["assessments"]] != check_ids:
+        raise ValueError("prose_judge_repair_coverage_invalid")
+    return protected
+
+
 def _validated_council_response(
     provider: ProseJudgeProvider,
     request: ProseJudgeRequest | ProseArbiterRequest,
@@ -1130,22 +1150,13 @@ def _validated_council_response(
         original = result.candidate
         if not isinstance(original, dict) or not isinstance(original.get("assessments"), list):
             raise
-        from copy import deepcopy
-
-        protected = deepcopy(original)
-        for assessment in protected["assessments"]:
-            if not isinstance(assessment, dict) or "evidence_ids" not in assessment:
-                raise error
-            assessment["evidence_ids"] = []
-        try:
-            _ProseJudgeCandidate.model_validate(protected)
-        except ValidationError:
-            raise error from None
         expected = validation.get("disputed_check_ids") or [
             check["check_id"] for check in validation["checklist"]["checks"]
         ]
-        if [a["check_id"] for a in protected["assessments"]] != expected:
-            raise error
+        try:
+            protected = judge_evidence_repair_baseline(original, expected)
+        except ValueError:
+            raise error from None
         payload = {
             **request.input_payload,
             "protocol_repair": {
@@ -1204,30 +1215,16 @@ def _validated_council_response(
             raise
 
 
-def _validated_report(
-    result: ProseJudgeProviderResult,
-    *,
-    checklist: dict[str, Any],
-    render: dict[str, Any],
-    profile: dict[str, Any],
-    evidence_catalog: list[dict[str, Any]],
-    disputed_check_ids: list[str] | None = None,
-) -> dict[str, Any]:
-    if result.candidate is None:
-        raise ProseCouncilProtocolError("prose_judge_empty_or_invalid_json")
-    try:
-        candidate = _ProseJudgeCandidate.model_validate(result.candidate).model_dump(mode="json")
-    except ValidationError as error:
-        raise ProseCouncilProtocolError("prose_judge_candidate_invalid") from error
-    expected_ids = (
-        disputed_check_ids
-        if disputed_check_ids is not None
-        else [item["check_id"] for item in checklist["checks"]]
-    )
+def validate_judge_assessments(
+    candidate: Any, checks: list[dict[str, Any]], evidence_catalog: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Shared Judge protocol, coverage and exact evidence binding for prose units."""
+    candidate = _ProseJudgeCandidate.model_validate(candidate).model_dump(mode="json")
+    expected_ids = [item["check_id"] for item in checks]
     if [item["check_id"] for item in candidate["assessments"]] != expected_ids:
         raise ProseCouncilProtocolError("prose_judge_candidate_coverage_mismatch")
     catalog_by_id = {item["evidence_id"]: item for item in evidence_catalog}
-    checks_by_id = {item["check_id"]: item for item in checklist["checks"]}
+    checks_by_id = {item["check_id"]: item for item in checks}
     assessments: list[dict[str, Any]] = []
     for assessment in candidate["assessments"]:
         evidence_ids = assessment["evidence_ids"]
@@ -1259,6 +1256,29 @@ def _validated_report(
                 "rationale": rationale,
             }
         )
+    return assessments
+
+
+def _validated_report(
+    result: ProseJudgeProviderResult,
+    *,
+    checklist: dict[str, Any],
+    render: dict[str, Any],
+    profile: dict[str, Any],
+    evidence_catalog: list[dict[str, Any]],
+    disputed_check_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    if result.candidate is None:
+        raise ProseCouncilProtocolError("prose_judge_empty_or_invalid_json")
+    try:
+        candidate = _ProseJudgeCandidate.model_validate(result.candidate).model_dump(mode="json")
+    except ValidationError as error:
+        raise ProseCouncilProtocolError("prose_judge_candidate_invalid") from error
+    checks = checklist["checks"]
+    if disputed_check_ids is not None:
+        by_id = {item["check_id"]: item for item in checks}
+        checks = [by_id[key] for key in disputed_check_ids]
+    assessments = validate_judge_assessments(candidate, checks, evidence_catalog)
     report = {
         "schema_id": "compiler.prose-judge-report.v1",
         "role": result.role,

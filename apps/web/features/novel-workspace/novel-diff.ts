@@ -1,4 +1,42 @@
 export type TextDelta = { kind: "same" | "delete" | "insert"; text: string };
+export type ParagraphDelta = {
+  before: string; after: string; beforeParagraph?: number; afterParagraph?: number;
+};
+
+/** Align exact unchanged paragraphs, retaining separators and both original sequences. */
+export function novelParagraphDiff(before: string, after: string): ParagraphDelta[] {
+  const split = (text: string) => text.match(/[^\r\n]+(?:\r\n|\r|\n)*|(?:\r\n|\r|\n)+/g) ?? [];
+  const a = split(before), b = split(after), rows: ParagraphDelta[] = [];
+  const width = b.length + 1;
+  const dp = a.length * b.length <= 250_000 ? new Uint32Array((a.length + 1) * width) : null;
+  if (dp) for (let i = a.length - 1; i >= 0; i--)
+    for (let j = b.length - 1; j >= 0; j--)
+      dp[i * width + j] = a[i] === b[j] ? 1 + dp[(i + 1) * width + j + 1]
+        : Math.max(dp[(i + 1) * width + j], dp[i * width + j + 1]);
+  let i = 0, j = 0;
+  let left: number[] = [], right: number[] = [];
+  const flush = () => {
+    for (let n = 0; n < Math.max(left.length, right.length); n++) {
+      const old = left[n], next = right[n];
+      rows.push({ before: old === undefined ? "" : a[old], after: next === undefined ? "" : b[next],
+        beforeParagraph: old === undefined ? undefined : old + 1,
+        afterParagraph: next === undefined ? undefined : next + 1 });
+    }
+    left = []; right = [];
+  };
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      flush(); rows.push({ before: a[i], after: b[j], beforeParagraph: ++i, afterParagraph: ++j });
+    } else if (!dp) {
+      if (i < a.length) left.push(i++);
+      if (j < b.length) right.push(j++);
+    } else if (i < a.length && (j === b.length || dp[(i + 1) * width + j] >= dp[i * width + j + 1])) {
+      left.push(i++);
+    } else right.push(j++);
+  }
+  flush();
+  return rows;
+}
 /** Unicode-safe LCS with a bounded cost; fallback still reconstructs both exact texts. */
 export function novelTextDiff(before: string, after: string): TextDelta[] {
   const a = Array.from(before),

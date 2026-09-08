@@ -16,6 +16,7 @@ from casefile_contracts import (
     NovelEditorSave,
     NovelEditorSummary,
     NovelEditorVersion,
+    NovelEditorVersionDetail,
     NovelEditorView,
 )
 
@@ -58,11 +59,33 @@ def novel_editor_router() -> APIRouter:
             actor, project_id, novel_id, payload.model_dump(mode="json")
         )
 
+    @router.post("/{novel_id}/versions", response_model=NovelEditorView)
+    def checkpoint(
+        project_id: int,
+        novel_id: int,
+        payload: NovelEditorSave,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> Any:
+        return NovelEditorService(session).checkpoint(
+            actor, project_id, novel_id, payload.model_dump(mode="json")
+        )
+
     @router.get("/{novel_id}/versions", response_model=list[NovelEditorVersion])
     def history(
         project_id: int, novel_id: int, actor: ActorDependency, session: SessionDependency
     ) -> Any:
         return NovelEditorService(session).history(actor, project_id, novel_id)
+
+    @router.get("/{novel_id}/versions/{revision}", response_model=NovelEditorVersionDetail)
+    def version_detail(
+        project_id: int,
+        novel_id: int,
+        revision: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> Any:
+        return NovelEditorService(session).version_detail(actor, project_id, novel_id, revision)
 
     @router.post("/{novel_id}/restore", response_model=NovelEditorView)
     def restore(

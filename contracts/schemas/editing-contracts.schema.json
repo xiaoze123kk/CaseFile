@@ -249,6 +249,21 @@
     },
     "novel_editor_summary": {
       "$ref": "novel-editor.schema.json#/$defs/NovelEditorSummary"
+    },
+    "novel_chapter_rewrite_candidate": {
+      "$ref": "novel-editor.schema.json#/$defs/NovelChapterRewriteCandidate"
+    },
+    "novel_editor_version_detail": {
+      "$ref": "novel-editor.schema.json#/$defs/NovelEditorVersionDetail"
+    },
+    "NovelRewriteRequirements": {
+      "$ref": "novel-editor.schema.json#/$defs/NovelRewriteRequirements"
+    },
+    "NovelChapterReviewCandidate": {
+      "$ref": "novel-editor.schema.json#/$defs/NovelChapterReviewCandidate"
+    },
+    "NovelEditorialReview": {
+      "$ref": "novel-editor.schema.json#/$defs/NovelEditorialReview"
     }
   }
 }

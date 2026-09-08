@@ -30,7 +30,7 @@
 .heading { display: flex; align-items: center; justify-content: space-between; }
 .heading h3 { margin: 0; font-size: 16px; }
 .runs { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
-.runs li { display: flex; align-items: center; gap: 12px; padding: 14px; background: #f1f2ee; border-radius: 6px; }
+.runs li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 24px; padding: 20px; background: #f5f5ef; border: 1px solid #dce0d9; border-radius: 6px; }
 .runs li[data-execution-state="running"],
 .runs li[data-execution-state="queued"],
 .runs li[data-execution-state="cancelling"] { position: relative; overflow: hidden; }
@@ -72,7 +72,24 @@
   .runs li[data-execution-state] .compileActivity > span { animation: none; opacity: 1; transform: none; }
   .runs li[data-execution-state="running"]::after { animation: none; transform: none; width: 100%; opacity: .4; }
 }
-.runs li > div { flex: 1; display: grid; gap: 6px; }
+ .runMain { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.runIdentity { display: grid; gap: 8px; min-width: 0; }
+.runIdentity strong { line-height: 1.65; overflow-wrap: anywhere; }
+.runIdentity small { font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.runMode { flex-shrink: 0; color: #667480; font-size: 11px; padding: 4px 7px; background: #e9ece7; border-radius: 3px; }
+.runActions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.content .runActions button { white-space: nowrap; font-size: 13px; padding: 8px 14px; }
+.content .runActions .loadNovel { background: #354c60; color: #fffef9; border-color: #354c60; }
+.runs li[data-completed="true"] { border-left: 3px solid #607786; background: #eef2ef; }
+.runNotes { grid-column: 1 / -1; }
+.runNotes:empty { display: none; }
+.content .runNotes p { font-size: 12px; color: #667480; }
+.content .runNotes [role="alert"] { color: #9f3d32; }
+.runHistory { grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid #dce0d9; color: #667480; }
+.runHistory summary { cursor: pointer; font-size: 12px; width: fit-content; }
+.runHistory summary:focus-visible { outline: 2px solid #607786; outline-offset: 3px; }
+.content .runHistory p { padding-top: 8px; font-size: 12px; }
+.content .runStats { font-size: 12px; color: #667480; }
 .runs strong { font-size: 14px; }
 .runs small { color: #667480; }
 .content [role="alert"] { color: #9f3d32; }

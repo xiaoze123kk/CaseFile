@@ -421,6 +421,11 @@ export interface EditingContracts {
   novel_editor_restore: NovelEditorRestore;
   novel_editor_version: NovelEditorVersion;
   novel_editor_summary: NovelEditorSummary;
+  novel_chapter_rewrite_candidate?: NovelChapterRewriteCandidate;
+  novel_editor_version_detail?: NovelEditorVersionDetail;
+  NovelRewriteRequirements?: NovelRewriteRequirements;
+  NovelChapterReviewCandidate?: NovelChapterReviewCandidate;
+  NovelEditorialReview?: NovelEditorialReview;
 }
 export interface NovelRecommendation {
   concept: string;
@@ -2746,10 +2751,19 @@ export interface NovelEditorRequest {
   request_key: string;
   expected_revision: number;
   mode: "discuss" | "rewrite" | "polish";
-  scope: "chapter" | "selection";
+  scope: "chapter" | "selection" | "chapter_rewrite";
   chapter_id: string;
   instruction: string;
   anchor: NovelEditorAnchor | null;
+  requirements?: NovelRewriteRequirements | null;
+  /**
+   * 本次对话的历史起点；不读取此位置及以前的对话或摘要。
+   */
+  history_after_exchange_id?: number;
+}
+export interface NovelRewriteRequirements {
+  preserve: string;
+  allow_changes: string;
 }
 export interface NovelEditorCandidateEdit {
   before: string;
@@ -2787,6 +2801,57 @@ export interface NovelEditorExchange {
     [k: string]: number;
   };
   edits: NovelEditorEdit[];
+  scope?: "chapter" | "selection" | "chapter_rewrite";
+  requirements?: NovelRewriteRequirements | null;
+  editorial_review?: NovelEditorialReview | null;
+  /**
+   * 本次对话的历史起点；不读取此位置及以前的对话或摘要。
+   */
+  history_after_exchange_id?: number;
+}
+export interface NovelEditorialReview {
+  status: "completed" | "incomplete" | "revision_failed";
+  message: string;
+  candidate_hash: string;
+  revision_count: number;
+  /**
+   * @maxItems 3
+   */
+  reports: NovelChapterReviewReport[];
+  /**
+   * @maxItems 18
+   */
+  stages?: NovelProseStage[];
+}
+export interface NovelChapterReviewReport {
+  candidate_hash: string;
+  round: number;
+  review: NovelChapterReviewCandidate;
+}
+export interface NovelChapterReviewCandidate {
+  summary: string;
+  action: "accept" | "revise" | "needs_author";
+  revision_plan: string;
+  /**
+   * @maxItems 40
+   */
+  findings: NovelChapterReviewFinding[];
+}
+export interface NovelChapterReviewFinding {
+  category: "intent" | "preservation" | "meaning" | "continuity";
+  severity: "info" | "warning" | "major";
+  message: string;
+  source_quote: string;
+  candidate_quote: string;
+  suggestion: string;
+}
+export interface NovelProseStage {
+  phase: string;
+  label: string;
+  status: "completed" | "incomplete";
+  summary: string;
+  findings: string[];
+  candidate_hash: string;
 }
 export interface NovelEditorView {
   id: number;
@@ -2829,6 +2894,18 @@ export interface NovelEditorSummary {
   title: string;
   source_key: string;
   revision: number;
+}
+export interface NovelChapterRewriteCandidate {
+  message: string;
+  text: string;
+  reason: string;
+}
+export interface NovelEditorVersionDetail {
+  revision: number;
+  title: string;
+  previous_title: string | null;
+  chapters: NovelEditorChapter[];
+  previous_chapters: NovelEditorChapter[];
 }
 
 /** Strict public event union discriminated by `event`. */

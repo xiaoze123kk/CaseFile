@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
-from casefile_contracts import ProseConsensusReport, ProseQualityReport
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -14,6 +13,7 @@ from casefile.domain.narrative_compiler.foundation import (
     canonical_json_sha256,
 )
 from casefile.domain.narrative_compiler.prose_checklist import validate_scene_render
+from casefile_contracts import ProseConsensusReport, ProseQualityReport
 
 QUALITY_DIMENSIONS: Final = (
     "pov_voice_consistency",
@@ -49,9 +49,9 @@ def validate_semantic_acceptance(
 ) -> ProseConsensusReport:
     """Require a complete pass bound to the exact render and checklist."""
 
-    render_json = validate_scene_render(
-        render, checklist=checklist, profile=profile
-    ).model_dump(mode="json")
+    render_json = validate_scene_render(render, checklist=checklist, profile=profile).model_dump(
+        mode="json"
+    )
     try:
         parsed = ProseConsensusReport.model_validate(consensus)
     except ValidationError as error:
@@ -83,9 +83,9 @@ def validate_quality_findings_report(
 ) -> ProseQualityReport:
     """Validate one findings report and its exact-copy render evidence."""
 
-    render_json = validate_scene_render(
-        render, checklist=checklist, profile=profile
-    ).model_dump(mode="json")
+    render_json = validate_scene_render(render, checklist=checklist, profile=profile).model_dump(
+        mode="json"
+    )
     validate_semantic_acceptance(
         semantic_consensus,
         checklist=checklist,
@@ -195,6 +195,22 @@ def validate_quality_pair_inputs(
     return original, polished
 
 
+def select_mirrored_preferences(
+    overall: tuple[str, str], dimension_results: Sequence[str]
+) -> tuple[bool, QualitySelectionReason]:
+    """Shared stable-win rule; callers bind the two opposite-position reports."""
+    if overall == ("polished", "polished") and "original" not in dimension_results:
+        reason: QualitySelectionReason = "polished_accepted"
+        accepted = True
+    elif overall[0] != overall[1] or "tie" in overall:
+        reason = "quality_unstable"
+        accepted = False
+    else:
+        reason = "quality_rollback"
+        accepted = False
+    return accepted, reason
+
+
 def resolve_mirrored_quality(
     first_report: dict[str, Any], second_report: dict[str, Any]
 ) -> MirroredQualityDecision:
@@ -220,15 +236,7 @@ def resolve_mirrored_quality(
         for report in (first, second)
         for item in report["dimension_preferences"]
     ]
-    if overall == ("polished", "polished") and "original" not in dimension_results:
-        reason: QualitySelectionReason = "polished_accepted"
-        accepted = True
-    elif overall[0] != overall[1] or "tie" in overall:
-        reason = "quality_unstable"
-        accepted = False
-    else:
-        reason = "quality_rollback"
-        accepted = False
+    accepted, reason = select_mirrored_preferences(overall, dimension_results)
     return MirroredQualityDecision(
         accept_polished=accepted,
         selection_reason=reason,
@@ -246,9 +254,7 @@ def _parse_quality_report(report: dict[str, Any]) -> ProseQualityReport:
         raise CompilerContractError("compiler_prose_quality_report_invalid") from error
 
 
-def _validate_evidence(
-    evidence_items: list[dict[str, Any]], blocks: dict[str, str]
-) -> None:
+def _validate_evidence(evidence_items: list[dict[str, Any]], blocks: dict[str, str]) -> None:
     seen: set[str] = set()
     for evidence in evidence_items:
         key = canonical_json_sha256(evidence)
@@ -265,9 +271,7 @@ def _validate_evidence(
         seen.add(key)
 
 
-def _mapped_preference(
-    report: dict[str, Any], *, preference: str | None = None
-) -> QualityIdentity:
+def _mapped_preference(report: dict[str, Any], *, preference: str | None = None) -> QualityIdentity:
     selected = preference if preference is not None else report["overall_preference"]
     if selected == "tie":
         return "tie"

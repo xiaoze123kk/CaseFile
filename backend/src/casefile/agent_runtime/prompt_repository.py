@@ -23,6 +23,17 @@ from casefile.agent_runtime.prompt_package import (
 PROMPT_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.prompts"
 PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
 SUPPORTED_AGENT_IDS: Final = (
+    "novel_context_compactor",
+    "novel_checklist",
+    "novel_judge",
+    "novel_revision",
+    "novel_rewriter",
+    "novel_quality_critic",
+    "novel_polisher",
+    "novel_pairwise",
+
+    "novel_chapter_rewrite",
+    "novel_chapter_review",
     "novel_collaboration",
     "brief_polish",
     "brief_anchor_extract",

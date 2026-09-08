@@ -6,16 +6,30 @@ from typing import Any
 
 from openai import OpenAI
 
-from casefile.agent_runtime.prompt_repository import load_prompt
+from casefile.agent_runtime.novel_chapter_review import review_chapter
+from casefile.agent_runtime.novel_prose import current_prompt_versions
+from casefile.agent_runtime.prompt_repository import PromptDefinition, load_prompt
 from casefile.agent_runtime.prose_rewriter import (
     DeepSeekProseRewriterProvider,
     ProseRewriterRequest,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
-from casefile_contracts import NovelEditorCandidate
+from casefile_contracts import NovelChapterRewriteCandidate, NovelEditorCandidate
 
 VERSION = "novel-collaboration-v1"
 MAX_CONTEXT_CHARS = 60000
+MAX_CHAPTER_REWRITE_CHARS = 12000
+
+
+def collaboration_prompt(payload: dict[str, Any]) -> PromptDefinition:
+    if payload.get("scope") == "chapter_rewrite":
+        return load_prompt(
+            "novel_chapter_rewrite",
+            "novel-chapter-rewrite-v2"
+            if payload.get("editorial_policy")
+            else "novel-chapter-rewrite-v1",
+        )
+    return load_prompt("novel_collaboration")
 
 
 def prepare_context(
@@ -25,6 +39,13 @@ def prepare_context(
     if chapter is None:
         raise ValueError("novel_chapter_missing")
     anchor = request["anchor"]
+    if request.get("requirements") and request["scope"] != "chapter_rewrite":
+        raise ValueError("novel_requirements_scope_invalid")
+    if request["scope"] == "chapter_rewrite":
+        if request["mode"] not in {"rewrite", "polish"} or anchor is not None:
+            raise ValueError("novel_chapter_rewrite_scope_invalid")
+        if len(chapter["text"]) > MAX_CHAPTER_REWRITE_CHARS:
+            raise ValueError("novel_chapter_rewrite_too_large")
     if request["scope"] == "selection":
         if (
             not anchor
@@ -48,12 +69,55 @@ def prepare_context(
         "after_context": chapter["text"][end : end + 2000],
         "history": history,
     }
+    if request["scope"] == "chapter_rewrite":
+        index = chapters.index(chapter)
+        payload.update(
+            {
+                "scope": "chapter_rewrite",
+                "editorial_policy": "chapter-prose-v1",
+                "prose_prompt_versions": current_prompt_versions(),
+                "requirements": request.get("requirements")
+                or {"preserve": "", "allow_changes": ""},
+                "chapter_rewrite_limits": {"max_output_chars": 16000},
+                "previous_chapter": (
+                    {
+                        "title": chapters[index - 1]["title"],
+                        "excerpt": chapters[index - 1]["text"][-2000:],
+                    }
+                    if index
+                    else None
+                ),
+                "next_chapter": (
+                    {
+                        "title": chapters[index + 1]["title"],
+                        "excerpt": chapters[index + 1]["text"][:2000],
+                    }
+                    if index + 1 < len(chapters)
+                    else None
+                ),
+            }
+        )
     if len(json.dumps(payload, ensure_ascii=False)) > MAX_CONTEXT_CHARS:
         raise ValueError("novel_context_too_large")
     return payload
 
 
 def validate_edits(candidate: dict[str, Any], payload: dict[str, Any]) -> list[dict[str, Any]]:
+    if payload.get("scope") == "chapter_rewrite":
+        chapter = NovelChapterRewriteCandidate.model_validate(candidate)
+        if not chapter.text.strip() or not chapter.reason.strip() or not chapter.message.strip():
+            raise ValueError("novel_chapter_rewrite_empty")
+        if chapter.text == payload["target"]:
+            return []
+        return [
+            {
+                "before": payload["target"],
+                "after": chapter.text,
+                "reason": chapter.reason,
+                "start": 0,
+                "end": len(payload["target"]),
+            }
+        ]
     parsed = NovelEditorCandidate.model_validate(candidate).model_dump(mode="json")
     target = payload["target"]
     edits = []
@@ -76,12 +140,19 @@ def validate_edits(candidate: dict[str, Any], payload: dict[str, Any]) -> list[d
 
 
 class NovelCollaborationProvider:
+    def review(self, payload: dict[str, Any], api_key: str, model_id: str) -> Any:
+        return review_chapter(payload, api_key, model_id)
+
     def edit(
         self, payload: dict[str, Any], api_key: str, model_id: str, repair: str | None = None
     ) -> Any:
-        prompt = load_prompt("novel_collaboration")
+        prompt = collaboration_prompt(payload)
         data = {
-            "response_schema": NovelEditorCandidate.model_json_schema(),
+            "response_schema": (
+                NovelChapterRewriteCandidate
+                if payload.get("scope") == "chapter_rewrite"
+                else NovelEditorCandidate
+            ).model_json_schema(),
             "untrusted_data": payload,
             "protocol_repair": repair,
         }
@@ -90,7 +161,7 @@ class NovelCollaborationProvider:
             model_id=model_id,
             api_key=api_key,
             system_prompt=prompt.system_prompt,
-            prompt_version=VERSION,
+            prompt_version=prompt.version,
             prompt_hash=prompt.system_prompt_sha256,
             input_payload=data,
             input_hash=digest,
@@ -98,6 +169,7 @@ class NovelCollaborationProvider:
             request_fingerprint=digest,
             rewrite_round=1,
             remaining_scene_call_budget=2,
+            max_output_tokens=32768 if payload.get("scope") == "chapter_rewrite" else 16384,
         )
         return DeepSeekProseRewriterProvider().rewrite_scene(request)
 

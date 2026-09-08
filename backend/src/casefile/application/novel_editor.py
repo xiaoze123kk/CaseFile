@@ -24,6 +24,13 @@ def conflict() -> ApplicationError:
     )
 
 
+def novel_result_message(mode: str, result: dict[str, Any], *, has_edits: bool) -> str:
+    """Public completion reflects effective edits rather than a model's self-description."""
+    if mode != "discuss" and not has_edits and not result.get("editorial_review"):
+        return "本次未生成有效的正文修改，原文保持不变。"
+    return result.get("message", "")
+
+
 class NovelEditorService:
     def __init__(self, session: Session):
         self.session = session
@@ -148,12 +155,20 @@ class NovelEditorService:
         return {
             "id": exchange.id,
             "task_id": task.id,
+            "history_after_exchange_id": task.input_jsonb["request"].get("history_after_exchange_id", 0),
             "revision": exchange.revision,
             "mode": exchange.mode,
+            "scope": task.input_jsonb["request"]["scope"],
+            "requirements": task.input_jsonb["request"].get("requirements"),
+            "editorial_review": (task.result_jsonb or {}).get("editorial_review"),
             "chapter_id": exchange.chapter_key,
             "instruction": exchange.instruction,
             "anchor": task.input_jsonb.get("anchor"),
-            "message": (task.result_jsonb or {}).get("message", ""),
+            "message": novel_result_message(
+                exchange.mode, task.result_jsonb or {}, has_edits=bool(edits)
+            )
+            if task.status == "succeeded"
+            else (task.result_jsonb or {}).get("message", ""),
             "status": task.status,
             "error": task.error_code,
             "usage": {k: v for k, v in task.usage_jsonb.items() if type(v) is int},
@@ -228,6 +243,27 @@ class NovelEditorService:
             self.append_version(m, payload["title"], payload["chapters"], "manual")
             return self.view(m)
 
+    def checkpoint(
+        self, actor: int, project: int, manuscript: int, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        with self.session.begin():
+            m = self.owned(actor, project, manuscript, lock=True)
+            current = self.version(m, m.revision)
+            same = (
+                current.title == payload["title"] and self.chapters(current) == payload["chapters"]
+            )
+            if (
+                current.reason == "checkpoint"
+                and same
+                and m.revision in (payload["expected_revision"], payload["expected_revision"] + 1)
+            ):
+                return self.view(m)
+            if m.revision != payload["expected_revision"]:
+                raise conflict()
+            m.revision += 1
+            self.append_version(m, payload["title"], payload["chapters"], "checkpoint")
+            return self.view(m)
+
     def history(self, actor: int, project: int, manuscript: int) -> list[dict[str, Any]]:
         with self.session.begin():
             m = self.owned(actor, project, manuscript)
@@ -240,10 +276,37 @@ class NovelEditorService:
                 }
                 for v in self.session.scalars(
                     select(NovelVersion)
-                    .where(NovelVersion.manuscript_id == m.id)
+                    .where(
+                        NovelVersion.manuscript_id == m.id,
+                        NovelVersion.reason.in_(["original", "local_import", "checkpoint"]),
+                    )
                     .order_by(NovelVersion.revision.desc())
                 )
             ]
+
+    def version_detail(
+        self, actor: int, project: int, manuscript: int, revision: int
+    ) -> dict[str, Any]:
+        with self.session.begin():
+            m = self.owned(actor, project, manuscript)
+            version = self.version(m, revision)
+            previous = self.session.scalar(
+                select(NovelVersion)
+                .where(
+                    NovelVersion.manuscript_id == m.id,
+                    NovelVersion.revision < revision,
+                    NovelVersion.reason.in_(["original", "local_import", "checkpoint"]),
+                )
+                .order_by(NovelVersion.revision.desc())
+                .limit(1)
+            )
+            return {
+                "revision": version.revision,
+                "title": version.title,
+                "previous_title": previous.title if previous else None,
+                "chapters": self.chapters(version),
+                "previous_chapters": self.chapters(previous) if previous else [],
+            }
 
     def restore(
         self, actor: int, project: int, manuscript: int, payload: dict[str, Any]

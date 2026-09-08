@@ -471,7 +471,8 @@ def test_deepseek_adapter_is_single_attempt_and_sanitized(
             SimpleNamespace(
                 message=SimpleNamespace(
                     content=json.dumps(rewrite_case["candidate"], ensure_ascii=False)
-                )
+                ),
+                finish_reason="length",
             ),
         ),
     )
@@ -479,6 +480,7 @@ def test_deepseek_adapter_is_single_attempt_and_sanitized(
     monkeypatch.setattr(provider, "_create_completion", lambda _request: response)
     result = provider.rewrite_scene(request)
     assert result.candidate == rewrite_case["candidate"]
+    assert result.finish_reason == "length"
     assert result.transport_attempts[0].attempt_index == 1
     assert request.network_retries == 0
 

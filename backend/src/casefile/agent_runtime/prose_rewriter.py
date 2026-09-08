@@ -126,6 +126,7 @@ class ProseRewriterProviderResult:
     transport_attempts: tuple[ProseRewriterTransportAttempt, ...]
     recovered: bool = False
     generation_call_count: int = 1
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +214,7 @@ class DeepSeekProseRewriterProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
             transport_attempts=(attempt,),
+            finish_reason=response.choices[0].finish_reason if len(response.choices) == 1 else None,
         )
 
     def _create_completion(self, request: ProseRewriterRequest) -> Any:
@@ -246,7 +248,9 @@ class DeepSeekProseRewriterProvider:
                     {
                         "role": "user",
                         "content": (
-                            "请完成编辑决策。"
+                            "请按系统职责完成本次任务。"
+                            if request.prompt_version.startswith("novel-")
+                            else "请完成编辑决策。"
                             if "response_schema" in request.input_payload
                             else generation_focus(request)
                         ),
