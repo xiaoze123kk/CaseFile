@@ -237,7 +237,7 @@
             {
               "enum": [
                 "semantic_accepted", "polished_accepted", "polish_semantic_rollback", "judge_budget_preserve_accepted_original",
-                "quality_rollback", "quality_unstable"
+                "quality_rollback", "quality_unstable", "llm_nonfatal_retained"
               ]
             },
             {"type": "null"}
@@ -456,6 +456,136 @@
         "total_tokens": {"type": "integer", "minimum": 0}
       }
     },
+    "ProseRevisionFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_id",
+        "assessment",
+        "severity",
+        "reason"
+      ],
+      "properties": {
+        "check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assessment": {
+          "enum": [
+            "valid",
+            "literary_interpretation",
+            "insufficient_evidence",
+            "plan_conflict"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "none",
+            "nonfatal",
+            "fatal"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "ProseRevisionDecisionCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "findings",
+        "revision_plan",
+        "rationale"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "retain",
+            "local_revision",
+            "full_rewrite",
+            "stop"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProseRevisionFinding"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "revision_plan": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3000
+        }
+      }
+    },
+    "ProseRevisionDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id",
+        "scene_id",
+        "render_hash",
+        "input_hash",
+        "repair_budget_exhausted",
+        "action",
+        "findings",
+        "revision_plan",
+        "rationale"
+      ],
+      "properties": {
+        "schema_id": {
+          "const": "compiler.prose-revision-decision.v1"
+        },
+        "scene_id": {
+          "$ref": "#/$defs/SceneId"
+        },
+        "render_hash": {
+          "$ref": "#/$defs/Sha256Hex"
+        },
+        "input_hash": {
+          "$ref": "#/$defs/Sha256Hex"
+        },
+        "repair_budget_exhausted": {
+          "type": "boolean"
+        },
+        "action": {
+          "enum": [
+            "retain",
+            "local_revision",
+            "full_rewrite",
+            "stop"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProseRevisionFinding"
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "revision_plan": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3000
+        }
+      }
+    },
     "SceneManifest": {
       "type": "object",
       "additionalProperties": false,
@@ -485,6 +615,9 @@
         "accepted_render_hash": {
           "oneOf": [{"$ref": "#/$defs/Sha256Hex"}, {"type": "null"}]
         },
+        "strict_semantic_pass": {"type": "boolean"},
+        "product_accepted": {"type": "boolean"},
+        "revision_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
         "rewrite_count": {"type": "integer", "minimum": 0, "maximum": 2},
         "call_count": {"type": "integer", "minimum": 0, "maximum": 23},
         "physical_request_count": {"type": "integer", "minimum": 0},

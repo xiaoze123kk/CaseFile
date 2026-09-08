@@ -41,6 +41,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "prose_continuity",
     "prose_writer",
     "prose_rewriter",
+    "prose_revision",
     "prose_fidelity_judge",
     "prose_adversarial_judge",
     "prose_coherence_judge",

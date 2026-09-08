@@ -89,10 +89,20 @@ Judge 每 check 的 evidence_ids 与正式 JudgeAssessment.evidence 上限同步
 
 生成输出新增独立一次有界纠偏，覆盖整场复制上一场、重写无进展及长度不合规。Writer/Rewriter/Polisher 生产出口统一使用硬字符范围，完整重验通过后才进入下一步。每场景Judge最多三次，全部模型调用最多23次；生成修复单独计费留痕，不隐藏调用。可选润色失败可以保留已通过语义审核的原稿。历史已接受正文按原身份和字符统计读取，不在下一场重新以不同长度规则拒绝。旧Prompt和旧运行证据保持不可变。
 
-## 生产正文 runtime v7：LLM 连续性建议与恢复
+## 生产正文 runtime v8：LLM 连续性建议与定向生成修复
 
 生成前以独立 Continuity 审核比较上一场已接受正文、当前和下一场计划的认知及信息释放；该模型调用计入当前场景三次 Judge 总额，不额外扩容。模型发现的叙事连续性问题保存结构化报告并作为 Writer 可处理的建议继续生成，不升级为服务端硬阻断，也不静默修改已批准的 ScenePlan；只有协议、引用绑定等确定性失败继续失败关闭。生成视图仅对相关角色状态去重并提供变化项，正文、对象原文、完整权威清单及原始响应保持不变。
 
 恢复使用同一冻结 CompileRun/TaskRun 的一次显式续跑；已接受前缀按清单哈希和产物哈希验证复用。尝试级中间产物与 manifest 追加 attempt 后缀，旧失败不可覆盖。数据库累计实际模型调用是预算权威，进程重启、恢复及协议修复均不能重置 Judge 三次/场景和全部调用二十三次/场景限制。计划、工作稿或运行版本变化拒绝恢复，要求重新规划。
 
+Rewrite 或 Writer 的一次生成纠偏必须携带失败候选 hash、禁止原样返回的 hash 与按失败类型生成的明确修订动作。`prose_generation_no_progress` 要求围绕 `repair_findings` 改写触发失败的句段及相邻动作/对白；即使模型认为旧稿可用，也不得重复 `current_render` 或失败候选。服务端仍只验证候选是否实际变化、长度与协议，不替模型创作正文。
+
 质量优化不是正文交付前提：质量请求允许一次显式连接重试；findings、preservation、pairwise 失败时保留此前已语义通过的原稿并保存降级原因，不接受未经校验的候选。
+
+## 生产正文 runtime v9：LLM 编辑决策与分离交付
+
+本节替代 v8 的无进展处理及早期全量语义失败关闭在产品模式中的行为。Judge 原始评审保持不可变；编辑 LLM 逐项判断意见成立、文学解释、证据不足或规划冲突，自主选择保留、局部修订、完整重写或停止。uncertain 不再直接等同于必须修改。规划冲突的文学严重程度由 LLM 评估，不由服务端规则断言。
+
+每场最多两轮正文修订、三次编辑决策（包含最终耗尽评估），编辑调用复用 Rewrite 传输端口，使用独立 prose_revision 留痕身份，避免误计为正文修订并计入既有 23 次总预算；不使用或扩容 Fidelity/Continuity 的三次 Judge 预算。编辑协议、check 引用完整性、输入/正文哈希及预算由服务端验证。无进展不再发出同条件生成纠偏，而进入有界终局编辑评估；致命残留为 semantic_rejected，不触发基础设施续跑。真正的传输与协议失败仍按各自状态处理。
+
+生产使用 product 模式；仅 LLM 明确 retain 且无 fatal 项时可接受原候选，selection_reason=llm_nonfatal_retained，并绑定编辑报告哈希。不伪造 Judge pass，不进入要求语义通过的可选润色。SceneManifest 分别记录 product_accepted、strict_semantic_pass 和 revision_report_hashes。组件 benchmark 默认 strict，产品保留不能算严格语义成功。历史运行与 Prompt 不覆盖，新策略需要新冻结运行，不能继续旧 v8。

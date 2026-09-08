@@ -187,8 +187,8 @@ def test_request_contains_failed_and_preserved_semantics_without_credentials(
         },
         "hard_gate": True,
     }
-    assert "generation_plan" in request.system_prompt
-    assert "current_assignment" in request.system_prompt
+    assert "revision_decision" in request.system_prompt
+    assert "local_revision" in request.system_prompt
 
 
 def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(
@@ -492,7 +492,7 @@ def test_deepseek_adapter_is_single_attempt_and_sanitized(
     assert "credential-canary" not in repr(raised.value.failed_call)
 
 
-def test_production_rewriter_repairs_no_progress_before_another_judge(rewrite_case):
+def test_production_no_progress_is_semantic_and_does_not_repeat_generation(rewrite_case):
     original = deepcopy(rewrite_case["candidate"])
     corrected = deepcopy(original)
     corrected["blocks"][0]["text"] += "他重新核实了遗漏的动作。"
@@ -515,7 +515,8 @@ def test_production_rewriter_repairs_no_progress_before_another_judge(rewrite_ca
         api_key="fake",
         remaining_scene_call_budget=22,
     )
-    assert result.status == "completed"
-    assert provider.call_count == result.call.generation_call_count == 2
+    assert result.status == "semantic_rejected"
+    assert provider.call_count == result.call.generation_call_count == 1
     assert failures[0]["code"] == "prose_generation_no_progress"
-    assert result.render["round"] == 1
+    assert "generation_repair" not in result.call.request_payload
+    assert result.render is None

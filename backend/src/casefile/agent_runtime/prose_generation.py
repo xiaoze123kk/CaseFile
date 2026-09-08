@@ -14,7 +14,7 @@ from casefile.agent_runtime.prose_context import scene_generation_context
 from casefile.domain.narrative_compiler import CompilerContractError, canonical_json_sha256
 from casefile_contracts import SceneRenderCandidate
 
-GENERATION_POLICY = "prose-generation-repair-v3"
+GENERATION_POLICY = "prose-generation-repair-v5"
 
 
 def generation_length_contract(profile: dict[str, Any]) -> dict[str, Any]:
@@ -76,6 +76,12 @@ def generation_focus(request: Any) -> str:
                 "assignment": data.get("current_assignment"),
                 "length": generation_length_contract(data["profile"]),
                 "repair_issue": request.input_payload.get("generation_repair", {}).get("issue"),
+                "repair_directive": request.input_payload.get("generation_repair", {}).get(
+                    "repair_directive"
+                ),
+                "forbidden_output_hashes": request.input_payload.get("generation_repair", {}).get(
+                    "forbidden_output_hashes"
+                ),
                 "required_changes": data.get("repair_findings"),
             },
             ensure_ascii=False,
@@ -146,6 +152,8 @@ def prepare_generation_result(
     if issue is None:
         return result, request
     provider.record_generation_failure(result.request_fingerprint, issue)
+    if issue["code"] == "prose_generation_no_progress":
+        return result, request
     component_hash = canonical_json_sha256(
         {
             "policy": GENERATION_POLICY,
@@ -154,6 +162,7 @@ def prepare_generation_result(
             "issue": issue,
         }
     )
+    repair_directive = _generation_repair_directive(issue["code"])
     payload = {
         **request.input_payload,
         "server_bindings": {
@@ -166,6 +175,8 @@ def prepare_generation_result(
             "failed_output_hash": result.output_hash,
             "failed_candidate": result.candidate,
             "issue": issue,
+            "repair_directive": repair_directive,
+            "forbidden_output_hashes": [issue["candidate_hash"]],
         },
     }
     input_hash = canonical_json_sha256(payload)
@@ -191,6 +202,37 @@ def prepare_generation_result(
     if issue is not None:
         provider.record_generation_failure(repaired.request_fingerprint, issue)
     return replace(repaired, generation_call_count=2), repaired_request
+
+
+def _generation_repair_directive(code: str) -> dict[str, Any]:
+    common = {
+        "output": "返回当前场景的完整替代正文，不返回补丁或修复说明。",
+        "verification": "新候选的规范化正文及候选哈希必须不同于禁止输出。",
+    }
+    if code == "prose_generation_no_progress":
+        return {
+            **common,
+            "required_action": (
+                "依据 repair_findings 逐项改写触发失败的动作、对白或叙述，并连同相邻句重构；"
+                "即使你认为旧稿已经正确，也不得再次返回 current_render 或 failed_candidate。"
+            ),
+        }
+    if code == "prose_generation_repeated_previous_scene":
+        return {
+            **common,
+            "required_action": (
+                "从 current_assignment 的目标、beats 和 outcome 重新起稿；"
+                "不得复述、改格式或近似复制"
+                " continuity_reference / previous_scene_render。"
+            ),
+        }
+    return {
+        **common,
+        "required_action": (
+            "在保留全部权威语义的前提下重新组织完整正文，使字符数落入 length_contract；"
+            "不得机械截断或再次返回失败候选。"
+        ),
+    }
 
 
 def validate_generation_result(provider: Any, result: Any, request: Any, component: str) -> None:

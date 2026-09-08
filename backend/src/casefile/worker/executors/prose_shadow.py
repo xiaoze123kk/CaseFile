@@ -21,6 +21,7 @@ from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_prose_judge_checklist,
     canonical_json_sha256,
+    finalize_scene_render,
 )
 from casefile.domain.narrative_compiler.prose_checklist import scene_plan_review_context
 from casefile.worker.executors.prose_providers import DurableProseProvider, ProseProviders
@@ -216,7 +217,7 @@ class ProseShadowExecutor:
                 return (
                     (
                         "finalized_polished"
-                    if render["selection_reason"] == "polished_accepted"
+                        if render["selection_reason"] == "polished_accepted"
                         else "finalized_original"
                     ),
                     render,
@@ -305,7 +306,32 @@ class ProseShadowExecutor:
             remaining_scene_call_budget=23
             - (writer.call.generation_call_count if writer.call else 1),
             observe=self.observe,
+            llm_revision=True,
+            delivery_mode="product",
         )
+        if rewrite.status == "product_accepted" and rewrite.final_render is not None:
+            accepted = finalize_scene_render(
+                rewrite.final_render,
+                original_render=rewrite.final_render,
+                checklist=checklist,
+                profile=profile,
+                component_input_hash=canonical_json_sha256(
+                    {
+                        "runtime": store.runtime,
+                        "render": rewrite.final_render,
+                        "selection": "llm_nonfatal_retained",
+                        "revision_reports": rewrite.revision_reports,
+                    }
+                ),
+                selection_reason="llm_nonfatal_retained",
+            ).model_dump(mode="json")
+            store.artifact(
+                "scene_render",
+                f"compiler.scene_render.{store.scene_id}.accepted",
+                accepted,
+                "prose_manifest",
+            )
+            return "finalized_original", accepted, "prose_editorial_retained"
         if rewrite.status != "semantic_accepted" or rewrite.final_render is None:
             return (
                 (
@@ -370,6 +396,15 @@ class ProseShadowExecutor:
                 }
             )
         store.finish_steps(error_code=error, outputs=outputs)
+        if name == "revision_decision" and execution.report is not None:
+            call = execution.call
+            store.artifact(
+                "validation_report",
+                f"compiler.validation_report.{store.scene_id}.revision.{execution.report['input_hash']}",
+                execution.report,
+                "prose_revision",
+                source_step=self.provider.steps.get(call.request_fingerprint),
+            )
         render = getattr(execution, "render", None)
         if render is not None:
             call = execution.call

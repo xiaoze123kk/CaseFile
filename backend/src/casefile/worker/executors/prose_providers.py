@@ -164,7 +164,10 @@ class DurableProseProvider:
 
     def rewrite_scene(self, request: Any) -> ProseRewriterProviderResult:
         return self._invoke(
-            "prose_rewrite",
+            "prose_revision"
+            if request.input_payload.get("output_schema_id")
+            == "compiler.prose-revision-decision.v1"
+            else "prose_rewrite",
             self.sources.rewriter.rewrite_scene,
             request,
             ProseRewriterProviderResult,

@@ -95,6 +95,13 @@ def project_prose_scene(
             (a.content_hash for a in renders if a.content_jsonb["stage"] == "accepted"), None
         ),
         "rewrite_count": sum(a.content_jsonb["stage"].startswith("rewrite_") for a in renders),
+        "strict_semantic_pass": any(
+            a.content_jsonb["stage"] == "accepted"
+            and a.content_jsonb["selection_reason"] != "llm_nonfatal_retained"
+            for a in renders
+        ),
+        "product_accepted": any(a.content_jsonb["stage"] == "accepted" for a in renders),
+        "revision_report_hashes": hashes("prose-revision-decision"),
         "failure_reason": reason,
         **scene_usage(session, task_id, scene["scene_id"], recovered),
     }

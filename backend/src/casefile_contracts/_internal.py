@@ -3759,6 +3759,7 @@ class SelectionReason(Enum):
     judge_budget_preserve_accepted_original = 'judge_budget_preserve_accepted_original'
     quality_rollback = 'quality_rollback'
     quality_unstable = 'quality_unstable'
+    llm_nonfatal_retained = 'llm_nonfatal_retained'
 
 
 class SceneRender(BaseModel):
@@ -4016,6 +4017,64 @@ class UsageSummary(BaseModel):
     total_tokens: Annotated[int, Field(ge=0)]
 
 
+class Assessment(Enum):
+    valid = 'valid'
+    literary_interpretation = 'literary_interpretation'
+    insufficient_evidence = 'insufficient_evidence'
+    plan_conflict = 'plan_conflict'
+
+
+class Severity3(Enum):
+    none = 'none'
+    nonfatal = 'nonfatal'
+    fatal = 'fatal'
+
+
+class ProseRevisionFinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    check_id: Annotated[str, Field(min_length=1)]
+    assessment: Assessment
+    severity: Severity3
+    reason: Annotated[str, Field(max_length=2000, min_length=1)]
+
+
+class Action3(Enum):
+    retain = 'retain'
+    local_revision = 'local_revision'
+    full_rewrite = 'full_rewrite'
+    stop = 'stop'
+
+
+class ProseRevisionDecisionCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    action: Action3
+    findings: Annotated[list[ProseRevisionFinding], Field(max_length=128, min_length=1)]
+    revision_plan: Annotated[str, Field(max_length=3000)]
+    rationale: Annotated[str, Field(max_length=3000, min_length=1)]
+
+
+class ProseRevisionDecision(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.prose-revision-decision.v1']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    render_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    repair_budget_exhausted: bool
+    action: Action3
+    findings: Annotated[list[ProseRevisionFinding], Field(max_length=128, min_length=1)]
+    revision_plan: Annotated[str, Field(max_length=3000)]
+    rationale: Annotated[str, Field(max_length=3000, min_length=1)]
+
+
 class FinalState(Enum):
     blocked_precondition = 'blocked_precondition'
     inconclusive_infrastructure = 'inconclusive_infrastructure'
@@ -4043,6 +4102,9 @@ class SceneManifest(BaseModel):
     arbiter_report_hashes: list[Sha256Hex]
     quality_report_hashes: list[Sha256Hex]
     accepted_render_hash: Sha256Hex | None
+    strict_semantic_pass: bool | None = None
+    product_accepted: bool | None = None
+    revision_report_hashes: list[Sha256Hex] | None = None
     rewrite_count: Annotated[int, Field(ge=0, le=2)]
     call_count: Annotated[int, Field(ge=0, le=23)]
     physical_request_count: Annotated[int | None, Field(ge=0)] = None

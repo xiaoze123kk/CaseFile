@@ -411,6 +411,9 @@ def test_production_writer_length_repair_is_bounded(writer_case, repair_succeeds
     assert result.status == ("completed" if repair_succeeds else "protocol_failed")
     assert len(failures) == (1 if repair_succeeds else 2)
     assert result.call.request_payload["generation_repair"]["failed_candidate"] == too_long
+    repair = result.call.request_payload["generation_repair"]
+    assert repair["repair_directive"]["required_action"]
+    assert repair["forbidden_output_hashes"] == [repair["issue"]["candidate_hash"]]
     assert failures[0][1]["actual_chars"] > failures[0][1]["max_chars"]
     assert "scene_context" not in result.call.request_payload["untrusted_data"]["checklist"]
     projected = result.call.request_payload["untrusted_data"]["scene_context"]

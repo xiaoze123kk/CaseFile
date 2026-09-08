@@ -34,9 +34,9 @@ from casefile.domain.narrative_compiler import (
 from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 
 PROSE_REWRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v5"
-PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v5"
-PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v5"
+PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v7"
+PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v7"
+PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v7"
 PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v2"
 PROSE_REWRITER_MAX_TURNS: Final = 1
 PROSE_REWRITER_MAX_CALLS_PER_SCENE: Final = 2
@@ -147,7 +147,7 @@ class ProseRewriterProvider(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class ProseRewriterExecution:
-    status: Literal["completed", "protocol_failed", "inconclusive"]
+    status: Literal["completed", "semantic_rejected", "protocol_failed", "inconclusive"]
     render: dict[str, Any] | None
     call: ProseRewriterProviderResult | None
     failed_call: ProseRewriterFailedCall | None = None
@@ -226,7 +226,9 @@ class DeepSeekProseRewriterProvider:
                         "content": request.system_prompt
                         + "\n\n必须严格遵守以下 JSON Schema：\n"
                         + json.dumps(
-                            PROSE_REWRITER_CANDIDATE_SCHEMA,
+                            request.input_payload.get(
+                                "response_schema", PROSE_REWRITER_CANDIDATE_SCHEMA
+                            ),
                             ensure_ascii=False,
                             sort_keys=True,
                             separators=(",", ":"),
@@ -241,7 +243,14 @@ class DeepSeekProseRewriterProvider:
                             separators=(",", ":"),
                         ),
                     },
-                    {"role": "user", "content": generation_focus(request)},
+                    {
+                        "role": "user",
+                        "content": (
+                            "请完成编辑决策。"
+                            if "response_schema" in request.input_payload
+                            else generation_focus(request)
+                        ),
+                    },
                 ],
                 response_format={"type": "json_object"},
                 temperature=request.temperature,
@@ -306,6 +315,7 @@ def execute_prose_rewriter(
     api_key: str,
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseRewriterProviderResult | None] | None = None,
+    revision_decision: dict[str, Any] | None = None,
 ) -> ProseRewriterExecution:
     """Validate one failed semantic round and produce its complete replacement."""
 
@@ -323,6 +333,7 @@ def execute_prose_rewriter(
             model_id=model_id,
             api_key=api_key,
             remaining_scene_call_budget=remaining_scene_call_budget,
+            revision_decision=revision_decision,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -360,7 +371,12 @@ def execute_prose_rewriter(
             component_input_hash=request.component_input_hash,
         ).model_dump(mode="json")
     except (CompilerContractError, ProseRewriterProtocolError) as error:
-        return ProseRewriterExecution("protocol_failed", None, call, error_code=str(error))
+        status: Literal["semantic_rejected", "protocol_failed"] = (
+            "semantic_rejected"
+            if str(error) == "prose_generation_no_progress"
+            else "protocol_failed"
+        )
+        return ProseRewriterExecution(status, None, call, error_code=str(error))
     return ProseRewriterExecution("completed", render, call)
 
 
@@ -377,6 +393,8 @@ def build_prose_rewriter_request(
     model_id: str,
     api_key: str,
     remaining_scene_call_budget: int,
+    revision_decision: dict[str, Any] | None = None,
+    review_only: bool = False,
 ) -> ProseRewriterRequest:
     """Build the minimal full-Rewrite Provider view after exact validation."""
 
@@ -400,8 +418,11 @@ def build_prose_rewriter_request(
         current_render, checklist=checklist_json, profile=profile_json
     ).model_dump(mode="json")
     rewrite_round = render_json["round"] + 1
-    expected_stage = "writer" if rewrite_round == 1 else "rewrite_1"
-    if rewrite_round not in {1, 2} or render_json["stage"] != expected_stage:
+    expected_stage = "writer" if rewrite_round == 1 else f"rewrite_{rewrite_round - 1}"
+    if (
+        rewrite_round not in ({1, 2, 3} if review_only else {1, 2})
+        or render_json["stage"] != expected_stage
+    ):
         raise ProseRewriterProtocolError("prose_rewriter_source_stage_invalid")
     consensus_json, reports_json = _validate_review_inputs(
         consensus=consensus,
@@ -503,6 +524,7 @@ def build_prose_rewriter_request(
             "consensus": consensus_json,
             "repair_findings": repair_findings,
             "preserve_checks": preserve_checks,
+            **({"revision_decision": revision_decision} if revision_decision else {}),
         },
         "output_schema_id": PROSE_REWRITER_CANDIDATE_SCHEMA_ID,
     }

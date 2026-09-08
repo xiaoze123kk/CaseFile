@@ -39,10 +39,12 @@ from casefile_contracts import (
     ProseJudgeChecklist,
     ProseJudgeReport,
     ProseQualityReport,
+    ProseRevisionDecision,
+    ProseRevisionDecisionCandidate,
     SceneRender,
 )
 
-PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v7"
+PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v9"
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -59,7 +61,8 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
         "prose_adversarial_judge": load_prompt("prose_adversarial_judge").version,
         "prose_coherence_judge": load_prompt("prose_coherence_judge").version,
         "prose_arbiter": load_prompt("prose_arbiter").version,
-        "prose_rewriter": "prose-rewriter-v5",
+        "prose_rewriter": "prose-rewriter-v7",
+        "prose_revision": "prose-revision-v3",
         "prose_quality_critic": "prose-quality-critic-v1",
         "prose_quality_pairwise": "prose-quality-pairwise-v1",
         "prose_polisher": "prose-polisher-v5",
@@ -77,6 +80,8 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
                 ProseJudgeReport,
                 ProseConsensusReport,
                 ProseQualityReport,
+                ProseRevisionDecision,
+                ProseRevisionDecisionCandidate,
                 CompileManifest,
                 NovelCandidate,
             )
@@ -121,12 +126,15 @@ def prose_runtime_binding(scene_count: int | None = None) -> dict[str, Any]:
             "continuity_counts_toward_judge_budget": True,
             "scene_checkpoint_policy": "accepted-prefix-v1",
             "generation_repairs_per_call": 1,
-            "generation_policy": "prose-generation-repair-v3",
+            "generation_policy": "prose-generation-repair-v5",
             "generation_length_policy": "hard-range-before-judging",
             "judge_calls_per_scene": 3,
             "protocol_repairs_per_call": 1,
             "judge_evidence_per_check": 64,
             "rewrite_rounds": 2,
+            "revision_decisions_per_scene": 3,
+            "delivery_mode": "product",
+            "no_progress_policy": "semantic-exhaustion-no-transport-resume",
             "arbiter_per_round": 1,
             "judge_network_retries": 0,
             "other_network_retries": 0,

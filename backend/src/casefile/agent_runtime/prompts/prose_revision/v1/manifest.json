@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_revision",
+  "version": "prose-revision-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "38523c92010618593f48d6a5f75a8bff1b575cf5423086de2abf4a7f7f2de51d",
+  "previous_version": null,
+  "change_summary": "由 LLM 复核意见、决定修订及耗尽后的文学严重程度。"
+}

@@ -339,6 +339,12 @@ class CompileArtifact(BigIntIdentityPrimaryKeyMixin, Base):
                 "sonb->>'schema_id' = schema_id AND regexp_replace(artifact_key, '"
                 "\\.attempt_[1-9][0-9]*$', '') = 'compiler.continuity.' || (content"
                 "_jsonb->>'scene_id')), false)"
+                " OR COALESCE((artifact_kind = 'validation_report' AND schema_id = 'c"
+                "ompiler.prose-revision-decision.v1' AND content_jsonb->>'schema_id' "
+                "= schema_id AND content_jsonb->>'input_hash' ~ '^[0-9a-f]{64}$' AND "
+                "regexp_replace(artifact_key, '\\.attempt_[1-9][0-9]*$', '') = 'compil"
+                "er.validation_report.' || (content_jsonb->>'scene_id') || '.revision"
+                ".' || (content_jsonb->>'input_hash')), false)"
             ),
             name="identity_allowed",
         ),

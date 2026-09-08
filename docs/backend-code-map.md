@@ -1,6 +1,6 @@
 # 后端代码职责地图
 
-## 正文一致性与断点恢复（runtime v7）
+## 正文一致性与定向生成修复（runtime v8）
 
 - `backend/src/casefile/agent_runtime/prose_continuity.py`：跨场景审核协议、请求绑定与 Provider 适配，不持有数据库，不改写规划。
 - `backend/src/casefile/agent_runtime/prose_context.py`：生成专用状态投影、去重和变化项，保留完整对象原文，原清单不变。
@@ -439,3 +439,13 @@ Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围�
 `prose_polish_supervisor.py` 在生产可选润色失败时保留已经语义通过的原稿，并保留失败记录。历史已接受稿仍可读取：`prose_checklist.py` 的下一场入口验证既有稿件的来源、身份和字符统计，不重新施加另一版本的生成长度政策；新生产稿件的范围约束已在统一出口执行。
 
 生产 runtime v5 将 ModelView 中完整前场正文转换为单份 continuity_reference.text（不裁剪文本，并保留原render hash），避免把历史SceneRender当作待输出示例。当前任务摘要在请求末尾重新列出，仍属于受Prompt注入边界约束的数据。Rewriter的段数计划降为建议，不得为了凑段追加旧稿。第一次定向Live失败记录保留在novel-e2e-20260907-v3/focused，后续版本使用独立冻结目录。
+
+## LLM 修订决策（runtime v9）
+
+- agent_runtime/prose_revision.py：使用生成契约验证编辑候选，冻结请求及正文绑定，不持有数据库，不决定文学严重程度。
+- agent_runtime/prose_rewrite_supervisor.py：编排编辑决策、全文替代稿及复审；有限预算和产品/严格结果分离。
+- agent_runtime/prose_generation.py：检测原样返回后结束生成纠偏，不把文学修复失败归入协议/基础设施重试。
+- worker/executors/prose_shadow.py：编辑报告持久化、产品接受正文与报告绑定；application/compiler/prose_projection.py 分别投影产品完成与严格通过。
+- tests/unit/test_prose_revision.py 与 tests/integration/test_prose_shadow_runtime.py：意见绑定、fatal 禁止保留、耗尽不再重写、产品保留不篡改 Judge、无进展无续跑及累计留痕。
+
+- migrations/versions/V20260908121826__prose_revision_decision_artifacts.py：编辑报告键、scene 与 input_hash 身份约束，ORM 与 EXPECTED_DATABASE_REVISION 同步；既有报告不删除。

@@ -203,6 +203,9 @@ class ProseStore:
             ir_schema_id=(
                 "compiler.compile-manifest.v1"
                 if request is None
+                else "compiler.prose-revision-decision.v1"
+                if request.input_payload.get("output_schema_id")
+                == "compiler.prose-revision-decision.v1"
                 else "compiler.prose-continuity-review.v1"
                 if component == "prose_continuity"
                 else "compiler.scene-render.v1"

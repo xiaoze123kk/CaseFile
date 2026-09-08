@@ -198,6 +198,88 @@ class ScriptedJudge:
         raise AssertionError("unanimous fixture must not arbitrate")
 
 
+class ScriptedRewriter(FakeProseRewriterProvider):
+    def rewrite_scene(self, request):
+        if "response_schema" in request.input_payload:
+            exhausted = request.input_payload["repair_budget_exhausted"]
+            candidate = {
+                "action": "stop" if exhausted else "local_revision",
+                "findings": [
+                    {
+                        "check_id": f["check_id"],
+                        "assessment": "valid",
+                        "severity": "fatal",
+                        "reason": "缺少必要事实。",
+                    }
+                    for f in request.input_payload["untrusted_data"]["repair_findings"]
+                ],
+                "revision_plan": "补足遗漏。",
+                "rationale": "保留故事事实。",
+            }
+            return FakeProseRewriterProvider(candidates=(candidate,)).rewrite_scene(request)
+        return super().rewrite_scene(request)
+
+
+class NoProgressEditorialRewriter(FakeProseRewriterProvider):
+    def __init__(self, retain: bool):
+        super().__init__()
+        self.retain = retain
+        self.rewrite_calls = 0
+
+    def rewrite_scene(self, request):
+        if "response_schema" in request.input_payload:
+            exhausted = request.input_payload["repair_budget_exhausted"]
+            candidate = {
+                "action": ("retain" if self.retain else "stop") if exhausted else "local_revision",
+                "findings": [
+                    {
+                        "check_id": f["check_id"],
+                        "assessment": "valid",
+                        "severity": "nonfatal" if self.retain else "fatal",
+                        "reason": "模型评估。",
+                    }
+                    for f in request.input_payload["untrusted_data"]["repair_findings"]
+                ],
+                "revision_plan": "以动作修复。",
+                "rationale": "模型决定文学严重程度。",
+            }
+        else:
+            self.rewrite_calls += 1
+            candidate = {
+                "schema_id": "compiler.scene-render-candidate.v1",
+                "blocks": [
+                    {"text": b["text"]}
+                    for b in request.input_payload["untrusted_data"]["current_render"]["blocks"]
+                ],
+            }
+        return FakeProseRewriterProvider(candidates=(candidate,)).rewrite_scene(request)
+
+
+@pytest.mark.parametrize("retain", [True, False])
+def test_no_progress_delivery_is_audited_and_never_resumable(workflow_database, retain):
+    factory, project, run, _ = _prepare(workflow_database)
+    rewriter = NoProgressEditorialRewriter(retain)
+    providers = replace(_providers(failures=3), rewriter=rewriter)
+    _run(factory, run, providers, workflow_database[2])
+    _, manifest, artifacts = _result(factory, run)
+    scene = manifest["scenes"][0]
+    assert scene["strict_semantic_pass"] is False
+    assert scene["product_accepted"] is retain
+    assert len(scene["revision_report_hashes"]) == 2
+    assert manifest["shadow_status"] == ("succeeded" if retain else "semantic_rejected")
+    assert rewriter.rewrite_calls == (2 if retain else 1)
+    reports = [
+        a.content_jsonb for a in artifacts if a.schema_id == "compiler.prose-revision-decision.v1"
+    ]
+    assert any(r["repair_budget_exhausted"] for r in reports)
+    with factory() as session:
+        view = CompilerService(session).get_run(
+            workflow_database[1], project, run["compile_run_id"]
+        )
+    assert view["prose_shadow"]["resume_available"] is False
+    assert view["stability"]["repair_attempts"] == rewriter.rewrite_calls
+
+
 def _providers(
     *,
     failures: int = 0,
@@ -236,7 +318,7 @@ def _providers(
                 for n in range(4)
             )
         ),
-        FakeProseRewriterProvider(
+        ScriptedRewriter(
             candidates=tuple(
                 {**original, "blocks": [{"text": text + f"他补上第{n}处遗漏。"}]} for n in range(8)
             )

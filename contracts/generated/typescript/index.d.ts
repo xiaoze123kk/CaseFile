@@ -2447,6 +2447,7 @@ export interface SceneRender {
         | "judge_budget_preserve_accepted_original"
         | "quality_rollback"
         | "quality_unstable"
+        | "llm_nonfatal_retained"
       )
     | null;
 }
@@ -2670,6 +2671,9 @@ export interface SceneManifest {
   arbiter_report_hashes: string[];
   quality_report_hashes: string[];
   accepted_render_hash: string | null;
+  strict_semantic_pass?: boolean;
+  product_accepted?: boolean;
+  revision_report_hashes?: string[];
   rewrite_count: number;
   call_count: number;
   physical_request_count?: number;

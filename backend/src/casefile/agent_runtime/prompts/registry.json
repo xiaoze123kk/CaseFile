@@ -50,7 +50,7 @@
       "current_version": "prose-writer-v4"
     },
     "prose_rewriter": {
-      "current_version": "prose-rewriter-v5"
+      "current_version": "prose-rewriter-v7"
     },
     "prose_fidelity_judge": {
       "current_version": "prose-fidelity-judge-v8"
@@ -78,6 +78,9 @@
     },
     "prose_continuity": {
       "current_version": "prose-continuity-v1"
+    },
+    "prose_revision": {
+      "current_version": "prose-revision-v3"
     }
   }
 }

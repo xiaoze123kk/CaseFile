@@ -379,6 +379,7 @@ def finalize_scene_render(
         selected_render, checklist=checklist_json, profile=profile
     ).model_dump(mode="json")
     valid_reasons = {
+        "llm_nonfatal_retained",
         "judge_budget_preserve_accepted_original",
         "polished_accepted",
         "polish_semantic_rollback",

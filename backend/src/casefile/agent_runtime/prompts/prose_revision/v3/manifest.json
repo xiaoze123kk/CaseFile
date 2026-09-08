@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_revision",
+  "version": "prose-revision-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "3e251cadf112f403f34f37cc26bfecc8256ca712ed9282087fab06cca0b06baf",
+  "previous_version": "prose-revision-v2",
+  "change_summary": "去除定向案例人名，使用通用人物主体一致性提示。"
+}

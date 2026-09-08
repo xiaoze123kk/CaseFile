@@ -110,3 +110,7 @@ project/project.schema.json 定义 ProjectView，brief/brief-views.schema.json �
 SceneCompilerBatchSceneView 兼容增加可选 intent 与 actor_allowlist，ModelView projection v4 输出这些服务端字段；旧 projection v1-v3 仍可读。生成 Python/TypeScript 与 OpenAPI 同步。新增编译 resume 路由只复用冻结 TaskRun，不修改输入契约或已保存产物。
 
 JudgeAssessment.evidence 上限20兼容扩展为64，与 Provider candidate 的 evidence_ids 保持一致；Quality Finding 的20条上限保持原语义。SceneRender.selection_reason 增加 judge_budget_preserve_accepted_original，用于已语义通过且跳过可选润色的正文。历史产物不重写，生成包和 OpenAPI 同步更新。
+
+## LLM 编辑决策兼容扩展
+
+prose-rendering.schema.json 新增 ProseRevisionFinding、ProseRevisionDecisionCandidate 和 ProseRevisionDecision。服务端绑定 scene_id、render_hash、input_hash 与 repair_budget_exhausted；模型给出意见解释、严重程度和编辑方案。SceneRender.selection_reason 增加 llm_nonfatal_retained；SceneManifest 兼容增加 product_accepted、strict_semantic_pass、revision_report_hashes。旧字段及旧证据不改写；历史读取不补写新字段重算哈希。生成 Python/TypeScript、运行时镜像及 OpenAPI 统一同步。新增 V20260908121826 兼容扩展数据库产物身份白名单，已有编辑证据时 downgrade 拒绝而不删除。

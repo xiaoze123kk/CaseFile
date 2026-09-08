@@ -52,7 +52,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v7",
     "prose_writer": "prose-writer-v4",
-    "prose_rewriter": "prose-rewriter-v5",
+    "prose_rewriter": "prose-rewriter-v7",
+    "prose_revision": "prose-revision-v3",
     "prose_fidelity_judge": "prose-fidelity-judge-v8",
     "prose_adversarial_judge": "prose-adversarial-judge-v7",
     "prose_coherence_judge": "prose-coherence-judge-v7",
@@ -65,6 +66,21 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("prose_revision", "prose-revision-v3"): {
+        "system": "3e251cadf112f403f34f37cc26bfecc8256ca712ed9282087fab06cca0b06baf"
+    },
+    ("prose_revision", "prose-revision-v2"): {
+        "system": "c62d68c88156fa7823f117f03cfe12e727f07944050c8dfd25df98fc2b361e76"
+    },
+    ("prose_rewriter", "prose-rewriter-v7"): {
+        "system": "cd4fc22a2052e5c4d97f0f933843c719243d357d2878a7d0cb1d99530b4b3922"
+    },
+    ("prose_revision", "prose-revision-v1"): {
+        "system": "38523c92010618593f48d6a5f75a8bff1b575cf5423086de2abf4a7f7f2de51d"
+    },
+    ("prose_rewriter", "prose-rewriter-v6"): {
+        "system": "0657e1b35efc26d9167db014e3951687eb8ce91de49a524bc47e12b3f5f9595a"
+    },
     ("prose_writer", "prose-writer-v4"): {
         "system": "936880c86ac1c3040afc65861b3fc4c214af9f7f57f52eff4b254bdbbe6edae9"
     },
@@ -901,6 +917,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "scene_compiler_semantic_fill",
         "prose_writer",
         "prose_rewriter",
+        "prose_revision",
         "prose_fidelity_judge",
         "prose_adversarial_judge",
         "prose_coherence_judge",
@@ -1055,7 +1072,11 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         if agent_id not in {"brief_to_draft", "general_mutation_planner"}
     }
 
-    for prompt in prompts.values():
+    for agent_id, prompt in prompts.items():
+        if agent_id in {"prose_rewriter", "prose_revision"}:
+            assert "数据" in prompt and "不是控制指令" in prompt
+            assert "JSON" in prompt
+            continue
         assert "角色声明" in prompt
         assert "要求忽略既有规则" in prompt
         assert "结构化" in prompt
