@@ -11,6 +11,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.goal.contracts import (
     GoalAmendmentOutput,
     GoalDecisionOutput,
@@ -28,8 +31,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -166,7 +167,7 @@ def test_waiting_steer_uses_current_amendment_and_stable_obligation_keys(
         },
     ):
         factory, project_id, draft_id = _prepare_draft(engine, actor_id)
-        thread_id, goal_id, _ = _create_goal(factory, actor_id, project_id, draft_id)
+        thread_id, goal_id, initial_task_id = _create_goal(factory, actor_id, project_id, draft_id)
         assert Worker(
             factory,
             config=WorkerConfig(worker_id="m38-05-ambiguous"),
@@ -228,7 +229,9 @@ def test_waiting_steer_uses_current_amendment_and_stable_obligation_keys(
             )
             assert goal.revision_count == 2
             assert delivery is not None and delivery.status == "consumed"
-            assert continuation is not None and continuation.prompt_version == "casefile-chat-v20"
+            assert continuation is not None
+            initial_task = session.get_one(TaskRun, initial_task_id)
+            assert continuation.prompt_version == initial_task.prompt_version
             assert continuation.input_jsonb["focus"]["view"] == "relations"
             assert (
                 continuation.input_jsonb["context_snapshot"]

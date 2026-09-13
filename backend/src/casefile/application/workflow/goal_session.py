@@ -6,7 +6,6 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,6 +24,13 @@ from casefile.application.goal_session_state import (
     GoalSessionStateError,
     require_budget_available,
     require_expected_revision,
+)
+from casefile.application.goal_session_views import (
+    public_goal_delivery_view as public_goal_delivery_view,
+)
+from casefile.application.goal_session_views import (
+    public_goal_event,
+    public_goal_session,
 )
 from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
@@ -48,14 +54,9 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
 
 _CONTROL_MODES = frozenset({"steer", "follow_up", "replace"})
-_ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
-_WAITING_BY_STATUS = {
-    "waiting_clarification": "clarification",
-    "waiting_patch_review": "patch_review",
-    "stale": "stale",
-}
 GOAL_CHECKPOINTED_PUBLIC_MESSAGE = "已保存当前进度，并将按你的新要求继续处理。"
 GOAL_CLARIFICATION_PUBLIC_PREFIX = "继续处理前还需要你补充："
 GOAL_REPLACED_PUBLIC_MESSAGE = "已停止原目标，并按你的替换要求开始新的目标。"
@@ -105,7 +106,7 @@ class GoalSessionService:
                 .order_by(AgentGoalTransition.sequence_no)
             )
             current = self.public_goal_session(goal)
-            return [self._public_goal_event(row, current) for row in transitions]
+            return [public_goal_event(row, current) for row in transitions]
 
     def list_agent_goal_deliveries(
         self,
@@ -2309,68 +2310,7 @@ class GoalSessionService:
         return list(self.session.scalars(statement.order_by(TaskRun.id)))
 
     def public_goal_session(self, goal: AgentGoalSession) -> PublicGoalSession:
-        active_run_id: int | None = None
-        if goal.status not in TERMINAL_GOAL_STATUSES:
-            active_run_id = self.session.scalar(
-                select(TaskRun.id)
-                .where(
-                    TaskRun.project_id == goal.project_id,
-                    TaskRun.status.in_(_ACTIVE_TASK_STATUSES),
-                    (
-                        (TaskRun.input_message_id == goal.source_message_id)
-                        | (TaskRun.input_jsonb["goal_session"]["goal_id"].as_integer() == goal.id)
-                        | TaskRun.id.in_(
-                            select(AgentGoalTaskRun.task_run_id).where(
-                                AgentGoalTaskRun.goal_session_id == goal.id
-                            )
-                        )
-                    ),
-                )
-                .order_by(TaskRun.id.desc())
-                .limit(1)
-            )
-        return _public_goal_session_row(goal, active_run_id=active_run_id)
-
-    def _public_goal_event(
-        self,
-        transition: AgentGoalTransition,
-        current: PublicGoalSession,
-    ) -> PublicGoalEvent:
-        historical = PublicGoalSession.model_validate(
-            {
-                **current.model_dump(mode="json"),
-                "status": transition.to_status,
-                "waiting_for": _waiting_for(transition.to_status),
-                **_goal_actions(transition.to_status, current.revision),
-            }
-        )
-        return PublicGoalEvent.model_validate(
-            {
-                "sequence": transition.sequence_no,
-                "event": "goal.transition",
-                "status": transition.to_status,
-                "waiting_for": _waiting_for(transition.to_status),
-                "goal": historical,
-            }
-        )
-
-
-def public_goal_delivery_view(delivery: AgentGoalDelivery) -> PublicGoalDelivery:
-    return PublicGoalDelivery.model_validate(
-        {
-            "delivery_id": delivery.id,
-            "goal_id": delivery.goal_session_id,
-            "successor_goal_id": None,
-            "mode": delivery.mode,
-            "status": delivery.status,
-            "message_id": delivery.source_message_id,
-            "response_message_id": delivery.response_message_id,
-            "expected_goal_revision": delivery.expected_goal_revision,
-            "created_at": delivery.created_at,
-            "updated_at": delivery.updated_at,
-        }
-    )
-
+        return public_goal_session(self.session, goal)
 
 def _task_goal_id(task: TaskRun) -> int | None:
     raw = task.input_jsonb.get("goal_session")
@@ -2433,40 +2373,6 @@ def _goal_delivery_claim_owner(task_run_id: int, attempt_id: int) -> str:
     """Return a stable fencing identity that never exposes Worker configuration."""
 
     return f"task:{task_run_id}:attempt:{attempt_id}"
-
-
-def _public_goal_session_row(
-    goal: AgentGoalSession,
-    *,
-    active_run_id: int | None,
-) -> PublicGoalSession:
-    return PublicGoalSession.model_validate(
-        {
-            "goal_id": goal.id,
-            "status": goal.status,
-            "revision": goal.revision_count,
-            "waiting_for": _waiting_for(goal.status),
-            "active_run_id": active_run_id,
-            "active_patch_id": goal.active_patch_set_id,
-            **_goal_actions(goal.status, goal.revision_count),
-            "created_at": goal.created_at,
-            "updated_at": goal.updated_at,
-        }
-    )
-
-
-def _goal_actions(status: str, revision: int) -> dict[str, bool]:
-    terminal = status in TERMINAL_GOAL_STATUSES
-    return {
-        "can_steer": not terminal and revision >= 1,
-        "can_follow_up": status == "completed" and revision >= 1,
-        "can_replace": not terminal and revision >= 1,
-        "cancellable": not terminal,
-    }
-
-
-def _waiting_for(status: str) -> str:
-    return _WAITING_BY_STATUS.get(status, "none")
 
 
 def _goal_session_rollout() -> str:

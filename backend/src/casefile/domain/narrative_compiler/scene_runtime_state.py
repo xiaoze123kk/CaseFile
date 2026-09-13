@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from casefile_contracts import SceneCompilerInboundState, SceneCompilerModelView
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -13,6 +12,7 @@ from casefile.domain.narrative_compiler.foundation import (
     canonical_json_sha256,
 )
 from casefile.domain.narrative_compiler.scene_fill import validate_scene_semantic_fill
+from casefile_contracts import SceneCompilerInboundState, SceneCompilerModelView
 
 SCENE_COMPILER_INBOUND_STATE_SCHEMA_ID = "compiler.scene-compiler-inbound-state.v1"
 

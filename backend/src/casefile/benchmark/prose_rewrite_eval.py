@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Final
 
 import rfc8785
-from casefile_contracts import ProseConsensusReport
 from pydantic import ValidationError
 
 from casefile.agent_runtime.prose_judge import (
@@ -37,6 +36,7 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
+from casefile_contracts import ProseConsensusReport
 
 ROOT: Final = Path(__file__).resolve().parents[4]
 DEFAULT_SUITE: Final = ROOT / "fixtures/prose_rewrite_benchmark/v1/suite.json"

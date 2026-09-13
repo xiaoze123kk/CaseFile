@@ -17,6 +17,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
@@ -41,8 +44,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

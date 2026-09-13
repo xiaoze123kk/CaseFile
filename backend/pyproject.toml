@@ -55,6 +55,14 @@ extend-exclude = ["src/casefile_contracts"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.isort]
+known-first-party = [
+  "casefile",
+  "casefile_contracts",
+  "benchmark_preparation",
+  "prose_rewrite_test_support",
+]
+
 [tool.ruff.lint.per-file-ignores]
 "src/casefile_contracts/*.py" = ["E501", "I001"]
 

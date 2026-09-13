@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import rfc8785
+
 from casefile.benchmark.general_mutation_evidence import (
     EvidenceIndexError,
     build_evidence_index,

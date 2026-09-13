@@ -14,6 +14,11 @@ from application_services_test_support import (
     _alembic_config,
     _prepare_task,
 )
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+from test_goal_session_steering import _decision, _finish, _understanding
+
 from casefile.agent_runtime.chat_preview import AnswerPreview
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.goal.provider import GoalFinalizerRequest
@@ -22,10 +27,6 @@ from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.api.app import create_app
 from casefile.application.workflow_service import WorkflowService
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-from test_goal_session_steering import _decision, _finish, _understanding
 
 
 class BrowserFeedbackProvider(RichFixtureProvider, FakeProvider):

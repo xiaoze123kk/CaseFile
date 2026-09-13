@@ -6,7 +6,6 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from casefile_contracts import CaseFile, NarrativeIR
 from pydantic import ValidationError
 
 from casefile.contracts.object_types import COLLECTION_TYPES as COLLECTION_TYPES
@@ -18,6 +17,7 @@ from casefile.domain.narrative_compiler.source_refs import (
     build_source_ref,
     validate_source_ref_against_value,
 )
+from casefile_contracts import CaseFile, NarrativeIR
 
 NARRATIVE_IR_SCHEMA_ID = "compiler.narrative-ir.v1"
 NARRATIVE_IR_PROJECTION_VERSION = "compiler.narrative-ir-projection.v1"

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.domain.narrative_compiler import (
     PROSE_CHECKLIST_POLICY_HASH,
     CompilerContractError,

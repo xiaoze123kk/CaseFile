@@ -7,11 +7,13 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
-import casefile.agent_runtime.provider_adapters.shared as provider_shared
-import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+import casefile.agent_runtime.provider_adapters.shared as provider_shared
+import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
 from casefile.agent_runtime.general_mutation import MutationPlanV2
 from casefile.agent_runtime.models import (
@@ -33,7 +35,6 @@ from casefile.agent_runtime.structured_output import (
 )
 from casefile.agent_runtime.transport_diagnostics import classify_transport_error
 from casefile.contracts import ContractValidationError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class _StrictSchemaFixture(BaseModel):

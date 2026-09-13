@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from casefile.application.goal_session_state import (
     TERMINAL_GOAL_STATUSES,
     GoalSessionStateError,

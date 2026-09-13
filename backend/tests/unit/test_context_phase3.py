@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
@@ -29,7 +31,6 @@ from casefile.agent_runtime.context.thread_memory import (
     register_compactor,
 )
 from casefile.agent_runtime.providers import FakeProvider
-from pydantic import ValidationError
 
 
 def _decision(**overrides: object) -> dict[str, object]:

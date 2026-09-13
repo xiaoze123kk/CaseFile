@@ -51,6 +51,7 @@ from casefile.agent_runtime.public_language import (
     terminal_public_language_error,
     validate_public_language,
 )
+from casefile.agent_runtime.usage import merge_usage_records
 
 MAX_SEMANTIC_REPAIRS = 3
 MAX_FINALIZER_ATTEMPTS = 1 + MAX_SEMANTIC_REPAIRS
@@ -91,17 +92,6 @@ def coordinate_chat_candidate_validation(
                 request.feedback("message.preview_invalidated", {"discard": True})
             raise
     return result
-
-
-def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
-    merged: dict[str, Any] = {}
-    for record in records:
-        for key, value in record.items():
-            if isinstance(value, int) and not isinstance(value, bool):
-                merged[key] = int(merged.get(key, 0)) + value
-            else:
-                merged[key] = value
-    return merged
 
 
 def _merge_tools(records: list[ToolMetrics]) -> ToolMetrics:
@@ -353,7 +343,7 @@ class ChatExecutionRunner:
                                 complete(projected)
                             return ChatExecutionResult(
                                 result=projected,
-                                usage=_merge_usage(usages),
+                                usage=merge_usage_records(usages),
                                 tools=_merge_tools(tools),
                                 attempts=attempt,
                                 repair_attempted=repair_attempted,
@@ -483,7 +473,7 @@ class ChatExecutionRunner:
                 continue
             return ChatExecutionResult(
                 result=result,
-                usage=_merge_usage(usages),
+                usage=merge_usage_records(usages),
                 tools=_merge_tools(tools),
                 attempts=attempt,
                 repair_attempted=repair_attempted,
@@ -510,7 +500,7 @@ def _attach_failure_metrics(
     """Best-effort diagnostic attachment without changing public exceptions."""
 
     try:
-        error.__dict__["usage"] = _merge_usage(usages)
+        error.__dict__["usage"] = merge_usage_records(usages)
         error.__dict__["tools"] = _merge_tools(tools)
         error.__dict__["attempts"] = attempts
         error.__dict__["repair_attempted"] = repair_attempted

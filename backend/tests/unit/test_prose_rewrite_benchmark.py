@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import pytest
@@ -25,29 +23,10 @@ from casefile.benchmark.prose_rewrite_eval import (
     load_prose_rewrite_qualification_suite,
     run_prose_rewrite_development_baseline,
 )
+from prose_rewrite_test_support import current_package as current_package
+from prose_rewrite_test_support import generated_package
 
 ROOT = Path(__file__).resolve().parents[3]
-GENERATOR = ROOT / "fixtures/prose_rewrite_benchmark/v1/generate.py"
-
-
-def _generated_package():
-    spec = importlib.util.spec_from_file_location("prose_rewrite_fixture_generator", GENERATOR)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    assert isinstance(module, ModuleType)
-    spec.loader.exec_module(module)
-    return module.build_suite()
-
-
-@pytest.fixture(scope="module")
-def current_package(tmp_path_factory):
-    # Synthetic current-runtime test inputs; never rewrite the frozen public package.
-    folder = tmp_path_factory.mktemp("rewrite-current-runtime")
-    suite, attestation, assets = _generated_package()
-    paths = folder / "suite.json", folder / "attestation.json"
-    for path, value in zip(paths, (suite, attestation), strict=True):
-        path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
-    return paths
 
 
 @pytest.fixture(scope="module")
@@ -137,8 +116,8 @@ def test_development_suite_rejects_private_asset_reference(tmp_path: Path, curre
 
 def test_generator_is_deterministic_without_rewriting_frozen_assets() -> None:
     before = DEFAULT_SUITE.read_bytes(), DEFAULT_ATTESTATION.read_bytes()
-    suite, attestation, assets = _generated_package()
-    assert (suite, attestation, assets) == _generated_package()
+    suite, attestation, assets = generated_package()
+    assert (suite, attestation, assets) == generated_package()
     assert len(assets) == 24
     for task_id, asset in assets.items():
         path = ROOT / f"fixtures/prose_rewrite_benchmark/v1/tasks/{task_id}.json"

@@ -6,7 +6,6 @@ import json
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +34,7 @@ from casefile.benchmark.closure_repair_backend_release import (
     BackendReleaseContractError,
     BackendTrialEvidence,
 )
+from casefile.benchmark.database_fingerprint import public_schema_fingerprint
 from casefile.benchmark.eval_core import EvalTask
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
@@ -1124,16 +1124,7 @@ class PostgresBackendReleaseExecutor:
             )
 
     def _schema_fingerprint(self) -> str:
-        with self.engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT table_name, column_name, data_type FROM information_schema.columns "
-                    "WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"
-                )
-            ).all()
-        return sha256(
-            json.dumps([list(row) for row in rows], separators=(",", ":")).encode()
-        ).hexdigest()
+        return public_schema_fingerprint(self.engine)
 
 
 def _transport_error_class(value: Any) -> str | None:

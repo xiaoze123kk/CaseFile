@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+
 from casefile.agent_runtime.brief_to_draft_v8.compiler import (
     LinkerValidationError,
     compile_casefile,

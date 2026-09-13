@@ -6,15 +6,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.encoders import jsonable_encoder
+from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
+
 from casefile.api.app import create_app
 from casefile.api.dependencies import get_actor_user_id, get_session
 from casefile.application.services import _project_view
 from casefile.application.workflow_views import brief_version_view, brief_view
 from casefile_contracts import BriefVersionView, BriefView, ProjectView
-from fastapi.encoders import jsonable_encoder
-from fastapi.testclient import TestClient
-from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[3]
 

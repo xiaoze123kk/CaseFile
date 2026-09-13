@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
+
 from benchmark_preparation import reuse_document_findings
 from casefile.agent_runtime import (
     ClosureRepairOperationOutputV1,

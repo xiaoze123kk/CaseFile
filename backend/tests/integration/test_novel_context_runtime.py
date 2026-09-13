@@ -94,7 +94,15 @@ def test_new_conversation_excludes_old_history_and_memory(workflow_database):
     for i in range(5):
         exchange = submit(db, factory, project, novel, mode="discuss", request_key=f"old-{i}")
         run(db, factory, exchange, provider)
-    fresh = submit(db, factory, project, novel, mode="discuss", request_key="fresh", history_after_exchange_id=exchange["id"])
+    fresh = submit(
+        db,
+        factory,
+        project,
+        novel,
+        mode="discuss",
+        request_key="fresh",
+        history_after_exchange_id=exchange["id"],
+    )
     with factory() as session:
         task = session.get(TaskRun, fresh["task_id"])
         assert task.input_jsonb["context"]["history"] == []

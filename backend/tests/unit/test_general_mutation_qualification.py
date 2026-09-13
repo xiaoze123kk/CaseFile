@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from casefile.benchmark import general_mutation_qualification as qualification
 from casefile.benchmark.general_mutation_qualification import QualificationError
 

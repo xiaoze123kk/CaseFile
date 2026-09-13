@@ -26,14 +26,14 @@ class NovelModelJournal:
     def __init__(self, ctx: TaskExecutionContext, step_id: int, locked: Callable[..., Any]):
         self.ctx, self.step_id, self.locked = ctx, step_id, locked
 
-    def call(
+    def call[T](
         self,
         phase: str,
         prompt: PromptDefinition,
         payload: dict[str, Any],
         invoke: Callable[[], Any],
-        validate: Callable[[Any], Any],
-    ) -> Any:
+        validate: Callable[[Any], T],
+    ) -> T:
         ctx = self.ctx
         with ctx.session_factory() as session, session.begin():
             task, _ = self.locked(session, ctx)

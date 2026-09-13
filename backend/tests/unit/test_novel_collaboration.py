@@ -1,6 +1,7 @@
 """Bounded context and exact edit anchors, including repeated text and Unicode."""
 
 import pytest
+
 from casefile.agent_runtime.novel_collaboration import prepare_context, validate_edits
 
 

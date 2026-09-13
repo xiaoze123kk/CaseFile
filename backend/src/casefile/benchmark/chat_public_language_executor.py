@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
@@ -12,14 +11,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch as mock_patch
 
-from casefile_contracts import (
-    PublicAgentEvent,
-    PublicAgentMessage,
-    PublicAgentMessageReceipt,
-    PublicAgentRun,
-    PublicPatchResponse,
-    PublicPatchReviewResult,
-)
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import func, select, text
@@ -39,6 +30,7 @@ from casefile.benchmark.chat_public_language_qualification import (
     PublicLanguageTrialEvidence,
     inspect_public_payload,
 )
+from casefile.benchmark.database_fingerprint import public_schema_fingerprint
 from casefile.benchmark.eval_core import EvalTask
 from casefile.benchmark.general_mutation_capability import _grade
 from casefile.contracts import validate_casefile
@@ -52,6 +44,14 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.session import create_database_engine, create_session_factory
 from casefile.worker.runtime import Worker, WorkerConfig
+from casefile_contracts import (
+    PublicAgentEvent,
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicPatchResponse,
+    PublicPatchReviewResult,
+)
 
 PUBLIC_SENSITIVE_CANARY = "m36-sensitive-canary-value"
 _TERMINAL_RUN_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -762,17 +762,7 @@ class PostgresPublicLanguageExecutor:
         return project_id, int(generation["task_run_id"])
 
     def _schema_fingerprint(self) -> str:
-        with self.engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT table_name,column_name,data_type "
-                    "FROM information_schema.columns WHERE table_schema='public' "
-                    "ORDER BY table_name,ordinal_position"
-                )
-            ).all()
-        return hashlib.sha256(
-            json.dumps([list(row) for row in rows], separators=(",", ":")).encode()
-        ).hexdigest()
+        return public_schema_fingerprint(self.engine)
 
     @staticmethod
     def _json_response(response: Any, status: int, code: str) -> Any:

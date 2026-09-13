@@ -6,6 +6,8 @@ import hashlib
 from typing import Any
 
 import rfc8785
+from pydantic import ValidationError
+
 from casefile_contracts import (
     ArtifactKind,
     CompileInputManifest,
@@ -13,7 +15,6 @@ from casefile_contracts import (
     CompilerDiagnostic,
     CompilerSourceRef,
 )
-from pydantic import ValidationError
 
 
 class CompilerContractError(ValueError):

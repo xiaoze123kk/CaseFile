@@ -8,6 +8,8 @@ from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import Engine, select
+
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     GeneralMutationPlannerResult,
@@ -39,7 +41,6 @@ from casefile.data_postgres.models import (
     AgentStepRun,
     TaskRun,
 )
-from sqlalchemy import Engine, select
 
 pytestmark = pytest.mark.postgres
 

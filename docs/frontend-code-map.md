@@ -1,5 +1,11 @@
 # 前端代码职责地图
 
+大模块拆分：`intake-questions-stage.tsx` 承接关键追问阶段的纯展示、分页和回调连接；所有回答、请求、会话归属与异步门禁仍由 `IntakeCenter` 持有。`brief-revision-summary.ts` 承接简报前后差异说明与摘要模型。沿用原 CSS、DOM 和已有行为测试，不新增移动端分支。
+
+Vitest 并发上限设为 4，限制同时启动的 jsdom 实例及内存占用；本机完整前后端门禁顺序执行，不改变测试范围、断言或超时阈值。
+
+全仓技术债审计补充：删除无导入方的 `workbench-agent-presets.ts` 与 `workbench-secondary-views.tsx`。后者是被 `timeline/timeline-overview.tsx` 替代的旧时间线组件；当前时间线及其交互测试保留。后端仍支持的 preset 协议不随前端孤立常量删除。
+
 小说编译面板展示已保存场景数、跨场景规划调整意见，以及服务端允许时的“从失败处继续”。续跑复用已完成正文；前端不自行重置预算或改写规划，接口拒绝旧运行版本及已耗尽恢复次数。
 
 ## 分析师工作台信息架构重构
@@ -27,6 +33,8 @@
 当前工作区尚未对接完整小说产物和小说专用 AI 改写服务：宿主通过 `manuscript` 传入已完成全文，通过 `collaborate` 提供小说正文服务。未提供时展示真实空态与未接入说明，不产生模拟 AI 回复。浏览器编辑稿不是后端正式产物；不得使用当前 CaseFile Agent Patch/Apply 冒充小说写入接口。
 
 ## Agent 增强反馈
+
+技术债清理：移除无生产调用的 `workbench-agent-task-strip.tsx` 及其专用测试；状态反馈继续由 `workbench-agent-progress.tsx` 和消息中的 Goal 操作承载。`workbench-agent.module.css` 删除无使用方的旧状态条、对话菜单、补丁卡及上下文样式；已迁移组件继续使用各自独立 CSS Module。
 
 桌面浏览器验收可通过进程级 `CASEFILE_WEB_DIST_DIR=.next-feedback` 和 `NEXT_PUBLIC_CASEFILE_API_URL` 启动独立 Next.js 输出与隔离 API，默认构建路径保持 `.next`。
 

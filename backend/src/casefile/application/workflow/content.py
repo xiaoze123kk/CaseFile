@@ -19,6 +19,7 @@ from casefile.agent_runtime.prompt import (
 )
 from casefile.application.draft_candidates import DraftCandidateService
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.provider_policy import normalize_provider
 from casefile.application.task_cancellation import (
     TERMINAL_TASK_STATUSES,
     finalize_task_cancellation,
@@ -39,7 +40,6 @@ from casefile.application.workflow_common import (
     _json_hash,
     _provider_view,
     _source_view,
-    _supported_provider,
     _task_view,
     _text_hash,
     require_owned_project,
@@ -67,7 +67,7 @@ class ContentWorkflowMixin:
         actor_user_id: int,
         provider: str = DEFAULT_PROVIDER,
     ) -> dict[str, Any] | None:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         with self.session.begin():
             setting = self.session.scalar(
                 select(UserProviderSetting).where(
@@ -90,7 +90,7 @@ class ContentWorkflowMixin:
         model_id: str,
         model_is_custom: bool,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         encrypted = encrypt_api_key(api_key, user_id=actor_user_id, provider=provider)
         with self.session.begin():
             setting = self.session.scalar(
@@ -136,7 +136,7 @@ class ContentWorkflowMixin:
         actor_user_id: int,
         provider: str = DEFAULT_PROVIDER,
     ) -> None:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         with self.session.begin():
             setting = self.session.scalar(
                 select(UserProviderSetting)
@@ -347,7 +347,7 @@ class ContentWorkflowMixin:
         provider: str = DEFAULT_PROVIDER,
         refresh: bool = False,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         with self.session.begin():
             owned = require_owned_project(self.projects, actor_user_id, project_id, lock=True)
             brief = self._brief(owned, lock=True)
@@ -420,7 +420,7 @@ class ContentWorkflowMixin:
         candidate_strategy: str = CandidateStrategy.BALANCED.value,
         candidate_strategy_attempt: int = 1,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         try:
             strategy = CandidateStrategy(candidate_strategy)
         except ValueError as error:
@@ -604,7 +604,7 @@ class ContentWorkflowMixin:
         provider: str = DEFAULT_PROVIDER,
         polish_mode: str = "rewrite",
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         if polish_mode not in {"proofread", "rewrite", "narrative_enhance"}:
             raise ApplicationError(
                 "unsupported_polish_mode",
@@ -649,7 +649,7 @@ class ContentWorkflowMixin:
         mode: str = "extract",
         content: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         if mode not in {"extract", "suggest_author_answer"}:
             raise ApplicationError(
                 "unsupported_anchor_extract_mode",

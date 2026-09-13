@@ -8,15 +8,6 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import rfc8785
-from casefile_contracts import (
-    Brief as BriefContract,
-)
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,6 +16,8 @@ from casefile.agent_runtime.prompt import AGENT_VERSION
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.provider_policy import SUPPORTED_PROVIDERS as SUPPORTED_PROVIDERS
+from casefile.application.provider_policy import normalize_provider
 from casefile.application.task_events import append_task_event
 from casefile.application.workflow_views import source_view, task_view
 from casefile.contracts import CASEFILE_SCHEMA_VERSION
@@ -39,8 +32,16 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile_contracts import (
+    Brief as BriefContract,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 
-SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
 RESOLVED_QUESTION_STATUSES = frozenset({"user_answered", "suggestion_accepted"})
 
@@ -388,7 +389,7 @@ class BriefIntakeService:
         expected_intake_revision: int,
         provider: str,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             intake = self._ensure_intake(owned, lock=True)
@@ -436,7 +437,7 @@ class BriefIntakeService:
         base_candidate_id: int | None,
         instruction: str | None,
     ) -> dict[str, Any]:
-        provider = _supported_provider(provider)
+        provider = normalize_provider(provider)
         normalized_instruction = None if instruction is None else instruction.strip()
         if instruction is not None and not normalized_instruction:
             raise ApplicationError(
@@ -1362,18 +1363,6 @@ def _brief_view(brief: Brief) -> dict[str, Any]:
         "current_version_id": brief.current_version_id,
         "updated_at": _time(brief.updated_at),
     }
-
-
-def _supported_provider(provider: str) -> str:
-    normalized = provider.strip().lower()
-    if normalized not in SUPPORTED_PROVIDERS:
-        raise ApplicationError(
-            "provider_not_supported",
-            f"不支持的模型服务：{provider}。",
-            status_code=422,
-            details={"supported_providers": sorted(SUPPORTED_PROVIDERS)},
-        )
-    return normalized
 
 
 def _required_object(value: dict[str, Any], key: str) -> dict[str, Any]:

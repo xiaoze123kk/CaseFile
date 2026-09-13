@@ -22,6 +22,7 @@ from casefile.application.chat_public_patches import public_warning_id
 from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
+from casefile.benchmark.database_fingerprint import public_schema_fingerprint
 from casefile.benchmark.general_mutation_backend_release import (
     FAULT_MATRIX,
     BackendReleaseContractError,
@@ -825,30 +826,6 @@ class PostgresBackendReleaseExecutor:
             },
         )
 
-    def _repeat_apply_probe(self, expected_code: str) -> tuple[bool, dict[str, Any]]:
-        context = self._last_apply_context
-        if context is None:
-            return False, {"reason_code": "fault_apply_context_missing"}
-        before = self._draft_revision(int(context["draft_id"]))
-        with TestClient(self.app) as client:
-            response = client.post(
-                f"/api/v1/projects/{context['project_id']}/agent/patch-sets/{context['patch_set_id']}/apply",
-                headers={"X-CaseFile-User-Id": str(context["actor_id"])},
-                json={
-                    "expected_draft_id": context["draft_id"],
-                    "expected_revision": context["current_revision"],
-                    "change_ids": None,
-                },
-            )
-        after = self._draft_revision(int(context["draft_id"]))
-        code = response.json().get("code")
-        return response.status_code == 409 and code == expected_code and before == after, {
-            "http_status": response.status_code,
-            "reason_code": code,
-            "revision_before": before,
-            "revision_after": after,
-        }
-
     def _cached_fault(self, fault_id: str, passed: bool) -> Mapping[str, Any]:
         return {
             "fault_id": fault_id,
@@ -1024,17 +1001,7 @@ class PostgresBackendReleaseExecutor:
         return project_id, int(task["task_run_id"])
 
     def _schema_fingerprint(self) -> str:
-        with self.engine.connect() as connection:
-            rows = connection.execute(
-                text(
-                    "SELECT table_name,column_name,data_type "
-                    "FROM information_schema.columns WHERE table_schema='public' "
-                    "ORDER BY table_name,ordinal_position"
-                )
-            ).all()
-        return hashlib.sha256(
-            json.dumps([list(row) for row in rows], separators=(",", ":")).encode()
-        ).hexdigest()
+        return public_schema_fingerprint(self.engine)
 
     def _draft_revision(self, draft_id: int) -> int:
         with self.session_factory() as session:

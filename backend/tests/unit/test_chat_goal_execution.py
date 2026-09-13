@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 from casefile.agent_runtime.goal.contracts import (
     GoalDecisionOutput,
     GoalUnderstandingOutput,

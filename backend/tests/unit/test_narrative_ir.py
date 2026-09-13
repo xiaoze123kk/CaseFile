@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,

@@ -10,7 +10,11 @@ from casefile.worker.executors.prose_providers import DurableProseProvider
 
 def test_fourth_judge_request_is_rejected_before_provider_or_database_call():
     begun = []
-    store = SimpleNamespace(scene_id="scene_1", current_step_id=1)
+    store = SimpleNamespace(
+        scene_id="scene_1",
+        current_step_id=1,
+        runtime={"limits": {"judge_calls_per_scene": 3, "logical_calls_per_scene": 23}},
+    )
     store.begin_request = lambda *args: begun.append(args) or object()
     store.judge_call_count = lambda: len(begun) if store.scene_id == "scene_1" else 0
     provider = DurableProseProvider(SimpleNamespace(judge=SimpleNamespace(judge_scene=None)), store)

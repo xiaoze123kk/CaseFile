@@ -4,11 +4,12 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import event, select, update
+from test_novel_editor import prepare, run, submit
+
 from casefile.application.novel_editor import NovelEditorService
 from casefile.data_postgres.models import AgentModelCall, TaskRun
 from casefile.domain.narrative_compiler import canonical_json_sha256
-from sqlalchemy import event, select, update
-from test_novel_editor import prepare, run, submit
 
 pytestmark = pytest.mark.postgres
 

@@ -8,14 +8,15 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import RichFixtureProvider, _adopt_candidate, _prepare_task
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.api.app import create_app
 from casefile.application.workflow_service import WorkflowService
 from casefile.data_postgres.models import TaskEvent, TaskRun
 from casefile.worker.chat_feedback import ChatFeedbackWriter
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

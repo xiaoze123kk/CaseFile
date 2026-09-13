@@ -521,9 +521,19 @@ def test_noop_polish_retries_once_and_keeps_real_candidate(workflow_database):
                 assert "novel_edit_no_progress" in repair
             candidate = {
                 "message": "已调整",
-                "edits": [{"before": "雨落了。", "after": "细雨落下来。" if repair else "雨落了。", "reason": "调整表达"}],
+                "edits": [
+                    {
+                        "before": "雨落了。",
+                        "after": "细雨落下来。" if repair else "雨落了。",
+                        "reason": "调整表达",
+                    }
+                ],
             }
-            return SimpleNamespace(candidate=candidate, raw_response=json.dumps(candidate), usage={"requests": 1, "total_tokens": 10})
+            return SimpleNamespace(
+                candidate=candidate,
+                raw_response=json.dumps(candidate),
+                usage={"requests": 1, "total_tokens": 10},
+            )
 
     provider = CorrectedEditor()
     run(db, factory, exchange, provider)
@@ -532,5 +542,11 @@ def test_noop_polish_retries_once_and_keeps_real_candidate(workflow_database):
         view = NovelEditorService(session).get(db[1], project, novel["id"])
         assert view["exchanges"][0]["edits"][0]["after"] == "细雨落下来。"
         assert view["chapters"] == novel["chapters"]
-        calls = list(session.scalars(select(AgentModelCall).where(AgentModelCall.task_run_id == exchange["task_id"]).order_by(AgentModelCall.call_no)))
+        calls = list(
+            session.scalars(
+                select(AgentModelCall)
+                .where(AgentModelCall.task_run_id == exchange["task_id"])
+                .order_by(AgentModelCall.call_no)
+            )
+        )
         assert [call.status for call in calls] == ["failed", "succeeded"]

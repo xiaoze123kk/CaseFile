@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,7 @@ from casefile.benchmark.closure_repair_holdout import (
     load_holdout_suite,
 )
 from casefile.benchmark.closure_repair_lineage import repair_runtime_fingerprint
+from casefile.benchmark.source_identity import GitIdentityUnavailable, read_git_identity
 
 MODEL_ID = "deepseek-v4-pro"
 TRIALS_PER_TASK = 5
@@ -211,19 +211,10 @@ def _assert_frozen_report(report: dict[str, Any], frozen: dict[str, Any], *, sta
 
 
 def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        result = subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        )
-        if result.returncode != 0:
-            raise QualificationError("qualification_git_identity_unavailable")
-        return result.stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
+    try:
+        return read_git_identity(repo_root, strict=True)
+    except GitIdentityUnavailable:
+        raise QualificationError("qualification_git_identity_unavailable") from None
 
 
 def _database_name(database_url: str) -> str:

@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
 from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
@@ -20,7 +22,6 @@ from casefile.application.a_path_metrics import (
     APathTaskFact,
     derive_a_path_metrics,
 )
-from fastapi.testclient import TestClient
 
 
 def test_semantic_coverage_observes_every_frozen_brief_dimension() -> None:

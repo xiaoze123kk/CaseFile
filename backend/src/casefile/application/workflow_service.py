@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
 from sqlalchemy.orm import Session
 
 from casefile.agent_runtime.goal.contracts import FrozenGoal, GoalExecutionCheckpoint
@@ -33,6 +32,7 @@ from casefile.application.workflow_views import (
 )
 from casefile.data_postgres.models import TaskRun
 from casefile.data_postgres.repositories import ProjectRepository
+from casefile_contracts import PublicGoalDelivery, PublicGoalEvent, PublicGoalSession
 
 
 class WorkflowService(

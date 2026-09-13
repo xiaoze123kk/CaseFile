@@ -18,6 +18,10 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from chat_outcome_canned_support import run_chat_trial
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
@@ -34,9 +38,6 @@ from casefile.benchmark.chat_outcome_eval import (
     grade_chat_outcome,
 )
 from casefile.benchmark.chat_outcome_live_eval import LIVE_THRESHOLDS
-from chat_outcome_canned_support import run_chat_trial
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

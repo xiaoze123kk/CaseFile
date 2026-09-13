@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from casefile_contracts import CompilerSourceRef
-
 from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
     validate_source_ref,
 )
+from casefile_contracts import CompilerSourceRef
 
 
 def build_source_ref(

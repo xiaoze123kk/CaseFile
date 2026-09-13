@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from casefile.benchmark.general_mutation_capability import validate_references
 from casefile.benchmark.general_mutation_holdout import (
     HoldoutContractError,

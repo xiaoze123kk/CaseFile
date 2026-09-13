@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 import rfc8785
+
 from casefile.domain.verification_engine import VerificationEngine, VerificationFinding
 
 

@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from chat_outcome_canned_support import run_canned_trial
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
@@ -30,9 +34,6 @@ from casefile.agent_runtime.models import chat_routing_payload_as_dict
 from casefile.agent_runtime.prompt import render_chat_executor_prompt
 from casefile.benchmark.chat_outcome_eval import build_outcome_tasks
 from casefile.data_postgres.models import TaskEvent, TaskRun
-from chat_outcome_canned_support import run_canned_trial
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

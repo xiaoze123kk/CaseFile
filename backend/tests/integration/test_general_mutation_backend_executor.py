@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
+from sqlalchemy import Engine
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
@@ -14,7 +16,6 @@ from casefile.benchmark.general_mutation_backend_executor import (
 )
 from casefile.benchmark.general_mutation_backend_release import FAULT_MATRIX, ReleaseTask
 from casefile.benchmark.general_mutation_safety_executor import _SafetyProvider
-from sqlalchemy import Engine
 
 
 class LedgerFakeProvider(_SafetyProvider):

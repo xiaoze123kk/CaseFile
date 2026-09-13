@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 import pytest
+
 from casefile.benchmark.chat_goal_qualification import (
     GoalTrialEvidence,
     _fatal_infrastructure_failure,

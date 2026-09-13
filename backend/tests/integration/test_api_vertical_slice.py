@@ -10,6 +10,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, select, text
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
@@ -25,10 +30,6 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, select, text
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

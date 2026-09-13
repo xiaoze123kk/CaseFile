@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+
 from casefile.benchmark.general_mutation_backend_release import (
     FAULT_MATRIX,
     BackendReleaseContractError,

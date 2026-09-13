@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from casefile.application.errors import ApplicationError
 from casefile.application.logical_mutation_rollout import LogicalMutationRolloutService
 from casefile.application.logical_mutation_service import _mutation_set

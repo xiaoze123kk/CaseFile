@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+
 from casefile.worker.dispatch import SUPPORTED_TASK_TYPES, TaskDispatcher
 from casefile.worker.execution import (
     ChatRuntimeConfig,

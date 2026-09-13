@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -57,6 +56,7 @@ from casefile.benchmark.general_mutation_safety import (
     load_safety_suite,
     run_safety_benchmark,
 )
+from casefile.benchmark.source_identity import GitIdentityUnavailable, read_git_identity
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
     create_database_engine,
@@ -359,19 +359,10 @@ def _assert_report(report: dict[str, Any], manifest: dict[str, Any], *, stage: s
 
 
 def _git_identity(repo_root: Path) -> dict[str, Any]:
-    def run(*args: str) -> str:
-        result = subprocess.run(
-            ["git", *args], cwd=repo_root, capture_output=True, text=True, check=False
-        )
-        if result.returncode != 0:
-            raise QualificationError("qualification_git_identity_unavailable")
-        return result.stdout.strip()
-
-    return {
-        "revision": run("rev-parse", "HEAD"),
-        "branch": run("branch", "--show-current"),
-        "dirty": bool(run("status", "--porcelain")),
-    }
+    try:
+        return read_git_identity(repo_root, strict=True)
+    except GitIdentityUnavailable:
+        raise QualificationError("qualification_git_identity_unavailable") from None
 
 
 def _database_name(database_url: str) -> str:

@@ -1,5 +1,5 @@
 from casefile.application.chat_public_events import public_feedback_events
-from casefile.application.workflow.goal_session import _goal_actions
+from casefile.application.goal_session_views import _goal_actions
 from casefile_contracts import PublicAgentRun
 
 

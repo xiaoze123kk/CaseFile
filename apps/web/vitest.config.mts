@@ -7,6 +7,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   test: {
+    maxWorkers: 4,
     environment: "jsdom",
     setupFiles: ["./tests/setup-tests.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],

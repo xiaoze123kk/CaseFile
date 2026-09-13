@@ -1,5 +1,23 @@
 # 后端代码职责地图
 
+## 全仓技术债清理
+
+- `application/provider_policy.py` 统一 Provider 白名单与名称归一化，Brief Intake 与 Workflow Agent/Content 直接调用；`workflow_common`、`workflow_service` 既有白名单导出保持兼容，公开错误码、状态码和详情不变。
+- `benchmark/source_identity.py` 统一 8 个常规 revision/branch/dirty 探针，诊断保持 best-effort，资格入口保留各自异常类型与错误码。仅 revision/dirty 或额外 tracked-source hash 的探针继续遵守原协议，不混用。
+- `benchmark/database_fingerprint.py` 统一 4 个执行器的 public 表列指纹，保持列顺序、默认 ASCII JSON、紧凑分隔符和 SHA-256 字节口径；不是全数据库结构证明，不扩展现有指纹范围。
+- `tests/unit/test_provider_policy.py` 与 `test_benchmark_identity.py` 覆盖共享校验、Git 失败策略/命令顺序、错误翻译和指纹序列化。临时 PostgreSQL 实测额外核对 4 个旧实现与新实现的指纹相同。
+
+- `application/goal_session_views.py` 持有只读活动 Task 查询及 GoalSession、事件、投递的公开 DTO 投影；`workflow/goal_session.py` 保留授权、事务、stale 转换与写入编排，旧 `public_goal_delivery_view` 导出入口继续兼容。
+- `worker/handlers/novel_model_calls.py` 的校验回调与返回值通过泛型绑定，`novel_prose.py` 保留跨重试的证据基线可空类型；不会删除 Judge 修复保护分支。`application/novel_editor.py` 的公开结果消息只返回字符串，非字符串历史值返回空串，原无有效修改提示保留。
+- Ruff 明确 `casefile`、`casefile_contracts` 与共享测试辅助模块为 first-party；统一入口使用自动发现 backend 配置，根目录显式配置与 backend 目录检查结果一致。导入整理和超长行格式化不改迁移版本文件、契约或 Prompt 内容。
+
+- `tests/integration/test_novel_prose_runtime.py` 从 `test_novel_prose.py` 重命名，避免与 unit 同名模块使 pytest 默认收集中断；用例内容不变。
+- `tests/prose_rewrite_test_support.py` 为 Rewrite development/qualification 单元测试提供相同的临时合成包构建方式，复用原 development 测试生成器入口，不改冻结资产。预算测试补齐假存储 runtime，规划评测测试对齐已发布的 Semantic Fill v2。
+
+- `agent_runtime/usage.py` 统一 Chat、Goal、Worker Closure Repair 的用量累加，以及正文 Provider 的响应用量读取和 Fake 请求计数；`tests/unit/test_usage.py` 覆盖非计数元数据、布尔值、缺失用量及可变结果隔离。Structured Output、分区生成与 Brief Workflow 的不同统计口径仍独立保留。
+- `application/v1_editing.py` 删除没有调用方的旧结论失效方法与 JSON Pointer 写入方法；当前 simulation 路径及结论依赖审核继续保留。
+- `benchmark/scene_plan_eval.py` 删除无入口的旧套件执行函数及其私有 trial 包装；现行 `run_suite`、历史输入校验与冻结 Fixture 不变。`benchmark/general_mutation_backend_executor.py` 删除无调用方的旧重复 Apply 探针，现有故障矩阵入口保留。
+
 ## 正文一致性与定向生成修复（runtime v8）
 
 - `backend/src/casefile/agent_runtime/prose_continuity.py`：跨场景审核协议、请求绑定与 Provider 适配，不持有数据库，不改写规划。

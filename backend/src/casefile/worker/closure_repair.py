@@ -7,6 +7,7 @@ from typing import Any
 
 from casefile.agent_runtime import AgentProvider, CaseFileChatResult, ProviderRepairProposer
 from casefile.agent_runtime.models import EventSink
+from casefile.agent_runtime.usage import merge_usage_records
 from casefile.application.closure_repair import (
     ClosureRepairMode,
     closure_repair_envelope,
@@ -104,7 +105,7 @@ def execute_mutation_closure_repair(
             "final_candidate_hash": envelope["final_candidate_hash"],
         },
     )
-    usage = _merge_usage(item.usage for item in proposer.results)
+    usage = merge_usage_records(item.usage for item in proposer.results)
     return envelope, usage, repair
 
 
@@ -124,17 +125,6 @@ def _suggestions(result: CaseFileChatResult) -> list[dict[str, Any]]:
             }
         )
     return suggestions
-
-
-def _merge_usage(records: Any) -> dict[str, Any]:
-    merged: dict[str, Any] = {}
-    for record in records:
-        for key, value in record.items():
-            if isinstance(value, int) and not isinstance(value, bool):
-                merged[key] = int(merged.get(key, 0)) + value
-            else:
-                merged[key] = value
-    return merged
 
 
 __all__ = ["execute_chat_closure_repair", "execute_mutation_closure_repair"]

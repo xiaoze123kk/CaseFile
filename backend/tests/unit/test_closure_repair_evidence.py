@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.benchmark.closure_repair_evidence import (
     EvidenceIndexError,
     build_evidence_index,

@@ -16,6 +16,10 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.application.casefile_v1 import build_casefile_document
 from casefile.application.commands import ProjectCreate
@@ -40,9 +44,6 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

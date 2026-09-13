@@ -3,12 +3,13 @@
 from unittest.mock import patch
 
 import pytest
-from casefile.api.app import create_app
-from casefile.data_postgres.models import AgentModelCall, CompileArtifact, TaskRun
-from casefile_contracts import NovelRecommendation
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from test_prose_shadow_runtime import _prepare, _providers, _result, _run
+
+from casefile.api.app import create_app
+from casefile.data_postgres.models import AgentModelCall, CompileArtifact, TaskRun
+from casefile_contracts import NovelRecommendation
 
 pytestmark = pytest.mark.postgres
 

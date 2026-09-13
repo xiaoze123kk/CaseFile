@@ -7,21 +7,6 @@ import time
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal, NoReturn
 
-from casefile_contracts import (
-    BriefVersionView,
-    BriefView,
-    PublicAgentEvent,
-    PublicAgentMessage,
-    PublicAgentMessageReceipt,
-    PublicAgentRun,
-    PublicGoalDelivery,
-    PublicGoalEvent,
-    PublicGoalSession,
-    PublicPatchResponse,
-    PublicPatchReviewResult,
-    PublicRoutingFeedbackReceipt,
-    TaskRun,
-)
 from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import RootModel
@@ -61,6 +46,21 @@ from casefile.application.errors import ApplicationError
 from casefile.application.goal_session_state import TERMINAL_GOAL_STATUSES
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError
+from casefile_contracts import (
+    BriefVersionView,
+    BriefView,
+    PublicAgentEvent,
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicGoalDelivery,
+    PublicGoalEvent,
+    PublicGoalSession,
+    PublicPatchResponse,
+    PublicPatchReviewResult,
+    PublicRoutingFeedbackReceipt,
+    TaskRun,
+)
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 

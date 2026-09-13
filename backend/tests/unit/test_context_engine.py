@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, replace
 
 import pytest
+
 from casefile.agent_runtime.chat_routing import fallback_route
 from casefile.agent_runtime.context import (
     LEGACY_CONTEXT_POLICY_VERSION,

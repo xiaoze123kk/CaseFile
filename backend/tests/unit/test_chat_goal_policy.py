@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.goal.contracts import (
     GoalAmendmentOutput,
     GoalDecisionOutput,
@@ -23,7 +25,6 @@ from casefile.agent_runtime.goal.policy import (
     stable_hash,
     validate_decision,
 )
-from pydantic import ValidationError
 
 SOURCE = "先分析时间线，再审计矛盾；如果确认有问题，把事件标题改成夜访，然后复查修改结果。"
 

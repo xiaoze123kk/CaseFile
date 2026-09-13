@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     DeepSeekProseJudgeProvider,
     FakeProseJudgeProvider,
@@ -21,11 +23,21 @@ from casefile.benchmark.prose_rewrite_eval import (
     canonical_hash,
     load_prose_rewrite_dev_suite,
 )
+from prose_rewrite_test_support import current_package as current_package
+
+
+@pytest.fixture(autouse=True)
+def synthetic_current_judge(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These executor tests use synthetic current-runtime inputs, not a historical
+    # qualification package. Production keeps its frozen version and drift guard.
+    monkeypatch.setattr(
+        qualification, "FIDELITY_JUDGE_PROMPT_VERSION", load_prompt("prose_fidelity_judge").version
+    )
 
 
 @pytest.fixture(scope="module")
-def qualification_package() -> dict[str, Any]:
-    loaded = load_prose_rewrite_dev_suite()
+def qualification_package(current_package) -> dict[str, Any]:
+    loaded = load_prose_rewrite_dev_suite(*current_package)
     return {
         "descriptor": {
             "descriptor_hash": "d" * 64,
@@ -104,6 +116,26 @@ def _all_keys(value: Any) -> set[str]:
     return set()
 
 
+def test_mismatched_frozen_judge_blocks_before_provider_calls(
+    qualification_package: dict[str, Any], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_package(monkeypatch, qualification_package)
+    monkeypatch.setattr(qualification, "FIDELITY_JUDGE_PROMPT_VERSION", "prose-fidelity-judge-v1")
+    rewriter, judge, fake_rewriter, fake_judge = _provider_pair(
+        qualification_package, monkeypatch
+    )
+    with pytest.raises(
+        qualification.ProseRewriteQualificationError,
+        match="prose_rewrite_qualification_judge_prompt_not_frozen",
+    ):
+        qualification.run_prose_rewrite_qualification(
+            attempt_id="mocked-prompt-drift", api_key="fake",
+            rewriter_provider=rewriter, judge_provider=judge, source_probe=_source_state,
+        )
+    assert fake_rewriter.call_count == 0
+    assert fake_judge.call_count == 0
+
+
 def test_mocked_exact_adapters_run_fixed_24_once_and_can_qualify(
     qualification_package: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
@@ -138,8 +170,8 @@ def test_mocked_exact_adapters_run_fixed_24_once_and_can_qualify(
     assert report["logical_model_call_count"] == 64
     assert report["physical_transport_attempt_count"] == 64
     assert report["model_id"] == "deepseek-v4-pro"
-    assert report["rewriter_prompt_version"] == "prose-rewriter-v3"
-    assert report["judge_prompt_version"] == "prose-fidelity-judge-v6"
+    assert report["rewriter_prompt_version"] == qualification.PROSE_REWRITER_PROMPT_VERSION
+    assert report["judge_prompt_version"] == load_prompt("prose_fidelity_judge").version
     assert report["council_policy_id"] == "fidelity-only-v1"
     assert report["max_rewrites_per_scene"] == 2
     assert report["scene_call_budget"] == 4

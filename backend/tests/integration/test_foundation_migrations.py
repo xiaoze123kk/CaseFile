@@ -18,7 +18,6 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
-from casefile.application.goal_session_repository import GoalSessionRepository
 from foundation_migration_exposure import (
     assert_legacy_exposure_revision_v1,
     seed_legacy_exposure_revision,
@@ -27,6 +26,8 @@ from foundation_migration_tables import BUSINESS_TABLES
 from foundation_migration_types import Lineage, MigrationCompatibilityIds
 from sqlalchemy.engine import Connection, Engine, make_url
 from sqlalchemy.orm import Session
+
+from casefile.application.goal_session_repository import GoalSessionRepository
 
 pytestmark = pytest.mark.postgres
 

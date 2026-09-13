@@ -11,6 +11,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.goal.contracts import (
     GoalCompletionDecision,
     GoalExecutionCheckpoint,
@@ -33,8 +36,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

@@ -5,6 +5,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
@@ -35,7 +37,6 @@ from casefile.benchmark.chat_public_language_qualification import (
     load_public_language_suite,
 )
 from casefile.data_postgres.models import AgentModelCall, AgentStepRun, TaskEvent, TaskRun
-from sqlalchemy import select
 
 ROOT = Path(__file__).resolve().parents[3]
 

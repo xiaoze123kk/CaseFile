@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prose_quality_config import QUALITY_PRO_DIAGNOSTIC, QUALITY_V2
 from casefile.agent_runtime.prose_quality_critic import (
     FakeProseQualityCriticProvider,

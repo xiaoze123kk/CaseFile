@@ -32,6 +32,7 @@ from casefile.agent_runtime.public_language import (
     PUBLIC_GOAL_SAFE_TERMINAL,
     PublicLanguageValidationError,
 )
+from casefile.agent_runtime.usage import merge_usage_records
 
 
 class GoalExecutionError(RuntimeError):
@@ -392,7 +393,7 @@ class GoalExecutionRunner:
             observations=tuple(observations),
             completion=completion,
             mutation_proof=mutation_proof,
-            usage=_merge_usage(usage_records),
+            usage=merge_usage_records(usage_records),
             tools=tools,
             decision_calls=decision_calls,
         )
@@ -418,7 +419,7 @@ class GoalExecutionRunner:
         return GoalCheckpointResult(
             checkpoint=checkpoint,
             safe_point=safe_point,
-            usage=_merge_usage(usage_records),
+            usage=merge_usage_records(usage_records),
             tools=tools,
             decision_calls=decision_calls,
         )
@@ -440,17 +441,6 @@ class GoalExecutionRunner:
             observation.mutation_proof_ref is None or observation.candidate_hash is None
         ):
             raise GoalExecutionError("goal_capability_blocked")
-
-
-def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
-    merged: dict[str, Any] = {}
-    for record in records:
-        for key, value in record.items():
-            if isinstance(value, int) and not isinstance(value, bool):
-                merged[key] = int(merged.get(key, 0)) + value
-            else:
-                merged[key] = value
-    return merged
 
 
 def _normalize_goal_finalizer_result(result: CaseFileChatResult) -> CaseFileChatResult:

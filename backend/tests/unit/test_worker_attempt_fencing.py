@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from casefile.worker.executors.completion import CompletionExecutor
 from casefile.worker.executors.scene_compiler import _lock_active as lock_scene
 from casefile.worker.executors.story_planner import _lock_active as lock_story

@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from casefile_contracts import PlannerModelViewV3, PlannerModelViewV4
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -13,6 +12,7 @@ from casefile.domain.narrative_compiler.foundation import (
     canonical_json_sha256,
 )
 from casefile.domain.narrative_compiler.planner_input import validate_planner_input_bundle
+from casefile_contracts import PlannerModelViewV3, PlannerModelViewV4
 
 PLANNER_CONSTRAINT_IR_SCHEMA_ID = "compiler.planner-constraints.v1"
 PLANNER_CONSTRAINT_IR_VERSION = "compiler.planner-constraint-projection.v1"
