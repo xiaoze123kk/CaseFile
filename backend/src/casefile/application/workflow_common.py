@@ -65,7 +65,7 @@ def require_current_draft(
     )
 
 
-DEFAULT_PROVIDER = "openai"
+DEFAULT_PROVIDER = "deepseek"
 
 DEFAULT_MODEL = "gpt-5.6-sol"
 

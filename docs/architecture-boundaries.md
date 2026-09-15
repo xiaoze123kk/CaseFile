@@ -1,5 +1,26 @@
 # 架构边界与模块规则
 
+## 当前 DeepSeek 模型策略
+
+新建 DeepSeek 任务统一通过 `agent_runtime/model_policy.py` 选择 `deepseek-flash`
+（当前 DeepSeek-V4.1-Flash）。该策略覆盖 Brief、Chat、Intake、反向解析、创意、小说
+规划、正文生成与协作；正文 generation/quality 使用同一模型，发布新的 v11 runtime。
+`deepseek_transport.py` 在真实 DeepSeek HTTP 请求前拒绝旧 Pro 或旧 Flash 别名，
+避免历史评测入口绕过当前策略；不把 Pro 请求静默改名后仍以旧模型计分。
+旧 TaskRun、不可变 Prompt 和评测描述符不改写；历史参数仅保留离线读取和 Fake 回放。
+未来若要重新使用旧 Pro 资格包，必须先明确新的模型策略和独立资格条件。
+
+## Chat 与 Novel Compile 的内建 Hook
+
+当前两条执行链允许在已明确的校验边界使用内建 Hook；这是对历史 M3.7
+“Hook 插件不属于该阶段”范围的后续扩展，不引入第三方动态插件。
+共享契约位于 `agent_runtime/runtime_hooks.py`，具体策略分别放在
+`chat_completion_hooks.py` 与 `novel_compile_hooks.py`。同步 Hook 只承接纯校验，
+异步 generation Hook 保留原语义；修复、预算、模型调用与业务状态仍由原编排负责。
+Hook 不写数据库、不调用模型、不修改候选，小说文学意见不成为确定性致命门禁。
+本轮提取保持原检查顺序和错误码；后续语义扩展需要新版本与冻结指纹。
+完整落位、扩展与测试说明见 `backend/src/casefile/agent_runtime/HOOKS.md`。
+
 ## N4.5 Prose Rendering 与 Judge Council 冻结边界
 
 N4.5 在 N4.4 `compiler.scene-plan.v2`、匹配的 `compiler.narrative-ir.v1` 与新增

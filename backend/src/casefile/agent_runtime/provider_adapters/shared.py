@@ -963,7 +963,7 @@ def _deepseek_v8_output_protocol(model_id: str) -> Literal["strict_tool", "json_
         )
     if configured != "auto":
         return cast(Literal["strict_tool", "json_object"], configured)
-    if model_id.strip().lower() in {"deepseek-v4-flash", "deepseek-chat"}:
+    if model_id.strip().lower() in {"deepseek-flash", "deepseek-v4-flash", "deepseek-chat"}:
         return "json_object"
     return "strict_tool"
 

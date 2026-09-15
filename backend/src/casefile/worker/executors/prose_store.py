@@ -233,6 +233,7 @@ class ProseStore:
         *,
         source_step: int | None = None,
         allow_cancel: bool = False,
+        hook_records: list[dict[str, Any]] | None = None,
     ) -> CompileArtifact:
         key = self.artifact_key(key, kind)
         digest = canonical_json_sha256(content)
@@ -266,6 +267,11 @@ class ProseStore:
                 step.status = "succeeded"
                 step.output_hash = digest
                 step.finished_at = datetime.now(UTC)
+            if hook_records:
+                step.diagnostic_jsonb = {
+                    **step.diagnostic_jsonb,
+                    "hooks": [dict(record) for record in hook_records],
+                }
             artifact = CompileArtifact(
                 project_id=self.run.project_id,
                 casefile_id=self.run.casefile_id,

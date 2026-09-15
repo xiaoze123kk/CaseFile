@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_writer",
+  "version": "prose-writer-v6",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+  "previous_version": "prose-writer-v5",
+  "change_summary": "候选：服务端保留完整绑定，模型视图移除纯追踪哈希并稳定数据顺序。"
+}

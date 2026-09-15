@@ -1,8 +1,8 @@
 param(
     [ValidateSet("fake", "live")][string]$Mode = "fake",
     [ValidateRange(1, 100)][int]$Repeats = 3,
-    [string]$Model = "gpt-5.6-sol",
-    [ValidateSet("openai", "deepseek")][string]$Provider = "openai",
+    [string]$Model = "deepseek-flash",
+    [ValidateSet("openai", "deepseek")][string]$Provider = "deepseek",
     [string]$PromptVersion = "",
     [string]$ReportPath = "",
     [string]$Fixture = "fixtures\benchmark\brief_to_draft.json",

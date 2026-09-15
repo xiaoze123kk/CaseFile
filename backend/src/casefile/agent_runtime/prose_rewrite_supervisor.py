@@ -16,6 +16,7 @@ from casefile.agent_runtime.prose_revision import execute_revision_decision
 from casefile.agent_runtime.prose_rewriter import (
     PROSE_REWRITER_MAX_CALLS_PER_SCENE,
     PROSE_REWRITER_MODEL_ID,
+    PROSE_REWRITER_PROMPT_VERSION,
     ProseRewriterExecution,
     ProseRewriterProvider,
     build_prose_rewriter_request,
@@ -73,10 +74,14 @@ def _execute_bounded_prose_rewrite(
     observe: ComponentObserver = ignore_component,
     llm_revision: bool = False,
     delivery_mode: Literal["strict", "product"] = "strict",
+    prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
 ) -> ProseRewriteSupervisorExecution:
     """Review an initial Writer render and allow at most two complete rewrites."""
 
-    if model_id != PROSE_REWRITER_MODEL_ID or model_id != PROSE_COUNCIL_MODEL_ID:
+    if model_id not in (PROSE_REWRITER_MODEL_ID, "deepseek-v4-pro") or model_id not in (
+        PROSE_COUNCIL_MODEL_ID,
+        "deepseek-v4-pro",
+    ):
         return _terminal(
             "protocol_failed",
             (),
@@ -130,6 +135,7 @@ def _execute_bounded_prose_rewrite(
         assert council.consensus is not None
         source = build_prose_rewriter_request(
             scene_plan=scene_plan,
+            prompt_version=prompt_version,
             narrative_ir=narrative_ir,
             profile=profile,
             checklist=checklist_json,
@@ -227,6 +233,7 @@ def _execute_bounded_prose_rewrite(
         rewrite_execution = execute_prose_rewriter(
             rewriter_provider,
             scene_plan=scene_plan,
+            prompt_version=prompt_version,
             narrative_ir=narrative_ir,
             profile=profile,
             checklist=checklist_json,

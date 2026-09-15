@@ -1,6 +1,6 @@
 {
   "schema_id": "casefile.prose-quality-dev-attestation.v1",
-  "suite_hash": "0a75f29d43da39d702e1d1543780a8fa5d8a3d4e7c2aa18174864a01f603cbc6",
+  "suite_hash": "32c75597bc25bec0a0aad35ec0bdf567d80b70ea51ee1cd2872a88085a8d3e23",
   "reviewer": "Codex",
   "reviewer_independence": false,
   "reviewed_task_count": 8,
@@ -13,5 +13,5 @@
   "allowed_use": "public_quality_development_only",
   "qualification": false,
   "unresolved_findings": [],
-  "attestation_hash": "c7cc6b60eeabf49927c2b961dd2d61d3b541ecdf0c90064ab997c424a911100f"
+  "attestation_hash": "58b5c3d320d531b2d65d53730d1e62ec6206995701992d053c2084c5c65344aa"
 }

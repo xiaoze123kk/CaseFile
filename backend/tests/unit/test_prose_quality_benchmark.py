@@ -218,6 +218,7 @@ def test_qualification_descriptor_freezes_private_cohorts_and_review() -> None:
     assert descriptor["quality_gate_thresholds"] == QUALITY_QUALIFICATION_GATES
     assert descriptor["polisher_gate_thresholds"] == POLISHER_QUALIFICATION_GATES
     assert descriptor["review_policy"] == "codex-owner-accepted-review-v1"
+    assert descriptor["quality_model_id"] == descriptor["generation_model_id"] == "deepseek-flash"
     assert descriptor["review_status"] == "codex_reviewed"
     assert descriptor["qualification_eligible"] is True
     assert descriptor["descriptor_hash"] == canonical_hash(
@@ -238,6 +239,10 @@ def _current_descriptor_for_guard_test():
         polisher_component_hash=PROSE_POLISHER_COMPONENT_HASH,
         polisher_prompt_version=PROSE_POLISHER_PROMPT_VERSION,
         quality_component_hash=PROSE_QUALITY_COMPONENT_HASH,
+        review_status="codex_reviewed",
+        qualification_eligible=True,
+        author_attestation_hash="a" * 64,
+        review_attestation_hash="b" * 64,
     )
     return descriptor
 

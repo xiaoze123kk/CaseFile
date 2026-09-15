@@ -187,8 +187,9 @@ def test_request_contains_failed_and_preserved_semantics_without_credentials(
         },
         "hard_gate": True,
     }
-    assert "revision_decision" in request.system_prompt
-    assert "local_revision" in request.system_prompt
+    instructions = DeepSeekProseRewriterProvider().completion_body(request)["messages"][0]["content"]
+    assert "revision_decision" in instructions
+    assert "local_revision" in instructions
 
 
 def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(

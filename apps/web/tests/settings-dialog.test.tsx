@@ -46,6 +46,14 @@ afterEach(() => {
 });
 
 describe("API key management", () => {
+  it("defaults to Flash and shows the canonical model for legacy saved settings", async () => {
+    renderSettings();
+    expect(screen.getByLabelText("DeepSeek API 密钥")).toBeVisible();
+    await screen.findByText(/••••••••68c1/);
+    expect(screen.getByRole("combobox")).toHaveValue("deepseek-flash");
+    expect(screen.queryByRole("option", { name: "deepseek-v4-pro" })).not.toBeInTheDocument();
+  });
+
   it("reveals only the key currently entered by the user", () => {
     renderSettings();
     fireEvent.click(screen.getByRole("button", { name: /DeepSeek/ }));

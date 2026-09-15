@@ -15,7 +15,6 @@ from typing import Any, Final, Literal
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
-    PROSE_COUNCIL_MODEL_ID,
     PROSE_COUNCIL_NETWORK_RETRIES,
     DeepSeekProseJudgeProvider,
     ProseCouncilExecution,
@@ -27,7 +26,6 @@ from casefile.agent_runtime.prose_judge import (
 from casefile.agent_runtime.prose_rewriter import (
     PROSE_REWRITER_COMPONENT_HASH,
     PROSE_REWRITER_MAX_CALLS_PER_SCENE,
-    PROSE_REWRITER_MODEL_ID,
     PROSE_REWRITER_NETWORK_RETRIES,
     PROSE_REWRITER_PROMPT_VERSION,
     DeepSeekProseRewriterProvider,
@@ -45,6 +43,10 @@ from casefile.benchmark.prose_rewrite_eval import (
     canonical_hash,
     load_prose_rewrite_qualification_suite,
 )
+
+# Historical suite identity; live non-Flash requests are rejected at transport.
+PROSE_REWRITER_MODEL_ID = "deepseek-v4-pro"
+PROSE_COUNCIL_MODEL_ID = "deepseek-v4-pro"
 
 REPORT_VERSION: Final = "casefile.prose-rewrite-qualification-report.v1"
 EXECUTOR_VERSION: Final = "prose-rewrite-qualification-executor-v1"

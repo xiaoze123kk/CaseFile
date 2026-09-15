@@ -6,8 +6,8 @@ param(
     [string]$SourceAttempt = "",
     [string]$LiveConfirmation = "",
     [string]$DiagnosticSuite = "fixtures/prose_quality_benchmark/diagnostic_v1/suite.json",
-    [ValidateSet("both", "v2-flash", "diagnostic-pro-pairwise-v1")]
-    [string]$Candidates = "both",
+    [ValidateSet("v4.1-flash")]
+    [string]$Candidates = "v4.1-flash",
     [ValidateSet(3)]
     [int]$Repeats = 3,
     [ValidateRange(1, 4)]
@@ -52,14 +52,14 @@ try {
         if (-not $configured) {
             throw "QualificationLive requires CASEFILE_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY."
         }
-        $qualificationRoot = Join-Path $repoRoot "backend\var\benchmark\prose-quality\qualification-v2"
+        $qualificationRoot = Join-Path $repoRoot "backend\var\benchmark\prose-quality\qualification-v4"
         $consumedAttempt = Get-ChildItem -LiteralPath $qualificationRoot -Directory `
             -ErrorAction SilentlyContinue | Where-Object {
                 Test-Path -LiteralPath (Join-Path $_.FullName "attempt-manifest.json") -PathType Leaf
             } | Select-Object -First 1
         if ($null -ne $consumedAttempt) {
             throw (
-                "QualificationLive refuses to reuse the consumed qualification-v2 package. " +
+                "QualificationLive refuses to reuse the consumed qualification-v4 package. " +
                 "Freeze a new private package before another formal attempt."
             )
         }

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any, Literal
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
@@ -22,12 +24,17 @@ from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_MAX_OUTPUT_TOKENS,
 )
 from casefile.agent_runtime.prose_rewriter import (
+    PROSE_REWRITER_CANDIDATE_SCHEMA,
     PROSE_REWRITER_COMPONENT_HASH,
     PROSE_REWRITER_MAX_OUTPUT_TOKENS,
+    PROSE_REWRITER_PROMPT_VERSION,
 )
+from casefile.agent_runtime.prose_skills import assemble_skill
 from casefile.agent_runtime.prose_writer import (
+    PROSE_WRITER_CANDIDATE_SCHEMA,
     PROSE_WRITER_COMPONENT_HASH,
     PROSE_WRITER_MAX_OUTPUT_TOKENS,
+    PROSE_WRITER_PROMPT_VERSION,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
 from casefile.domain.narrative_compiler.prose_checklist import PROSE_CHECKLIST_POLICY_HASH
@@ -44,7 +51,7 @@ from casefile_contracts import (
     SceneRender,
 )
 
-PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v10"
+PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v12"
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -56,27 +63,33 @@ ProseMode = Literal["quick_draft", "full_polish"]
 
 
 def prose_runtime_binding(
-    scene_count: int | None = None, prose_mode: ProseMode = "full_polish"
+    scene_count: int | None = None,
+    prose_mode: ProseMode = "full_polish",
+    *,
+    runtime_version: str = PROSE_RUNTIME_VERSION,
 ) -> dict[str, Any]:
     """Freeze executable policies and prompt contents without credentials."""
     if prose_mode not in {"quick_draft", "full_polish"}:
         raise ValueError("compiler_prose_mode_invalid")
+    if runtime_version not in {"prose-shadow-runtime-v11", PROSE_RUNTIME_VERSION}:
+        raise ValueError("compiler_prose_runtime_version_unsupported")
+    legacy = runtime_version == "prose-shadow-runtime-v11"
     quick = prose_mode == "quick_draft"
     versions = {
         "prose_continuity": "prose-continuity-v1",
-        "prose_writer": "prose-writer-v4",
+        "prose_writer": "prose-writer-v4" if legacy else PROSE_WRITER_PROMPT_VERSION,
         "prose_fidelity_judge": load_prompt("prose_fidelity_judge").version,
         "prose_adversarial_judge": load_prompt("prose_adversarial_judge").version,
         "prose_coherence_judge": load_prompt("prose_coherence_judge").version,
         "prose_arbiter": load_prompt("prose_arbiter").version,
-        "prose_rewriter": "prose-rewriter-v7",
+        "prose_rewriter": "prose-rewriter-v7" if legacy else PROSE_REWRITER_PROMPT_VERSION,
         "prose_revision": "prose-revision-v3",
         "prose_quality_critic": "prose-quality-critic-v1",
         "prose_quality_pairwise": "prose-quality-pairwise-v1",
         "prose_polisher": "prose-polisher-v5",
     }
-    return {
-        "version": PROSE_RUNTIME_VERSION,
+    binding = {
+        "version": runtime_version,
         "prose_mode": prose_mode,
         "scene_count": scene_count,
         "max_logical_calls": None if scene_count is None else (2 if quick else 23) * scene_count,
@@ -96,8 +109,8 @@ def prose_runtime_binding(
             )
         },
         "provider": "deepseek",
-        "generation_model": "deepseek-v4-pro",
-        "quality_model": "deepseek-v4-flash",
+        "generation_model": DEEPSEEK_MODEL_ID,
+        "quality_model": DEEPSEEK_MODEL_ID,
         "semantic_policy": FIDELITY_ONLY_POLICY.descriptor(),
         "semantic_policy_hash": FIDELITY_ONLY_POLICY.policy_hash,
         "preservation_policy": FIDELITY_ONLY_POLICY.descriptor(),
@@ -151,6 +164,32 @@ def prose_runtime_binding(
             "cost_limit": None,
         },
     }
+    if not legacy:
+        binding["skills"] = {
+            name: assemble_skill(
+                SimpleNamespace(
+                    prompt_version=versions[name],
+                    system_prompt=load_prompt(name, versions[name]).system_prompt,
+                ),
+                schema,
+            )[1]
+            for name, schema in (
+                ("prose_writer", PROSE_WRITER_CANDIDATE_SCHEMA),
+                ("prose_rewriter", PROSE_REWRITER_CANDIDATE_SCHEMA),
+            )
+        }
+    return binding
+
+
+def matches_prose_runtime(
+    binding: dict[str, Any], scene_count: int | None, prose_mode: ProseMode = "full_polish"
+) -> bool:
+    try:
+        return binding == prose_runtime_binding(
+            scene_count, prose_mode, runtime_version=binding.get("version", "")
+        )
+    except ValueError:
+        return False
 
 
 def prose_runtime_hash() -> str:

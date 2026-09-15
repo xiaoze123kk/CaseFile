@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any, Protocol
 
+from casefile.agent_runtime.novel_compile_hooks import check_novel_boundary
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     advance_scene_compiler_runtime_state,
@@ -147,12 +148,11 @@ def execute_scene_semantic_fill(
         for repair_no in range(min(max_repairs, 1) + 1):
             try:
                 proposal = validate_scene_semantic_fill(raw_proposal, batch_view=batch)
-                if repair_no and request.repair_context:
-                    failed_scene = request.repair_context["error"].get("scene_id")
-                    previous = request.repair_context["candidate"]["scenes"]
-                    for old, new in zip(previous, proposal["scenes"], strict=True):
-                        if old["scene_id"] != failed_scene and old != new:
-                            raise CompilerContractError("compiler_scene_repair_preservation_failed")
+                if repair_no:
+                    check_novel_boundary(
+                        "scene_repair",
+                        {"repair_context": request.repair_context, "proposal": proposal},
+                    )
                 runtime_state = advance_scene_compiler_runtime_state(
                     runtime_state,
                     batch_view=batch,

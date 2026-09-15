@@ -13,6 +13,7 @@ from typing import Any, cast
 from openai import AsyncOpenAI, BadRequestError
 from pydantic import BaseModel, ValidationError
 
+from casefile.agent_runtime.deepseek_transport import flash_async_http_client
 from casefile.contracts import ContractValidationError
 
 DEEPSEEK_BETA_BASE_URL = "https://api.deepseek.com/beta"
@@ -148,6 +149,7 @@ async def call_deepseek_strict_tool(
 
     schema = compile_deepseek_strict_schema(output_type)
     client = AsyncOpenAI(
+        http_client=flash_async_http_client(),
         api_key=api_key,
         base_url=DEEPSEEK_BETA_BASE_URL,
         max_retries=network_retries,

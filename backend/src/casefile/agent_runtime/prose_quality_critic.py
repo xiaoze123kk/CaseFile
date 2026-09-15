@@ -10,9 +10,10 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     PROSE_EVIDENCE_CATALOG_POLICY_HASH,
@@ -22,6 +23,7 @@ from casefile.agent_runtime.prose_judge import (
 from casefile.agent_runtime.prose_quality_config import (
     QUALITY_V2,
     ProseQualityConfig,
+    resolve_quality_config,
     validate_quality_config,
 )
 from casefile.agent_runtime.usage import fake_prose_usage, prose_response_usage
@@ -39,7 +41,7 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile_contracts import ProseQualityReport
 
-PROSE_QUALITY_MODEL_ID: Final = "deepseek-v4-flash"
+PROSE_QUALITY_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_QUALITY_FINDINGS_PROMPT_VERSION: Final = "prose-quality-critic-v1"
 PROSE_QUALITY_PAIRWISE_PROMPT_VERSION: Final = "prose-quality-pairwise-v1"
 PROSE_QUALITY_REQUEST_PROTOCOL: Final = "prose-quality-json-object-v1"
@@ -434,7 +436,7 @@ def execute_mirrored_pairwise_quality(
     preservation_consensus: dict[str, Any],
     model_id: str,
     api_key: str,
-    config: ProseQualityConfig = QUALITY_V2,
+    config: ProseQualityConfig | None = None,
     reverse_first: bool = False,
     recover_call: Callable[[str], ProseQualityProviderResult | None] | None = None,
 ) -> MirroredQualityExecution:
@@ -563,8 +565,9 @@ def _build_pairwise_request(
     position_mapping: dict[str, PositionIdentity],
     model_id: str,
     api_key: str,
-    config: ProseQualityConfig = QUALITY_V2,
+    config: ProseQualityConfig | None = None,
 ) -> tuple[ProseQualityRequest, dict[str, Any], dict[str, Any]]:
+    config = resolve_quality_config(config, model_id)
     try:
         validate_quality_config(config)
     except ValueError as error:
@@ -826,7 +829,7 @@ def _anonymous_render(render: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_model(model_id: str) -> None:
-    if model_id != PROSE_QUALITY_MODEL_ID:
+    if model_id not in (PROSE_QUALITY_MODEL_ID, "deepseek-v4-flash"):
         raise ProseQualityProtocolError("prose_quality_model_id_not_frozen")
 
 

@@ -30,8 +30,8 @@ const PROVIDERS: Array<{
     id: "deepseek",
     label: "DeepSeek",
     caption: "对话补全接口",
-    defaultModel: "deepseek-v4-flash",
-    models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+    defaultModel: "deepseek-flash",
+    models: ["deepseek-flash"],
   },
 ];
 
@@ -55,7 +55,7 @@ export function SettingsDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [providerName, setProviderName] = useState<ProviderName>("openai");
+  const [providerName, setProviderName] = useState<ProviderName>("deepseek");
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [modelId, setModelId] = useState("");
@@ -73,8 +73,10 @@ export function SettingsDialog({
   });
 
   const savedCustomModel = Boolean(settingQuery.data?.model_is_custom && !modelId);
-  const customModel = customModelMode || savedCustomModel;
-  const effectiveModelId = customModelMode
+  const customModel = providerName !== "deepseek" && (customModelMode || savedCustomModel);
+  const effectiveModelId = providerName === "deepseek"
+    ? provider.defaultModel
+    : customModelMode
     ? modelId
     : modelId || settingQuery.data?.model_id || provider.defaultModel;
 
@@ -284,7 +286,7 @@ export function SettingsDialog({
                 {provider.models.map((model) => (
                   <option key={model} value={model}>{model}</option>
                 ))}
-                <option value="__custom__">自定义模型…</option>
+                {providerName !== "deepseek" ? <option value="__custom__">自定义模型…</option> : null}
               </select>
               {customModel ? (
                 <input
@@ -296,7 +298,9 @@ export function SettingsDialog({
                 />
               ) : null}
               <small>
-                默认使用 {provider.defaultModel}；也可填写该供应商兼容的自定义模型。
+                {providerName === "deepseek"
+                  ? "所有创作任务统一使用 DeepSeek Flash。"
+                  : `默认使用 ${provider.defaultModel}；也可填写该供应商兼容的自定义模型。`}
               </small>
             </label>
             {saveMutation.isError ? (

@@ -1,5 +1,20 @@
 # 后端代码职责地图
 
+`agent_runtime/model_policy.py` 是新 DeepSeek 任务模型选择的唯一源头；
+`deepseek_transport.py` 负责 HTTP 发送前的 Flash 检查。公开设置默认 DeepSeek Flash，
+API Schema/OpenAPI、前端设置和普通 benchmark 默认值同步。历史评测模块保留自身
+冻结模型名称，不能把新 Flash 结果冒充旧 Pro 资格。
+
+## Agent Hook 边界
+
+`agent_runtime/runtime_hooks.py` 统一异步与同步 Hook 的契约与分派，
+`generation_hooks.py` 保留旧导出。`chat_completion_hooks.py` 为普通 Chat 与 Goal
+提供有序完成校验；`chat_postprocessing.py` 提取安全补丁物化与原业务事件。
+`novel_compile_hooks.py` 承接小说 runtime 绑定、上游哈希、连续性协议、整本候选与
+场景局部修复保护检查。Loop 不注册 handler，也不承载新增规则。
+ProseStore 在既有产物事务中记录内部 Hook 元数据。详见
+`backend/src/casefile/agent_runtime/HOOKS.md`。
+
 ## 全仓技术债清理
 
 - `application/provider_policy.py` 统一 Provider 白名单与名称归一化，Brief Intake 与 Workflow Agent/Content 直接调用；`workflow_common`、`workflow_service` 既有白名单导出保持兼容，公开错误码、状态码和详情不变。
@@ -541,3 +556,14 @@ v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generati
 Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
 
 Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。
+
+
+## 小说 Skill 候选与成本冒烟
+
+- `backend/src/casefile/agent_runtime/skill_resources.py`：包内 Skill 描述、资源路径与哈希读取；`generation_skills.py` 复用读取逻辑，v17 阶段策略不变。
+- `backend/src/casefile/agent_runtime/prose_skills.py`：Writer/Rewriter 候选的角色、Schema、Skill 与动态输入组装，版本指纹和资源追踪；`skill_releases/` 保存独立资源发布。旧发布与默认 Registry 不变。
+- `backend/src/casefile/agent_runtime/usage.py`：兼容旧计数并提供原始用量、缺失字段和缓存一致性观测。Writer/Rewriter 结果携带元数据，既有 asdict 产物持久化兼容。
+- `backend/src/casefile/benchmark/prose_cost_budget.py`：人民币预算预留、用量估价与加权缓存统计；`prose_cost_fixtures.py`：冻结公开小样本；`prose_cost_smoke.py`：零网络默认、显式 live、逐尝试落盘和停止，不提供自动续跑或正式资格结论。
+- `backend/tests/unit/test_prose_skills.py`、`test_prose_cost_budget.py` 与 `backend/tests/integration/test_prose_cost_smoke.py` 验证版本隔离、稳定前缀、预算和完整离线调用链；`scripts/prose-cost-smoke.ps1` 为独立入口。
+
+`backend/src/casefile/agent_runtime/prose_model_view.py` 仅在 Writer v6/Rewriter v9 的模型视图中移除已知编译器结构中的纯追踪哈希，不递归裁剪用户对象；完整绑定、原文和业务校验仍使用原始请求。成本报告没有固定缓存命中率门槛。

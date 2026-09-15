@@ -59,7 +59,7 @@ brief-to-draft 和 Prompt Package 回归测试。集成测试使用隔离 `_test
 真实验收入口：
 
 ```powershell
-scripts/acceptance-brief-to-draft-v8.ps1 -PromptVersion brief-to-draft-v17 -Provider deepseek -ModelId deepseek-v4-pro -Repeats 30
+scripts/acceptance-brief-to-draft-v8.ps1 -PromptVersion brief-to-draft-v17 -Provider deepseek -ModelId deepseek-flash -Repeats 30
 ```
 
 模型覆盖只作用于隔离测试库的设置副本。报告记录用量、延迟、修复、加载材料及 Hook 结果；

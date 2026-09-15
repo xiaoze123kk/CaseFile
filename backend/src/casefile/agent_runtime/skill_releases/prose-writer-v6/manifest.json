@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "prompt_version": "prose-writer-v6",
+  "role_sha256": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+  "schema_sha256": "610d59c82b4dfb3934c7c751943998c2f978f0925cc78901bbea11a3b4aecdf6",
+  "tool_policy": "no-tools-json-object-v1",
+  "skill": "scene-writing",
+  "order": [
+    "skill"
+  ],
+  "resources": {
+    "skill": {
+      "file": "SKILL.md",
+      "sha256": "53df2eb6238b5b26a935bdc6d34f25235f69ee4979d7da04460c7e81529eb0ff"
+    }
+  },
+  "model_view": "prose-model-view-v1"
+}

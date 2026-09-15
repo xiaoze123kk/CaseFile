@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from openai import OpenAI
-
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
     generation_focus,
@@ -20,7 +20,8 @@ from casefile.agent_runtime.prose_generation import (
     prepare_generation_result,
     validate_generation_result,
 )
-from casefile.agent_runtime.usage import fake_prose_usage
+from casefile.agent_runtime.prose_skills import bind_skill_request, completion_body
+from casefile.agent_runtime.usage import fake_prose_usage, response_usage_details
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
@@ -30,8 +31,8 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile_contracts import SceneRender, SceneRenderCandidate
 
-PROSE_WRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v4"
+PROSE_WRITER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
+PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v6"
 PROSE_WRITER_REQUEST_PROTOCOL: Final = "prose-writer-json-object-v4"
 PROSE_WRITER_COMPONENT_VERSION: Final = "prose-writer-runtime-v4"
 PROSE_WRITER_MAX_TURNS: Final = 1
@@ -105,6 +106,7 @@ class ProseWriterRequest:
     network_retries: int = PROSE_WRITER_NETWORK_RETRIES
     temperature: int = PROSE_WRITER_TEMPERATURE
     max_output_tokens: int = PROSE_WRITER_MAX_OUTPUT_TOKENS
+    prompt_metadata: dict[str, Any] = field(default_factory=dict)
     thinking_enabled: bool = PROSE_WRITER_THINKING_ENABLED
 
 
@@ -123,6 +125,9 @@ class ProseWriterProviderResult:
     prompt_version: str
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProseWriterTransportAttempt, ...]
+    usage_details: dict[str, Any] = field(default_factory=dict)
+    response_model_id: str | None = None
+    prompt_metadata: dict[str, Any] = field(default_factory=dict)
     recovered: bool = False
     generation_call_count: int = 1
 
@@ -219,41 +224,18 @@ class DeepSeekProseWriterProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
             transport_attempts=(attempt,),
+            usage_details=response_usage_details(response),
+            response_model_id=getattr(response, "model", None),
+            prompt_metadata=request.prompt_metadata,
         )
+
+    def completion_body(self, request: ProseWriterRequest) -> dict[str, Any]:
+        return completion_body(request, PROSE_WRITER_CANDIDATE_SCHEMA, generation_focus(request))
 
     def _create_completion(self, request: ProseWriterRequest) -> Any:
         client = OpenAI(api_key=request.api_key, base_url=self.base_url, max_retries=0)
         try:
-            return client.chat.completions.create(
-                model=request.model_id,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": request.system_prompt
-                        + "\n\n必须严格遵守以下 JSON Schema：\n"
-                        + json.dumps(
-                            PROSE_WRITER_CANDIDATE_SCHEMA,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            request.input_payload,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    },
-                    {"role": "user", "content": generation_focus(request)},
-                ],
-                response_format={"type": "json_object"},
-                temperature=request.temperature,
-                max_tokens=request.max_output_tokens,
-                extra_body={"thinking": {"type": "disabled"}},
-            )
+            return client.chat.completions.create(**self.completion_body(request))
         finally:
             client.close()
 
@@ -321,6 +303,7 @@ def execute_prose_writer(
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseWriterProviderResult | None] | None = None,
     continuity_advisories: list[dict[str, Any]] | None = None,
+    prompt_version: str = PROSE_WRITER_PROMPT_VERSION,
 ) -> ProseWriterExecution:
     """Validate frozen inputs, execute at most one Writer call, and normalize it."""
 
@@ -328,6 +311,7 @@ def execute_prose_writer(
     try:
         request = build_prose_writer_request(
             scene_plan=scene_plan,
+            prompt_version=prompt_version,
             narrative_ir=narrative_ir,
             profile=profile,
             checklist=checklist,
@@ -404,10 +388,11 @@ def build_prose_writer_request(
     api_key: str,
     remaining_scene_call_budget: int,
     continuity_advisories: list[dict[str, Any]] | None = None,
+    prompt_version: str = PROSE_WRITER_PROMPT_VERSION,
 ) -> ProseWriterRequest:
     """Build the minimal Provider view after exact authoritative input validation."""
 
-    if model_id != PROSE_WRITER_MODEL_ID:
+    if model_id not in (PROSE_WRITER_MODEL_ID, "deepseek-v4-pro"):
         raise ProseWriterProtocolError("prose_writer_model_id_not_frozen")
     if (
         not isinstance(remaining_scene_call_budget, int)
@@ -424,7 +409,7 @@ def build_prose_writer_request(
     ).model_dump(mode="json")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
     advisories = _validated_continuity_advisories(continuity_advisories)
-    prompt = load_prompt("prose_writer", PROSE_WRITER_PROMPT_VERSION)
+    prompt = load_prompt("prose_writer", prompt_version)
     component_input_hash = canonical_json_sha256(
         {
             "component_id": "prose_writer",
@@ -490,17 +475,20 @@ def build_prose_writer_request(
             "thinking_enabled": PROSE_WRITER_THINKING_ENABLED,
         }
     )
-    return ProseWriterRequest(
-        model_id=model_id,
-        api_key=api_key,
-        system_prompt=prompt.system_prompt,
-        prompt_version=prompt.version,
-        prompt_hash=prompt.system_prompt_sha256,
-        input_payload=payload,
-        input_hash=input_hash,
-        component_input_hash=component_input_hash,
-        request_fingerprint=fingerprint,
-        remaining_scene_call_budget=remaining_scene_call_budget,
+    return bind_skill_request(
+        ProseWriterRequest(
+            model_id=model_id,
+            api_key=api_key,
+            system_prompt=prompt.system_prompt,
+            prompt_version=prompt.version,
+            prompt_hash=prompt.system_prompt_sha256,
+            input_payload=payload,
+            input_hash=input_hash,
+            component_input_hash=component_input_hash,
+            request_fingerprint=fingerprint,
+            remaining_scene_call_budget=remaining_scene_call_budget,
+        ),
+        PROSE_WRITER_CANDIDATE_SCHEMA,
     )
 
 

@@ -9,12 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
+from casefile.agent_runtime.novel_compile_hooks import check_novel_boundary
 from casefile.agent_runtime.prose_context import scene_generation_context
 from casefile.agent_runtime.prose_continuity import ContinuityReview, continuity_request
 from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
 from casefile.agent_runtime.prose_polish_supervisor import execute_prose_polish_supervisor
 from casefile.agent_runtime.prose_rewrite_supervisor import execute_bounded_prose_rewrite
-from casefile.agent_runtime.prose_runtime import prose_runtime_binding
 from casefile.agent_runtime.prose_writer import execute_prose_writer
 from casefile.data_postgres.models import CompileArtifact, TaskRun, UserProviderSetting
 from casefile.domain.narrative_compiler import (
@@ -27,13 +28,13 @@ from casefile.domain.narrative_compiler.prose_checklist import scene_plan_review
 from casefile.worker.executors.prose_providers import DurableProseProvider, ProseProviders
 from casefile.worker.executors.prose_store import ProseLeaseLost, ProseResultUnknown, ProseStore
 from casefile.worker.failures import TaskCancellationRequested
-from casefile_contracts import NovelCandidate
 
 
 class ProseShadowExecutor:
     def __init__(self, store: ProseStore, providers: ProseProviders) -> None:
         self.store = store
         self.provider = DurableProseProvider(providers, store)
+        self.hook_records: list[dict[str, Any]] = []
         self.scenes: list[dict[str, Any]] = []
         self.ordered: list[dict[str, Any]] = []
         self.source: dict[str, Any] = {
@@ -56,16 +57,11 @@ class ProseShadowExecutor:
             if existing is not None:
                 return existing
         try:
-            if (
-                not manifest.get("prose_renderer_shadow")
-                or store.run.compile_mode != "preview"
-                or manifest.get("prose_runtime")
-                != prose_runtime_binding(
-                    manifest["profile"]["frozen_payload"]["structure"]["target_scenes"],
-                    manifest.get("prose_mode", "full_polish"),
-                )
-            ):
-                raise CompilerContractError("compiler_prose_runtime_binding_mismatch")
+            check_novel_boundary(
+                "prose_prepare",
+                {"manifest": manifest, "compile_mode": store.run.compile_mode},
+                records=self.hook_records,
+            )
             profile = manifest["profile"]["frozen_payload"]
             self.source["profile_hash"] = canonical_json_sha256(profile)
             with store.factory() as session:
@@ -105,16 +101,22 @@ class ProseShadowExecutor:
             ir_artifact = artifacts.get("compiler.narrative_ir")
             if plan_artifact is None or ir_artifact is None:
                 raise CompilerContractError("compiler_prose_upstream_missing")
-            for artifact in (plan_artifact, ir_artifact):
-                if canonical_json_sha256(artifact.content_jsonb) != artifact.content_hash:
-                    raise CompilerContractError("compiler_prose_upstream_hash_mismatch")
+            check_novel_boundary(
+                "prose_upstream",
+                {
+                    "artifacts": [
+                        {"content": artifact.content_jsonb, "hash": artifact.content_hash}
+                        for artifact in (plan_artifact, ir_artifact)
+                    ]
+                },
+                records=self.hook_records,
+            )
             plan, narrative = plan_artifact.content_jsonb, ir_artifact.content_jsonb
             self.source.update(
                 scene_plan_hash=plan_artifact.content_hash,
                 narrative_ir_hash=ir_artifact.content_hash,
             )
-            if plan.get("schema_id") != "compiler.scene-plan.v2":
-                raise CompilerContractError("compiler_prose_scene_plan_v2_required")
+            check_novel_boundary("prose_plan", {"plan": plan}, records=self.hook_records)
             self.ordered = sorted(plan["scenes"], key=lambda s: s["discourse_order"])
             # Validate the full upstream closure before the first prose request.
             build_prose_judge_checklist(
@@ -175,7 +177,7 @@ class ProseShadowExecutor:
             "scene_count": len(accepted),
             "character_count": sum(r["character_count"] for r in accepted),
         }
-        NovelCandidate.model_validate(candidate)
+        check_novel_boundary("novel_candidate", {"candidate": candidate}, records=self.hook_records)
         artifact = store.artifact(
             "novel_candidate", "compiler.novel_candidate", candidate, "prose_manifest"
         )
@@ -241,18 +243,28 @@ class ProseShadowExecutor:
             request = continuity_request(contexts, previous, api_key=api_key)
             call = self.provider.review_continuity(request)
             try:
-                if (
-                    call.request_fingerprint != request.request_fingerprint
-                    or call.input_hash != request.input_hash
-                    or call.prompt_hash != request.prompt_hash
-                ):
-                    raise ValueError("continuity_response_binding_invalid")
-                review = ContinuityReview.model_validate(call.candidate)
                 allowed = {item["scene_id"] for item in contexts}
                 if previous is not None:
                     allowed.add(previous["scene_id"])
-                if any(set(issue.scene_ids) - allowed for issue in review.issues):
-                    raise ValueError("continuity_scene_ref_invalid")
+                check_novel_boundary(
+                    "continuity",
+                    {
+                        "actual_binding": (
+                            call.request_fingerprint,
+                            call.input_hash,
+                            call.prompt_hash,
+                        ),
+                        "expected_binding": (
+                            request.request_fingerprint,
+                            request.input_hash,
+                            request.prompt_hash,
+                        ),
+                        "candidate": call.candidate,
+                        "allowed_scene_ids": sorted(allowed),
+                    },
+                    records=self.hook_records,
+                )
+                review = ContinuityReview.model_validate(call.candidate)
             except ValueError:
                 self.provider.record_protocol_failure(
                     request.request_fingerprint,
@@ -281,12 +293,13 @@ class ProseShadowExecutor:
             continuity_advisories = [issue.model_dump(mode="json") for issue in review.issues]
         writer = execute_prose_writer(
             self.provider,
+            prompt_version=store.runtime["prompts"]["prose_writer"]["version"],
             scene_plan=plan,
             narrative_ir=narrative,
             profile=profile,
             checklist=checklist,
             previous_scene_render=previous,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             api_key=api_key,
             remaining_scene_call_budget=store.runtime["limits"]["logical_calls_per_scene"],
             continuity_advisories=continuity_advisories,
@@ -319,13 +332,14 @@ class ProseShadowExecutor:
         rewrite = execute_bounded_prose_rewrite(
             self.provider,
             self.provider,
+            prompt_version=store.runtime["prompts"]["prose_rewriter"]["version"],
             scene_plan=plan,
             narrative_ir=narrative,
             profile=profile,
             checklist=checklist,
             previous_scene_render=previous,
             initial_render=writer.render,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             api_key=api_key,
             remaining_scene_call_budget=23
             - (writer.call.generation_call_count if writer.call else 1),
@@ -377,8 +391,8 @@ class ProseShadowExecutor:
             original_render=rewrite.final_render,
             semantic_consensus=consensus,
             preservation_policy=FIDELITY_ONLY_POLICY,
-            quality_model_id="deepseek-v4-flash",
-            generation_model_id="deepseek-v4-pro",
+            quality_model_id=DEEPSEEK_MODEL_ID,
+            generation_model_id=DEEPSEEK_MODEL_ID,
             api_key=api_key,
             observe=self.observe,
         )
@@ -542,6 +556,7 @@ class ProseShadowExecutor:
             data,
             "prose_manifest",
             allow_cancel=allow_cancel,
+            hook_records=self.hook_records,
         )
 
     def cancel(self) -> None:

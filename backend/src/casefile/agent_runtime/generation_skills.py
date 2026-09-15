@@ -24,6 +24,7 @@ from casefile.agent_runtime.prompt_package import (
     RenderedPrompt,
     render_prompt_package,
 )
+from casefile.agent_runtime.skill_resources import read_skill_resource, skill_metadata
 
 
 def execution_hash(value: object) -> str:
@@ -105,16 +106,9 @@ class SkillLoader:
         self.dispatcher = HookDispatcher(SKILL_HANDLERS)
 
     def discover(self) -> SkillDescriptor:
-        content = self.root.joinpath("SKILL.md").read_text(encoding="utf-8")
-        digest = sha256(content.encode()).hexdigest()
-        if digest != self.manifest["descriptor_sha256"]:
-            raise ValueError("Skill descriptor hash mismatch")
-        if not content.startswith("---\n"):
-            raise ValueError("Skill descriptor requires frontmatter")
-        metadata = dict(
-            line.split(": ", 1) for line in content.split("---", 2)[1].strip().splitlines()
-        )
-        return SkillDescriptor(metadata["name"], metadata["description"], "v17", digest)
+        content = read_skill_resource(self.root, "SKILL.md", self.manifest["descriptor_sha256"])
+        name, description = skill_metadata(content)
+        return SkillDescriptor(name, description, "v17", sha256(content.encode()).hexdigest())
 
     def validate(self, package: PromptPackage) -> None:
         self.discover()
