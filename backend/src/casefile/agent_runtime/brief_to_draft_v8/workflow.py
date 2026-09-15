@@ -37,6 +37,15 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     ResolutionGovernanceIRV1,
     StoryWorldIRV1,
 )
+from casefile.agent_runtime.brief_to_draft_v8.quality import (
+    _blueprint_creator_chinese_issues as _blueprint_creator_chinese_issues,
+)
+from casefile.agent_runtime.brief_to_draft_v8.quality import (
+    _brief_quality_requirement_issues as _brief_quality_requirement_issues,
+)
+from casefile.agent_runtime.brief_to_draft_v8.quality import (
+    _creator_chinese_issues as _creator_chinese_issues,
+)
 from casefile.agent_runtime.brief_to_draft_v8.validation import (
     _blueprint_competition_groups as _blueprint_competition_groups,
 )
@@ -113,8 +122,6 @@ from casefile.agent_runtime.brief_to_draft_v11.contracts import (
 from casefile.agent_runtime.brief_to_draft_v12.contracts import (
     StoryWorldIRV3,
     TemporalPlanV1,
-    temporal_plan_issues,
-    temporal_story_issues,
 )
 from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     ResolutionGovernanceIRV2,
@@ -122,9 +129,15 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
 from casefile.agent_runtime.brief_to_draft_v15.matrix import (
     evaluate_evidence_matrix,
 )
+from casefile.agent_runtime.generation_skills import SkillLoader
+from casefile.agent_runtime.generation_validation_hooks import (
+    run_stage_hooks,
+    validate_generation_artifact,
+)
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.prompt_package import (
     PromptPackageError,
+    RenderedPrompt,
     output_type_for_component,
     render_prompt_package,
 )
@@ -133,7 +146,7 @@ from casefile.agent_runtime.prompt_repository import (
     component_prompt_for_task,
     load_prompt,
 )
-from casefile.contracts import ContractValidationError, validate_casefile
+from casefile.contracts import ContractValidationError
 
 ComponentCall = Callable[
     [str, str, type[BaseModel], str, str, str],
@@ -156,32 +169,6 @@ _STEP_SCHEMA = {
     "casefile_compiler": "casefile-v1",
     "quality_repair_gate": "casefile-v1",
 }
-_CREATOR_TEXT_FIELDS = frozenset(
-    {
-        "accepted_answer_texts",
-        "access_rules",
-        "acquisition_conditions",
-        "aliases",
-        "capabilities",
-        "content",
-        "description",
-        "goals",
-        "name",
-        "proposition",
-        "purpose",
-        "rationale",
-        "reason",
-        "reasoning_question",
-        "secrets",
-        "statement",
-        "tags",
-        "title",
-        "traits",
-        "visibility_rules",
-    }
-)
-_HAN_TEXT = re.compile(r"[\u3400-\u9fff]")
-_LATIN_TEXT = re.compile(r"[A-Za-z]")
 
 
 _DOMAIN_REFERENCE_CONTRACTS = {
@@ -389,7 +376,9 @@ class PipelineContext:
         )
         self.usage_records.append(temporal_usage)
         self.temporal_plan = TemporalPlanV1.model_validate(temporal_output)
-        plan_issues = temporal_plan_issues(self.temporal_plan, self.blueprint)
+        plan_issues = await validate_generation_artifact(
+            self.request, "temporal_plan_issues", self.temporal_plan, self.blueprint
+        )
         if plan_issues:
             raise LinkerValidationError(plan_issues)
 
@@ -451,12 +440,19 @@ class _BlueprintPlannerStage:
         ctx.usage_records.append(planner_usage)
         ctx.blueprint = CaseBlueprintV1.model_validate(planner_output)
         blueprint_path_issues = (
-            _blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15)
+            await validate_generation_artifact(
+                ctx.request,
+                "_blueprint_path_plan_issues",
+                ctx.blueprint,
+                explicit_targets=ctx.uses_v15,
+            )
             if ctx.uses_v2_context
             else []
         )
         blueprint_relationship_issues = (
-            _v16_blueprint_relationship_coverage_issues(ctx.blueprint)
+            await validate_generation_artifact(
+                ctx.request, "_v16_blueprint_relationship_coverage_issues", ctx.blueprint
+            )
             if ctx.features.relationship_coverage
             else []
         )
@@ -465,22 +461,34 @@ class _BlueprintPlannerStage:
             _emit_quality_gate_failure(ctx.request, error)
             raise error
         language_repair_allowed = ctx.features.language_gate
-        needs_blueprint_repair = bool(
-            blueprint_path_issues or blueprint_relationship_issues
-        ) or (
-            language_repair_allowed and bool(_blueprint_creator_chinese_issues(ctx.blueprint))
+        needs_blueprint_repair = bool(blueprint_path_issues or blueprint_relationship_issues) or (
+            language_repair_allowed
+            and bool(
+                await validate_generation_artifact(
+                    ctx.request, "_blueprint_creator_chinese_issues", ctx.blueprint
+                )
+            )
         )
         if not needs_blueprint_repair:
             return
         for _ in range(ctx.features.blueprint_repair_budget):
             combined_issues = [
-                *_blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15),
+                *await validate_generation_artifact(
+                    ctx.request,
+                    "_blueprint_path_plan_issues",
+                    ctx.blueprint,
+                    explicit_targets=ctx.uses_v15,
+                ),
                 *(
-                    _v16_blueprint_relationship_coverage_issues(ctx.blueprint)
+                    await validate_generation_artifact(
+                        ctx.request, "_v16_blueprint_relationship_coverage_issues", ctx.blueprint
+                    )
                     if ctx.features.relationship_coverage
                     else []
                 ),
-                *_blueprint_creator_chinese_issues(ctx.blueprint),
+                *await validate_generation_artifact(
+                    ctx.request, "_blueprint_creator_chinese_issues", ctx.blueprint
+                ),
             ]
             if not combined_issues:
                 break
@@ -505,13 +513,22 @@ class _BlueprintPlannerStage:
             ctx.usage_records.append(repaired_usage)
             ctx.blueprint = CaseBlueprintV1.model_validate(repaired_output)
         remaining_blueprint_issues = [
-            *_blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15),
+            *await validate_generation_artifact(
+                ctx.request,
+                "_blueprint_path_plan_issues",
+                ctx.blueprint,
+                explicit_targets=ctx.uses_v15,
+            ),
             *(
-                _v16_blueprint_relationship_coverage_issues(ctx.blueprint)
+                await validate_generation_artifact(
+                    ctx.request, "_v16_blueprint_relationship_coverage_issues", ctx.blueprint
+                )
                 if ctx.features.relationship_coverage
                 else []
             ),
-            *_blueprint_creator_chinese_issues(ctx.blueprint),
+            *await validate_generation_artifact(
+                ctx.request, "_blueprint_creator_chinese_issues", ctx.blueprint
+            ),
         ]
         if remaining_blueprint_issues:
             error = ContractValidationError(remaining_blueprint_issues)
@@ -602,7 +619,9 @@ class _DomainDraftStage:
             if not isinstance(ctx.evidence, EvidenceLogicIRV2):
                 raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
             for _ in range(2):
-                matrix_issues = _evidence_assessment_issues(
+                matrix_issues = await validate_generation_artifact(
+                    ctx.request,
+                    "_evidence_assessment_issues",
                     ctx.evidence,
                     strict_competition=ctx.uses_v2_context,
                     blueprint=ctx.blueprint,
@@ -686,7 +705,9 @@ class _CompileQualityGateStage:
                 if ctx.uses_competition_matrix:
                     if not isinstance(ctx.evidence, EvidenceLogicIRV2):
                         raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
-                    matrix_issues = _evidence_assessment_issues(
+                    matrix_issues = await validate_generation_artifact(
+                        ctx.request,
+                        "_evidence_assessment_issues",
                         ctx.evidence,
                         strict_competition=ctx.uses_v2_context,
                         blueprint=ctx.blueprint,
@@ -699,7 +720,9 @@ class _CompileQualityGateStage:
                         raise RuntimeError(
                             "v11+ spatial runtimes must compile through StoryWorldIRV2"
                         )
-                    story_issues = _v11_story_issues(
+                    story_issues = await validate_generation_artifact(
+                        ctx.request,
+                        "_v11_story_issues",
                         ctx.story,
                         _extract_allowed_wgs84_coordinates(ctx.request.brief),
                     )
@@ -710,7 +733,9 @@ class _CompileQualityGateStage:
                         ctx.temporal_plan is None
                     ):
                         raise RuntimeError("temporal-planning versions require a temporal plan")
-                    temporal_issues = temporal_story_issues(
+                    temporal_issues = await validate_generation_artifact(
+                        ctx.request,
+                        "temporal_story_issues",
                         ctx.story_output,
                         ctx.temporal_plan,
                     )
@@ -719,13 +744,17 @@ class _CompileQualityGateStage:
                 if ctx.uses_v15:
                     if not isinstance(ctx.story_output, StoryWorldIRV3):
                         raise RuntimeError("v15 naming gate requires StoryWorldIRV3")
-                    naming_issues = _v15_story_person_name_issues(ctx.story_output)
+                    naming_issues = await validate_generation_artifact(
+                        ctx.request, "_v15_story_person_name_issues", ctx.story_output
+                    )
                     if naming_issues:
                         raise LinkerValidationError(naming_issues)
                 if ctx.features.relationship_coverage:
                     if not isinstance(ctx.story_output, StoryWorldIRV3):
                         raise RuntimeError("relationship coverage gate requires StoryWorldIRV3")
-                    relationship_issues = _v16_story_relationship_coverage_issues(ctx.story_output)
+                    relationship_issues = await validate_generation_artifact(
+                        ctx.request, "_v16_story_relationship_coverage_issues", ctx.story_output
+                    )
                     if relationship_issues:
                         raise LinkerValidationError(relationship_issues)
                 if ctx.spec.story_feature is not None:
@@ -743,7 +772,7 @@ class _CompileQualityGateStage:
                     ctx.governance,
                 )
                 candidate = _compile_step(ctx.request, linked, ctx.spec)
-                _quality_gate(
+                await _quality_gate(
                     ctx.request,
                     candidate,
                     recoverable=gate_attempt == 0,
@@ -1029,7 +1058,14 @@ async def run_v8_generation(
         stage = _PIPELINE_STAGES.get(stage_id)
         if stage is None:
             raise RuntimeError(f"no brief-to-draft pipeline stage registered for {stage_id!r}")
-        await stage.run(ctx)
+        await run_stage_hooks(request, stage_id, "BeforeStage", ctx)
+        try:
+            await stage.run(ctx)
+        except BaseException:
+            await run_stage_hooks(request, stage_id, "StageFailed", ctx)
+            raise
+        else:
+            await run_stage_hooks(request, stage_id, "StageFinished", ctx)
     if ctx.result is None:
         raise RuntimeError("brief-to-draft stage graph finished without a result")
     return ctx.result
@@ -1146,21 +1182,111 @@ async def _model_step(
     input_contract_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     spec = resolve_pipeline_spec(request.prompt_version)
+    if not spec.skill_release:
+        return await _execute_model_step(
+            request,
+            call_component,
+            component_id=component_id,
+            prompt_component=prompt_component,
+            stage=stage,
+            output_type=output_type,
+            input_payload=input_payload,
+            input_contract_id=input_contract_id,
+        )
+    activated = False
+    try:
+        definition = load_prompt("brief_to_draft", request.prompt_version)
+        if definition.package is None:
+            raise PromptRepositoryError("Skill requires a Prompt Package")
+        async with SkillLoader().activate(
+            definition.package,
+            prompt_component,
+            input_payload,
+            agent_version=request.agent_version or "",
+            toolset_version=request.toolset_version or "",
+            input_contract_id=input_contract_id,
+        ) as prepared:
+            activated = True
+            return await _execute_model_step(
+                request,
+                call_component,
+                prepared=prepared,
+                component_id=component_id,
+                prompt_component=prompt_component,
+                stage=stage,
+                output_type=output_type,
+                input_payload=input_payload,
+                input_contract_id=input_contract_id,
+            )
+    except Exception as error:
+        if not activated:
+            schema_id = schema_id_for_component(spec, component_id) or _STEP_SCHEMA[component_id]
+            request.emit(
+                "agent.step.started",
+                stage,
+                {
+                    "component_id": component_id,
+                    "schema_id": schema_id,
+                    "input_hash": _json_hash(input_payload),
+                },
+            )
+            request.emit(
+                "agent.step.failed",
+                stage,
+                {
+                    "component_id": component_id,
+                    "schema_id": schema_id,
+                    "failure_layer": "skill_activation",
+                    "error_code": "skill_activation_failed",
+                    "recoverable": False,
+                    "issues": [
+                        {
+                            "code": "skill_activation_failed",
+                            "path": "",
+                            "message": "阶段技能材料或扩展绑定未通过校验。",
+                        }
+                    ],
+                    "_execution": {
+                        "skill_release": spec.skill_release,
+                        "error_type": type(error).__name__,
+                    },
+                },
+            )
+        raise
+
+
+async def _execute_model_step(
+    request: GenerationRequest,
+    call_component: ComponentCall,
+    *,
+    component_id: str,
+    prompt_component: str,
+    stage: str,
+    output_type: type[BaseModel],
+    input_payload: dict[str, Any],
+    input_contract_id: str | None = None,
+    prepared: tuple[RenderedPrompt, dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    spec = resolve_pipeline_spec(request.prompt_version)
     schema_id = schema_id_for_component(spec, component_id) or _STEP_SCHEMA[component_id]
-    package_metadata: dict[str, str] = {}
+    package_metadata: dict[str, Any] = {}
+    skill_metadata: dict[str, Any] = {}
     if spec.prompt_package:
         definition = load_prompt("brief_to_draft", request.prompt_version)
         if definition.package is None:
             raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
         try:
-            rendered = render_prompt_package(
-                definition.package,
-                prompt_component,
-                input_payload,
-                agent_version=request.agent_version or "",
-                toolset_version=request.toolset_version or "",
-                input_contract_id=input_contract_id,
-            )
+            if prepared is not None:
+                rendered, skill_metadata = prepared
+            else:
+                rendered = render_prompt_package(
+                    definition.package,
+                    prompt_component,
+                    input_payload,
+                    agent_version=request.agent_version or "",
+                    toolset_version=request.toolset_version or "",
+                    input_contract_id=input_contract_id,
+                )
             bound_output_type = output_type_for_component(definition.package, prompt_component)
         except PromptPackageError as error:
             raise PromptRepositoryError(str(error)) from error
@@ -1194,6 +1320,7 @@ async def _model_step(
             "input_hash": input_hash,
             "upstream_hashes": _upstream_hashes(input_payload),
             **package_metadata,
+            **({"_execution": skill_metadata} if skill_metadata else {}),
         },
     )
     reusable = request.reusable_steps.get(component_id)
@@ -1215,6 +1342,7 @@ async def _model_step(
                     "output_hash": output_hash,
                     "resumed_from_step_run_id": reusable.get("step_run_id"),
                     "_artifact": output,
+                    **({"_execution": skill_metadata} if skill_metadata else {}),
                 },
             )
             return output, {}
@@ -1256,6 +1384,7 @@ async def _model_step(
             "output_hash": _json_hash(output),
             "usage": usage,
             "_artifact": output,
+            **({"_execution": skill_metadata} if skill_metadata else {}),
         },
     )
     return output, usage
@@ -1406,87 +1535,7 @@ def _compile_step(
     return candidate
 
 
-def _brief_quality_requirement_issues(
-    brief: dict[str, Any],
-    candidate: dict[str, Any],
-    *,
-    schema_id: str,
-) -> list[dict[str, Any]]:
-    """Translate machine-readable Brief quality requirements into repair issues.
-
-    Acceptance scenarios previously checked these properties only after a
-    successful candidate was persisted. Putting them in the quality gate makes
-    them part of the recoverable contract: the gate fails, the issue is routed
-    to the owning component, and the normal repair/worker budget retries it.
-    """
-
-    requirements = brief.get("quality_requirements")
-    if not isinstance(requirements, dict):
-        return []
-    issues: list[dict[str, Any]] = []
-
-    temporal_time_kinds = requirements.get("temporal_time_kinds")
-    if isinstance(temporal_time_kinds, list) and temporal_time_kinds:
-        required = [str(kind) for kind in temporal_time_kinds]
-        present = {
-            event.get("time", {}).get("kind")
-            for event in candidate.get("events", [])
-            if isinstance(event, dict)
-        }
-        missing = [kind for kind in required if kind not in present]
-        if missing:
-            issues.append(
-                {
-                    "code": "frozen_temporal_time_kinds_missing",
-                    "path": "/events",
-                    "message": (
-                        "事件时间必须同时包含 Brief 冻结要求的时间种类："
-                        + "、".join(sorted(missing))
-                        + "。"
-                    ),
-                    "component_id": "temporal_structure_planner",
-                    "failure_layer": "temporal_grounding",
-                    "schema_id": schema_id,
-                }
-            )
-
-    if requirements.get("spatial_scene_topology") is True:
-        locations = candidate.get("locations", [])
-        has_schematic = any(
-            isinstance(item, dict)
-            and item.get("spatial_position", {}).get("coordinate_system") == "schematic"
-            for item in locations
-        )
-        has_topology = any(
-            isinstance(item, dict)
-            and (
-                item.get("parent_ref") is not None
-                or bool(item.get("adjacency_refs"))
-                or bool(item.get("travel_times"))
-            )
-            for item in locations
-        )
-        if not has_schematic or not has_topology:
-            issues.append(
-                {
-                    "code": "frozen_spatial_scene_topology_missing",
-                    "path": "/locations",
-                    "message": (
-                        "地点必须使用 schematic 示意坐标"
-                        "（spatial_position.coordinate_system 为 schematic），"
-                        "且至少包含一条指向其他地点的拓扑关系"
-                        "（parent_ref、adjacency_refs 或 travel_times，"
-                        "引用不得指向自身）。"
-                    ),
-                    "component_id": "story_world",
-                    "failure_layer": "spatial_grounding",
-                    "schema_id": schema_id,
-                }
-            )
-    return issues[:50]
-
-
-def _quality_gate(
+async def _quality_gate(
     request: GenerationRequest,
     candidate: dict[str, Any],
     *,
@@ -1499,56 +1548,16 @@ def _quality_gate(
         {"component_id": "quality_repair_gate", "schema_id": schema_id},
     )
     try:
-        validate_casefile(candidate)
-        description_issues: list[dict[str, Any]] = []
-        for component_id, collections in DOMAIN_COLLECTIONS.items():
-            for collection in collections:
-                for index, item in enumerate(candidate.get(collection, [])):
-                    description = item.get("description") if isinstance(item, dict) else None
-                    if not isinstance(description, str) or not description.strip():
-                        description_issues.append(
-                            {
-                                "code": "generated_description_missing",
-                                "path": f"/{collection}/{index}/description",
-                                "message": "Agent 生成的对象必须填写非空描述。",
-                                "component_id": component_id,
-                                "failure_layer": "description_gate",
-                                "schema_id": schema_id,
-                            }
-                        )
-        if description_issues:
-            raise ContractValidationError(description_issues)
-        quality_requirement_issues = _brief_quality_requirement_issues(
-            request.brief,
+        issues = await validate_generation_artifact(
+            request,
+            "final_candidate_issues",
             candidate,
+            request.brief,
             schema_id=schema_id,
+            language_gate=resolve_pipeline_spec(request.prompt_version).features.language_gate,
         )
-        if quality_requirement_issues:
-            raise ContractValidationError(quality_requirement_issues)
-        if resolve_pipeline_spec(request.prompt_version).features.language_gate:
-            creator_language_issues = _creator_chinese_issues(candidate)
-            if creator_language_issues:
-                raise ContractValidationError(creator_language_issues)
-        expected_mode = request.brief.get("conclusion_mode")
-        mismatched = [
-            index
-            for index, resolution in enumerate(candidate.get("resolution_specs", []))
-            if resolution.get("conclusion_mode") != expected_mode
-        ]
-        if mismatched:
-            raise ContractValidationError(
-                [
-                    {
-                        "code": "frozen_conclusion_mode_mismatch",
-                        "path": f"/resolution_specs/{index}/conclusion_mode",
-                        "message": "解答模式与冻结 Brief 不一致。",
-                        "component_id": "resolution_governance",
-                        "failure_layer": "frozen_context",
-                        "schema_id": schema_id,
-                    }
-                    for index in mismatched
-                ]
-            )
+        if issues:
+            raise ContractValidationError(issues)
     except ContractValidationError as error:
         request.emit(
             "agent.step.failed",
@@ -1589,86 +1598,6 @@ def _affected_domain_components(error: ContractValidationError) -> set[str]:
                 affected.add(domain_component)
                 break
     return affected
-
-
-def _creator_chinese_issues(candidate: dict[str, Any]) -> list[dict[str, Any]]:
-    """Reject English-only creator-facing prose while preserving machine values."""
-
-    issues: list[dict[str, Any]] = []
-
-    def add_issue(path: str, component_id: str) -> None:
-        issues.append(
-            {
-                "code": "generated_creator_text_not_simplified_chinese",
-                "path": path,
-                "message": "面向作者的自然语言字段必须使用简体中文，不能输出纯英文。",
-                "component_id": component_id,
-                "failure_layer": "creator_language",
-                "schema_id": "casefile-v2",
-            }
-        )
-
-    def visit(value: object, path: str, component_id: str) -> None:
-        if isinstance(value, str):
-            if value.strip() and _LATIN_TEXT.search(value) and not _HAN_TEXT.search(value):
-                add_issue(path, component_id)
-            return
-        if isinstance(value, list):
-            for index, item in enumerate(value):
-                visit(item, f"{path}/{index}", component_id)
-
-    def scan(value: object, path: str, component_id: str) -> None:
-        if isinstance(value, list):
-            for index, item in enumerate(value):
-                scan(item, f"{path}/{index}", component_id)
-            return
-        if not isinstance(value, dict):
-            return
-        for field_name, field_value in value.items():
-            field_path = f"{path}/{field_name}"
-            if field_name in _CREATOR_TEXT_FIELDS:
-                visit(field_value, field_path, component_id)
-            elif isinstance(field_value, (dict, list)):
-                scan(field_value, field_path, component_id)
-
-    root_title = candidate.get("title")
-    visit(root_title, "/title", "case_blueprint_planner")
-    for component_id, collections in DOMAIN_COLLECTIONS.items():
-        for collection in collections:
-            values = candidate.get(collection)
-            if not isinstance(values, list):
-                continue
-            for index, item in enumerate(values):
-                scan(item, f"/{collection}/{index}", component_id)
-    for index, notice in enumerate(candidate.get("content_notices", [])):
-        scan(notice, f"/content_notices/{index}", "resolution_governance")
-    return issues[:50]
-
-
-def _blueprint_creator_chinese_issues(
-    blueprint: CaseBlueprintV1,
-) -> list[dict[str, Any]]:
-    issues: list[dict[str, Any]] = []
-
-    def inspect(value: str, path: str) -> None:
-        if value.strip() and _LATIN_TEXT.search(value) and not _HAN_TEXT.search(value):
-            issues.append(
-                {
-                    "code": "generated_creator_text_not_simplified_chinese",
-                    "path": path,
-                    "message": "Blueprint 面向作者的标题和用途必须使用简体中文。",
-                    "component_id": "case_blueprint_planner",
-                    "failure_layer": "creator_language",
-                    "schema_id": "case-blueprint-v1",
-                }
-            )
-
-    inspect(blueprint.title, "/title")
-    for collection in BLUEPRINT_COLLECTIONS:
-        for index, item in enumerate(getattr(blueprint, collection)):
-            inspect(item.title, f"/{collection}/{index}/title")
-            inspect(item.purpose, f"/{collection}/{index}/purpose")
-    return issues[:50]
 
 
 def _json_hash(value: object) -> str:

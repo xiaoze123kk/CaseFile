@@ -363,6 +363,8 @@ class TaskFinalizer:
                 or attempt.status != "succeeded"
             ):
                 raise RuntimeError("TaskRun completion is no longer owned by this attempt")
+            if event_type == "agent.hooks.executed":
+                return
             public_payload = {
                 key: value for key, value in payload.items() if not key.startswith("_")
             }
@@ -394,9 +396,12 @@ class TaskFinalizer:
                 raise RuntimeError("TaskRun lease was lost")
             if task.status == "cancelling":
                 raise TaskCancellationRequested
-            task.stage = stage
+            if event_type != "agent.hooks.executed":
+                task.stage = stage
             task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.lease_seconds)
             _persist_agent_execution_event(session, task, attempt, event_type, payload)
+            if event_type == "agent.hooks.executed":
+                return
             public_payload = {
                 key: value for key, value in payload.items() if not key.startswith("_")
             }

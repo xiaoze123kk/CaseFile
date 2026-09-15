@@ -547,6 +547,7 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
                     prompt_version=config.prompt_version,
                     scenario_filter=config.scenario_filter,
                     report=report,
+                    report_path=config.report_path,
                 )
         _summarize_execution_metrics(report)
         _record_global_write_boundaries(factory, report)
@@ -693,8 +694,10 @@ def _copy_configured_provider_setting(
         setting = UserProviderSetting(
             user_id=user_id,
             provider=provider,
-            model_id=str(row["model_id"]),
-            model_is_custom=bool(row["model_is_custom"]),
+            model_id=os.getenv("CASEFILE_LIVE_ACCEPTANCE_MODEL_ID", "").strip()
+            or str(row["model_id"]),
+            model_is_custom=bool(os.getenv("CASEFILE_LIVE_ACCEPTANCE_MODEL_ID"))
+            or bool(row["model_is_custom"]),
             config_version=max(1, int(row["config_version"])),
             secret_ciphertext=ciphertext,
             secret_nonce=nonce,
@@ -727,10 +730,11 @@ def _run_acceptance_suite(
     prompt_version: str,
     scenario_filter: str,
     report: dict[str, Any],
+    report_path: Path | None = None,
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
     scenarios: tuple[AcceptanceScenario, ...]
-    if prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16"}:
+    if prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16", "brief-to-draft-v17"}:
         scenarios = _V15_SCENARIOS
     elif prompt_version in {
         "brief-to-draft-v11",
@@ -819,6 +823,7 @@ def _run_acceptance_suite(
                 report["invariant_violations"].extend(
                     [{**task_record, "violation": item} for item in invariant_violations]
                 )
+            _write_report(report_path, report)
             continue
         failure = {
             **task_record,
@@ -833,6 +838,7 @@ def _run_acceptance_suite(
             {**task_record, "violation": item}
             for item in _failed_task_write_boundary_violations(factory, project_id, task_id, task)
         )
+        _write_report(report_path, report)
         if failure["failure_class"] in {
             "provider_authentication",
             "provider_rate_limited",
@@ -986,11 +992,14 @@ def _successful_task_violations(
         "brief-to-draft-v14",
         "brief-to-draft-v15",
         "brief-to-draft-v16",
+        "brief-to-draft-v17",
     }:
         expected_components.add("temporal_structure_planner")
-    if task.get("prompt_version") in {"brief-to-draft-v15", "brief-to-draft-v16"} and (
-        _evidence_competition_observed(steps)
-    ):
+    if task.get("prompt_version") in {
+        "brief-to-draft-v15",
+        "brief-to-draft-v16",
+        "brief-to-draft-v17",
+    } and (_evidence_competition_observed(steps)):
         expected_components.add("evidence_matrix")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
     if component_ids != expected_components:
@@ -1024,8 +1033,29 @@ def _successful_task_violations(
                     prompt_version=str(task.get("prompt_version") or ""),
                 )
             )
-    if {step.component_id for step in steps} != expected_components:
+    business_steps = [step for step in steps if step.ir_schema_id != "generation-hook-report-v1"]
+    if {step.component_id for step in business_steps} != expected_components:
         violations.append("agent_step_runs_not_persisted")
+    if task.get("prompt_version") == "brief-to-draft-v17":
+        hook_steps = [step for step in steps if step.ir_schema_id == "generation-hook-report-v1"]
+        if not hook_steps or any(
+            not step.diagnostic_jsonb.get("execution", {}).get("hooks") for step in hook_steps
+        ):
+            violations.append("hook_execution_trace_missing")
+        model_components = {
+            "case_blueprint_planner",
+            "temporal_structure_planner",
+            "story_world",
+            "evidence_logic",
+            "evidence_matrix",
+            "resolution_governance",
+        }
+        if any(
+            not step.diagnostic_jsonb.get("execution", {}).get("resources")
+            for step in business_steps
+            if step.component_id in model_components and step.status in {"succeeded", "reused"}
+        ):
+            violations.append("skill_execution_trace_missing")
     if len(calls) < 4 or not any(call.status == "succeeded" for call in calls):
         violations.append("agent_model_calls_not_persisted")
     stream = client.get(
@@ -1060,6 +1090,7 @@ def _scenario_candidate_violations(
             "brief-to-draft-v14",
             "brief-to-draft-v15",
             "brief-to-draft-v16",
+            "brief-to-draft-v17",
         }:
             required = {"approximate", "relative"}
             return (
@@ -1253,7 +1284,22 @@ def _task_execution_metrics(
                 float(component["duration_ms_total"]) + duration_ms, 3
             )
             component["duration_ms_max"] = max(float(component["duration_ms_max"]), duration_ms)
-    return {"model_calls": call_summary, "component_steps": step_summary}
+    skill_execution = {
+        "steps": [
+            {
+                "step_run_id": step.id,
+                "component_id": step.component_id,
+                "execution": step.diagnostic_jsonb["execution"],
+            }
+            for step in steps
+            if isinstance(step.diagnostic_jsonb, dict) and "execution" in step.diagnostic_jsonb
+        ]
+    }
+    return {
+        "model_calls": call_summary,
+        "component_steps": step_summary,
+        "skill_execution": skill_execution,
+    }
 
 
 def _evidence_quality_for_task(
@@ -1272,7 +1318,7 @@ def _evidence_quality_for_task(
     denominator.
     """
 
-    is_v15 = prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16"}
+    is_v15 = prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16", "brief-to-draft-v17"}
     with factory() as session:
         steps = list(
             session.scalars(select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id))

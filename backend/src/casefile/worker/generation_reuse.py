@@ -43,6 +43,10 @@ def reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[
             invalidated = set(reusable_components)
         elif "temporal_structure_planner" in invalidated:
             invalidated.add("story_world")
+            if task.prompt_version == "brief-to-draft-v17":
+                invalidated.update({"evidence_logic", "resolution_governance"})
+        if task.prompt_version == "brief-to-draft-v17" and "evidence_logic" in invalidated:
+            invalidated.add("resolution_governance")
 
     rows = session.scalars(
         select(AgentStepRun)

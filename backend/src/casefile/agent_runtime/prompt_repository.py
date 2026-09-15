@@ -31,7 +31,6 @@ SUPPORTED_AGENT_IDS: Final = (
     "novel_quality_critic",
     "novel_polisher",
     "novel_pairwise",
-
     "novel_chapter_rewrite",
     "novel_chapter_review",
     "novel_collaboration",
@@ -112,6 +111,9 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "brief-to-draft-v13": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
     "brief-to-draft-v14": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
     "brief-to-draft-v15": frozenset(
+        {"planner", "temporal", "story", "evidence", "matrix", "governance"}
+    ),
+    "brief-to-draft-v17": frozenset(
         {"planner", "temporal", "story", "evidence", "matrix", "governance"}
     ),
     "brief-to-draft-v16": frozenset(
@@ -248,7 +250,7 @@ class PromptRepository:
                     version_root.joinpath("manifest.json"),
                     f"Prompt manifest {agent_id}/{version_directory}",
                 )
-                if manifest.get("schema_version") == _PACKAGE_SCHEMA_VERSION:
+                if manifest.get("schema_version") in {_PACKAGE_SCHEMA_VERSION, 3}:
                     fragments = _require_object(
                         manifest.get("fragments"), "Prompt Package fragments"
                     )
@@ -371,7 +373,7 @@ class PromptRepository:
             f"Prompt manifest {agent_id}/{version_directory}",
         )
         manifest_label = f"Prompt manifest {agent_id}/{version_directory}"
-        if manifest.get("schema_version") == _PACKAGE_SCHEMA_VERSION:
+        if manifest.get("schema_version") in {_PACKAGE_SCHEMA_VERSION, 3}:
             return self._load_package_manifest(
                 agent_id,
                 version_directory,
@@ -577,8 +579,11 @@ class PromptRepository:
         *,
         expected_version: str | None,
     ) -> PromptDefinition:
-        _require_exact_keys(manifest, _PACKAGE_MANIFEST_KEYS, manifest_label)
-        if manifest["schema_version"] != _PACKAGE_SCHEMA_VERSION:
+        package_keys = _PACKAGE_MANIFEST_KEYS | (
+            {"deferred_fragments"} if manifest.get("schema_version") == 3 else set()
+        )
+        _require_exact_keys(manifest, package_keys, manifest_label)
+        if manifest["schema_version"] not in {_PACKAGE_SCHEMA_VERSION, 3}:
             raise PromptRepositoryError(f"{manifest_label} has unsupported schema_version")
         manifest_agent_id = _require_non_empty_string(
             manifest["agent_id"], f"{manifest_label} agent_id"
@@ -694,6 +699,13 @@ class PromptRepository:
                     f"{manifest_label} component {component_id} tool_policy_id",
                 ),
             )
+        if manifest["schema_version"] == 3:
+            deferred = _require_string_list(
+                manifest["deferred_fragments"], f"{manifest_label} deferred_fragments"
+            )
+            if set(deferred) - set(fragments) or set(deferred) & referenced_fragments:
+                raise PromptRepositoryError("Deferred fragments must exist and not be eager")
+            referenced_fragments.update(deferred)
         unused_fragments = set(fragments) - referenced_fragments
         if unused_fragments:
             raise PromptRepositoryError(

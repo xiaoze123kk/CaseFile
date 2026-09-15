@@ -53,6 +53,11 @@ def persist_agent_execution_event(
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
         return
+    if event_type == "agent.hooks.executed":
+        hook_payload = {**payload, "schema_id": "generation-hook-report-v1"}
+        persist_agent_execution_event(session, task, attempt, "agent.step.started", hook_payload)
+        persist_agent_execution_event(session, task, attempt, "agent.step.completed", hook_payload)
+        return
     now = datetime.now(UTC)
     if event_type == "agent.step.started":
         execution_no = int(
@@ -77,6 +82,9 @@ def persist_agent_execution_event(
                 upstream_hashes_jsonb=dict(payload.get("upstream_hashes") or {}),
                 ir_schema_id=str(payload.get("schema_id") or "unknown"),
                 component_version=str(payload.get("component_version") or task.prompt_version),
+                diagnostic_jsonb=(
+                    {"execution": payload["_execution"]} if "_execution" in payload else {}
+                ),
             )
         )
         session.flush()
@@ -114,6 +122,8 @@ def persist_agent_execution_event(
             ir_schema_id=str(payload.get("schema_id") or "unknown"),
             component_version=str(payload.get("component_version") or task.prompt_version),
         )
+        if isinstance(payload.get("_execution"), dict):
+            step.diagnostic_jsonb = {"execution": payload["_execution"]}
         session.add(step)
         session.flush()
     if step is None:
@@ -129,6 +139,8 @@ def persist_agent_execution_event(
         if isinstance(artifact, (dict, list)):
             step.output_jsonb = artifact
         step.diagnostic_jsonb = {
+            **(step.diagnostic_jsonb or {}),
+            **({"execution": payload["_execution"]} if "_execution" in payload else {}),
             "failure_layer": payload.get("failure_layer"),
             "schema_id": payload.get("schema_id"),
             "error_code": payload.get("error_code"),

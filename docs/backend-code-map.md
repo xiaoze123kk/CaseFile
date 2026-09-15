@@ -533,3 +533,11 @@ agent_runtime/chat_tools.py 在统一注册表中以 ChatToolDefinition 绑定�
 - v26 继承 v25 查询边界，Chat/Goal Finalizer 对逐条历史请求使用修订、路径、前后值表格；工具返回值即为存储证据，不以看似占位为由省略记录。v25 保留首轮真实复测身份。
 
 - v27 消除历史逐条输出与默认300字/禁止表格样式的冲突，最终采用不省略条目的编号列表；冻结修订上限不代表外部不存在更晚版本。
+
+## Brief-to-Draft v17 Skill 与 Hook
+
+v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generation_hooks 定义事件和作用域分派；generation_hook_policy 冻结绑定；generation_validation_hooks 适配现有纯校验器；generation_skills 根据阶段、输入特征和问题码激活资源。资源存放在受跟踪运行时包，不能依赖 docs。
+
+Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
+
+Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。

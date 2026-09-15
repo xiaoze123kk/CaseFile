@@ -737,6 +737,24 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
         "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
     },
+    ("brief_to_draft", "brief-to-draft-v17"): {
+        "fragment:common": "4b3db702d57a69d8adc305f3cc054d199adfb5c2219e2b119340a1c3a9755406",  # noqa: E501
+        "fragment:relationship_planner": "f85859af8e21ad36eef5bb0b58ed8cde6dfbb86f77f109ee3d0d39623b5c1ca4",  # noqa: E501
+        "fragment:planner": "42b12f9299840bd7cfc7889de35550be16b243bf7f1c833ee83c8b4214bfd5a9",  # noqa: E501
+        "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",  # noqa: E501
+        "fragment:domain_common": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab",  # noqa: E501
+        "fragment:relationship_story": "f0fffacf9060aa728f9b55686ddd9b9f11ecd64c8d35b64382cfaab539e8ced4",  # noqa: E501
+        "fragment:repair_story": "624774627f8f9c390fbb19fa27dac9b4af70da59b8210a9adfac092cb3469f69",  # noqa: E501
+        "fragment:story": "0a313c6870b43b4f8e55710752031e835c59f62b33d645d4dc9ab06850431a96",  # noqa: E501
+        "fragment:competition_evidence": "e3bb0513f460ea40b6bb15e03224464752450e0c8d9ecfd05e3258d7f3cbbe97",  # noqa: E501
+        "fragment:repair_evidence": "2f81ff6c82c35e555fdff6f51557feae3eaaae2c2693565c9e3a94062b5a7e94",  # noqa: E501
+        "fragment:evidence": "ffc19fefeb81c9fb05532444cdaa58bcdf89c3d5b6855c236f7eba2c367f5483",  # noqa: E501
+        "fragment:repair_matrix": "7b5e049193d65d5da35965bebd84a9fbdb6f4fad3a03af69840dd3ce686665df",  # noqa: E501
+        "fragment:matrix": "35ba7d3c59c33790ccbfd3d23abfcee71c9619cc1df9231cf968cd2dfa1e49f7",  # noqa: E501
+        "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",  # noqa: E501
+        "fragment:repair_common": "674908eedccc4cc92ff14ef5c6c74809afef0dd85d07767ca9e6534624c004ab",  # noqa: E501
+        "fragment:repair_planner": "d9e6df5935b69ff211bee61e7747e523afc536069d9f32631606ceb92fe3df0c",  # noqa: E501
+    },
     ("brief_to_draft", "brief-to-draft-v16"): {
         "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
         "fragment:planner": "6574d31180a710d9683a26a5d7f25e4cf7cf298daf63f07137a63f7b7fa929ab",

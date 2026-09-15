@@ -57,6 +57,14 @@ from casefile.agent_runtime.brief_to_draft_v16.contracts import (
     PlannerInputV6,
     TemporalPlannerInputV4,
 )
+from casefile.agent_runtime.brief_to_draft_v17.contracts import (
+    DomainDraftInputV7,
+    EvidenceRepairInputV3,
+    GovernanceDraftInputV7,
+    MatrixEvaluationInputV3,
+    PlannerInputV7,
+    TemporalPlannerInputV5,
+)
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
@@ -160,6 +168,12 @@ class RenderedPrompt:
 
 INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
     {
+        "brief-to-draft-planner-input-v7": PlannerInputV7,
+        "brief-to-draft-temporal-input-v5": TemporalPlannerInputV5,
+        "brief-to-draft-domain-input-v7": DomainDraftInputV7,
+        "brief-to-draft-governance-input-v7": GovernanceDraftInputV7,
+        "brief-to-draft-evidence-repair-input-v3": EvidenceRepairInputV3,
+        "brief-to-draft-matrix-evaluation-input-v3": MatrixEvaluationInputV3,
         "brief-to-draft-planner-input-v1": PlannerInputV1,
         "brief-to-draft-domain-input-v1": DomainDraftInputV1,
         "brief-to-draft-planner-input-v2": PlannerInputV2,
@@ -390,6 +404,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("brief-to-draft-pipeline-v14", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v15", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v16", TOOLSET_VERSION),
+        ("brief-to-draft-pipeline-v17", TOOLSET_VERSION),
         ("casefile-single-agent-v2", TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V3_VERSION),

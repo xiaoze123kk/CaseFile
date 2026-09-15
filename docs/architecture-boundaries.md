@@ -106,3 +106,11 @@ Rewrite 或 Writer 的一次生成纠偏必须携带失败候选 hash、禁止�
 每场最多两轮正文修订、三次编辑决策（包含最终耗尽评估），编辑调用复用 Rewrite 传输端口，使用独立 prose_revision 留痕身份，避免误计为正文修订并计入既有 23 次总预算；不使用或扩容 Fidelity/Continuity 的三次 Judge 预算。编辑协议、check 引用完整性、输入/正文哈希及预算由服务端验证。无进展不再发出同条件生成纠偏，而进入有界终局编辑评估；致命残留为 semantic_rejected，不触发基础设施续跑。真正的传输与协议失败仍按各自状态处理。
 
 生产使用 product 模式；仅 LLM 明确 retain 且无 fatal 项时可接受原候选，selection_reason=llm_nonfatal_retained，并绑定编辑报告哈希。不伪造 Judge pass，不进入要求语义通过的可选润色。SceneManifest 分别记录 product_accepted、strict_semantic_pass 和 revision_report_hashes。组件 benchmark 默认 strict，产品保留不能算严格语义成功。历史运行与 Prompt 不覆盖，新策略需要新冻结运行，不能继续旧 v8。
+
+## Brief-to-Draft v17 Skill 与 Hook
+
+v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generation_hooks 定义事件和作用域分派；generation_hook_policy 冻结绑定；generation_validation_hooks 适配现有纯校验器；generation_skills 根据阶段、输入特征和问题码激活资源。资源存放在受跟踪运行时包，不能依赖 docs。
+
+Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
+
+Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。

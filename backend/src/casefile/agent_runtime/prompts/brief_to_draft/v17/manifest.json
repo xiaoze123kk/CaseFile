@@ -1,0 +1,145 @@
+{
+  "schema_version": 3,
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v17",
+  "previous_version": "brief-to-draft-v16",
+  "change_summary": "程序按阶段激活 Skill 材料与作用域 Hook，冻结实际执行指纹。",
+  "runtime": {
+    "agent_version": "brief-to-draft-pipeline-v17",
+    "toolset_version": "casefile-generation-tools-v2"
+  },
+  "fragments": {
+    "common": {
+      "file": "fragments/common.md",
+      "sha256": "4b3db702d57a69d8adc305f3cc054d199adfb5c2219e2b119340a1c3a9755406"
+    },
+    "relationship_planner": {
+      "file": "fragments/relationship_planner.md",
+      "sha256": "f85859af8e21ad36eef5bb0b58ed8cde6dfbb86f77f109ee3d0d39623b5c1ca4"
+    },
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "42b12f9299840bd7cfc7889de35550be16b243bf7f1c833ee83c8b4214bfd5a9"
+    },
+    "temporal": {
+      "file": "fragments/temporal.md",
+      "sha256": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640"
+    },
+    "domain_common": {
+      "file": "fragments/domain_common.md",
+      "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+    },
+    "relationship_story": {
+      "file": "fragments/relationship_story.md",
+      "sha256": "f0fffacf9060aa728f9b55686ddd9b9f11ecd64c8d35b64382cfaab539e8ced4"
+    },
+    "repair_story": {
+      "file": "fragments/repair_story.md",
+      "sha256": "624774627f8f9c390fbb19fa27dac9b4af70da59b8210a9adfac092cb3469f69"
+    },
+    "story": {
+      "file": "fragments/story.md",
+      "sha256": "0a313c6870b43b4f8e55710752031e835c59f62b33d645d4dc9ab06850431a96"
+    },
+    "competition_evidence": {
+      "file": "fragments/competition_evidence.md",
+      "sha256": "e3bb0513f460ea40b6bb15e03224464752450e0c8d9ecfd05e3258d7f3cbbe97"
+    },
+    "repair_evidence": {
+      "file": "fragments/repair_evidence.md",
+      "sha256": "2f81ff6c82c35e555fdff6f51557feae3eaaae2c2693565c9e3a94062b5a7e94"
+    },
+    "evidence": {
+      "file": "fragments/evidence.md",
+      "sha256": "ffc19fefeb81c9fb05532444cdaa58bcdf89c3d5b6855c236f7eba2c367f5483"
+    },
+    "repair_matrix": {
+      "file": "fragments/repair_matrix.md",
+      "sha256": "7b5e049193d65d5da35965bebd84a9fbdb6f4fad3a03af69840dd3ce686665df"
+    },
+    "matrix": {
+      "file": "fragments/matrix.md",
+      "sha256": "35ba7d3c59c33790ccbfd3d23abfcee71c9619cc1df9231cf968cd2dfa1e49f7"
+    },
+    "governance": {
+      "file": "fragments/governance.md",
+      "sha256": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79"
+    },
+    "repair_common": {
+      "file": "fragments/repair_common.md",
+      "sha256": "674908eedccc4cc92ff14ef5c6c74809afef0dd85d07767ca9e6534624c004ab"
+    },
+    "repair_planner": {
+      "file": "fragments/repair_planner.md",
+      "sha256": "d9e6df5935b69ff211bee61e7747e523afc536069d9f32631606ceb92fe3df0c"
+    }
+  },
+  "components": {
+    "planner": {
+      "instruction_fragments": [
+        "common",
+        "planner"
+      ],
+      "input_contract_id": "brief-to-draft-planner-input-v7",
+      "output_schema_id": "case-blueprint-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "temporal": {
+      "instruction_fragments": [
+        "common",
+        "temporal"
+      ],
+      "input_contract_id": "brief-to-draft-temporal-input-v5",
+      "output_schema_id": "temporal-plan-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "story": {
+      "instruction_fragments": [
+        "common",
+        "domain_common",
+        "story"
+      ],
+      "input_contract_id": "brief-to-draft-domain-input-v7",
+      "output_schema_id": "story-world-ir-v3",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "evidence": {
+      "instruction_fragments": [
+        "common",
+        "domain_common",
+        "evidence"
+      ],
+      "input_contract_id": "brief-to-draft-domain-input-v7",
+      "output_schema_id": "evidence-logic-ir-v2",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "matrix": {
+      "instruction_fragments": [
+        "matrix"
+      ],
+      "input_contract_id": "brief-to-draft-matrix-evaluation-input-v3",
+      "output_schema_id": "matrix-evaluation-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "governance": {
+      "instruction_fragments": [
+        "common",
+        "domain_common",
+        "governance"
+      ],
+      "input_contract_id": "brief-to-draft-governance-input-v7",
+      "output_schema_id": "resolution-governance-ir-v2",
+      "tool_policy_id": "no-tools-v1"
+    }
+  },
+  "deferred_fragments": [
+    "competition_evidence",
+    "relationship_planner",
+    "relationship_story",
+    "repair_common",
+    "repair_evidence",
+    "repair_matrix",
+    "repair_planner",
+    "repair_story"
+  ]
+}
