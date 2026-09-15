@@ -506,6 +506,10 @@ class OpenAIAgentsProvider:
             "casefile-chat-v21",
             "casefile-chat-v22",
             "casefile-chat-v23",
+            "casefile-chat-v24",
+            "casefile-chat-v25",
+            "casefile-chat-v26",
+            "casefile-chat-v27",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -624,6 +628,10 @@ class OpenAIAgentsProvider:
                     "casefile-chat-v21",
                     "casefile-chat-v22",
                     "casefile-chat-v23",
+                    "casefile-chat-v24",
+                    "casefile-chat-v25",
+                    "casefile-chat-v26",
+                    "casefile-chat-v27",
                 }:
                     raise
                 request.emit(

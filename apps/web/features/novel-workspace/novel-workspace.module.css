@@ -837,7 +837,9 @@
 .page textarea {
   display: block;
   width: 100%;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
+  min-height: 340px;
   background: transparent;
   border: 0;
   padding: 0;

@@ -217,7 +217,7 @@ def test_interactive_executor_injects_steer_at_real_safe_point(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v23",
+            expected_prompt_version="casefile-chat-v27",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, source.family
             ),
@@ -288,7 +288,7 @@ def test_read_only_goal_reaches_before_finalizer_without_mutation(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v23",
+            expected_prompt_version="casefile-chat-v27",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, source.family
             ),
@@ -404,7 +404,7 @@ def test_rejected_mutation_closes_goal_and_preserves_failure_evidence(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v23",
+            expected_prompt_version="casefile-chat-v27",
             provider_factory=lambda document, _secret: ForbiddenFieldProvider(
                 document, source.family
             ),
@@ -507,7 +507,7 @@ def test_mutation_safe_point_defers_steer_until_patch_identity_exists(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v23",
+            expected_prompt_version="casefile-chat-v27",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, source.family
             ),
@@ -544,7 +544,7 @@ def test_public_dev_suite_executes_every_interactive_family(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v23",
+            expected_prompt_version="casefile-chat-v27",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, family
             ),
@@ -674,7 +674,7 @@ def test_interactive_executor_covers_queued_fifo_and_early_follow_up_rejection(
             database_url=engine.url.render_as_string(hide_password=False),
             api_key="fake-interactive-secret",
             expected_model_id="deepseek-v4-pro",
-            expected_prompt_version="casefile-chat-v23",
+            expected_prompt_version="casefile-chat-v27",
             provider_factory=lambda document, _secret: _InteractiveFamilyFakeProvider(
                 document, "steer_refine"
             ),

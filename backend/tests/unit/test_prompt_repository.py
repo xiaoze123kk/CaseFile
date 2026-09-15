@@ -77,6 +77,244 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("casefile_chat", "casefile-chat-v27"): {
+        "fragment:router": (
+            "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"
+        ),
+        "fragment:rewrite": (
+            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
+        ),
+        "fragment:evidence": (
+            "f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"
+        ),
+        "fragment:finalizer": (
+            "fdcd3b75ff402b6c2f8631446eda79c40172368d5d3175e155249144becc44a5"
+        ),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "33844e1ae8a5924cc83ef1abf2cd1961e5287387c4cd92e60f4efefef233a11c"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "6126c4fb9ae411a8acb0ef4439c0531e4ced8ca457cc387d8f60761ed3ea322a"
+        ),
+    },
+    ("casefile_chat", "casefile-chat-v26"): {
+        "fragment:router": (
+            "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"
+        ),
+        "fragment:rewrite": (
+            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
+        ),
+        "fragment:evidence": (
+            "f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"
+        ),
+        "fragment:finalizer": (
+            "1a65a949e0eb5d7fb0fd503cb61dcfae3d6371268f64a2b1cd42ed0b449b5189"
+        ),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "ae7b04f1ae4428258f15592d365cfa6affcb478b5a6691cb6c3b3d5881f8b17e"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
+    ("casefile_chat", "casefile-chat-v25"): {
+        "fragment:router": (
+            "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"
+        ),
+        "fragment:rewrite": (
+            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
+        ),
+        "fragment:evidence": (
+            "f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"
+        ),
+        "fragment:finalizer": (
+            "5b8d1028fd0acf5941b3c5a3f7a17ee231cdf7f6f256a65bf81069a5ef31c817"
+        ),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "cc88ee48a43968c9843b1d545e640e6bcd17f6cff526363b5ebdc1eea3d64986"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
+    ("casefile_chat", "casefile-chat-v24"): {
+        "fragment:router": "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401",
+        "fragment:rewrite": "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921",
+        "fragment:evidence": "63aabb2f30325556efc4dabe88d4f14228b36a8ad56812ae4823e46a0ffd8560",
+        "fragment:finalizer": "35e44c07ed8676cc0791d2a9bc4e89e8045f605c8d6969be7956e81007349d8e",
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d",
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
     ("novel_context_compactor", "novel-context-compactor-v1"): {
         "system": "1d08292f25f0357c000f54ad19b8bf2b905e2ead2cb04e973d7349c8422789ae"
     },

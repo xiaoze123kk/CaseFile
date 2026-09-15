@@ -2,19 +2,25 @@
 
 R3 bounded tool loop: the model may only call the tools selected by the routing
 policy. Every tool is a pure function over the frozen ``CaseFileChatRequest``
-payload; no network, no semantic index, no ID invention.
+payload; revision history uses a Worker-injected, ownership-checked read port
+bounded by the task's frozen draft revision. No semantic index or ID invention.
 """
 
 from __future__ import annotations
 
 import json
+from _thread import LockType
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
+from enum import StrEnum
 from hashlib import sha256
+from threading import Lock
 from typing import Any
 
 from agents import RunContextWrapper, Tool, function_tool
 
+from casefile.agent_runtime.chat_queries import query_character_knowledge, query_modification_impact
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     RouteDecision,
@@ -29,6 +35,8 @@ from casefile.contracts import (
 
 CHAT_TOOLSET_VERSION = "casefile-chat-tools-v2"
 CHAT_TOOLSET_V3_VERSION = "casefile-chat-tools-v3"
+CHAT_TOOLSET_V6_VERSION = "casefile-chat-tools-v6"
+CHAT_TOOLSET_V5_VERSION = "casefile-chat-tools-v5"
 CHAT_TOOLSET_V4_VERSION = "casefile-chat-tools-v4"
 LEGACY_CHAT_TOOLSET_VERSION = "casefile-chat-tools-v1"
 
@@ -80,6 +88,7 @@ class ChatToolMetrics(ToolMetrics):
 
     retrieved_object_ids: list[str] = field(default_factory=list)
     retrieved_evidence_ids: list[str] = field(default_factory=list)
+    query_cache_hits: int = 0
     budget_exhausted: int = 0
     requested_thread_compaction: int = 0
     tool_result_chars: int = 0
@@ -89,6 +98,7 @@ class ChatToolMetrics(ToolMetrics):
         payload = ToolMetrics.as_dict(self)
         payload["retrieved_object_ids"] = list(self.retrieved_object_ids)
         payload["retrieved_evidence_ids"] = list(self.retrieved_evidence_ids)
+        payload["query_cache_hits"] = self.query_cache_hits
         payload["budget_exhausted"] = self.budget_exhausted
         payload["requested_thread_compaction"] = self.requested_thread_compaction
         payload["tool_result_chars"] = self.tool_result_chars
@@ -102,6 +112,8 @@ class ChatToolContext:
     route: RouteDecision
     metrics: ChatToolMetrics = field(default_factory=ChatToolMetrics)
     recent_tool_results: list[dict[str, Any]] = field(default_factory=list)
+    query_cache: dict[str, str] = field(default_factory=dict)
+    query_lock: LockType = field(default_factory=Lock, repr=False)
 
     @property
     def max_tool_calls(self) -> int:
@@ -1532,17 +1544,296 @@ def request_thread_compaction(
     )
 
 
-_CHAT_TOOL_REGISTRY: dict[str, Tool] = {
-    "list_casefile_records": list_casefile_records,
-    "search_casefile": search_casefile,
-    "get_casefile_object": get_casefile_object,
-    "get_related_objects": get_related_objects,
-    "get_validation_issues": get_validation_issues,
-    "validate_patch_proposal": validate_patch_proposal,
-    "simulate_patch_application": simulate_patch_application,
-    "retrieve_thread_evidence": retrieve_thread_evidence,
-    "request_thread_compaction": request_thread_compaction,
+def _query_result(
+    context: ChatToolContext,
+    tool: str,
+    arguments: dict[str, Any],
+    query: Callable[[], dict[str, Any]],
+) -> str:
+    """v6 reuses successful bounded reads inside this frozen request only."""
+    if context.request.toolset_version != CHAT_TOOLSET_V6_VERSION:
+        return _execute_query(context, tool, arguments, query)
+    cache_key = json.dumps([tool, arguments], sort_keys=True, separators=(",", ":"))
+    # SDK may dispatch synchronous tools on threads. Reserve/cache atomically.
+    with context.query_lock:
+        cached = context.query_cache.get(cache_key)
+        if cached is not None:
+            context.metrics.query_cache_hits += 1
+            _emit_completed(context, tool, {"valid": True, "cache_hit": True})
+            return _emit_tool_result(
+                context,
+                tool,
+                arguments,
+                json.loads(cached),
+            )
+        result = _execute_query(context, tool, arguments, query)
+        if "error" not in json.loads(result):
+            context.query_cache[cache_key] = result
+        return result
+
+
+def _execute_query(
+    context: ChatToolContext,
+    tool: str,
+    arguments: dict[str, Any],
+    query: Callable[[], dict[str, Any]],
+) -> str:
+    if not _reserve_call(context):
+        context.metrics.budget_exhausted += 1
+        return _emit_tool_result(context, tool, arguments, {"error": "tool_budget_exhausted"})
+    _emit_started(context, tool, arguments)
+    context.metrics.valid_calls += 1
+    payload = query()
+    records = payload.get("results")
+    if isinstance(records, list) and "next_offset" in payload:
+        while len(records) > 1 and len(_payload_text(_clip_strings(payload))) > (
+            _TOOL_RESULT_CHAR_LIMIT - 200
+        ):
+            records = records[:-1]
+            payload = {
+                **payload,
+                "results": records,
+                "next_offset": max(0, arguments.get("offset", 0)) + len(records),
+            }
+    if "error" not in payload:
+        context.metrics.successful_calls += 1
+    _emit_completed(context, tool, {"valid": "error" not in payload})
+    text = _emit_tool_result(context, tool, arguments, payload)
+    # Bind only object IDs actually present in the bounded, model-visible evidence.
+    visible = json.loads(text)
+    ids = [visible.get("object_id"), visible.get("character_id")]
+    for record in visible.get("results", []):
+        if isinstance(record, dict):
+            ids.append(record.get("id"))
+            for key in ("knows_refs", "believes_refs", "false_belief_refs", "dependency_path"):
+                ids.extend(record.get(key, []))
+    for object_id in ids:
+        if isinstance(object_id, dict):
+            object_id = object_id.get("object_id")
+        if (
+            isinstance(object_id, str)
+            and find_casefile_object(context.request.casefile, object_id) is not None
+            and object_id not in context.metrics.retrieved_object_ids
+        ):
+            context.metrics.retrieved_object_ids.append(object_id)
+    return text
+
+
+def _query_page(payload: dict[str, Any], offset: int, limit: int) -> dict[str, Any]:
+    if "error" in payload:
+        return payload
+    records = payload["results"]
+    offset = max(0, offset)
+    limit = max(1, min(limit, 10))
+    # Reduce the page before result bounding so next_offset cannot skip dropped records.
+    while (
+        limit > 1
+        and len(
+            _payload_text(_clip_strings({**payload, "results": records[offset : offset + limit]}))
+        )
+        > _TOOL_RESULT_CHAR_LIMIT - 200
+    ):
+        limit -= 1
+    return {
+        **payload,
+        "results": records[offset : offset + limit],
+        "offset": offset,
+        "next_offset": offset + limit if offset + limit < len(records) else None,
+    }
+
+
+@function_tool
+def get_modification_impact(
+    wrapper: RunContextWrapper[ChatToolContext], object_id: str, offset: int = 0, limit: int = 5
+) -> str:
+    """Page potential dependents in the frozen document; not patch outcome proof."""
+    context = wrapper.context
+    args = {"object_id": object_id, "offset": offset, "limit": limit}
+    return _query_result(
+        context,
+        "get_modification_impact",
+        args,
+        lambda: _query_page(
+            query_modification_impact(context.request.casefile, object_id), offset, limit
+        ),
+    )
+
+
+@function_tool
+def get_character_knowledge(
+    wrapper: RunContextWrapper[ChatToolContext],
+    character_id: str,
+    as_of_event_ref: str | None = None,
+    offset: int = 0,
+    limit: int = 1,
+) -> str:
+    """Read explicit knowledge snapshots; event filter is exact, missing records mean unknown.
+
+    Omit event to list all recorded snapshots. Never infer earlier/later knowledge.
+    """
+    context = wrapper.context
+    args = {
+        "character_id": character_id,
+        "as_of_event_ref": as_of_event_ref,
+        "offset": offset,
+        "limit": limit,
+    }
+    return _query_result(
+        context,
+        "get_character_knowledge",
+        args,
+        lambda: _query_page(
+            query_character_knowledge(context.request.casefile, character_id, as_of_event_ref),
+            offset,
+            limit,
+        ),
+    )
+
+
+@function_tool
+def compare_draft_revisions(
+    wrapper: RunContextWrapper[ChatToolContext],
+    from_revision: int,
+    to_revision: int,
+    offset: int = 0,
+    limit: int = 1,
+) -> str:
+    """Read recorded operations between revisions of this task's draft, not a net document diff.
+
+    Never reads another draft or revisions newer than the frozen task baseline.
+    """
+    context = wrapper.context
+    args = {
+        "from_revision": from_revision,
+        "to_revision": to_revision,
+        "offset": offset,
+        "limit": limit,
+    }
+    resolver = context.request.revision_history_resolver
+    return _query_result(
+        context,
+        "compare_draft_revisions",
+        args,
+        lambda: (
+            {"error": "revision_history_unavailable"}
+            if resolver is None
+            else resolver(from_revision, to_revision, max(0, offset), max(1, min(limit, 10)))
+        ),
+    )
+
+
+@function_tool(name_override="compare_draft_revisions")
+def compare_draft_revisions_v6(
+    wrapper: RunContextWrapper[ChatToolContext],
+    from_revision: int,
+    to_revision: int,
+    offset: int = 0,
+) -> str:
+    """Read operations between this task's draft revisions, not CaseFile version numbers.
+
+    Page size is server-controlled. Start offset=0, then use returned next_offset
+    until null. Never repeat a page. These are recorded operations, not a net diff.
+    """
+    context = wrapper.context
+    args = {"from_revision": from_revision, "to_revision": to_revision, "offset": max(0, offset)}
+    resolver = context.request.revision_history_resolver
+    return _query_result(
+        context,
+        "compare_draft_revisions",
+        args,
+        lambda: (
+            {"error": "revision_history_unavailable"}
+            if resolver is None
+            else resolver(from_revision, to_revision, max(0, offset), 10)
+        ),
+    )
+
+
+class ChatToolEffect(StrEnum):
+    """Business effects, excluding routine metrics and trace bookkeeping.
+
+    These labels do not grant permissions or imply concurrency/retry safety.
+    STATE_REQUEST queues an intent; WRITE would directly mutate business data.
+    """
+
+    READ_ONLY = "read_only"
+    SIMULATION = "simulation"
+    STATE_REQUEST = "state_request"
+    WRITE = "write"
+
+
+class ChatToolCategory(StrEnum):
+    """Business purpose, independent of a tool's effects."""
+
+    IMPACT_ANALYSIS = "impact_analysis"
+    CHARACTER_KNOWLEDGE = "character_knowledge"
+    VERSION_HISTORY = "version_history"
+    RETRIEVAL = "retrieval"
+    VALIDATION = "validation"
+    PATCH_PREVIEW = "patch_preview"
+    CONTEXT_MANAGEMENT = "context_management"
+
+
+@dataclass(frozen=True, slots=True)
+class ChatToolDefinition:
+    tool: Tool
+    effect: ChatToolEffect
+    category: ChatToolCategory
+
+
+_CHAT_TOOL_REGISTRY: dict[str, ChatToolDefinition] = {
+    "get_modification_impact": ChatToolDefinition(
+        get_modification_impact, ChatToolEffect.READ_ONLY, ChatToolCategory.IMPACT_ANALYSIS
+    ),
+    "get_character_knowledge": ChatToolDefinition(
+        get_character_knowledge, ChatToolEffect.READ_ONLY, ChatToolCategory.CHARACTER_KNOWLEDGE
+    ),
+    "compare_draft_revisions": ChatToolDefinition(
+        compare_draft_revisions, ChatToolEffect.READ_ONLY, ChatToolCategory.VERSION_HISTORY
+    ),
+    "list_casefile_records": ChatToolDefinition(
+        list_casefile_records, ChatToolEffect.READ_ONLY, ChatToolCategory.RETRIEVAL
+    ),
+    "search_casefile": ChatToolDefinition(
+        search_casefile, ChatToolEffect.READ_ONLY, ChatToolCategory.RETRIEVAL
+    ),
+    "get_casefile_object": ChatToolDefinition(
+        get_casefile_object, ChatToolEffect.READ_ONLY, ChatToolCategory.RETRIEVAL
+    ),
+    "get_related_objects": ChatToolDefinition(
+        get_related_objects, ChatToolEffect.READ_ONLY, ChatToolCategory.RETRIEVAL
+    ),
+    "get_validation_issues": ChatToolDefinition(
+        get_validation_issues, ChatToolEffect.READ_ONLY, ChatToolCategory.VALIDATION
+    ),
+    "validate_patch_proposal": ChatToolDefinition(
+        validate_patch_proposal, ChatToolEffect.READ_ONLY, ChatToolCategory.VALIDATION
+    ),
+    "simulate_patch_application": ChatToolDefinition(
+        simulate_patch_application, ChatToolEffect.SIMULATION, ChatToolCategory.PATCH_PREVIEW
+    ),
+    "retrieve_thread_evidence": ChatToolDefinition(
+        retrieve_thread_evidence, ChatToolEffect.READ_ONLY, ChatToolCategory.CONTEXT_MANAGEMENT
+    ),
+    "request_thread_compaction": ChatToolDefinition(
+        request_thread_compaction, ChatToolEffect.STATE_REQUEST, ChatToolCategory.CONTEXT_MANAGEMENT
+    ),
 }
+
+
+def chat_tool_catalog(
+    *,
+    effect: ChatToolEffect | None = None,
+    category: ChatToolCategory | None = None,
+) -> tuple[ChatToolDefinition, ...]:
+    """Inspect registrations by either or both dimensions; not a route allowlist."""
+
+    return tuple(
+        definition
+        for definition in _CHAT_TOOL_REGISTRY.values()
+        if (effect is None or definition.effect == effect)
+        and (category is None or definition.category == category)
+    )
 
 
 def chat_tool_manifest(
@@ -1556,31 +1847,58 @@ def chat_tool_manifest(
     Phase 4 context surface declared per route. v1 replays only see the v1 read
     surface; v2 and later replays keep the v2 read tools; v3 and v4 expose the
     read-only thread evidence and compaction-request tools; only
-    ``casefile-chat-tools-v4`` exposes the dry-run patch preview.
+    v4 and later expose the dry-run patch preview. v5 adds business queries
+    to routes with object-read access; earlier frozen toolsets remain unchanged.
     """
 
     allowed = list(route.execution_profile.get("toolset") or [])
     allowed.extend(route.execution_profile.get("context_tools") or [])
     manifest: list[Tool] = []
+    new_tools = {"get_modification_impact", "get_character_knowledge", "compare_draft_revisions"}
+    if (
+        toolset_version in {CHAT_TOOLSET_V5_VERSION, CHAT_TOOLSET_V6_VERSION}
+        and "get_casefile_object" in allowed
+    ):
+        allowed.extend(sorted(new_tools))
     for tool_name in allowed:
         if not isinstance(tool_name, str):
+            continue
+        if tool_name in new_tools and toolset_version not in {
+            CHAT_TOOLSET_V5_VERSION,
+            CHAT_TOOLSET_V6_VERSION,
+        }:
             continue
         if tool_name in _V2_ONLY_TOOLS and toolset_version not in {
             CHAT_TOOLSET_VERSION,
             CHAT_TOOLSET_V3_VERSION,
             CHAT_TOOLSET_V4_VERSION,
+            CHAT_TOOLSET_V5_VERSION,
+            CHAT_TOOLSET_V6_VERSION,
         }:
             continue
         if tool_name in _V3_ONLY_TOOLS and toolset_version not in {
             CHAT_TOOLSET_V3_VERSION,
             CHAT_TOOLSET_V4_VERSION,
+            CHAT_TOOLSET_V5_VERSION,
+            CHAT_TOOLSET_V6_VERSION,
         }:
             continue
-        if tool_name in _V4_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_V4_VERSION:
+        if tool_name in _V4_ONLY_TOOLS and toolset_version not in {
+            CHAT_TOOLSET_V4_VERSION,
+            CHAT_TOOLSET_V5_VERSION,
+            CHAT_TOOLSET_V6_VERSION,
+        }:
             continue
-        tool = _CHAT_TOOL_REGISTRY.get(tool_name)
-        if tool is not None and tool not in manifest:
-            manifest.append(tool)
+        definition = _CHAT_TOOL_REGISTRY.get(tool_name)
+        if definition is not None:
+            tool = (
+                compare_draft_revisions_v6
+                if tool_name == "compare_draft_revisions"
+                and toolset_version == CHAT_TOOLSET_V6_VERSION
+                else definition.tool
+            )
+            if tool not in manifest:
+                manifest.append(tool)
     return manifest
 
 
@@ -1589,10 +1907,16 @@ __all__ = [
     "CHAT_TOOLSET_VERSION",
     "CHAT_TOOLSET_V3_VERSION",
     "CHAT_TOOLSET_V4_VERSION",
+    "CHAT_TOOLSET_V5_VERSION",
+    "CHAT_TOOLSET_V6_VERSION",
     "LEGACY_CHAT_TOOLSET_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
     "ChatToolLedger",
+    "ChatToolEffect",
+    "ChatToolCategory",
+    "ChatToolDefinition",
+    "chat_tool_catalog",
     "chat_tool_manifest",
     "bounded_tool_result_json",
     "check_patch_proposal",

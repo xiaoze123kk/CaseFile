@@ -510,3 +510,26 @@ Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围�
 - `worker/handlers/novel_collaboration.py`：压缩使用既有 `NovelModelJournal`，计入冻结预算和实际用量；校验来源、输出预算及 Prompt hash。只有成功任务发布记忆检查点，失败不前移；新上下文策略不补写历史任务。
 - `prompts/novel_context_compactor/v1`：小说专用记忆协议，仅保留作者偏好、讨论与未解决问题。复用主工作台的治理原则和估算器，不复用其卷宗事实/Patch 专用状态。
 - `tests/unit/test_novel_context.py`、`tests/integration/test_novel_context_runtime.py`：近期完整性、预算、来源、正文保真、真实 PostgreSQL 检查点复用与失败不前移；模型均为 Fake，无真实 Provider 资格结论。
+
+## 聊天工具分类
+
+agent_runtime/chat_tools.py 在统一注册表中以 ChatToolDefinition 绑定工具、副作用类型（read_only / simulation / state_request / write）和业务分类（retrieval / validation / patch_preview / context_management）。chat_tool_catalog 支持组合查询；chat_tool_manifest 仍按冻结路由与工具集版本返回原工具对象。分类不授予权限，不代表并发或重试安全；当前无直接业务写入工具，压缩仅为状态变更请求。
+
+## 聊天业务查询工具 v5
+
+- agent_runtime/chat_queries.py：冻结文档的依赖影响与显式角色认知查询，复用 logical_mutation 图和 v2 传播策略；不预测补丁结果，不补全角色认知。
+- chat_tools.py：三项只读工具与分页、预算、结果账本；casefile-chat-tools-v5 按已有对象读取路由开放，v1-v4 工具范围保持不变。
+- worker/revision_history.py：按任务所有者、Project、CaseFile、Draft 与冻结修订上限查询不可变 DraftOperation；比较结果是操作记录而非净差异。
+- casefile-chat-v24：继承 v23 并新增工具策略与证据说明，默认 Goal 新任务绑定 v24/v5；历史包不变。
+
+## 聊天查询修正 v6
+
+- 默认 Goal 新任务绑定 casefile-chat-v27 / casefile-chat-tools-v6；v24/v5 包与工具参数保留，用于历史回放。
+- Worker 从 TaskRun 绑定 draft_id 与 input_draft_revision；渲染时将可信身份注入 focus.draft_revision_context，覆盖同名非权威输入，Executor、Chat Finalizer 和 Goal Finalizer 共用。
+- v6 的 compare_draft_revisions 不接受模型提供 limit，服务端每页最多 10 条，并按结果字符预算缩小页面；模型仅跟随 next_offset。
+- 三项业务只读查询在同一 ChatToolContext 内按工具名和参数复用成功的有界结果，锁保护重复并发读取；缓存命中保留账本与事件并统计 query_cache_hits，不重新查询或消耗执行预算。失败不缓存、不跨请求复用。其他工具保持原执行方式。
+- v25 Evidence/Finalizer/Goal Finalizer 明确依赖影响不是具体补丁失败证明、卷宗版本号不是稿件修订号，以及认知快照不证明获取过程。
+
+- v26 继承 v25 查询边界，Chat/Goal Finalizer 对逐条历史请求使用修订、路径、前后值表格；工具返回值即为存储证据，不以看似占位为由省略记录。v25 保留首轮真实复测身份。
+
+- v27 消除历史逐条输出与默认300字/禁止表格样式的冲突，最终采用不省略条目的编号列表；冻结修订上限不代表外部不存在更晚版本。

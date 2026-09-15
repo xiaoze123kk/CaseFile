@@ -450,7 +450,7 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
             provider,
         ),
         expected_model_id="deepseek-v4-pro",
-        expected_prompt_version="casefile-chat-v23",
+        expected_prompt_version="casefile-chat-v27",
         goal_rollout="active",
     )
     try:
@@ -458,7 +458,7 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
             _public_task(task),
             trial_no=1,
             model_id="deepseek-v4-pro",
-            prompt_version="casefile-chat-v23",
+            prompt_version="casefile-chat-v27",
         )
         diagnostic = executor.diagnostic_snapshot()
     finally:
@@ -572,7 +572,7 @@ def test_goal_mutation_proof_survives_untrusted_finalizer_structure(
             provider,
         ),
         expected_model_id="deepseek-v4-pro",
-        expected_prompt_version="casefile-chat-v23",
+        expected_prompt_version="casefile-chat-v27",
         goal_rollout="active",
     )
     try:
@@ -580,7 +580,7 @@ def test_goal_mutation_proof_survives_untrusted_finalizer_structure(
             _public_task(task),
             trial_no=1,
             model_id="deepseek-v4-pro",
-            prompt_version="casefile-chat-v23",
+            prompt_version="casefile-chat-v27",
         )
     finally:
         executor.close()
@@ -613,7 +613,7 @@ def test_goal_safety_stop_never_materializes_patch(
             FakeProvider(),
         ),
         expected_model_id="deepseek-v4-pro",
-        expected_prompt_version="casefile-chat-v23",
+        expected_prompt_version="casefile-chat-v27",
         goal_rollout="active",
     )
     try:
@@ -621,7 +621,7 @@ def test_goal_safety_stop_never_materializes_patch(
             _public_task(task),
             trial_no=1,
             model_id="deepseek-v4-pro",
-            prompt_version="casefile-chat-v23",
+            prompt_version="casefile-chat-v27",
         )
     finally:
         executor.close()

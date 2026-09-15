@@ -572,6 +572,9 @@ class CaseFileChatRequest:
     context_policy_version: str = LEGACY_CONTEXT_POLICY_VERSION
     assembled_input: dict[str, Any] | None = None
     thread_id: int | None = None
+    draft_id: int | None = None
+    frozen_draft_revision: int | None = None
+    revision_history_resolver: Callable[[int, int, int, int], dict[str, Any]] | None = None
     thread_evidence_resolver: ThreadEvidenceResolver | None = None
     repair_feedback: tuple[str, ...] = ()
     frozen_tool_ledger: dict[str, Any] | None = None

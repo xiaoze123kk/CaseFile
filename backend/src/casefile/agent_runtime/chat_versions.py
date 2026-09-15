@@ -13,6 +13,10 @@ SAFE_PATCH_PROMPT_VERSIONS: Final = frozenset(
         "casefile-chat-v21",
         "casefile-chat-v22",
         "casefile-chat-v23",
+        "casefile-chat-v24",
+        "casefile-chat-v25",
+        "casefile-chat-v26",
+        "casefile-chat-v27",
     }
 )
 PUBLIC_LANGUAGE_PROMPT_VERSIONS: Final = frozenset(
@@ -25,6 +29,10 @@ PUBLIC_LANGUAGE_PROMPT_VERSIONS: Final = frozenset(
         "casefile-chat-v21",
         "casefile-chat-v22",
         "casefile-chat-v23",
+        "casefile-chat-v24",
+        "casefile-chat-v25",
+        "casefile-chat-v26",
+        "casefile-chat-v27",
     }
 )
 
