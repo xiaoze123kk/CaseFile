@@ -72,7 +72,7 @@ def workflow_router() -> APIRouter:
     def get_provider_setting(
         actor: ActorDependency,
         session: SessionDependency,
-        provider: Literal["openai", "deepseek"] = "openai",
+        provider: Literal["openai", "deepseek"] = "deepseek",
     ) -> dict[str, Any] | None:
         return WorkflowService(session).get_provider_setting(actor, provider)
 
@@ -94,7 +94,7 @@ def workflow_router() -> APIRouter:
     def delete_provider_setting(
         actor: ActorDependency,
         session: SessionDependency,
-        provider: Literal["openai", "deepseek"] = "openai",
+        provider: Literal["openai", "deepseek"] = "deepseek",
     ) -> Response:
         WorkflowService(session).delete_provider_setting(actor, provider)
         return Response(status_code=204)

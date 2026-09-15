@@ -12,7 +12,7 @@ from casefile.agent_runtime.prose_quality_critic import (
     FakeProseQualityCriticProvider,
     execute_mirrored_pairwise_quality,
 )
-from casefile.benchmark.prose_quality_diagnostic import Audit, write_new
+from casefile.benchmark.prose_quality_diagnostic import Audit, run_development, write_new
 from casefile.benchmark.prose_quality_diagnostic_report import quality_row, summarize_quality
 from casefile.benchmark.prose_quality_diagnostic_suite import load_diagnostic_suite
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS
@@ -48,6 +48,16 @@ def test_public_suite_all_bindings_and_semantic_review():
     assert suite["review"]["semantic_evidence_origin"] == "authored_gold_not_live_council"
     assert suite["review"]["reviewer_independence"] is False
     assert suite["qualified"] is False
+
+
+def test_live_diagnostic_refuses_nonflash_candidate(tmp_path: Path):
+    with pytest.raises(ValueError, match="diagnostic_experiment_not_frozen"):
+        run_development(
+            suite_path=Path("fixtures/prose_quality_benchmark/diagnostic_v1/suite.json"),
+            output=tmp_path / "attempt",
+            api_key="fake",
+            candidates=QUALITY_V2.config_id,
+        )
 
 
 def test_default_fingerprint_compatible_and_pro_is_explicit():

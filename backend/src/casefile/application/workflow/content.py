@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from casefile.agent_runtime.credentials import encrypt_api_key
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
@@ -92,6 +93,9 @@ class ContentWorkflowMixin:
     ) -> dict[str, Any]:
         provider = normalize_provider(provider)
         encrypted = encrypt_api_key(api_key, user_id=actor_user_id, provider=provider)
+        model_id = model_for_new_task(provider, model_id)
+        if provider == "deepseek":
+            model_is_custom = False
         with self.session.begin():
             setting = self.session.scalar(
                 select(UserProviderSetting)

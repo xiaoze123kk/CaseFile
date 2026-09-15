@@ -589,6 +589,11 @@ def _load_dev_task(descriptor: Any) -> dict[str, Any]:
     }
 
 
+def load_prose_rewrite_development_task(descriptor: dict[str, Any]) -> dict[str, Any]:
+    """Validate a frozen public task without claiming current-suite qualification."""
+    return _load_dev_task(descriptor)
+
+
 def _load_qualification_task(
     descriptor: Any, *, package_root: Path
 ) -> dict[str, Any]:

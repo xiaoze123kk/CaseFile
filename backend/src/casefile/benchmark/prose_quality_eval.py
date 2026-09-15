@@ -12,15 +12,14 @@ from typing import Any, Final
 
 import rfc8785
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prose_polisher import (
     PROSE_POLISHER_COMPONENT_HASH,
-    PROSE_POLISHER_MODEL_ID,
     PROSE_POLISHER_PROMPT_VERSION,
 )
 from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_COMPONENT_HASH,
     PROSE_QUALITY_FINDINGS_PROMPT_VERSION,
-    PROSE_QUALITY_MODEL_ID,
     PROSE_QUALITY_PAIRWISE_PROMPT_VERSION,
     FakeProseQualityCriticProvider,
     ProseQualityCriticProvider,
@@ -35,17 +34,21 @@ from casefile.domain.narrative_compiler import (
     validate_semantic_acceptance,
 )
 
+# Current executable Quality packages use the canonical DeepSeek Flash model.
+PROSE_QUALITY_MODEL_ID = DEEPSEEK_MODEL_ID
+PROSE_POLISHER_MODEL_ID = DEEPSEEK_MODEL_ID
+
 ROOT: Final = Path(__file__).resolve().parents[4]
 PUBLIC_ROOT: Final = ROOT / "fixtures/prose_quality_benchmark/v1"
 DEFAULT_SUITE: Final = PUBLIC_ROOT / "suite.json"
 DEFAULT_ATTESTATION: Final = PUBLIC_ROOT / "review-attestation.json"
 PRIVATE_ROOT: Final = ROOT / "backend/var/benchmark/private/prose-quality"
 DEFAULT_PRIVATE_QUALIFICATION_SUITE: Final = (
-    PRIVATE_ROOT / "qualification-v2/suite.json"
+    PRIVATE_ROOT / "qualification-v4/suite.json"
 )
 DEFAULT_QUALIFICATION_DESCRIPTOR: Final = (
     ROOT
-    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v2-descriptor.json"
+    / "backend/src/casefile/benchmark/policies/prose-quality-qualification-v4-descriptor.json"
 )
 PREFERENCES: Final = ("a", "b", "tie")
 QUALITY_FOCI: Final = (
@@ -190,7 +193,7 @@ def load_prose_quality_qualification_suite(
         "prose_quality_qualification_descriptor_hash_invalid",
     )
     expected_descriptor = {
-        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v2",
+        "suite_id": "n4.5-b3-quality-polisher-private-qualification-v4",
         "quality_holdout_count": 16,
         "polisher_task_count": 24,
         "quality_focus_distribution": {focus: 2 for focus in QUALITY_FOCI},
@@ -198,7 +201,7 @@ def load_prose_quality_qualification_suite(
         "quality_preference_distribution": {"a": 4, "b": 8, "tie": 4},
         "quality_gate_thresholds": QUALITY_QUALIFICATION_GATES,
         "polisher_gate_thresholds": POLISHER_QUALIFICATION_GATES,
-        "loader_version": "prose-quality-suite-loader-v2",
+        "loader_version": "prose-quality-suite-loader-v4",
         "quality_model_id": PROSE_QUALITY_MODEL_ID,
         "generation_model_id": PROSE_POLISHER_MODEL_ID,
         "quality_component_hash": PROSE_QUALITY_COMPONENT_HASH,

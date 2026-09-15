@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_writer",
+  "version": "prose-writer-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+  "previous_version": "prose-writer-v4",
+  "change_summary": "候选：固定角色职责与按阶段加载 Skill 分层，默认版本不变。"
+}

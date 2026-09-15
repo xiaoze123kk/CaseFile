@@ -6,6 +6,43 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 
+def response_usage_details(response: Any) -> dict[str, Any]:
+    """Lossless usage alongside legacy counters; unknown is never a measured zero."""
+    value = getattr(response, "usage", None)
+    raw = (
+        value.model_dump(mode="json")
+        if value is not None and hasattr(value, "model_dump")
+        else dict(vars(value))
+        if value is not None
+        else {}
+    )
+    fields = {
+        "input": "prompt_tokens",
+        "output": "completion_tokens",
+        "cached_input": "prompt_cache_hit_tokens",
+        "uncached_input": "prompt_cache_miss_tokens",
+    }
+    tokens = {key: raw.get(source) for key, source in fields.items()}
+    errors = []
+    for key, count in tokens.items():
+        if count is not None and (type(count) is not int or count < 0):
+            errors.append(key)
+            tokens[key] = None
+    total, cached, missed = tokens["input"], tokens["cached_input"], tokens["uncached_input"]
+    if total is not None and cached is not None:
+        if cached > total or (missed is not None and cached + missed != total):
+            errors.append("cache_consistency")
+            tokens["cached_input"] = tokens["uncached_input"] = None
+        elif missed is None:
+            tokens["uncached_input"] = total - cached
+    return {
+        "raw": raw,
+        "tokens": tokens,
+        "errors": errors,
+        "usage_available": total is not None and tokens["output"] is not None,
+    }
+
+
 def merge_usage_records(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Sum integer counters, preserving the latest non-counter metadata."""
     merged: dict[str, Any] = {}

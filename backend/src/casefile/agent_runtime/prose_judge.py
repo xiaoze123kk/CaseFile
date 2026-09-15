@@ -14,6 +14,7 @@ from typing import Any, Final, Literal, Protocol, cast
 from openai import APIConnectionError, APITimeoutError, OpenAI
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
@@ -24,7 +25,7 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile_contracts import ProseConsensusReport, ProseJudgeReport
 
-PROSE_COUNCIL_MODEL_ID: Final = "deepseek-v4-pro"
+PROSE_COUNCIL_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_COUNCIL_MAX_TURNS: Final = 1
 PROSE_COUNCIL_NETWORK_RETRIES: Final = 1
 PROSE_COUNCIL_RETRY_DELAY_SECONDS: Final = 1.0
@@ -491,7 +492,7 @@ def execute_prose_judge_protocol_call(
 ) -> ProseProtocolCallExecution:
     """Execute and validate exactly one production Judge request."""
 
-    if model_id != PROSE_COUNCIL_MODEL_ID:
+    if model_id not in (PROSE_COUNCIL_MODEL_ID, "deepseek-v4-pro"):
         raise ProseCouncilProtocolError("prose_council_model_id_not_frozen")
     call: ProseJudgeProviderResult | None = None
     try:
@@ -548,7 +549,7 @@ def execute_prose_arbiter_protocol_call(
 ) -> ProseProtocolCallExecution:
     """Execute and validate exactly one production batch Arbiter request."""
 
-    if model_id != PROSE_COUNCIL_MODEL_ID:
+    if model_id not in (PROSE_COUNCIL_MODEL_ID, "deepseek-v4-pro"):
         raise ProseCouncilProtocolError("prose_council_model_id_not_frozen")
     call: ProseJudgeProviderResult | None = None
     try:
@@ -643,7 +644,7 @@ def execute_semantic_council(
     """Execute one bounded semantic round and construct server-owned Consensus."""
 
     _validate_policy(policy)
-    if model_id != PROSE_COUNCIL_MODEL_ID:
+    if model_id not in (PROSE_COUNCIL_MODEL_ID, "deepseek-v4-pro"):
         raise ProseCouncilProtocolError("prose_council_model_id_not_frozen")
     checklist_json = _model_json(checklist)
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")

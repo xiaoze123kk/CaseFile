@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.application.errors import ApplicationError, not_found
 from casefile.application.idea_service import _json_hash
 from casefile.data_postgres.models.identity import UserProviderSetting
@@ -141,7 +142,7 @@ class ReverseParseService:
             stage="queued",
             input_draft_revision=owned.draft.revision,
             provider=setting.provider,
-            model_id=setting.model_id,
+            model_id=model_for_new_task(setting.provider, setting.model_id),
             provider_config_version=setting.config_version,
             schema_version=CASEFILE_SCHEMA_VERSION,
             agent_version=AGENT_VERSION,

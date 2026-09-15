@@ -20,8 +20,8 @@ from casefile.agent_runtime.prose_polisher import (
     execute_prose_polisher,
 )
 from casefile.agent_runtime.prose_quality_config import (
-    QUALITY_V2,
     ProseQualityConfig,
+    resolve_quality_config,
     validate_quality_config,
 )
 from casefile.agent_runtime.prose_quality_critic import (
@@ -71,21 +71,22 @@ def execute_prose_polish_supervisor(
     generation_model_id: str,
     api_key: str,
     observe: ComponentObserver = ignore_component,
-    quality_config: ProseQualityConfig = QUALITY_V2,
+    quality_config: ProseQualityConfig | None = None,
     frozen_findings: dict[str, Any] | None = None,
     reverse_first: bool = False,
     preservation_policy: ProseCouncilPolicy = FULL_COUNCIL_POLICY,
 ) -> ProsePolishSupervisorExecution:
     """Run the bounded B3 path and never expose model-owned acceptance control."""
 
+    quality_config = resolve_quality_config(quality_config, quality_model_id)
     try:
         validate_quality_config(quality_config)
     except ValueError as error:
         return _terminal("protocol_failed", None, None, None, None, None, None, str(error))
     if (
-        quality_model_id != PROSE_QUALITY_MODEL_ID
-        or generation_model_id != PROSE_POLISHER_MODEL_ID
-        or generation_model_id != PROSE_COUNCIL_MODEL_ID
+        quality_model_id not in (PROSE_QUALITY_MODEL_ID, "deepseek-v4-flash")
+        or generation_model_id not in (PROSE_POLISHER_MODEL_ID, "deepseek-v4-pro")
+        or generation_model_id not in (PROSE_COUNCIL_MODEL_ID, "deepseek-v4-pro")
     ):
         return _terminal(
             "protocol_failed",

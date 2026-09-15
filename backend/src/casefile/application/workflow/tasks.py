@@ -29,6 +29,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.goal.policy import GoalRuntimeConfig
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.agent_runtime.prompt import agent_version_for_task
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
@@ -140,7 +141,7 @@ def new_task(
         stage="queued",
         input_draft_revision=owned.draft.revision,
         provider=setting.provider,
-        model_id=setting.model_id,
+        model_id=model_for_new_task(setting.provider, setting.model_id),
         provider_config_version=setting.config_version,
         schema_version=CASEFILE_SCHEMA_VERSION,
         agent_version=agent_version_for_task(task_type, prompt_version),

@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_rewriter",
+  "version": "prose-rewriter-v9",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
+  "previous_version": "prose-rewriter-v8",
+  "change_summary": "候选：服务端保留完整绑定，模型视图移除纯追踪哈希并稳定数据顺序。"
+}

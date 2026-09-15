@@ -11,6 +11,7 @@ import rfc8785
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.application.errors import ApplicationError, not_found
 from casefile.data_postgres.models.idea import IdeaCandidate
 from casefile.data_postgres.repositories import ProjectRepository
@@ -37,9 +38,7 @@ class IdeaService:
             "created_at": row.created_at.isoformat() if row.created_at else None,
         }
 
-    def _ensure_owned(
-        self, actor_user_id: int, project_id: int, *, lock: bool = False
-    ) -> None:
+    def _ensure_owned(self, actor_user_id: int, project_id: int, *, lock: bool = False) -> None:
         owned = self.projects.get_owned(actor_user_id, project_id, lock=lock)
         if owned is None:
             raise not_found("Project")
@@ -87,10 +86,14 @@ class IdeaService:
         # Try real provider first, fall back to fake
         try:
             setting = self.session.scalar(
-                sa_select(UserProviderSetting).where(
+                sa_select(UserProviderSetting)
+                .where(
                     UserProviderSetting.user_id == 1,
+                    UserProviderSetting.provider == "deepseek",
                     UserProviderSetting.credential_status != "deleted",
-                ).order_by(UserProviderSetting.validated_at.desc().nulls_last()).limit(1)
+                )
+                .order_by(UserProviderSetting.validated_at.desc().nulls_last())
+                .limit(1)
             )
             if (
                 setting is not None
@@ -111,7 +114,9 @@ class IdeaService:
                     regenerate=regenerate,
                     existing_concepts=existing_concepts,
                     input_hash=input_hash,
-                    model_id=setting.model_id or "gpt-4o-mini",
+                    model_id=model_for_new_task(
+                        setting.provider, setting.model_id or "gpt-4o-mini"
+                    ),
                     api_key=api_key,
                     max_turns=8,
                     emit=emit,
@@ -154,14 +159,11 @@ class IdeaService:
 
     def list(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
         self._ensure_owned(actor_user_id, project_id)
-        rows = (
-            self.session.scalars(
-                sa_select(IdeaCandidate)
-                .where(IdeaCandidate.project_id == project_id)
-                .order_by(IdeaCandidate.batch_id.desc(), IdeaCandidate.ordinal)
-            )
-            .all()
-        )
+        rows = self.session.scalars(
+            sa_select(IdeaCandidate)
+            .where(IdeaCandidate.project_id == project_id)
+            .order_by(IdeaCandidate.batch_id.desc(), IdeaCandidate.ordinal)
+        ).all()
         batches: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             batches.setdefault(row.batch_id, []).append(self._candidate_view(row))
@@ -242,7 +244,9 @@ class IdeaService:
             idea = self._get_idea(project_id, idea_id, lock=True)
             if idea.status != "active":
                 raise ApplicationError(
-                    "idea_invalid_state", "只有活跃状态的创意候选可以被选择。", status_code=409,
+                    "idea_invalid_state",
+                    "只有活跃状态的创意候选可以被选择。",
+                    status_code=409,
                 )
             content = idea.content_jsonb
             concept = str(content.get("concept", ""))
@@ -274,18 +278,14 @@ class IdeaService:
                     "idea_already_selected", "已选中的创意候选不能重新生成。", status_code=409
                 )
 
-            batch_ideas = (
-                self.session.scalars(
-                    sa_select(IdeaCandidate).where(
-                        IdeaCandidate.project_id == project_id,
-                        IdeaCandidate.batch_id == idea.batch_id,
-                        IdeaCandidate.id != idea_id,
-                    )
-                ).all()
-            )
-            existing_concepts = tuple(
-                str(i.content_jsonb.get("concept", "")) for i in batch_ideas
-            )
+            batch_ideas = self.session.scalars(
+                sa_select(IdeaCandidate).where(
+                    IdeaCandidate.project_id == project_id,
+                    IdeaCandidate.batch_id == idea.batch_id,
+                    IdeaCandidate.id != idea_id,
+                )
+            ).all()
+            existing_concepts = tuple(str(i.content_jsonb.get("concept", "")) for i in batch_ideas)
             new_candidates = self._generate(regenerate=True, existing_concepts=existing_concepts)
             replacement = new_candidates[0] if new_candidates else {}
 

@@ -9,13 +9,15 @@ from pathlib import Path
 from typing import Any, Final
 
 import rfc8785
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prose_quality_critic import (
     PROSE_QUALITY_COMPONENT_HASH,
     PROSE_QUALITY_FINDINGS_PROMPT_VERSION,
-    PROSE_QUALITY_MODEL_ID,
     PROSE_QUALITY_PAIRWISE_PROMPT_VERSION,
 )
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS
+
+PROSE_QUALITY_MODEL_ID = DEEPSEEK_MODEL_ID
 
 ROOT: Final = Path(__file__).resolve().parents[3]
 OUT: Final = ROOT / "fixtures/prose_quality_benchmark/v1"

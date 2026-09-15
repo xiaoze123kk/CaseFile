@@ -10,8 +10,8 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from openai import OpenAI
-
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
     generation_focus,
@@ -33,7 +33,7 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile_contracts import SceneRender, SceneRenderCandidate
 
-PROSE_POLISHER_MODEL_ID: Final = "deepseek-v4-pro"
+PROSE_POLISHER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v5"
 PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v5"
 PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v5"
@@ -367,7 +367,7 @@ def build_prose_polisher_request(
 ) -> ProsePolisherRequest:
     """Build the minimal immutable Polisher view from accepted upstream facts."""
 
-    if model_id != PROSE_POLISHER_MODEL_ID:
+    if model_id not in (PROSE_POLISHER_MODEL_ID, "deepseek-v4-pro"):
         raise ProsePolisherProtocolError("prose_polisher_model_id_not_frozen")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
     render = validate_scene_render(

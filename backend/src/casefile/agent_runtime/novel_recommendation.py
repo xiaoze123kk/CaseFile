@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from openai import OpenAI
-
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile_contracts import NovelRecommendation
 
 SYSTEM_PROMPT = """你是个人推理小说作者的编剧顾问。根据卷宗推荐一份适合改编成小说的方案。
@@ -31,7 +31,7 @@ def recommend_novel(
         api_key=api_key, base_url="https://api.deepseek.com", timeout=90, max_retries=0
     ) as client:
         response = client.chat.completions.create(
-            model="deepseek-v4-pro",
+            model=DEEPSEEK_MODEL_ID,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {

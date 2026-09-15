@@ -62,8 +62,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v2",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v7",
-    "prose_writer": "prose-writer-v4",
-    "prose_rewriter": "prose-rewriter-v7",
+    "prose_writer": "prose-writer-v6",
+    "prose_rewriter": "prose-rewriter-v9",
     "prose_revision": "prose-revision-v3",
     "prose_fidelity_judge": "prose-fidelity-judge-v8",
     "prose_adversarial_judge": "prose-adversarial-judge-v7",
@@ -77,6 +77,18 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("prose_writer", "prose-writer-v6"): {
+        "system": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+    },
+    ("prose_rewriter", "prose-rewriter-v9"): {
+        "system": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
+    },
+    ("prose_writer", "prose-writer-v5"): {
+        "system": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+    },
+    ("prose_rewriter", "prose-rewriter-v8"): {
+        "system": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
+    },
     ("casefile_chat", "casefile-chat-v27"): {
         "fragment:router": (
             "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"

@@ -8,7 +8,6 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from casefile.agent_runtime.chat_tools import (
@@ -41,6 +40,7 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.deepseek_transport import model_checked_async_client as AsyncOpenAI
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
     GeneralMutationPlannerRequest,

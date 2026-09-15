@@ -4,8 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from openai import OpenAI
-
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
 from casefile.agent_runtime.novel_chapter_review import review_chapter
 from casefile.agent_runtime.novel_prose import current_prompt_versions
 from casefile.agent_runtime.prompt_repository import PromptDefinition, load_prompt

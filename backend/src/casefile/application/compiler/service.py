@@ -12,7 +12,12 @@ from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
     CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
-from casefile.agent_runtime.prose_runtime import PROSE_RUNTIME_VERSION, prose_runtime_binding
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID, model_for_new_task
+from casefile.agent_runtime.prose_runtime import (
+    PROSE_RUNTIME_VERSION,
+    matches_prose_runtime,
+    prose_runtime_binding,
+)
 from casefile.agent_runtime.scene_compiler import (
     SCENE_COMPILER_PIPELINE_VERSION,
     SCENE_COMPILER_PROMPT_BUNDLE_VERSION,
@@ -148,8 +153,8 @@ class CompilerService:
                     {},
                 )
                 runtime = frozen.get("prose_runtime", {})
-                if runtime != prose_runtime_binding(
-                    runtime.get("scene_count"), frozen.get("prose_mode", "full_polish")
+                if not matches_prose_runtime(
+                    runtime, runtime.get("scene_count"), frozen.get("prose_mode", "full_polish")
                 ):
                     raise ApplicationError(
                         "compiler_resume_version_changed",
@@ -530,12 +535,12 @@ class CompilerService:
                 input_draft_revision=owned.draft.revision,
                 provider=None if setting is None else setting.provider,
                 model_id=(
-                    "deepseek-v4-pro"
+                    DEEPSEEK_MODEL_ID
                     if prose_renderer_shadow
                     or (scene_compiler_shadow and planner_provider == "deepseek")
                     else None
                     if setting is None
-                    else setting.model_id
+                    else model_for_new_task(setting.provider, setting.model_id)
                 ),
                 provider_config_version=None if setting is None else setting.config_version,
                 schema_version=INPUT_MANIFEST_SCHEMA_ID,

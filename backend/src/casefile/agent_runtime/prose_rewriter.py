@@ -5,14 +5,15 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from openai import OpenAI
 from pydantic import ValidationError
 
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
     generation_focus,
@@ -22,7 +23,12 @@ from casefile.agent_runtime.prose_generation import (
     validate_generation_result,
 )
 from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
-from casefile.agent_runtime.usage import fake_prose_usage, prose_response_usage
+from casefile.agent_runtime.prose_skills import bind_skill_request, completion_body
+from casefile.agent_runtime.usage import (
+    fake_prose_usage,
+    prose_response_usage,
+    response_usage_details,
+)
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
@@ -34,8 +40,8 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
 
-PROSE_REWRITER_MODEL_ID: Final = "deepseek-v4-pro"
-PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v7"
+PROSE_REWRITER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
+PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v9"
 PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v7"
 PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v7"
 PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v2"
@@ -107,6 +113,7 @@ class ProseRewriterRequest:
     network_retries: int = PROSE_REWRITER_NETWORK_RETRIES
     temperature: int = PROSE_REWRITER_TEMPERATURE
     max_output_tokens: int = PROSE_REWRITER_MAX_OUTPUT_TOKENS
+    prompt_metadata: dict[str, Any] = field(default_factory=dict)
     thinking_enabled: bool = PROSE_REWRITER_THINKING_ENABLED
 
 
@@ -125,6 +132,9 @@ class ProseRewriterProviderResult:
     prompt_version: str
     request_payload: dict[str, Any]
     transport_attempts: tuple[ProseRewriterTransportAttempt, ...]
+    usage_details: dict[str, Any] = field(default_factory=dict)
+    response_model_id: str | None = None
+    prompt_metadata: dict[str, Any] = field(default_factory=dict)
     recovered: bool = False
     generation_call_count: int = 1
     finish_reason: str | None = None
@@ -215,53 +225,29 @@ class DeepSeekProseRewriterProvider:
             prompt_version=request.prompt_version,
             request_payload=request.input_payload,
             transport_attempts=(attempt,),
+            usage_details=response_usage_details(response),
+            response_model_id=getattr(response, "model", None),
+            prompt_metadata=request.prompt_metadata,
             finish_reason=response.choices[0].finish_reason if len(response.choices) == 1 else None,
+        )
+
+    def completion_body(self, request: ProseRewriterRequest) -> dict[str, Any]:
+        return completion_body(
+            request,
+            request.input_payload.get("response_schema", PROSE_REWRITER_CANDIDATE_SCHEMA),
+            (
+                "请按系统职责完成本次任务。"
+                if request.prompt_version.startswith("novel-")
+                else "请完成编辑决策。"
+                if "response_schema" in request.input_payload
+                else generation_focus(request)
+            ),
         )
 
     def _create_completion(self, request: ProseRewriterRequest) -> Any:
         client = OpenAI(api_key=request.api_key, base_url=self.base_url, max_retries=0)
         try:
-            return client.chat.completions.create(
-                model=request.model_id,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": request.system_prompt
-                        + "\n\n必须严格遵守以下 JSON Schema：\n"
-                        + json.dumps(
-                            request.input_payload.get(
-                                "response_schema", PROSE_REWRITER_CANDIDATE_SCHEMA
-                            ),
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            request.input_payload,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                            separators=(",", ":"),
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": (
-                            "请按系统职责完成本次任务。"
-                            if request.prompt_version.startswith("novel-")
-                            else "请完成编辑决策。"
-                            if "response_schema" in request.input_payload
-                            else generation_focus(request)
-                        ),
-                    },
-                ],
-                response_format={"type": "json_object"},
-                temperature=request.temperature,
-                max_tokens=request.max_output_tokens,
-                extra_body={"thinking": {"type": "disabled"}},
-            )
+            return client.chat.completions.create(**self.completion_body(request))
         finally:
             client.close()
 
@@ -321,6 +307,7 @@ def execute_prose_rewriter(
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseRewriterProviderResult | None] | None = None,
     revision_decision: dict[str, Any] | None = None,
+    prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
 ) -> ProseRewriterExecution:
     """Validate one failed semantic round and produce its complete replacement."""
 
@@ -328,6 +315,7 @@ def execute_prose_rewriter(
     try:
         request = build_prose_rewriter_request(
             scene_plan=scene_plan,
+            prompt_version=prompt_version,
             narrative_ir=narrative_ir,
             profile=profile,
             checklist=checklist,
@@ -400,10 +388,11 @@ def build_prose_rewriter_request(
     remaining_scene_call_budget: int,
     revision_decision: dict[str, Any] | None = None,
     review_only: bool = False,
+    prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
 ) -> ProseRewriterRequest:
     """Build the minimal full-Rewrite Provider view after exact validation."""
 
-    if model_id != PROSE_REWRITER_MODEL_ID:
+    if model_id not in (PROSE_REWRITER_MODEL_ID, "deepseek-v4-pro"):
         raise ProseRewriterProtocolError("prose_rewriter_model_id_not_frozen")
     if (
         not isinstance(remaining_scene_call_budget, int)
@@ -467,7 +456,7 @@ def build_prose_rewriter_request(
         }
         for check_id in preserve_ids
     ]
-    prompt = load_prompt("prose_rewriter", PROSE_REWRITER_PROMPT_VERSION)
+    prompt = load_prompt("prose_rewriter", prompt_version)
     binding = {
         "component_id": "prose_rewriter",
         "component_hash": PROSE_REWRITER_COMPONENT_HASH,
@@ -550,18 +539,21 @@ def build_prose_rewriter_request(
             "thinking_enabled": PROSE_REWRITER_THINKING_ENABLED,
         }
     )
-    return ProseRewriterRequest(
-        model_id=model_id,
-        api_key=api_key,
-        system_prompt=prompt.system_prompt,
-        prompt_version=prompt.version,
-        prompt_hash=prompt.system_prompt_sha256,
-        input_payload=payload,
-        input_hash=input_hash,
-        component_input_hash=component_input_hash,
-        request_fingerprint=fingerprint,
-        rewrite_round=rewrite_round,
-        remaining_scene_call_budget=remaining_scene_call_budget,
+    return bind_skill_request(
+        ProseRewriterRequest(
+            model_id=model_id,
+            api_key=api_key,
+            system_prompt=prompt.system_prompt,
+            prompt_version=prompt.version,
+            prompt_hash=prompt.system_prompt_sha256,
+            input_payload=payload,
+            input_hash=input_hash,
+            component_input_hash=component_input_hash,
+            request_fingerprint=fingerprint,
+            rewrite_round=rewrite_round,
+            remaining_scene_call_budget=remaining_scene_call_budget,
+        ),
+        PROSE_REWRITER_CANDIDATE_SCHEMA,
     )
 
 
