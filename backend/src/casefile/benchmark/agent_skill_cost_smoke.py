@@ -203,7 +203,7 @@ def smoke(
     try:
         for case in cases:
             agent = cast(str, case["agent"])
-            component = cast(str | None, case["component"])
+            component = case["component"]
             protocol = cast(Protocol, case["protocol"])
             for arm in ("baseline", "candidate"):
                 _, prompt = instructions(agent, component, candidate=arm == "candidate")

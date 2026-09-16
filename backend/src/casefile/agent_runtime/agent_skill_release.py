@@ -6,7 +6,7 @@ import json
 from functools import cache
 from hashlib import sha256
 from importlib.resources import files
-from typing import Any
+from typing import Any, cast
 
 from casefile.agent_runtime.skill_assembly import InstructionResource, assemble_instructions
 from casefile.agent_runtime.skill_resources import read_skill_resource, skill_metadata
@@ -34,7 +34,7 @@ def release_manifest() -> dict[str, Any]:
         or manifest.get("assembly_version") != "stable-prefix-v1"
     ):
         raise ValueError("Unsupported Agent Skill release")
-    return manifest
+    return cast(dict[str, Any], manifest)
 
 
 def binding_for_prompt_version(prompt_version: str, component: str | None = None) -> dict[str, Any]:
