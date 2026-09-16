@@ -11,9 +11,11 @@ from hashlib import sha256
 from time import perf_counter, sleep
 from typing import Any, Final, Literal, Protocol, cast
 
-from openai import APIConnectionError, APITimeoutError, OpenAI
+from openai import APIConnectionError, APITimeoutError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.domain.narrative_compiler import (
@@ -365,6 +367,7 @@ class DeepSeekProseJudgeProvider:
             else None,
         )
 
+    @audited_call
     def _create_completion(self, request: ProseJudgeRequest | ProseArbiterRequest) -> Any:
         client = OpenAI(
             api_key=request.api_key,

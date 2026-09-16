@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_call_audit import model_call_binding
 from casefile.agent_runtime.novel_chapter_review import review_chapter
 from casefile.agent_runtime.novel_prose import current_prompt_versions
 from casefile.agent_runtime.prompt_repository import PromptDefinition, load_prompt
@@ -178,37 +179,49 @@ class NovelCollaborationProvider:
         prompt = load_prompt("novel_collaboration")
         answer = ""
         usage = {}
-        with OpenAI(
-            api_key=api_key, base_url="https://api.deepseek.com", max_retries=0, timeout=120
-        ) as client:
-            stream = client.chat.completions.create(
-                model=model_id,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": prompt.system_prompt
-                        + "\n当前为讨论模式：直接输出自然语言回答，不输出 JSON，不修改正文。",
-                    },
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-                ],
-                stream=True,
-                stream_options={"include_usage": True},
-                max_tokens=4096,
-                extra_body={"thinking": {"type": "disabled"}},
+        with model_call_binding(
+            {
+                "agent": "novel_collaboration",
+                "prompt_version": prompt.version,
+                "skill_release": prompt.skill_metadata["release"],
+                "skill_metadata": prompt.skill_metadata,
+            }
+        ):
+            client_context = OpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com",
+                max_retries=0,
+                timeout=120,
             )
-            for chunk in stream:
-                if chunk.usage:
-                    usage = {
-                        "requests": 1,
-                        "input_tokens": chunk.usage.prompt_tokens,
-                        "output_tokens": chunk.usage.completion_tokens,
-                        "total_tokens": chunk.usage.total_tokens,
-                    }
-                if chunk.choices:
-                    delta = chunk.choices[0].delta.content or ""
-                    if delta:
-                        answer += delta
-                        emit(delta)
-            if not answer.strip():
-                raise ValueError("novel_discussion_empty")
+            with client_context as client:
+                stream = client.chat.completions.create(
+                    model=model_id,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": prompt.system_prompt
+                            + "\n当前为讨论模式：直接输出自然语言回答，不输出 JSON，不修改正文。",
+                        },
+                        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                    ],
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    max_tokens=4096,
+                    extra_body={"thinking": {"type": "disabled"}},
+                )
+                for chunk in stream:
+                    if chunk.usage:
+                        usage = {
+                            "requests": 1,
+                            "input_tokens": chunk.usage.prompt_tokens,
+                            "output_tokens": chunk.usage.completion_tokens,
+                            "total_tokens": chunk.usage.total_tokens,
+                        }
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta.content or ""
+                        if delta:
+                            answer += delta
+                            emit(delta)
+                if not answer.strip():
+                    raise ValueError("novel_discussion_empty")
         return answer, usage

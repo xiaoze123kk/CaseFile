@@ -18,6 +18,7 @@ from casefile.worker.runtime import Worker, WorkerConfig
 
 pytestmark = pytest.mark.postgres
 
+
 @pytest.fixture
 def intake_database(
     workflow_database: tuple[Engine, int, str],
@@ -91,6 +92,7 @@ def test_brief_intake_recovers_questions_candidates_and_adopts_to_brief(
             "/api/v1/settings/provider",
             headers=_identity(actor_id),
             json={
+                "provider": "openai",
                 "api_key": "sk-intake-test-secret",
                 "model_id": "gpt-5.6-sol",
                 "model_is_custom": False,
@@ -163,9 +165,7 @@ def test_brief_intake_recovers_questions_candidates_and_adopts_to_brief(
         assert recovered["stage"] == "questions"
         assert len(recovered["questions"]) == 2
         hard_question = next(item for item in recovered["questions"] if item["required"])
-        optional_question = next(
-            item for item in recovered["questions"] if not item["required"]
-        )
+        optional_question = next(item for item in recovered["questions"] if not item["required"])
 
         rejected_pending = client.patch(
             (
@@ -217,9 +217,7 @@ def test_brief_intake_recovers_questions_candidates_and_adopts_to_brief(
         ).json()
         assert synthesized["revision"] == 8
         assert synthesized["stage"] == "confirmation"
-        first_candidate = next(
-            item for item in synthesized["candidates"] if item["is_current"]
-        )
+        first_candidate = next(item for item in synthesized["candidates"] if item["is_current"])
         assert first_candidate["origin"] == "agent_synthesis"
         assert first_candidate["content"]["pending_decisions"]
 
@@ -277,14 +275,10 @@ def test_brief_intake_recovers_questions_candidates_and_adopts_to_brief(
             headers=_identity(actor_id),
         ).json()
         assert revised["revision"] == 13
-        dialogue_candidate = next(
-            item for item in revised["candidates"] if item["is_current"]
-        )
+        dialogue_candidate = next(item for item in revised["candidates"] if item["is_current"])
         assert dialogue_candidate["origin"] == "dialogue_revision"
         assert dialogue_candidate["parent_candidate_id"] == first_candidate["candidate_id"]
-        assert any(
-            item["candidate_id"] == manual_candidate_id for item in revised["candidates"]
-        )
+        assert any(item["candidate_id"] == manual_candidate_id for item in revised["candidates"])
 
         brief_before = client.get(
             f"/api/v1/projects/{project_id}/brief", headers=_identity(actor_id)
@@ -325,9 +319,7 @@ def test_brief_intake_recovers_questions_candidates_and_adopts_to_brief(
         assert brief["content"]["creative_constraints"] == []
         assert brief["content"]["core_selling_points"]
 
-        formal = client.get(
-            f"/api/v1/projects/{project_id}/brief", headers=_identity(actor_id)
-        )
+        formal = client.get(f"/api/v1/projects/{project_id}/brief", headers=_identity(actor_id))
         assert formal.status_code == 200
         assert formal.json()["content"] == brief["content"]
         forbidden = client.get(
@@ -370,6 +362,7 @@ def test_brief_intake_appends_optional_question_batches(
             "/api/v1/settings/provider",
             headers=_identity(actor_id),
             json={
+                "provider": "openai",
                 "api_key": "sk-intake-additional-test",
                 "model_id": "gpt-5.6-sol",
                 "model_is_custom": False,
@@ -412,9 +405,7 @@ def test_brief_intake_appends_optional_question_batches(
         ).json()
         assert len(first_batch["questions"]) == 2
         hard_question = next(item for item in first_batch["questions"] if item["required"])
-        optional_question = next(
-            item for item in first_batch["questions"] if not item["required"]
-        )
+        optional_question = next(item for item in first_batch["questions"] if not item["required"])
 
         answered = client.patch(
             (
@@ -460,9 +451,7 @@ def test_brief_intake_appends_optional_question_batches(
         assert [question["prompt"] for question in combined["questions"][:2]] == [
             question["prompt"] for question in first_batch["questions"]
         ]
-        assert all(
-            not question["required"] for question in combined["questions"][2:]
-        )
+        assert all(not question["required"] for question in combined["questions"][2:])
         recovered_hard = next(
             item
             for item in combined["questions"]
@@ -488,6 +477,7 @@ def test_brief_intake_archives_stale_tasks_and_allows_manual_recovery(
             "/api/v1/settings/provider",
             headers=_identity(actor_id),
             json={
+                "provider": "openai",
                 "api_key": "sk-intake-stale-secret",
                 "model_id": "gpt-5.6-sol",
                 "model_is_custom": False,
@@ -535,10 +525,7 @@ def test_brief_intake_archives_stale_tasks_and_allows_manual_recovery(
         )
         assert worker.run_once() is True
         stale_questions = client.get(
-            (
-                f"/api/v1/projects/{project_id}/tasks/"
-                f"{queued_questions.json()['task_run_id']}"
-            ),
+            (f"/api/v1/projects/{project_id}/tasks/{queued_questions.json()['task_run_id']}"),
             headers=_identity(actor_id),
         ).json()
         assert stale_questions["status"] == "succeeded"
@@ -564,9 +551,7 @@ def test_brief_intake_archives_stale_tasks_and_allows_manual_recovery(
         ).json()
         assert recovered["revision"] == 6
         hard_question = next(item for item in recovered["questions"] if item["required"])
-        optional_question = next(
-            item for item in recovered["questions"] if not item["required"]
-        )
+        optional_question = next(item for item in recovered["questions"] if not item["required"])
         answered = client.patch(
             (
                 f"/api/v1/projects/{project_id}/brief-intake/questions/"
@@ -611,10 +596,7 @@ def test_brief_intake_archives_stale_tasks_and_allows_manual_recovery(
         assert changed_answer.status_code == 200
         assert worker.run_once() is True
         stale_synthesis = client.get(
-            (
-                f"/api/v1/projects/{project_id}/tasks/"
-                f"{queued_synthesis.json()['task_run_id']}"
-            ),
+            (f"/api/v1/projects/{project_id}/tasks/{queued_synthesis.json()['task_run_id']}"),
             headers=_identity(actor_id),
         ).json()
         assert stale_synthesis["status"] == "succeeded"
@@ -741,8 +723,9 @@ def test_brief_intake_initializes_legacy_projects_once_and_keeps_review_closed(
             headers=_identity(actor_id),
         ).json()
         assert recovered_source_only["stage"] == "idea"
-        assert recovered_source_only["current_source"]["source_record_id"] == (
-            source_only["source_record_id"]
+        assert (
+            recovered_source_only["current_source"]["source_record_id"]
+            == (source_only["source_record_id"])
         )
 
 
@@ -831,10 +814,7 @@ def test_brief_intake_reopens_for_revision_and_adopts_a_new_version(
         candidate_id = candidate.json()["current_candidate_id"]
 
         adopted = client.post(
-            (
-                f"/api/v1/projects/{project_id}/brief-intake/candidates/"
-                f"{candidate_id}/adopt"
-            ),
+            (f"/api/v1/projects/{project_id}/brief-intake/candidates/{candidate_id}/adopt"),
             headers=_identity(actor_id),
             json={
                 "expected_intake_revision": 3,

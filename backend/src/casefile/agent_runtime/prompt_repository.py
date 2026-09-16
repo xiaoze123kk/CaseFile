@@ -23,6 +23,7 @@ from casefile.agent_runtime.prompt_package import (
 PROMPT_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.prompts"
 PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
 SUPPORTED_AGENT_IDS: Final = (
+    "novel_recommendation",
     "novel_context_compactor",
     "novel_checklist",
     "novel_judge",
@@ -165,6 +166,7 @@ class PromptDefinition:
     component_prompts: dict[str, str] = field(default_factory=dict)
     component_sha256: dict[str, str] = field(default_factory=dict)
     package: PromptPackage | None = None
+    skill_metadata: dict[str, object] = field(default_factory=dict)
 
 
 class PromptRepository:
@@ -918,8 +920,28 @@ def packaged_prompt_repository() -> PromptRepository:
 @cache
 def load_prompt(agent_id: str, version: str | None = None) -> PromptDefinition:
     """Load and cache one packaged System Prompt version."""
+    from casefile.agent_runtime.agent_skill_release import bind_prompt
 
-    return packaged_prompt_repository().load(agent_id, version)
+    definition = packaged_prompt_repository().load(agent_id, version)
+    system_prompt, components, metadata = bind_prompt(
+        definition.agent_id,
+        definition.version,
+        definition.system_prompt,
+        definition.component_prompts,
+        definition.package,
+    )
+    return PromptDefinition(
+        agent_id=definition.agent_id,
+        version=definition.version,
+        system_prompt=system_prompt,
+        system_prompt_sha256=definition.system_prompt_sha256,
+        previous_version=definition.previous_version,
+        change_summary=definition.change_summary,
+        component_prompts=components,
+        component_sha256=definition.component_sha256,
+        package=definition.package,
+        skill_metadata=metadata,
+    )
 
 
 def prompt_version_for_task(task_type: str) -> str:

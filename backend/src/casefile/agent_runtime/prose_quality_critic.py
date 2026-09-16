@@ -13,6 +13,7 @@ from typing import Any, Final, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
@@ -303,6 +304,7 @@ class DeepSeekProseQualityCriticProvider:
             else None,
         )
 
+    @audited_call
     def _create_completion(self, request: ProseQualityRequest) -> Any:
         schema = (
             PROSE_QUALITY_FINDINGS_CANDIDATE_SCHEMA

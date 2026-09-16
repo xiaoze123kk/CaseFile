@@ -30,6 +30,7 @@ from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
+    CHAT_TOOLSET_V6_VERSION,
 )
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V3_VERSION,
@@ -102,9 +103,7 @@ def test_phase4_context_tools_rollout_binds_v7_and_v3_toolset(
         draft_id = int(adopted["draft_id"])
 
         with factory() as session:
-            revision = int(
-                CaseFileService(session).get_draft(actor_id, project_id)["revision"]
-            )
+            revision = int(CaseFileService(session).get_draft(actor_id, project_id)["revision"])
             workflow = WorkflowService(session)
             thread = workflow.create_agent_thread(
                 actor_id,
@@ -185,9 +184,7 @@ def test_phase4_context_tools_rollout_binds_v7_and_v3_toolset(
         assert isinstance(dashboard, dict)
         assert isinstance(dashboard["recoverable_evidence_ids"], list)
         assert second_request.thread_evidence_resolver is not None
-        evidence = second_request.thread_evidence_resolver(
-            f"thread://{thread_id}/message/2"
-        )
+        evidence = second_request.thread_evidence_resolver(f"thread://{thread_id}/message/2")
         assert isinstance(evidence, dict)
         assert evidence["content"]
 
@@ -229,9 +226,7 @@ def test_phase4_v4_rollout_binds_v8_v4_toolset_and_full_audit_snapshot(
         draft_id = int(adopted["draft_id"])
 
         with factory() as session:
-            revision = int(
-                CaseFileService(session).get_draft(actor_id, project_id)["revision"]
-            )
+            revision = int(CaseFileService(session).get_draft(actor_id, project_id)["revision"])
             workflow = WorkflowService(session)
             thread = workflow.create_agent_thread(
                 actor_id,
@@ -324,9 +319,7 @@ def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
         draft_id = int(adopted["draft_id"])
 
         with factory() as session:
-            revision = int(
-                CaseFileService(session).get_draft(actor_id, project_id)["revision"]
-            )
+            revision = int(CaseFileService(session).get_draft(actor_id, project_id)["revision"])
             workflow = WorkflowService(session)
             thread = workflow.create_agent_thread(
                 actor_id,
@@ -382,7 +375,7 @@ def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
         assert full_validation_issues == list(request.validation_issues)
 
 
-def test_phase4_v6_rollout_binds_v17_v4_toolset_and_hardened_router(
+def test_phase4_v6_rollout_binds_v27_v6_toolset_and_hardened_router(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
@@ -413,9 +406,7 @@ def test_phase4_v6_rollout_binds_v17_v4_toolset_and_hardened_router(
         draft_id = int(adopted["draft_id"])
 
         with factory() as session:
-            revision = int(
-                CaseFileService(session).get_draft(actor_id, project_id)["revision"]
-            )
+            revision = int(CaseFileService(session).get_draft(actor_id, project_id)["revision"])
             workflow = WorkflowService(session)
             thread = workflow.create_agent_thread(
                 actor_id,
@@ -453,13 +444,13 @@ def test_phase4_v6_rollout_binds_v17_v4_toolset_and_hardened_router(
                 first_row.error_details_jsonb,
             )
             assert first_row.prompt_version == "casefile-chat-v27"
-            assert first_row.toolset_version == CHAT_TOOLSET_V4_VERSION
+            assert first_row.toolset_version == CHAT_TOOLSET_V6_VERSION
             assert first_row.input_jsonb.get("context_policy_version") == ROLLOUT_V6
 
         assert len(provider.requests) == 1
         request = provider.requests[0]
         assert request.prompt_version == "casefile-chat-v27"
-        assert request.toolset_version == CHAT_TOOLSET_V4_VERSION
+        assert request.toolset_version == CHAT_TOOLSET_V6_VERSION
         assert request.context_policy_version == ROLLOUT_V6
         execution_profile = request.route.execution_profile
         assert execution_profile["profile"] == "logic_audit.full_review"

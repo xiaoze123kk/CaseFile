@@ -65,6 +65,7 @@ from casefile.agent_runtime.goal.provider import (
     GoalUnderstandingRequest,
     GoalUnderstandingResult,
 )
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -271,6 +272,7 @@ class DeepSeekAgentsProvider:
             raw_output=raw_output,
         )
 
+    @audited_call
     async def _story_planner_json_object(
         self,
         request: (

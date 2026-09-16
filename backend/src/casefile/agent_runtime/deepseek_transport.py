@@ -6,8 +6,9 @@ import json
 from typing import Any
 
 import httpx
-from openai import AsyncOpenAI, DefaultAsyncHttpxClient, DefaultHttpxClient, OpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient, OpenAI
 
+from casefile.agent_runtime.model_call_audit import AuditedAsyncHttpClient, AuditedHttpClient
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 
 
@@ -25,7 +26,7 @@ async def _require_flash_request(request: httpx.Request) -> None:
 
 def model_checked_client(**kwargs: Any) -> OpenAI:
     return OpenAI(
-        http_client=DefaultHttpxClient(event_hooks={"request": [require_flash_request]}), **kwargs
+        http_client=AuditedHttpClient(event_hooks={"request": [require_flash_request]}), **kwargs
     )
 
 
@@ -37,4 +38,4 @@ def model_checked_async_client(**kwargs: Any) -> AsyncOpenAI:
 
 
 def flash_async_http_client() -> DefaultAsyncHttpxClient:
-    return DefaultAsyncHttpxClient(event_hooks={"request": [_require_flash_request]})
+    return AuditedAsyncHttpClient(event_hooks={"request": [_require_flash_request]})

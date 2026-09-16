@@ -65,6 +65,7 @@ def test_skill_and_contract_binding_fail_before_transport(tasks, monkeypatch):
         return original(*args) + "\nchanged"
 
     monkeypatch.setattr(module, "read_skill_resource", changed)
+    monkeypatch.setattr("casefile.agent_runtime.skill_assembly.read_skill_resource", changed)
     with pytest.raises(ValueError, match="changed after request freeze"):
         completion_body(request, PROSE_WRITER_CANDIDATE_SCHEMA, "focus")
 

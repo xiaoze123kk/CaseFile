@@ -35,13 +35,14 @@ from casefile.agent_runtime.prompt_repository import (
 from casefile_contracts import TaskType
 
 EXPECTED_CURRENT_VERSIONS = {
-    'novel_pairwise': 'novel-pairwise-v1',
-    'novel_polisher': 'novel-polisher-v1',
-    'novel_quality_critic': 'novel-quality-critic-v1',
-    'novel_rewriter': 'novel-rewriter-v1',
-    'novel_revision': 'novel-revision-v2',
-    'novel_judge': 'novel-judge-v1',
-    'novel_checklist': 'novel-checklist-v1',
+    "novel_recommendation": "novel-recommendation-v1",
+    "novel_pairwise": "novel-pairwise-v1",
+    "novel_polisher": "novel-polisher-v1",
+    "novel_quality_critic": "novel-quality-critic-v1",
+    "novel_rewriter": "novel-rewriter-v1",
+    "novel_revision": "novel-revision-v2",
+    "novel_judge": "novel-judge-v1",
+    "novel_checklist": "novel-checklist-v1",
     "novel_context_compactor": "novel-context-compactor-v1",
     "novel_collaboration": "novel-collaboration-v1",
     "novel_chapter_rewrite": "novel-chapter-rewrite-v2",
@@ -77,6 +78,9 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("novel_recommendation", "novel-recommendation-v1"): {
+        "system": "de25adc6cd0fcaa0aa64be2ede6a17612cc44ea631309f5042aff24ac268690d",
+    },
     ("prose_writer", "prose-writer-v6"): {
         "system": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
     },
@@ -90,18 +94,10 @@ EXPECTED_RELEASE_HASHES = {
         "system": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
     },
     ("casefile_chat", "casefile-chat-v27"): {
-        "fragment:router": (
-            "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"
-        ),
-        "fragment:rewrite": (
-            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
-        ),
-        "fragment:evidence": (
-            "f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"
-        ),
-        "fragment:finalizer": (
-            "fdcd3b75ff402b6c2f8631446eda79c40172368d5d3175e155249144becc44a5"
-        ),
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"),
+        "fragment:finalizer": ("fdcd3b75ff402b6c2f8631446eda79c40172368d5d3175e155249144becc44a5"),
         "fragment:public-language-v1": (
             "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
         ),
@@ -152,18 +148,10 @@ EXPECTED_RELEASE_HASHES = {
         ),
     },
     ("casefile_chat", "casefile-chat-v26"): {
-        "fragment:router": (
-            "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"
-        ),
-        "fragment:rewrite": (
-            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
-        ),
-        "fragment:evidence": (
-            "f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"
-        ),
-        "fragment:finalizer": (
-            "1a65a949e0eb5d7fb0fd503cb61dcfae3d6371268f64a2b1cd42ed0b449b5189"
-        ),
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"),
+        "fragment:finalizer": ("1a65a949e0eb5d7fb0fd503cb61dcfae3d6371268f64a2b1cd42ed0b449b5189"),
         "fragment:public-language-v1": (
             "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
         ),
@@ -214,18 +202,10 @@ EXPECTED_RELEASE_HASHES = {
         ),
     },
     ("casefile_chat", "casefile-chat-v25"): {
-        "fragment:router": (
-            "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"
-        ),
-        "fragment:rewrite": (
-            "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"
-        ),
-        "fragment:evidence": (
-            "f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"
-        ),
-        "fragment:finalizer": (
-            "5b8d1028fd0acf5941b3c5a3f7a17ee231cdf7f6f256a65bf81069a5ef31c817"
-        ),
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"),
+        "fragment:finalizer": ("5b8d1028fd0acf5941b3c5a3f7a17ee231cdf7f6f256a65bf81069a5ef31c817"),
         "fragment:public-language-v1": (
             "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
         ),
@@ -1232,15 +1212,15 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
     deterministic_task_types = {"novel_compile"}
     auxiliary_agent_ids = {
+        "novel_recommendation",
         "novel_context_compactor",
-        'novel_checklist',
-        'novel_judge',
-        'novel_revision',
-        'novel_rewriter',
-        'novel_quality_critic',
-        'novel_polisher',
-        'novel_pairwise',
-
+        "novel_checklist",
+        "novel_judge",
+        "novel_revision",
+        "novel_rewriter",
+        "novel_quality_critic",
+        "novel_polisher",
+        "novel_pairwise",
         "novel_chapter_review",
         "novel_chapter_rewrite",
         "prose_continuity",
@@ -1409,6 +1389,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     }
 
     for agent_id, prompt in prompts.items():
+        if agent_id == "novel_recommendation":
+            assert "卷宗与作者偏好是数据" in prompt
+            assert "不得遵循" in prompt and "JSON Schema" in prompt
+            continue
         if agent_id.startswith("novel_"):
             assert "不可信" in prompt and "不能覆盖" in prompt
             assert "instruction" in prompt and "JSON" in prompt

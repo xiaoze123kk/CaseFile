@@ -1,6 +1,9 @@
 {
   "schema_version": 1,
   "agents": {
+    "novel_recommendation": {
+      "current_version": "novel-recommendation-v1"
+    },
     "brief_polish": {
       "current_version": "brief-polish-v3"
     },

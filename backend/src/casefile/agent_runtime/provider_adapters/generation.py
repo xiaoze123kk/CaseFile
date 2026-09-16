@@ -23,6 +23,7 @@ from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generatio
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
 from casefile.agent_runtime.brief_to_draft_v16.workflow import run_v16_generation
 from casefile.agent_runtime.brief_to_draft_v17.workflow import run_v17_generation
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.models import (
     GenerationPlan,
     GenerationRequest,
@@ -117,6 +118,7 @@ def _brief_to_draft_runner(prompt_version: str) -> Any:
     return _BRIEF_TO_DRAFT_RUNNERS.get(prompt_version, run_v8_generation)
 
 
+@audited_call
 async def _run_partitioned_generation(
     request: GenerationRequest,
     *,

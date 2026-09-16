@@ -13,6 +13,7 @@ from typing import Any, Final, Literal, Protocol
 from pydantic import ValidationError
 
 from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
@@ -244,6 +245,7 @@ class DeepSeekProseRewriterProvider:
             ),
         )
 
+    @audited_call
     def _create_completion(self, request: ProseRewriterRequest) -> Any:
         client = OpenAI(api_key=request.api_key, base_url=self.base_url, max_retries=0)
         try:

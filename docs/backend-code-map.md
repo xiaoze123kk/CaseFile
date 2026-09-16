@@ -1,5 +1,16 @@
 # 后端代码职责地图
 
+## Agent Skill 发布与物理调用审计
+
+`agent_runtime/agent_skill_release.py` 将当前 Prompt 版本绑定到默认
+`agent-skill-runtime-v1`，验证角色、Skill、Prompt Package 组件和工具策略资源；组装后模型
+指令必须与迁移前逐字节一致。历史 Prompt 版本不自动绑定。`skill_assembly.py` 只负责确定性
+资源选择、顺序去重和稳定前缀，不修改消息历史。
+
+`model_call_audit.py` 位于 SDK 的物理 HTTP 发送与响应流边界，记录每次重试的模型、请求指纹、
+前缀/工具/契约哈希、延迟和原始 usage，不记录凭证或模型输入。受控真实冒烟入口为
+`scripts/agent-skill-cost-smoke.ps1`；默认离线，live 模式继承原 20 元预算账本并串行预留。
+
 `agent_runtime/model_policy.py` 是新 DeepSeek 任务模型选择的唯一源头；
 `deepseek_transport.py` 负责 HTTP 发送前的 Flash 检查。公开设置默认 DeepSeek Flash，
 API Schema/OpenAPI、前端设置和普通 benchmark 默认值同步。历史评测模块保留自身

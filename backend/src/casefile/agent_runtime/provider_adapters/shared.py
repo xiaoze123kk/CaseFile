@@ -31,6 +31,7 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
 )
 from casefile.agent_runtime.general_mutation import GeneralMutationPlannerRequest
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeQuestionsRequest,
@@ -131,6 +132,7 @@ def _chat_tool_runtime(
     )
 
 
+@audited_call
 async def _run_chat_tool_agent(
     request: CaseFileChatRequest,
     *,
@@ -231,6 +233,7 @@ def _frozen_evidence_summary(context: ChatToolContext) -> str:
     )[:20_000]
 
 
+@audited_call
 async def _run_auxiliary_agent(
     request: (
         GenerationRequest
@@ -799,6 +802,7 @@ def _retained_raw_output(raw_output: str | None) -> dict[str, Any]:
     return payload
 
 
+@audited_call
 async def _run_agent(
     request: GenerationRequest,
     *,

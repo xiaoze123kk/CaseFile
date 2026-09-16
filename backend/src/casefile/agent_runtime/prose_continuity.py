@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_writer import DeepSeekProseWriterProvider, ProseWriterRequest
@@ -36,6 +37,7 @@ class ContinuityReview(BaseModel):
 class DeepSeekContinuityProvider(DeepSeekProseWriterProvider):
     """Reuse only the journal-compatible transport envelope, not Writer semantics."""
 
+    @audited_call
     def _create_completion(self, request: ProseWriterRequest) -> Any:
         with OpenAI(api_key=request.api_key, base_url=self.base_url, max_retries=0) as client:
             return client.chat.completions.create(

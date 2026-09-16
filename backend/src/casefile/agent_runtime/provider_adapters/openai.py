@@ -7,7 +7,6 @@ from typing import Any, cast
 
 from agents import ModelSettings, Tool
 from agents.models.openai_responses import OpenAIResponsesModel
-from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
@@ -41,6 +40,7 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.deepseek_transport import model_checked_async_client as AsyncOpenAI
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
     GeneralMutationPlannerRequest,
@@ -196,9 +196,7 @@ class OpenAIAgentsProvider:
         )
         return SceneFillBatchResult(proposal=proposal, usage=usage)
 
-    def propose_skeleton(
-        self, request: SkeletonProposalRequest
-    ) -> SkeletonProposalResult:
+    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)

@@ -9,6 +9,7 @@ from importlib.resources import files
 from typing import Any, cast
 
 from casefile.agent_runtime.prose_model_view import VIEW_VERSION, model_view_text
+from casefile.agent_runtime.skill_assembly import InstructionResource, assemble_instructions
 from casefile.agent_runtime.skill_resources import read_skill_resource, skill_metadata
 
 SKILL_RELEASES = {
@@ -52,13 +53,21 @@ def assemble_skill(request: Any, schema: dict[str, Any]) -> tuple[str, dict[str,
     selected = tuple(dict.fromkeys(manifest["order"]))
     if set(selected) != set(contents):
         raise ValueError("Prose skill resource order mismatch")
-    # Metadata is for discovery/tracing; it is not duplicated in the model context.
-    bodies = [
-        contents[key].split("---", 2)[2].strip() if key == "skill" else contents[key]
-        for key in selected
-    ]
-    prefix = request.system_prompt + "\n\n必须严格遵守以下 JSON Schema：\n" + compact_json(schema)
-    prefix += "\n\n" + "\n\n".join(bodies)
+    assembly = assemble_instructions(
+        root=root,
+        role=request.system_prompt,
+        contract="\n\n必须严格遵守以下 JSON Schema：\n" + compact_json(schema),
+        resources=tuple(
+            InstructionResource(
+                key, manifest["resources"][key]["file"], manifest["resources"][key]["sha256"]
+            )
+            for key in selected
+        ),
+        selected=selected,
+        reasons=dict.fromkeys(selected, "stage_required"),
+        descriptor_names=frozenset({"skill"}),
+    )
+    prefix = assembly.prefix
     return prefix, {
         "release": request.prompt_version,
         "skill": name,
