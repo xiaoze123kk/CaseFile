@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from _thread import LockType
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -21,6 +21,14 @@ from typing import Any
 from agents import RunContextWrapper, Tool, function_tool
 
 from casefile.agent_runtime.chat_queries import query_character_knowledge, query_modification_impact
+from casefile.agent_runtime.chat_subagents import (
+    MAX_SUBAGENT_TASKS,
+    MAX_SUBAGENT_TOOL_CALLS,
+    AuditTask,
+    InvestigationTask,
+    SubagentRole,
+    validate_delegation_tasks,
+)
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     RouteDecision,
@@ -36,6 +44,9 @@ from casefile.contracts import (
 CHAT_TOOLSET_VERSION = "casefile-chat-tools-v2"
 CHAT_TOOLSET_V3_VERSION = "casefile-chat-tools-v3"
 CHAT_TOOLSET_V6_VERSION = "casefile-chat-tools-v6"
+CHAT_TOOLSET_V7_VERSION = "casefile-chat-tools-v7"
+CHAT_TOOLSET_V8_VERSION = "casefile-chat-tools-v8"
+CHAT_TOOLSET_V9_VERSION = "casefile-chat-tools-v9"
 CHAT_TOOLSET_V5_VERSION = "casefile-chat-tools-v5"
 CHAT_TOOLSET_V4_VERSION = "casefile-chat-tools-v4"
 LEGACY_CHAT_TOOLSET_VERSION = "casefile-chat-tools-v1"
@@ -93,6 +104,13 @@ class ChatToolMetrics(ToolMetrics):
     requested_thread_compaction: int = 0
     tool_result_chars: int = 0
     tool_results_truncated: int = 0
+    subagent_batches: int = 0
+    subagent_tasks: int = 0
+    subagent_completed: int = 0
+    subagent_partial: int = 0
+    subagent_failed: int = 0
+    subagent_soft_gate_evaluated: int = 0
+    subagent_soft_gate_triggered: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         payload = ToolMetrics.as_dict(self)
@@ -103,6 +121,28 @@ class ChatToolMetrics(ToolMetrics):
         payload["requested_thread_compaction"] = self.requested_thread_compaction
         payload["tool_result_chars"] = self.tool_result_chars
         payload["tool_results_truncated"] = self.tool_results_truncated
+        if any(
+            (
+                self.subagent_batches,
+                self.subagent_tasks,
+                self.subagent_completed,
+                self.subagent_partial,
+                self.subagent_failed,
+                self.subagent_soft_gate_evaluated,
+                self.subagent_soft_gate_triggered,
+            )
+        ):
+            payload.update(
+                {
+                    "subagent_batches": self.subagent_batches,
+                    "subagent_tasks": self.subagent_tasks,
+                    "subagent_completed": self.subagent_completed,
+                    "subagent_partial": self.subagent_partial,
+                    "subagent_failed": self.subagent_failed,
+                    "subagent_soft_gate_evaluated": self.subagent_soft_gate_evaluated,
+                    "subagent_soft_gate_triggered": self.subagent_soft_gate_triggered,
+                }
+            )
         return payload
 
 
@@ -114,6 +154,14 @@ class ChatToolContext:
     recent_tool_results: list[dict[str, Any]] = field(default_factory=list)
     query_cache: dict[str, str] = field(default_factory=dict)
     query_lock: LockType = field(default_factory=Lock, repr=False)
+    subagent_runner: (
+        Callable[[SubagentRole, tuple[dict[str, Any], ...]], Awaitable[dict[str, Any]]] | None
+    ) = field(default=None, repr=False)
+    subagent_tasks_reserved: int = 0
+    subagent_lock: LockType = field(default_factory=Lock, repr=False)
+    subagent_usage_records: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    subagent_max_tool_calls: int = MAX_SUBAGENT_TOOL_CALLS
+    local_calls: int = 0
 
     @property
     def max_tool_calls(self) -> int:
@@ -357,15 +405,37 @@ def _emit_tool_result(
     tool: str,
     arguments: dict[str, Any],
     payload: dict[str, Any],
+    *,
+    max_chars: int = _TOOL_RESULT_CHAR_LIMIT,
 ) -> str:
-    text, truncated = bounded_tool_result_json(payload)
+    text, truncated = bounded_tool_result_json(payload, max_chars=max_chars)
     context.metrics.tool_result_chars += len(text)
+    visible_payload = json.loads(text) if truncated else payload
     if truncated:
         context.metrics.tool_results_truncated += 1
-        context.record_tool_result(tool, arguments, json.loads(text))
+        context.record_tool_result(tool, arguments, visible_payload)
     else:
         context.record_tool_result(tool, arguments, payload)
+    _record_visible_casefile_ids(context, visible_payload)
     return text
+
+
+def _record_visible_casefile_ids(context: ChatToolContext, value: Any) -> None:
+    """Bind real CaseFile IDs that were present in the model-visible result."""
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"id", "object_id"} and isinstance(item, str):
+                if (
+                    find_casefile_object(context.request.casefile, item) is not None
+                    and item not in context.metrics.retrieved_object_ids
+                ):
+                    context.metrics.retrieved_object_ids.append(item)
+            else:
+                _record_visible_casefile_ids(context, item)
+    elif isinstance(value, list):
+        for item in value:
+            _record_visible_casefile_ids(context, item)
 
 
 def fold_tool_results(
@@ -938,11 +1008,12 @@ def related_casefile_objects(
 
 
 def _budget_available(context: ChatToolContext) -> bool:
-    return context.metrics.calls < context.max_tool_calls
+    return context.local_calls < context.max_tool_calls
 
 
 def _reserve_call(context: ChatToolContext) -> bool:
     available = _budget_available(context)
+    context.local_calls += 1
     context.metrics.calls += 1
     return available
 
@@ -959,6 +1030,7 @@ def _budget_exhausted_payload(context: ChatToolContext) -> dict[str, Any]:
         "valid": False,
         "reason_code": "tool_budget_exhausted",
         "calls": context.metrics.calls,
+        "local_calls": context.local_calls,
         "valid_calls": context.metrics.valid_calls,
         "successful_calls": context.metrics.successful_calls,
         "max_tool_calls": context.max_tool_calls,
@@ -979,6 +1051,150 @@ def _emit_completed(
         "responding",
         {"tool": tool, "toolset_version": context.request.toolset_version, **payload},
     )
+
+
+def _reserve_subagent_tasks(context: ChatToolContext, task_count: int) -> str | None:
+    if task_count < 1 or task_count > MAX_SUBAGENT_TASKS:
+        return "subagent_task_count_invalid"
+    with context.subagent_lock:
+        if context.subagent_tasks_reserved + task_count > MAX_SUBAGENT_TASKS:
+            return "subagent_task_budget_exhausted"
+        context.subagent_tasks_reserved += task_count
+    return None
+
+
+async def _run_subagent_batch(
+    context: ChatToolContext,
+    role: SubagentRole,
+    tasks: tuple[dict[str, Any], ...],
+) -> str:
+    tool_name = "investigate_case" if role == "investigate" else "audit_case"
+    if not _reserve_call(context):
+        context.metrics.budget_exhausted += 1
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, tool_name, detail)
+        return json.dumps({"error": "tool_budget_exhausted", **detail}, ensure_ascii=False)
+    validation_error = validate_delegation_tasks(tasks, set(context.metrics.retrieved_object_ids))
+    if validation_error is not None:
+        payload = {"valid": False, "reason_code": validation_error}
+        _emit_completed(context, tool_name, payload)
+        return json.dumps(payload, ensure_ascii=False)
+    reserve_error = _reserve_subagent_tasks(context, len(tasks))
+    if reserve_error is not None:
+        payload = {"valid": False, "reason_code": reserve_error, "task_count": len(tasks)}
+        _emit_completed(context, tool_name, payload)
+        return json.dumps(payload, ensure_ascii=False)
+    if context.subagent_runner is None:
+        payload = {"valid": False, "reason_code": "subagent_runtime_unavailable"}
+        _emit_completed(context, tool_name, payload)
+        return json.dumps(payload, ensure_ascii=False)
+    context.metrics.valid_calls += 1
+    context.metrics.subagent_batches += 1
+    context.metrics.subagent_tasks += len(tasks)
+    _emit_started(context, tool_name, {"task_count": len(tasks), "role": role})
+    try:
+        payload = await context.subagent_runner(role, tasks)
+    except Exception as error:
+        payload = {
+            "valid": False,
+            "reason_code": "subagent_batch_failed",
+            "error_class": type(error).__name__,
+            "tasks": [],
+        }
+    usage_records = payload.pop("_usage_records", [])
+    if isinstance(usage_records, list):
+        context.subagent_usage_records.extend(
+            item for item in usage_records if isinstance(item, dict)
+        )
+    child_metrics = payload.pop("_metrics", {})
+    if isinstance(child_metrics, dict):
+        context.metrics.calls += int(child_metrics.get("calls", 0))
+        context.metrics.valid_calls += int(child_metrics.get("valid_calls", 0))
+        context.metrics.successful_calls += int(child_metrics.get("successful_calls", 0))
+        context.metrics.query_cache_hits += int(child_metrics.get("query_cache_hits", 0))
+        context.metrics.budget_exhausted += int(child_metrics.get("budget_exhausted", 0))
+        for object_id in child_metrics.get("retrieved_object_ids", []):
+            if isinstance(object_id, str) and object_id not in context.metrics.retrieved_object_ids:
+                context.metrics.retrieved_object_ids.append(object_id)
+        for evidence_id in child_metrics.get("retrieved_evidence_ids", []):
+            if (
+                isinstance(evidence_id, str)
+                and evidence_id not in context.metrics.retrieved_evidence_ids
+            ):
+                context.metrics.retrieved_evidence_ids.append(evidence_id)
+    raw_tasks = payload.get("tasks")
+    result_tasks = raw_tasks if isinstance(raw_tasks, list) else []
+    completed = sum(
+        1 for item in result_tasks if isinstance(item, dict) and item.get("status") == "completed"
+    )
+    partial = sum(
+        1 for item in result_tasks if isinstance(item, dict) and item.get("status") == "partial"
+    )
+    failed = sum(
+        1 for item in result_tasks if isinstance(item, dict) and item.get("status") == "failed"
+    )
+    context.metrics.subagent_completed += completed
+    context.metrics.subagent_partial += partial
+    context.metrics.subagent_failed += failed
+    if payload.get("valid") is True:
+        context.metrics.successful_calls += 1
+    _emit_completed(
+        context,
+        tool_name,
+        {
+            "valid": payload.get("valid") is True,
+            "task_count": len(tasks),
+            "completed_count": completed,
+            "reason_code": payload.get("reason_code"),
+        },
+    )
+    return _emit_tool_result(
+        context,
+        tool_name,
+        {"role": role, "task_count": len(tasks)},
+        payload,
+        max_chars=16_000,
+    )
+
+
+async def run_subagent_batch(
+    context: ChatToolContext,
+    role: SubagentRole,
+    tasks: tuple[dict[str, Any], ...],
+) -> str:
+    """Execute a server-selected batch through the normal audited tool path."""
+
+    return await _run_subagent_batch(context, role, tasks)
+
+
+@function_tool
+async def investigate_case(
+    wrapper: RunContextWrapper[ChatToolContext],
+    tasks: list[InvestigationTask],
+) -> str:
+    """Delegate one or two independent, multi-step read-only investigations.
+
+    Use this only when a question requires several related lookups. Each task
+    gets a fresh context and returns facts, inferences, unknowns, and evidence.
+    """
+
+    normalized = tuple(item.model_dump(mode="json") for item in tasks)
+    return await _run_subagent_batch(wrapper.context, "investigate", normalized)
+
+
+@function_tool
+async def audit_case(
+    wrapper: RunContextWrapper[ChatToolContext],
+    tasks: list[AuditTask],
+) -> str:
+    """Delegate one or two independent read-only specialty audits.
+
+    Directions are timeline, testimony, character_knowledge, or
+    evidence_reasoning. Missing information must not be reported as a conflict.
+    """
+
+    normalized = tuple(item.model_dump(mode="json") for item in tasks)
+    return await _run_subagent_batch(wrapper.context, "audit", normalized)
 
 
 @function_tool
@@ -1551,7 +1767,12 @@ def _query_result(
     query: Callable[[], dict[str, Any]],
 ) -> str:
     """v6 reuses successful bounded reads inside this frozen request only."""
-    if context.request.toolset_version != CHAT_TOOLSET_V6_VERSION:
+    if context.request.toolset_version not in {
+        CHAT_TOOLSET_V9_VERSION,
+        CHAT_TOOLSET_V6_VERSION,
+        CHAT_TOOLSET_V7_VERSION,
+        CHAT_TOOLSET_V8_VERSION,
+    }:
         return _execute_query(context, tool, arguments, query)
     cache_key = json.dumps([tool, arguments], sort_keys=True, separators=(",", ":"))
     # SDK may dispatch synchronous tools on threads. Reserve/cache atomically.
@@ -1772,6 +1993,7 @@ class ChatToolCategory(StrEnum):
     VALIDATION = "validation"
     PATCH_PREVIEW = "patch_preview"
     CONTEXT_MANAGEMENT = "context_management"
+    MODEL_DELEGATION = "model_delegation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1782,6 +2004,12 @@ class ChatToolDefinition:
 
 
 _CHAT_TOOL_REGISTRY: dict[str, ChatToolDefinition] = {
+    "investigate_case": ChatToolDefinition(
+        investigate_case, ChatToolEffect.READ_ONLY, ChatToolCategory.MODEL_DELEGATION
+    ),
+    "audit_case": ChatToolDefinition(
+        audit_case, ChatToolEffect.READ_ONLY, ChatToolCategory.MODEL_DELEGATION
+    ),
     "get_modification_impact": ChatToolDefinition(
         get_modification_impact, ChatToolEffect.READ_ONLY, ChatToolCategory.IMPACT_ANALYSIS
     ),
@@ -1836,6 +2064,19 @@ def chat_tool_catalog(
     )
 
 
+def chat_subagent_manifest(role: SubagentRole) -> list[Tool]:
+    """Return the fixed read-only surface for a depth-one chat subagent."""
+
+    names = [
+        "get_casefile_object",
+        "get_related_objects",
+        "get_character_knowledge",
+    ]
+    if role == "audit":
+        names.append("get_validation_issues")
+    return [_CHAT_TOOL_REGISTRY[name].tool for name in names]
+
+
 def chat_tool_manifest(
     route: RouteDecision,
     *,
@@ -1848,15 +2089,36 @@ def chat_tool_manifest(
     surface; v2 and later replays keep the v2 read tools; v3 and v4 expose the
     read-only thread evidence and compaction-request tools; only
     v4 and later expose the dry-run patch preview. v5 adds business queries
-    to routes with object-read access; earlier frozen toolsets remain unchanged.
+    to routes with object-read access. v7 adds bounded read-only delegation to
+    analysis and audit routes; v8 adds the server soft gate while keeping the
+    same tool surface. Earlier frozen toolsets remain unchanged.
     """
 
+    if toolset_version == CHAT_TOOLSET_V9_VERSION:
+        # V4 delegates through a separately validated model-authored plan.
+        return [
+            tool
+            for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V8_VERSION)
+            if getattr(tool, "name", "") not in {"investigate_case", "audit_case"}
+        ]
     allowed = list(route.execution_profile.get("toolset") or [])
     allowed.extend(route.execution_profile.get("context_tools") or [])
+    if toolset_version in {CHAT_TOOLSET_V7_VERSION, CHAT_TOOLSET_V8_VERSION}:
+        primary_intent = route.execution_profile.get("primary_intent")
+        if primary_intent == "analysis":
+            allowed.append("investigate_case")
+        elif primary_intent == "logic_audit":
+            allowed.extend(("investigate_case", "audit_case"))
     manifest: list[Tool] = []
     new_tools = {"get_modification_impact", "get_character_knowledge", "compare_draft_revisions"}
     if (
-        toolset_version in {CHAT_TOOLSET_V5_VERSION, CHAT_TOOLSET_V6_VERSION}
+        toolset_version
+        in {
+            CHAT_TOOLSET_V5_VERSION,
+            CHAT_TOOLSET_V6_VERSION,
+            CHAT_TOOLSET_V7_VERSION,
+            CHAT_TOOLSET_V8_VERSION,
+        }
         and "get_casefile_object" in allowed
     ):
         allowed.extend(sorted(new_tools))
@@ -1866,6 +2128,8 @@ def chat_tool_manifest(
         if tool_name in new_tools and toolset_version not in {
             CHAT_TOOLSET_V5_VERSION,
             CHAT_TOOLSET_V6_VERSION,
+            CHAT_TOOLSET_V7_VERSION,
+            CHAT_TOOLSET_V8_VERSION,
         }:
             continue
         if tool_name in _V2_ONLY_TOOLS and toolset_version not in {
@@ -1874,6 +2138,8 @@ def chat_tool_manifest(
             CHAT_TOOLSET_V4_VERSION,
             CHAT_TOOLSET_V5_VERSION,
             CHAT_TOOLSET_V6_VERSION,
+            CHAT_TOOLSET_V7_VERSION,
+            CHAT_TOOLSET_V8_VERSION,
         }:
             continue
         if tool_name in _V3_ONLY_TOOLS and toolset_version not in {
@@ -1881,12 +2147,16 @@ def chat_tool_manifest(
             CHAT_TOOLSET_V4_VERSION,
             CHAT_TOOLSET_V5_VERSION,
             CHAT_TOOLSET_V6_VERSION,
+            CHAT_TOOLSET_V7_VERSION,
+            CHAT_TOOLSET_V8_VERSION,
         }:
             continue
         if tool_name in _V4_ONLY_TOOLS and toolset_version not in {
             CHAT_TOOLSET_V4_VERSION,
             CHAT_TOOLSET_V5_VERSION,
             CHAT_TOOLSET_V6_VERSION,
+            CHAT_TOOLSET_V7_VERSION,
+            CHAT_TOOLSET_V8_VERSION,
         }:
             continue
         definition = _CHAT_TOOL_REGISTRY.get(tool_name)
@@ -1894,7 +2164,8 @@ def chat_tool_manifest(
             tool = (
                 compare_draft_revisions_v6
                 if tool_name == "compare_draft_revisions"
-                and toolset_version == CHAT_TOOLSET_V6_VERSION
+                and toolset_version
+                in {CHAT_TOOLSET_V6_VERSION, CHAT_TOOLSET_V7_VERSION, CHAT_TOOLSET_V8_VERSION}
                 else definition.tool
             )
             if tool not in manifest:
@@ -1909,6 +2180,8 @@ __all__ = [
     "CHAT_TOOLSET_V4_VERSION",
     "CHAT_TOOLSET_V5_VERSION",
     "CHAT_TOOLSET_V6_VERSION",
+    "CHAT_TOOLSET_V7_VERSION",
+    "CHAT_TOOLSET_V8_VERSION",
     "LEGACY_CHAT_TOOLSET_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
@@ -1918,6 +2191,8 @@ __all__ = [
     "ChatToolDefinition",
     "chat_tool_catalog",
     "chat_tool_manifest",
+    "chat_subagent_manifest",
+    "audit_case",
     "bounded_tool_result_json",
     "check_patch_proposal",
     "find_casefile_object",
@@ -1926,12 +2201,14 @@ __all__ = [
     "get_casefile_object",
     "get_related_objects",
     "get_validation_issues",
+    "investigate_case",
     "list_casefile_collections",
     "list_casefile_records",
     "page_casefile_records",
     "patch_target_string_value",
     "related_casefile_objects",
     "request_thread_compaction",
+    "run_subagent_batch",
     "retrieve_thread_evidence",
     "search_casefile",
     "search_casefile_records",

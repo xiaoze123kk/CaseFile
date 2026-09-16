@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import replace
@@ -15,11 +16,39 @@ from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from casefile.agent_runtime.chat_delegation import (
+    MAX_TOOL_CALLS as V4_MAX_TOOL_CALLS,
+)
+from casefile.agent_runtime.chat_delegation import (
+    POLICY_VERSION as V4_POLICY_VERSION,
+)
+from casefile.agent_runtime.chat_delegation import (
+    TOOLSET_VERSION as V4_TOOLSET_VERSION,
+)
+from casefile.agent_runtime.chat_delegation import (
+    skill_content,
+)
 from casefile.agent_runtime.chat_preview import AnswerPreview
+from casefile.agent_runtime.chat_subagents import (
+    CHAT_SUBAGENT_POLICY_VERSION,
+    MAX_SUBAGENT_TOOL_CALLS,
+    MAX_SUBAGENT_TURNS,
+    PARENT_DELEGATION_PROMPT,
+    SUBAGENT_FINALIZE_AFTER_TOOL_CALLS,
+    SubagentOutput,
+    SubagentRole,
+    normalize_subagent_output,
+    subagent_prompt,
+    subagent_prompt_hash,
+)
 from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V7_VERSION,
+    CHAT_TOOLSET_V8_VERSION,
     ChatToolContext,
     ChatToolLedger,
+    chat_subagent_manifest,
     chat_tool_manifest,
+    find_casefile_object,
     freeze_chat_tool_ledger,
 )
 from casefile.agent_runtime.closure_repair import ClosureRepairRequest
@@ -44,6 +73,7 @@ from casefile.agent_runtime.models import (
     GenerationResult,
     IdeaGenerationRequest,
     ReverseParseRequest,
+    RouteDecision,
     RouteSpecificRewriteRequest,
 )
 from casefile.agent_runtime.prompt import (
@@ -157,6 +187,31 @@ async def _run_chat_tool_agent(
         "不要输出最终 CaseFile Chat JSON，不要展示隐藏推理。"
         "最终仅写可审计的事实、证据 ID、建议目标和未覆盖范围。"
     )
+    context.subagent_runner = lambda role, tasks: _run_chat_subagent_batch(
+        request,
+        role=role,
+        tasks=tasks,
+        model=model,
+        model_settings=model_settings,
+        tracing_disabled=tracing_disabled,
+        max_tool_calls_per_task=context.subagent_max_tool_calls,
+    )
+    if request.toolset_version == V4_TOOLSET_VERSION:
+        from casefile.agent_runtime.provider_adapters.chat_delegation import plan_and_delegate
+
+        context.subagent_max_tool_calls = V4_MAX_TOOL_CALLS
+        input_text += await plan_and_delegate(
+            context,
+            model=model,
+            model_settings=model_settings,
+            tracing_disabled=tracing_disabled,
+        )
+        tool_instructions += "\n\n" + skill_content()
+    if request.toolset_version in {CHAT_TOOLSET_V7_VERSION, CHAT_TOOLSET_V8_VERSION}:
+        tool_instructions += "\n\n" + PARENT_DELEGATION_PROMPT
+    if request.toolset_version == CHAT_TOOLSET_V8_VERSION:
+        # v2 policy disables speculative prefetch; the parent locates records first.
+        context.metrics.subagent_soft_gate_evaluated += 1
     agent: Agent[Any] = Agent(
         name="CaseFile Evidence Agent",
         instructions=tool_instructions,
@@ -165,17 +220,27 @@ async def _run_chat_tool_agent(
         tools=tools,
         output_type=str,
     )
-    result = await Runner.run(
-        agent,
-        input_text,
-        context=context,
-        max_turns=max_turns or request.max_turns,
-        run_config=RunConfig(
-            workflow_name="CaseFile gathering_evidence",
-            tracing_disabled=tracing_disabled,
-            trace_include_sensitive_data=False,
-        ),
-    )
+    try:
+        result = await Runner.run(
+            agent,
+            input_text,
+            context=context,
+            max_turns=max_turns or request.max_turns,
+            run_config=RunConfig(
+                workflow_name="CaseFile gathering_evidence",
+                tracing_disabled=tracing_disabled,
+                trace_include_sensitive_data=False,
+            ),
+        )
+    except Exception as error:
+        if request.toolset_version == V4_TOOLSET_VERSION:
+            run_data = getattr(error, "run_data", None)
+            failed_usage = _usage_json(run_data.context_wrapper.usage) if run_data else {}
+            error.__dict__["usage"] = _merge_structured_usage(
+                [failed_usage, *context.subagent_usage_records]
+            )
+            error.__dict__["tools"] = context.metrics
+        raise
     summary = (
         result.final_output.strip()
         if isinstance(result.final_output, str) and result.final_output.strip()
@@ -191,7 +256,9 @@ async def _run_chat_tool_agent(
                 "successful_calls": context.metrics.successful_calls,
             },
         )
-    usage = _usage_json(result.context_wrapper.usage)
+    usage = _merge_structured_usage(
+        [_usage_json(result.context_wrapper.usage), *context.subagent_usage_records]
+    )
     ledger = freeze_chat_tool_ledger(
         context,
         evidence_summary=summary,
@@ -217,6 +284,466 @@ async def _run_chat_tool_agent(
         },
     )
     return ledger, usage
+
+
+async def _run_chat_subagent_batch(
+    request: CaseFileChatRequest,
+    *,
+    role: SubagentRole,
+    tasks: tuple[dict[str, Any], ...],
+    model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
+    model_settings: ModelSettings,
+    tracing_disabled: bool,
+    max_tool_calls_per_task: int = MAX_SUBAGENT_TOOL_CALLS,
+) -> dict[str, Any]:
+    """Run at most two independent depth-one subagents concurrently."""
+
+    executions = [
+        _run_one_chat_subagent(
+            request,
+            role=role,
+            task=task,
+            ordinal=ordinal,
+            model=model,
+            model_settings=model_settings,
+            tracing_disabled=tracing_disabled,
+            max_tool_calls=max_tool_calls_per_task,
+        )
+        for ordinal, task in enumerate(tasks, start=1)
+    ]
+    raw_results = await asyncio.gather(*executions, return_exceptions=True)
+    results: list[dict[str, Any]] = []
+    usage_records: list[dict[str, Any]] = []
+    metric_totals: dict[str, Any] = {
+        "calls": 0,
+        "valid_calls": 0,
+        "successful_calls": 0,
+        "query_cache_hits": 0,
+        "budget_exhausted": 0,
+        "retrieved_object_ids": [],
+        "retrieved_evidence_ids": [],
+    }
+    for ordinal, item in enumerate(raw_results, start=1):
+        if isinstance(item, asyncio.CancelledError):
+            raise item
+        if isinstance(item, BaseException):
+            cause = item.cause if isinstance(item, _ChatSubagentExecutionFailure) else item
+            failed_usage = getattr(item, "usage", None)
+            if isinstance(failed_usage, dict):
+                usage_records.append(failed_usage)
+            failed_metrics = getattr(item, "metrics", None)
+            if failed_metrics is not None:
+                metric_totals["calls"] += failed_metrics.calls
+                metric_totals["valid_calls"] += failed_metrics.valid_calls
+                metric_totals["successful_calls"] += failed_metrics.successful_calls
+                metric_totals["query_cache_hits"] += failed_metrics.query_cache_hits
+                metric_totals["budget_exhausted"] += failed_metrics.budget_exhausted
+                for key in ("retrieved_object_ids", "retrieved_evidence_ids"):
+                    target = metric_totals[key]
+                    for value in getattr(failed_metrics, key):
+                        if value not in target:
+                            target.append(value)
+            error_class = type(cause).__name__
+            error_message = str(cause).strip()
+            results.append(
+                {
+                    "ordinal": ordinal,
+                    "status": "failed",
+                    "conclusion": "子任务执行失败，未形成可采信结论。",
+                    "verified_facts": [],
+                    "inferences": [],
+                    "findings": [],
+                    "coverage": [],
+                    "unresolved": [
+                        f"{error_class}: {error_message}" if error_message else error_class
+                    ],
+                    "ledger_hash": None,
+                }
+            )
+            continue
+        output, usage, metrics, ledger = item
+        payload = output.model_dump(mode="json")
+        cited_ids = {
+            evidence_id
+            for entry in [*output.verified_facts, *output.inferences]
+            for evidence_id in entry.evidence_ids
+        } | {evidence_id for entry in output.findings for evidence_id in entry.evidence_ids}
+        payload["source_records"] = [
+            found[1]
+            for object_id in sorted(cited_ids)
+            if (found := find_casefile_object(request.casefile, object_id)) is not None
+        ]
+        if request.toolset_version == V4_TOOLSET_VERSION:
+            payload["source_records"] = [
+                found[1]
+                for object_id in sorted(set(metrics.retrieved_object_ids))
+                if (found := find_casefile_object(request.casefile, object_id)) is not None
+            ]
+        payload.update({"ordinal": ordinal, "ledger_hash": ledger.ledger_hash})
+        results.append(payload)
+        usage_records.append(usage)
+        metric_totals["calls"] += metrics.calls
+        metric_totals["valid_calls"] += metrics.valid_calls
+        metric_totals["successful_calls"] += metrics.successful_calls
+        metric_totals["query_cache_hits"] += metrics.query_cache_hits
+        metric_totals["budget_exhausted"] += metrics.budget_exhausted
+        for key in ("retrieved_object_ids", "retrieved_evidence_ids"):
+            target = metric_totals[key]
+            for value in getattr(metrics, key):
+                if value not in target:
+                    target.append(value)
+    completed = sum(1 for item in results if item["status"] == "completed")
+    return {
+        "valid": completed == len(results),
+        "partial": completed != len(results)
+        and any(item["status"] != "failed" for item in results),
+        "policy_version": (
+            V4_POLICY_VERSION
+            if request.toolset_version == V4_TOOLSET_VERSION
+            else CHAT_SUBAGENT_POLICY_VERSION
+        ),
+        "role": role,
+        "tasks": results,
+        "_usage_records": usage_records,
+        "_metrics": metric_totals,
+    }
+
+
+async def run_chat_subagent_component_batch(
+    request: CaseFileChatRequest,
+    *,
+    role: SubagentRole,
+    tasks: tuple[dict[str, Any], ...],
+    model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
+    tracing_disabled: bool,
+) -> dict[str, Any]:
+    """Public evaluation seam for exercising the depth-one batch runtime."""
+
+    client = _model_client(model) if isinstance(model, OpenAIChatCompletionsModel) else None
+    try:
+        return await _run_chat_subagent_batch(
+            request,
+            role=role,
+            tasks=tasks,
+            model=model,
+            model_settings=_deepseek_model_settings(temperature=_chat_live_temperature()),
+            tracing_disabled=tracing_disabled,
+        )
+    finally:
+        if client is not None:
+            await client.close()
+
+
+class _ChatSubagentExecutionFailure(Exception):
+    """Keep failed child usage and tool accounting available to the parent."""
+
+    def __init__(self, cause: BaseException, usage: dict[str, Any], metrics: Any) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.usage = usage
+        self.metrics = metrics
+
+
+@audited_call
+async def _run_one_chat_subagent(
+    request: CaseFileChatRequest,
+    *,
+    role: SubagentRole,
+    task: dict[str, Any],
+    ordinal: int,
+    model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
+    model_settings: ModelSettings,
+    tracing_disabled: bool,
+    max_tool_calls: int = MAX_SUBAGENT_TOOL_CALLS,
+) -> tuple[SubagentOutput, dict[str, Any], Any, ChatToolLedger]:
+    if request.toolset_version == V4_TOOLSET_VERSION:
+        from casefile.agent_runtime.provider_adapters.chat_delegation import run_child
+
+        return await run_child(
+            request,
+            role=role,
+            task=task,
+            ordinal=ordinal,
+            model=model,
+            model_settings=model_settings,
+            tracing_disabled=tracing_disabled,
+            max_tool_calls=max_tool_calls,
+        )
+    route = RouteDecision(
+        execution_profile={
+            "primary_intent": "analysis" if role == "investigate" else "logic_audit",
+            "profile": f"subagent.{role}",
+            "max_tool_calls": min(MAX_SUBAGENT_TOOL_CALLS, max(1, max_tool_calls)),
+            "max_turns": MAX_SUBAGENT_TURNS,
+        },
+    )
+    child_context = ChatToolContext(request=request, route=route)
+    # Resolve anchors from the frozen input, never from model-authored payloads.
+    source_records = [
+        found[1]
+        for object_id in task.get("object_ids", [])
+        if (found := find_casefile_object(request.casefile, object_id)) is not None
+    ]
+    task = {**task, "source_records": source_records}
+    child_context.metrics.retrieved_object_ids.extend(record["id"] for record in source_records)
+    instructions = subagent_prompt(role) + _json_schema_instruction(SubagentOutput)
+    input_payload = {
+        "policy_version": CHAT_SUBAGENT_POLICY_VERSION,
+        "prompt_hash": subagent_prompt_hash(role),
+        "task_identity": {
+            "task_run_id": request.task_run_id,
+            "input_hash": request.input_hash,
+            "document_hash": sha256(
+                json.dumps(
+                    request.casefile,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+            "draft_id": request.draft_id,
+            "frozen_draft_revision": request.frozen_draft_revision,
+            "ordinal": ordinal,
+        },
+        "task": task,
+        "execution_limits": {
+            "max_turns": MAX_SUBAGENT_TURNS,
+            "hard_max_tool_calls": min(MAX_SUBAGENT_TOOL_CALLS, max(1, max_tool_calls)),
+            "finalize_after_tool_calls": SUBAGENT_FINALIZE_AFTER_TOOL_CALLS,
+        },
+    }
+    request.emit(
+        "model.subagent.started",
+        "gathering_evidence",
+        {
+            "role": role,
+            "ordinal": ordinal,
+            "policy_version": CHAT_SUBAGENT_POLICY_VERSION,
+            "prompt_hash": subagent_prompt_hash(role),
+        },
+    )
+    agent: Agent[Any] = Agent(
+        name="CaseFile Investigator" if role == "investigate" else "CaseFile Auditor",
+        instructions=instructions,
+        model=model,
+        model_settings=model_settings,
+        tools=chat_subagent_manifest(role),
+        output_type=str,
+    )
+    usage: dict[str, Any] = {}
+    usage_records: list[dict[str, Any]] = []
+    try:
+        result = await Runner.run(
+            agent,
+            json.dumps(input_payload, ensure_ascii=False, sort_keys=True),
+            context=child_context,
+            max_turns=MAX_SUBAGENT_TURNS,
+            run_config=RunConfig(
+                workflow_name=f"CaseFile subagent_{role}",
+                tracing_disabled=tracing_disabled,
+                trace_include_sensitive_data=False,
+            ),
+        )
+        usage = _usage_json(result.context_wrapper.usage)
+        usage_records.append(usage)
+        if not isinstance(result.final_output, str):
+            raise ProviderProtocolError("CaseFile chat subagent must return a JSON string")
+        output = _validate_auxiliary_output(
+            SubagentOutput,
+            _deepseek_json_object_text(result.final_output),
+            discard_forbidden_fields=False,
+        )
+        typed_output = SubagentOutput.model_validate(output)
+        repair_issues = _subagent_reference_issues(typed_output, child_context)
+        if repair_issues:
+            request.emit(
+                "model.subagent.output_repair_started",
+                "gathering_evidence",
+                {"role": role, "ordinal": ordinal, "issues": repair_issues},
+            )
+            repair_agent: Agent[Any] = Agent(
+                name="CaseFile Subagent Protocol Repair",
+                instructions=(
+                    "你只修复一个只读子任务的输出协议。不得增加新事实、扩大范围或调用工具。"
+                    "删除未绑定的引用；completed 必须在结构化事实、推断或 finding 中引用"
+                    " source_record_ids。无法补齐时返回 partial，并把原因写入 unresolved。"
+                    + _json_schema_instruction(SubagentOutput)
+                ),
+                model=model,
+                model_settings=model_settings,
+                tools=[],
+                output_type=str,
+            )
+            repair_result = await Runner.run(
+                repair_agent,
+                json.dumps(
+                    {
+                        "task": task,
+                        "source_record_ids": [record["id"] for record in source_records],
+                        "issues": repair_issues,
+                        "invalid_output": typed_output.model_dump(mode="json"),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                context=child_context,
+                max_turns=1,
+                run_config=RunConfig(
+                    workflow_name=f"CaseFile subagent_{role}_protocol_repair",
+                    tracing_disabled=tracing_disabled,
+                    trace_include_sensitive_data=False,
+                ),
+            )
+            repair_usage = _usage_json(repair_result.context_wrapper.usage)
+            usage_records.append(repair_usage)
+            if not isinstance(repair_result.final_output, str):
+                raise ProviderProtocolError("CaseFile subagent repair must return a JSON string")
+            repaired = _validate_auxiliary_output(
+                SubagentOutput,
+                _deepseek_json_object_text(repair_result.final_output),
+                discard_forbidden_fields=False,
+            )
+            typed_output = SubagentOutput.model_validate(repaired)
+        typed_output = _sanitize_subagent_references(typed_output, child_context)
+        _validate_subagent_references(typed_output, child_context)
+        usage = _merge_structured_usage(usage_records)
+    except asyncio.CancelledError:
+        raise
+    except BaseException as error:
+        request.emit(
+            "model.subagent.failed",
+            "gathering_evidence",
+            {
+                "role": role,
+                "ordinal": ordinal,
+                "error_class": type(error).__name__,
+                "error_message": str(error)[:500],
+                "usage": usage,
+                "tool_calls": child_context.metrics.calls,
+            },
+        )
+        raise _ChatSubagentExecutionFailure(error, usage, child_context.metrics) from error
+    ledger = freeze_chat_tool_ledger(
+        child_context,
+        evidence_summary=typed_output.conclusion,
+    )
+    request.emit(
+        "model.subagent.tool_ledger.frozen",
+        "gathering_evidence",
+        {
+            "role": role,
+            "ordinal": ordinal,
+            "ledger": ledger.as_dict(),
+        },
+    )
+    request.emit(
+        "model.subagent.completed",
+        "gathering_evidence",
+        {
+            "role": role,
+            "ordinal": ordinal,
+            "status": typed_output.status,
+            "usage": usage,
+            "tool_calls": child_context.metrics.calls,
+            "ledger_hash": ledger.ledger_hash,
+        },
+    )
+    return typed_output, usage, child_context.metrics, ledger
+
+
+def _validate_subagent_references(output: SubagentOutput, context: ChatToolContext) -> None:
+    allowed = _subagent_allowed_references(context)
+    referenced: set[str] = set()
+    for fact in output.verified_facts:
+        if not fact.evidence_ids:
+            raise ProviderProtocolError("Verified subagent facts require evidence references")
+        referenced.update(fact.evidence_ids)
+    for inference in output.inferences:
+        referenced.update(inference.evidence_ids)
+    for finding in output.findings:
+        if finding.classification == "confirmed_conflict" and not finding.evidence_ids:
+            raise ProviderProtocolError("Confirmed subagent conflicts require evidence references")
+        referenced.update(finding.evidence_ids)
+    invented = sorted(referenced - allowed)
+    if invented:
+        raise ProviderProtocolError(
+            "CaseFile chat subagent returned unbound evidence references: " + ", ".join(invented)
+        )
+
+
+def _subagent_allowed_references(context: ChatToolContext) -> set[str]:
+    allowed = set(context.metrics.retrieved_object_ids) | set(
+        context.metrics.retrieved_evidence_ids
+    )
+    for entry in context.recent_tool_results:
+        _collect_subagent_result_references(entry.get("payload"), allowed)
+    return allowed
+
+
+def _subagent_reference_issues(output: SubagentOutput, context: ChatToolContext) -> list[str]:
+    allowed = _subagent_allowed_references(context)
+    referenced = {
+        evidence_id
+        for entry in [*output.verified_facts, *output.inferences]
+        for evidence_id in entry.evidence_ids
+    } | {evidence_id for entry in output.findings for evidence_id in entry.evidence_ids}
+    issues = [f"unbound_reference:{item}" for item in sorted(referenced - allowed)]
+    if any(not item.evidence_ids for item in output.verified_facts):
+        issues.append("verified_fact_missing_reference")
+    if any(
+        item.classification == "confirmed_conflict" and not item.evidence_ids
+        for item in output.findings
+    ):
+        issues.append("confirmed_conflict_missing_reference")
+    if output.status == "completed" and allowed and not (referenced & allowed):
+        issues.append("completed_without_structured_reference")
+    return issues
+
+
+def _sanitize_subagent_references(
+    output: SubagentOutput, context: ChatToolContext
+) -> SubagentOutput:
+    """Fail closed to partial after the single protocol-only repair opportunity."""
+
+    allowed = _subagent_allowed_references(context)
+    removed: set[str] = set()
+
+    def evidence(item: Any) -> Any:
+        kept = [value for value in item.evidence_ids if value in allowed]
+        removed.update(set(item.evidence_ids) - set(kept))
+        return item.model_copy(update={"evidence_ids": kept})
+
+    normalized = output.model_copy(
+        update={
+            "verified_facts": [evidence(item) for item in output.verified_facts],
+            "inferences": [evidence(item) for item in output.inferences],
+            "findings": [evidence(item) for item in output.findings],
+        }
+    )
+    normalized = normalize_subagent_output(normalized)
+    has_bound_reference = any(
+        item.evidence_ids for item in [*normalized.verified_facts, *normalized.inferences]
+    ) or any(item.evidence_ids for item in normalized.findings)
+    if not removed and (normalized.status != "completed" or has_bound_reference or not allowed):
+        return normalized
+    unresolved = list(normalized.unresolved)
+    if removed:
+        unresolved.append("已移除未绑定引用：" + ", ".join(sorted(removed)))
+    if normalized.status == "completed" and allowed and not has_bound_reference:
+        unresolved.append("completed 输出没有绑定到原始记录的结构化引用")
+    return normalized.model_copy(update={"status": "partial", "unresolved": unresolved[:24]})
+
+
+def _collect_subagent_result_references(value: Any, target: set[str]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"id", "object_id", "evidence_id", "issue_id"} and isinstance(item, str):
+                target.add(item)
+            else:
+                _collect_subagent_result_references(item, target)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_subagent_result_references(item, target)
 
 
 def _frozen_evidence_summary(context: ChatToolContext) -> str:

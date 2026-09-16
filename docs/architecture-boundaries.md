@@ -53,6 +53,8 @@ M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通
 
 一个 Goal 必须在单个 `TaskRun` 内完成。跨 `TaskRun` 继续、任意 replan、subagent、Hook 插件和 Thread Memory 写入均不属于 M3.7。候选态只存在于 Worker 内存或可由冻结 Planner artifact 重建，完整候选文档不得写入 TaskEvent。最终只调用一次 Goal Finalizer 和一次既有 Chat 完成边界；Patch 始终为待审批状态，Apply 仍由 `V1EditingService` 独立执行。
 
+实验性的 `casefile-chat-tools-v7` 在既有 `analyze`/`audit` capability 内增加深度一层的只读子 Agent；`casefile-chat-tools-v8` 保留同一工具面，并增加服务端复杂度软门控，在允许只读查证且存在多步骤或明确多工作面时预取子任务。最终意图路由继续控制安全与工具权限，但不再作为委派的唯一判据。该工具集默认关闭，仅由新 TaskRun 显式冻结启用；每个任务最多两个子任务，子任务使用独立消息历史、固定只读工具和父任务累计模型预算。子 Agent 不拥有修改、模拟、Thread Memory、再次委派或 Apply 权限，返回的部分结果和失败不得冒充完整审计通过。v1-v7 历史工具集保持不变。
+
 ## 产品与架构边界
 
 - 当前产品只面向个人用户。一个 Project 只有一个 `owner_user_id`，不得预建 Workspace、Membership、成员邀请、团队角色、评论、Review Task、共享项目或团队预算。每份 Draft 的单一 Exposure Plan 是独立的展示设计版本链，不属于 CaseFile 契约、Canon 或事件事实时间。
@@ -135,3 +137,22 @@ v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generati
 Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
 
 Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。
+
+
+## Chat 子任务局部查证修正（policy v2）
+
+当前实验 v7/v8 工具入口采用新的 `casefile-chat-subagents-v2` 策略，替代上述复杂度预取行为。
+服务端不再按关键词自动拆分；父 Agent 先定位对象，再提交对象 ID 与明确证据缺口。
+`chat_subagents.py` 负责纯任务边界校验，`chat_tools.py` 在占用子任务预算前校验已读取锚点，
+`provider_adapters/shared.py` 从冻结输入提供原始记录，并将引用原文和子结果一并回传。
+父 Agent 对照原文核对，疑点/未知不升级成确定冲突。策略和 Prompt 哈希变化，旧报告不充当新证据。
+默认仍关闭实验；不修改业务写入权威，不扩大模型预算。
+
+### policy v3 收尾与范围约束
+
+`casefile-chat-subagents-v3` 将每个局部任务上限调整为 5 轮、8 次工具调用，其中前 6 次
+是模型可用的查证预算，最后 2 次只作协议硬保护。子 Agent 先使用父 Agent 已定位并绑定的
+`source_records`；这些记录足够时直接返回。工具面移除全卷宗列表、搜索和修改影响，只保留
+精确对象、直接关系、角色认知与审计问题读取。子输入不再携带全局集合数量、验证问题数量
+或父级 focus，避免从局部缺口扩张为全卷宗审计。无引用的已证实事实或确定冲突由服务端
+移出权威结果并降级为 partial，不再让其他有效局部结果随协议遗漏一起失败。

@@ -70,6 +70,9 @@ from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_V5_VERSION,
     CHAT_TOOLSET_V6_VERSION,
+    CHAT_TOOLSET_V7_VERSION,
+    CHAT_TOOLSET_V8_VERSION,
+    CHAT_TOOLSET_V9_VERSION,
     CHAT_TOOLSET_VERSION,
 )
 from casefile.agent_runtime.closure_repair import (
@@ -391,6 +394,37 @@ TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
                 "request_thread_compaction",
             }
         ),
+        "chat-read-v6": frozenset(
+            {
+                "get_modification_impact",
+                "get_character_knowledge",
+                "compare_draft_revisions",
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "retrieve_thread_evidence",
+                "request_thread_compaction",
+                "investigate_case",
+            }
+        ),
+        "chat-audit-v6": frozenset(
+            {
+                "get_modification_impact",
+                "get_character_knowledge",
+                "compare_draft_revisions",
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "get_validation_issues",
+                "validate_patch_proposal",
+                "simulate_patch_application",
+                "retrieve_thread_evidence",
+                "investigate_case",
+                "audit_case",
+            }
+        ),
         "closure-repair-no-tools-v1": frozenset(),
     }
 )
@@ -411,6 +445,9 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("casefile-single-agent-v2", CHAT_TOOLSET_V4_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V5_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V6_VERSION),
+        ("casefile-single-agent-v2", CHAT_TOOLSET_V7_VERSION),
+        ("casefile-single-agent-v2", CHAT_TOOLSET_V8_VERSION),
+        ("casefile-single-agent-v2", CHAT_TOOLSET_V9_VERSION),
         ("closure-repair-agent-v1", CLOSURE_REPAIR_TOOLSET_VERSION),
         ("closure-repair-agent-v2", CLOSURE_REPAIR_TOOLSET_VERSION),
         (CLOSURE_REPAIR_AGENT_VERSION, CLOSURE_REPAIR_TOOLSET_VERSION),

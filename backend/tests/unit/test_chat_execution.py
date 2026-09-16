@@ -14,6 +14,7 @@ from casefile.agent_runtime.chat_execution import (
     validate_chat_candidate,
 )
 from casefile.agent_runtime.chat_routing import fallback_route
+from casefile.agent_runtime.chat_tools import ChatToolMetrics
 from casefile.agent_runtime.chat_validation import (
     ValidationIssue,
     plan_repairs,
@@ -44,6 +45,29 @@ class SequenceProvider:
     def chat(self, request):  # type: ignore[no-untyped-def]
         self.requests.append(request)
         return self.results[len(self.requests) - 1]
+
+
+def test_execution_preserves_subagent_metrics() -> None:
+    task = build_outcome_tasks()[0]
+    metrics = ChatToolMetrics(
+        calls=3,
+        valid_calls=3,
+        successful_calls=3,
+        subagent_batches=1,
+        subagent_tasks=2,
+        subagent_completed=2,
+    )
+    result = CaseFileChatResult(
+        candidate=task.reference_candidate,
+        usage={"input_tokens": 1, "output_tokens": 1},
+        tools=metrics,
+    )
+
+    execution = ChatExecutionRunner(SequenceProvider([result])).run(_request_for_task(task))
+
+    assert isinstance(execution.tools, ChatToolMetrics)
+    assert execution.tools.subagent_tasks == 2
+    assert execution.tools.subagent_completed == 2
 
 
 def _result(candidate, tokens: int) -> CaseFileChatResult:  # type: ignore[no-untyped-def]

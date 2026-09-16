@@ -8,10 +8,26 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.chat_delegation import (
+    TOOLSET_VERSION as V4_SUBAGENT_TOOLSET,
+)
+from casefile.agent_runtime.chat_delegation import (
+    runtime_manifest as delegation_runtime_manifest,
+)
+from casefile.agent_runtime.chat_subagents import (
+    CHAT_SUBAGENT_POLICY_VERSION,
+    CHAT_SUBAGENT_SOFT_GATE_POLICY_VERSION,
+    MAX_SUBAGENT_TASKS,
+    MAX_SUBAGENT_TOOL_CALLS,
+    MAX_SUBAGENT_TURNS,
+    parent_delegation_prompt_hash,
+    subagent_prompt_hash,
+)
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_V6_VERSION,
+    CHAT_TOOLSET_V8_VERSION,
     CHAT_TOOLSET_VERSION,
 )
 from casefile.agent_runtime.context import (
@@ -85,6 +101,8 @@ def new_task(
 ) -> TaskRun:
     prompt_version = prompt_version_for_task(task_type)
     policy_version: str | None = None
+    subagent_rollout = False
+    subagent_v4 = False
     if task_type == "casefile_chat":
         policy_version = _chat_context_policy_version()
         if policy_version == CHAT_CONTEXT_POLICY_VERSION:
@@ -119,6 +137,32 @@ def new_task(
             }
             input_hash = _json_hash(input_jsonb)
             prompt_version = "casefile-chat-v27"
+        subagent_rollout = (
+            os.environ.get("CASEFILE_CHAT_SUBAGENT_ROLLOUT", "").strip().lower() == "experimental"
+        )
+        subagent_v4 = os.environ.get("CASEFILE_CHAT_SUBAGENT_ROLLOUT", "").strip().lower() == "v4"
+        if subagent_v4:
+            input_jsonb = {
+                **input_jsonb,
+                "subagent_runtime": {"mode": "v4", **delegation_runtime_manifest()},
+            }
+            input_hash = _json_hash(input_jsonb)
+        if subagent_rollout:
+            input_jsonb = {
+                **input_jsonb,
+                "subagent_runtime": {
+                    "mode": "experimental",
+                    "policy_version": CHAT_SUBAGENT_POLICY_VERSION,
+                    "soft_gate_policy_version": CHAT_SUBAGENT_SOFT_GATE_POLICY_VERSION,
+                    "max_tasks": MAX_SUBAGENT_TASKS,
+                    "max_turns_per_task": MAX_SUBAGENT_TURNS,
+                    "max_tool_calls_per_task": MAX_SUBAGENT_TOOL_CALLS,
+                    "parent_prompt_hash": parent_delegation_prompt_hash(),
+                    "investigate_prompt_hash": subagent_prompt_hash("investigate"),
+                    "audit_prompt_hash": subagent_prompt_hash("audit"),
+                },
+            }
+            input_hash = _json_hash(input_jsonb)
     return TaskRun(
         project_id=owned.project.id,
         casefile_id=owned.casefile.id,
@@ -147,7 +191,11 @@ def new_task(
         agent_version=agent_version_for_task(task_type, prompt_version),
         prompt_version=prompt_version,
         toolset_version=(
-            CHAT_TOOLSET_V6_VERSION
+            V4_SUBAGENT_TOOLSET
+            if prompt_version == "casefile-chat-v27" and subagent_v4
+            else CHAT_TOOLSET_V8_VERSION
+            if prompt_version == "casefile-chat-v27" and subagent_rollout
+            else CHAT_TOOLSET_V6_VERSION
             if prompt_version == "casefile-chat-v27"
             else CHAT_TOOLSET_V4_VERSION
             if task_type == "casefile_chat"
