@@ -28,6 +28,7 @@ from casefile.agent_runtime.chat_safe_patches import (
     materialize_target_locked_repair,
     target_locked_repair_contract,
 )
+from casefile.agent_runtime.chat_tools import ChatToolMetrics
 from casefile.agent_runtime.chat_validation import (
     ChatCompletionValidationError,
     ValidationIssue,
@@ -62,13 +63,31 @@ class ChatExecutionResult:
 
 
 def _merge_tools(records: list[ToolMetrics]) -> ToolMetrics:
-    merged = ToolMetrics()
+    merged = ChatToolMetrics()
     for record in records:
         merged.calls += record.calls
         merged.valid_calls += record.valid_calls
         merged.successful_calls += record.successful_calls
         merged.adopted_results += record.adopted_results
         merged.planned_object_ids.update(record.planned_object_ids)
+        if isinstance(record, ChatToolMetrics):
+            merged.query_cache_hits += record.query_cache_hits
+            merged.budget_exhausted += record.budget_exhausted
+            merged.requested_thread_compaction += record.requested_thread_compaction
+            merged.tool_result_chars += record.tool_result_chars
+            merged.tool_results_truncated += record.tool_results_truncated
+            merged.subagent_batches += record.subagent_batches
+            merged.subagent_tasks += record.subagent_tasks
+            merged.subagent_completed += record.subagent_completed
+            merged.subagent_partial += record.subagent_partial
+            merged.subagent_failed += record.subagent_failed
+            merged.subagent_soft_gate_evaluated += record.subagent_soft_gate_evaluated
+            merged.subagent_soft_gate_triggered += record.subagent_soft_gate_triggered
+            for key in ("retrieved_object_ids", "retrieved_evidence_ids"):
+                target = getattr(merged, key)
+                for value in getattr(record, key):
+                    if value not in target:
+                        target.append(value)
     return merged
 
 

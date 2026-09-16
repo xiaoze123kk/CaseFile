@@ -249,3 +249,47 @@ def test_new_goal_task_freezes_matching_prompt_and_tool_versions(
     assert task.prompt_version == "casefile-chat-v27"
     assert task.toolset_version == "casefile-chat-tools-v6"
     assert task.input_draft_revision == 4
+
+
+def test_new_chat_task_only_freezes_subagents_under_explicit_experimental_rollout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CASEFILE_CHAT_GOAL_ROLLOUT", "active")
+    monkeypatch.setenv("CASEFILE_CHAT_SUBAGENT_ROLLOUT", "experimental")
+    monkeypatch.setattr(
+        "casefile.application.workflow.tasks._chat_context_policy_version",
+        lambda: "casefile-chat-context-v6",
+    )
+    owned = SimpleNamespace(
+        project=SimpleNamespace(id=1),
+        casefile=SimpleNamespace(id=2),
+        draft=SimpleNamespace(id=3, revision=4),
+    )
+    setting = SimpleNamespace(
+        id=1, provider="deepseek", model_id="test", config_version=1, default_budget_jsonb={}
+    )
+
+    task = new_task(
+        owned,
+        actor_user_id=1,
+        setting=setting,
+        task_type="casefile_chat",
+        brief_version_id=None,
+        input_source_record_id=None,
+        input_brief_revision=None,
+        input_hash="unused",
+        input_jsonb={"message": "test"},
+    )
+
+    assert task.prompt_version == "casefile-chat-v27"
+    assert task.toolset_version == "casefile-chat-tools-v8"
+    runtime = task.input_jsonb["subagent_runtime"]
+    assert runtime["mode"] == "experimental"
+    assert runtime["policy_version"] == "casefile-chat-subagents-v3"
+    assert runtime["soft_gate_policy_version"] == "casefile-chat-subagent-soft-gate-disabled-v3"
+    assert runtime["max_tasks"] == 2
+    assert runtime["max_turns_per_task"] == 5
+    assert runtime["max_tool_calls_per_task"] == 8
+    assert len(runtime["parent_prompt_hash"]) == 64
+    assert len(runtime["investigate_prompt_hash"]) == 64
+    assert len(runtime["audit_prompt_hash"]) == 64

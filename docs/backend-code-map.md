@@ -1,5 +1,14 @@
 # 后端代码职责地图
 
+`benchmark/chat_subagent_suite_v2.py` 负责分工评测新版题集的物化、读取、结论分类评分和
+正负例校准；`chat_outcome_live_eval.py` 通过显式 grader 回调复用生产执行链，可保留最终
+候选供人工核对。`chat_subagent_v4_parallel.py --suite-version v2` 在付费调用前执行校准，
+分三进程完成 72 次并核对版本与唯一试次。题集升级不修改运行时 v4 或旧版评分条件。
+
+## CaseFile Chat 只读子 Agent 实验
+
+`agent_runtime/chat_subagents.py` 定义查证员和专项审计员的冻结策略、复杂度软门控、输入输出契约、Prompt 与哈希；`chat_tools.py` 注册 `investigate_case`、`audit_case`，执行两任务上限、只读分类、结果并入父账本与版本隔离。`provider_adapters/shared.py` 为每个子任务创建独立 Runner 和工具上下文，以最多两个并发执行，累计实际 usage，并校验引用确实来自子任务工具结果。新任务只有在 `CASEFILE_CHAT_SUBAGENT_ROLLOUT=experimental` 时冻结 `casefile-chat-tools-v8`；默认与历史任务继续使用 v6，v7 保留原有模型自主委派行为。
+
 ## Agent Skill 发布与物理调用审计
 
 `agent_runtime/agent_skill_release.py` 将当前 Prompt 版本绑定到默认
@@ -594,3 +603,32 @@ Writer v6 / Rewriter v9 为新运行默认；`prose_runtime.py` 的 runtime v12 
 `matches_prose_runtime` 保留 v11 绑定检查，`prose_shadow.py` 与 `prose_rewrite_supervisor.py` 显式传递冻结的提示词版本，旧任务不跟随当前默认值。
 `backend/src/casefile/benchmark/prose_skill_acceptance.py` 使用 `fixtures/prose_skill_acceptance/v1/` 的干净公开重启案例进行 Writer/Rewriter 对照、真实 Fidelity Judge 和质量问题检查；记录逐物理调用预算，不属于私有正式资格评测。该新样本由可读公开 CaseFile 和既有结构骨架生成，新增线索文案在生成器中显式声明。
 `backend/tests/unit/test_prose_skill_activation.py`、`test_prose_skill_acceptance.py` 与 `backend/tests/integration/test_prose_skill_rollout_runtime.py` 覆盖默认切换、旧运行隔离与干净输入验证。
+
+
+## Chat 子任务局部查证修正（policy v2）
+
+当前实验 v7/v8 工具入口采用新的 `casefile-chat-subagents-v2` 策略，替代上述复杂度预取行为。
+服务端不再按关键词自动拆分；父 Agent 先定位对象，再提交对象 ID 与明确证据缺口。
+`chat_subagents.py` 负责纯任务边界校验，`chat_tools.py` 在占用子任务预算前校验已读取锚点，
+`provider_adapters/shared.py` 从冻结输入提供原始记录，并将引用原文和子结果一并回传。
+父 Agent 对照原文核对，疑点/未知不升级成确定冲突。策略和 Prompt 哈希变化，旧报告不充当新证据。
+默认仍关闭实验；不修改业务写入权威，不扩大模型预算。
+
+### policy v3 子任务收尾
+
+`chat_subagents.py` 冻结 5 轮、8 次调用以及第 6 次调用后的主动收尾提示，并负责将无引用的
+权威主张降级为 partial。`chat_tools.py` 的子 Agent 工具面只保留精确对象及局部语义读取；
+`provider_adapters/shared.py` 仅传入冻结身份、任务、原始锚点和执行上限，不再暴露全局卷宗
+数量、验证数量或父级 focus。`workflow/tasks.py` 将实际常量写入新任务的冻结运行元数据。
+
+### policy v4 证据驱动分工
+
+`target-first-repair-v1` 在纯策略模块按显式 ID/focus 优先定位；Provider 编排提供最多
+6 次精确对象读取和一次校验反馈修正。锚点以冻结卷宗验证并绑定原文，诊断保存字段错误
+与不存在的 ID；运行元数据冻结修订标识、读取及修正预算，旧评测不覆盖。
+
+显式设置 `CASEFILE_CHAT_SUBAGENT_ROLLOUT=v4` 才启用 tools-v9，旧 experimental 仍为 v3。
+`chat_delegation.py` 承担分工契约、原始锚点选择、一跳范围和预算常量；
+`skills/chat_delegation_v4/SKILL.md` 是随包发布的领域 Skill，哈希进入任务元数据。
+`provider_adapters/chat_delegation.py` 负责模型分工判断、只读子任务和预留无工具收尾。
+父 Agent 收到原始证据后负责复核。默认不开启；不把子任务完成状态当作质量结论。
