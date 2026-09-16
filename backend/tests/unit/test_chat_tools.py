@@ -16,7 +16,10 @@ from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_VERSION,
     LEGACY_CHAT_TOOLSET_VERSION,
+    ChatToolCategory,
     ChatToolContext,
+    ChatToolEffect,
+    chat_tool_catalog,
     chat_tool_manifest,
     find_casefile_object,
     get_casefile_object,
@@ -36,6 +39,29 @@ from casefile.agent_runtime.chat_tools import (
 from casefile.agent_runtime.models import CaseFileChatRequest, RouteDecision
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[3] / "fixtures" / "casefiles"
+
+
+def test_tool_catalog_filters_effect_and_purpose_without_granting_write_access() -> None:
+    definitions = chat_tool_catalog()
+    assert len(definitions) == 12
+    assert len({entry.tool.name for entry in definitions}) == len(definitions)
+    assert chat_tool_catalog(effect=ChatToolEffect.WRITE) == ()
+    assert [
+        entry.tool.name
+        for entry in chat_tool_catalog(
+            effect=ChatToolEffect.READ_ONLY, category=ChatToolCategory.CONTEXT_MANAGEMENT
+        )
+    ] == ["retrieve_thread_evidence"]
+    assert [
+        entry.tool.name for entry in chat_tool_catalog(effect=ChatToolEffect.STATE_REQUEST)
+    ] == ["request_thread_compaction"]
+    assert [entry.tool.name for entry in chat_tool_catalog(effect=ChatToolEffect.SIMULATION)] == [
+        "simulate_patch_application"
+    ]
+    assert (
+        chat_tool_catalog(effect=ChatToolEffect.READ_ONLY, category=ChatToolCategory.PATCH_PREVIEW)
+        == ()
+    )
 
 
 def load_casefile_fixture(name: str = "restart_loop.casefile.json") -> dict[str, Any]:
@@ -865,7 +891,9 @@ def test_clarify_runtime_reads_bound_issues_and_enforces_frozen_budget() -> None
     )
     request = replace(
         make_request(toolset=[], max_tool_calls=1, validation_issues=issues),
-        route=route, prompt_version="casefile-chat-v23", toolset_version=CHAT_TOOLSET_V4_VERSION,
+        route=route,
+        prompt_version="casefile-chat-v23",
+        toolset_version=CHAT_TOOLSET_V4_VERSION,
     )
     manifest, context, _turns = _chat_tool_runtime(request)
     assert manifest is not None and context is not None

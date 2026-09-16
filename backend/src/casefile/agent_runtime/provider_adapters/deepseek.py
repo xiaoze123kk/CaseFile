@@ -8,7 +8,6 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from casefile.agent_runtime.chat_tools import (
@@ -41,6 +40,7 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.deepseek_transport import model_checked_async_client as AsyncOpenAI
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
     GeneralMutationPlannerRequest,
@@ -65,6 +65,7 @@ from casefile.agent_runtime.goal.provider import (
     GoalUnderstandingRequest,
     GoalUnderstandingResult,
 )
+from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -271,6 +272,7 @@ class DeepSeekAgentsProvider:
             raw_output=raw_output,
         )
 
+    @audited_call
     async def _story_planner_json_object(
         self,
         request: (
@@ -603,6 +605,10 @@ class DeepSeekAgentsProvider:
             "casefile-chat-v21",
             "casefile-chat-v22",
             "casefile-chat-v23",
+            "casefile-chat-v24",
+            "casefile-chat-v25",
+            "casefile-chat-v26",
+            "casefile-chat-v27",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -725,6 +731,10 @@ class DeepSeekAgentsProvider:
                     "casefile-chat-v21",
                     "casefile-chat-v22",
                     "casefile-chat-v23",
+                    "casefile-chat-v24",
+                    "casefile-chat-v25",
+                    "casefile-chat-v26",
+                    "casefile-chat-v27",
                 }:
                     raise
                 request.emit(

@@ -38,6 +38,7 @@ V13_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v13"
 V14_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v14"
 V15_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v15"
 V16_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v16"
+V17_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v17"
 BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
     "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
@@ -48,6 +49,7 @@ BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v14": V14_GENERATION_AGENT_VERSION,
     "brief-to-draft-v15": V15_GENERATION_AGENT_VERSION,
     "brief-to-draft-v16": V16_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v17": V17_GENERATION_AGENT_VERSION,
 }
 COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
 PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
@@ -60,6 +62,7 @@ PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
         "brief-to-draft-v14",
         "brief-to-draft-v15",
         "brief-to-draft-v16",
+        "brief-to-draft-v17",
     }
 )
 COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
@@ -71,6 +74,7 @@ COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
         "brief-to-draft-v14",
         "brief-to-draft-v15",
         "brief-to-draft-v16",
+        "brief-to-draft-v17",
     }
 )
 CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
@@ -97,6 +101,10 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v21",
         "casefile-chat-v22",
         "casefile-chat-v23",
+        "casefile-chat-v24",
+        "casefile-chat-v25",
+        "casefile-chat-v26",
+        "casefile-chat-v27",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -107,6 +115,7 @@ TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
         "brief-to-draft-v14",
         "brief-to-draft-v15",
         "brief-to-draft-v16",
+        "brief-to-draft-v17",
     }
 )
 
@@ -280,6 +289,29 @@ def thread_compaction_input(request: ThreadCompactionRequest) -> str:
     )
 
 
+def _with_draft_revision_context(
+    request: CaseFileChatRequest, payload: dict[str, Any]
+) -> dict[str, Any]:
+    if request.prompt_version not in {
+        "casefile-chat-v25",
+        "casefile-chat-v26",
+        "casefile-chat-v27",
+    }:
+        return payload
+    return {
+        **payload,
+        "focus": {
+            **payload.get("focus", {}),
+            "draft_revision_context": {
+                "draft_id": request.draft_id,
+                "frozen_revision": request.frozen_draft_revision,
+                "history_available": request.revision_history_resolver is not None,
+                "scope": "task_bound_draft_revision_not_casefile_version",
+            },
+        },
+    }
+
+
 def _casefile_chat_payload(request: CaseFileChatRequest) -> dict[str, Any]:
     payload = {
         "input_hash": request.input_hash,
@@ -299,7 +331,7 @@ def _casefile_chat_payload(request: CaseFileChatRequest) -> dict[str, Any]:
         routing_payload = chat_routing_payload_as_dict(request)
         if routing_payload is not None:
             payload["routing"] = routing_payload
-    return payload
+    return _with_draft_revision_context(request, payload)
 
 
 def render_chat_router_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
@@ -347,6 +379,10 @@ def _with_chat_repair_feedback(
             "casefile-chat-v21",
             "casefile-chat-v22",
             "casefile-chat-v23",
+            "casefile-chat-v24",
+            "casefile-chat-v25",
+            "casefile-chat-v26",
+            "casefile-chat-v27",
         }
         else "只修正引用槽"
     )
@@ -387,6 +423,10 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
             "casefile-chat-v21",
             "casefile-chat-v22",
             "casefile-chat-v23",
+            "casefile-chat-v24",
+            "casefile-chat-v25",
+            "casefile-chat-v26",
+            "casefile-chat-v27",
         }
         and request.target_locked_repair is not None
     ):
@@ -434,7 +474,7 @@ def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]
         rendered = render_prompt_package(
             definition.package,
             _chat_executor_component_id(definition, request),
-            request.assembled_input,
+            _with_draft_revision_context(request, request.assembled_input),
             agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
             toolset_version=definition.package.runtime_toolset_version,
         )
@@ -463,7 +503,9 @@ def render_chat_finalizer_prompt(
     if definition.package is None:
         raise ValueError("Structured chat finalizer requires a Prompt Package")
     finalizer_component, _schema_id = chat_finalizer_component(request)
-    payload = dict(request.assembled_input or _casefile_chat_payload(request))
+    payload = _with_draft_revision_context(
+        request, dict(request.assembled_input or _casefile_chat_payload(request))
+    )
     payload.update(
         {
             "tool_ledger": tool_ledger,
@@ -489,6 +531,10 @@ def render_chat_finalizer_prompt(
         "casefile-chat-v21",
         "casefile-chat-v22",
         "casefile-chat-v23",
+        "casefile-chat-v24",
+        "casefile-chat-v25",
+        "casefile-chat-v26",
+        "casefile-chat-v27",
     }:
         instructions = _with_chat_repair_feedback(instructions, request)
     if repair_plan:
@@ -593,7 +639,9 @@ def render_goal_finalizer_prompt(request: GoalFinalizerRequest) -> tuple[str, st
     definition = load_prompt("casefile_chat", request.chat.prompt_version)
     if definition.package is None:
         raise ValueError("Goal finalizer requires a Prompt Package")
-    chat_payload = request.chat.assembled_input or _casefile_chat_payload(request.chat)
+    chat_payload = _with_draft_revision_context(
+        request.chat, request.chat.assembled_input or _casefile_chat_payload(request.chat)
+    )
     payload = {
         "input_hash": request.chat.input_hash,
         "casefile": chat_payload.get("casefile", {}),

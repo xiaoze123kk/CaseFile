@@ -276,7 +276,9 @@ def _saved_provider_credential(
                 provider=provider_name,
                 key_version=setting.key_version,
             )
-            return api_key, requested_model or setting.model_id
+            return api_key, requested_model or (
+                "deepseek-flash" if provider_name == "deepseek" else setting.model_id
+            )
     finally:
         engine.dispose()
 
@@ -302,7 +304,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run the CaseFile chat intent router against a real model"
     )
-    parser.add_argument("--provider", choices=("openai", "deepseek", "fake"), default="openai")
+    parser.add_argument("--provider", choices=("openai", "deepseek", "fake"), default="deepseek")
     parser.add_argument("--model", default=None)
     parser.add_argument("--api-key", default=None)
     parser.add_argument(
@@ -335,7 +337,7 @@ def main() -> None:
         api_key = _resolved_api_key(provider_name, arguments.api_key)
         model_id = arguments.model or {
             "openai": "gpt-5.6-sol",
-            "deepseek": "deepseek-chat",
+            "deepseek": "deepseek-flash",
             "fake": "fake-live-eval",
         }[provider_name]
     fixtures = _load_fixtures(build_eval_fixtures(), arguments.extra_fixtures)

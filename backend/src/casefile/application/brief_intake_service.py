@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.agent_runtime.prompt import AGENT_VERSION
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
@@ -961,7 +962,7 @@ class BriefIntakeService:
             stage="queued",
             input_draft_revision=owned.draft.revision,
             provider=setting.provider,
-            model_id=setting.model_id,
+            model_id=model_for_new_task(setting.provider, setting.model_id),
             provider_config_version=setting.config_version,
             schema_version=CASEFILE_SCHEMA_VERSION,
             agent_version=AGENT_VERSION,

@@ -15,7 +15,7 @@
     "b": 4,
     "tie": 2
   },
-  "quality_model_id": "deepseek-v4-flash",
+  "quality_model_id": "deepseek-flash",
   "findings_prompt_version": "prose-quality-critic-v1",
   "pairwise_prompt_version": "prose-quality-pairwise-v1",
   "quality_component_hash": "db56d0e601453fcaa5be7f51ce4d75b203f055fc4195210ab1e8672c0e7d7180",
@@ -114,5 +114,5 @@
       "content_hash": "6184b3efafc3619f235c63eb96f3913ea1f66fe33f08e4201a6831c2f458b718"
     }
   ],
-  "suite_hash": "d651c7137679c49359df1e0a345dffc81fc359a1471793012c1073d9492c1a7e"
+  "suite_hash": "ce717b086f7e7665d6dbeeda7a2c4e68c289950843df074bebd1979437c759f5"
 }

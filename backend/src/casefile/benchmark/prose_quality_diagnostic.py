@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prose_judge import (
     FULL_COUNCIL_POLICY,
     DeepSeekProseJudgeProvider,
@@ -21,8 +22,7 @@ from casefile.agent_runtime.prose_judge import (
 from casefile.agent_runtime.prose_polish_supervisor import execute_prose_polish_supervisor
 from casefile.agent_runtime.prose_polisher import DeepSeekProsePolisherProvider
 from casefile.agent_runtime.prose_quality_config import (
-    QUALITY_PRO_DIAGNOSTIC,
-    QUALITY_V2,
+    QUALITY_FLASH,
     ProseQualityConfig,
     quality_config,
 )
@@ -239,7 +239,7 @@ def run_polisher_task(
             render=task["original_render"],
             profile=task["profile"],
             policy=FULL_COUNCIL_POLICY,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             api_key=api_key,
         )
         row = {
@@ -263,7 +263,7 @@ def run_polisher_task(
         render=task["original_render"],
         profile=task["profile"],
         semantic_consensus=task["semantic_consensus"],
-        model_id="deepseek-v4-flash",
+        model_id=DEEPSEEK_MODEL_ID,
         api_key=api_key,
     )
     write_new(root / f"{task['task_id']}-frozen-findings.json", asdict(findings))
@@ -297,8 +297,8 @@ def run_polisher_task(
             profile=task["profile"],
             original_render=task["original_render"],
             semantic_consensus=task["semantic_consensus"],
-            quality_model_id="deepseek-v4-flash",
-            generation_model_id="deepseek-v4-pro",
+            quality_model_id=DEEPSEEK_MODEL_ID,
+            generation_model_id=DEEPSEEK_MODEL_ID,
             api_key=api_key,
             quality_config=config,
             frozen_findings=findings.report,
@@ -329,26 +329,22 @@ def run_development(
     suite_path: Path,
     output: Path,
     api_key: str,
-    candidates: str = "both",
+    candidates: str = QUALITY_FLASH.config_id,
     repeats: int = 3,
     workers: int = 4,
 ) -> dict[str, Any]:
-    suite = load_diagnostic_suite(suite_path)
     if (
         repeats != 3
-        or candidates not in {"both", QUALITY_V2.config_id, QUALITY_PRO_DIAGNOSTIC.config_id}
+        or candidates != QUALITY_FLASH.config_id
         or workers not in range(1, 5)
     ):
         raise ValueError("diagnostic_experiment_not_frozen")
     if not api_key:
         raise ValueError("diagnostic_api_key_missing")
+    suite = load_diagnostic_suite(suite_path)
     output.mkdir(parents=True, exist_ok=False)
     source = source_snapshot()
-    configs = (
-        (QUALITY_V2, QUALITY_PRO_DIAGNOSTIC)
-        if candidates == "both"
-        else (quality_config(candidates),)
-    )
+    configs = (QUALITY_FLASH,)
     write_new(
         output / "attempt-manifest.json",
         {
@@ -379,7 +375,7 @@ def run_development(
         quality_rows = [r for batch in quality_batches for r in batch]
         quality_summary = summarize_quality(quality_rows)
         write_new(output / "quality-summary.json", quality_summary)
-        selected = quality_config(quality_summary["selected"] or QUALITY_V2.config_id)
+        selected = quality_config(quality_summary["selected"] or QUALITY_FLASH.config_id)
         with ThreadPoolExecutor(max_workers=workers) as pool:
             batches = list(
                 pool.map(
@@ -444,7 +440,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--attempt-id", required=True)
-    parser.add_argument("--candidates", default="both")
+    parser.add_argument("--candidates", default=QUALITY_FLASH.config_id)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()

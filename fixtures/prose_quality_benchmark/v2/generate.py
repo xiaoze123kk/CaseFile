@@ -8,14 +8,14 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Final
 
-from casefile.agent_runtime.prose_quality_critic import (
-    PROSE_QUALITY_COMPONENT_HASH,
-    PROSE_QUALITY_PAIRWISE_PROMPT_VERSION,
-)
-
 ROOT: Final = Path(__file__).resolve().parents[3]
 OUT: Final = ROOT / "fixtures/prose_quality_benchmark/v2"
 V1_GENERATOR: Final = ROOT / "fixtures/prose_quality_benchmark/v1/generate.py"
+
+# v2 remains a separate frozen Prompt/component release; only its model binding
+# follows the current Flash policy.
+V2_PAIRWISE_PROMPT_VERSION: Final = "prose-quality-pairwise-v2"
+V2_QUALITY_COMPONENT_HASH: Final = "7d9f9d51aa6e726ff3ca55472581661792208e4e3cd7118caed44ee7ccf076f5"
 
 
 def _v1_module() -> ModuleType:
@@ -31,8 +31,8 @@ def build_suite() -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, A
     helper = _v1_module()
     suite, attestation, assets = helper.build_suite()
     suite["suite_id"] = "n4.5-b3-quality-public-development-v2"
-    suite["pairwise_prompt_version"] = PROSE_QUALITY_PAIRWISE_PROMPT_VERSION
-    suite["quality_component_hash"] = PROSE_QUALITY_COMPONENT_HASH
+    suite["pairwise_prompt_version"] = V2_PAIRWISE_PROMPT_VERSION
+    suite["quality_component_hash"] = V2_QUALITY_COMPONENT_HASH
     suite.pop("suite_hash", None)
     suite["suite_hash"] = helper.canonical_hash(suite)
     attestation["suite_hash"] = suite["suite_hash"]

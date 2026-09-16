@@ -856,7 +856,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run the CaseFile chat outcome Suite against a real model"
     )
-    parser.add_argument("--provider", choices=("openai", "deepseek", "fake"), default="openai")
+    parser.add_argument("--provider", choices=("openai", "deepseek", "fake"), default="deepseek")
     parser.add_argument("--model", default=None)
     parser.add_argument("--api-key", default=None)
     parser.add_argument(
@@ -900,7 +900,9 @@ def main() -> None:
     )
     if saved is None:
         api_key = _resolved_api_key(provider_name, arguments.api_key)
-        model_id = arguments.model or "gpt-5.6-sol"
+        model_id = arguments.model or (
+            "deepseek-flash" if provider_name == "deepseek" else "gpt-5.6-sol"
+        )
     else:
         api_key, model_id = saved
     tasks = _selected_tasks(arguments)

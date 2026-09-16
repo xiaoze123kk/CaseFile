@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkbenchSeed } from "@/features/analyst-workbench/analyst-fixture";
 import { WorkbenchIcon as Icon } from "@/features/analyst-workbench/workbench-icon";
 import {
@@ -154,6 +154,31 @@ export function NovelWorkspace({
     draft?.chapters[0];
   const shownChapters = original ? draft?.original.chapters : draft?.chapters;
   const shownChapter = shownChapters?.find((item) => item.id === chapter?.id);
+  useLayoutEffect(() => {
+    const fields = [...textareas.current.values()];
+    const widths = new Map<HTMLTextAreaElement, number>();
+    const fit = (field: HTMLTextAreaElement) => {
+      const scroller = field.closest(`.${styles.pages}`);
+      const top = scroller?.scrollTop ?? 0;
+      field.style.height = "0px";
+      field.style.height = `${Math.max(340, field.scrollHeight)}px`;
+      if (scroller) scroller.scrollTop = top;
+    };
+    fields.forEach(fit);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const field = entry.target as HTMLTextAreaElement;
+        if (widths.get(field) === entry.contentRect.width) continue;
+        widths.set(field, entry.contentRect.width);
+        fit(field);
+      }
+    });
+    fields.forEach((field) => observer?.observe(field));
+    let disposed = false;
+    void document.fonts?.ready.then(() => { if (!disposed) fields.forEach(fit); });
+    return () => { disposed = true; observer?.disconnect(); };
+  }, [shownChapters, shownChapter, wholeBook, original, remoteReview]);
+
   const total =
     draft?.chapters.reduce((sum, item) => sum + wordCount(item.text), 0) ?? 0;
   const reviewMessage = messages.find((message) => message.id === review);
@@ -913,9 +938,6 @@ export function NovelWorkspace({
                             setSelection("");
                             if (scope === "selection") setScope("chapter");
                           }
-                        }}
-                        style={{
-                          minHeight: `${Math.max(340, item.text.split("\n").length * 34 + Math.ceil(item.text.length / 28) * 18)}px`,
                         }}
                       />
                       </div>

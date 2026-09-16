@@ -35,13 +35,14 @@ from casefile.agent_runtime.prompt_repository import (
 from casefile_contracts import TaskType
 
 EXPECTED_CURRENT_VERSIONS = {
-    'novel_pairwise': 'novel-pairwise-v1',
-    'novel_polisher': 'novel-polisher-v1',
-    'novel_quality_critic': 'novel-quality-critic-v1',
-    'novel_rewriter': 'novel-rewriter-v1',
-    'novel_revision': 'novel-revision-v2',
-    'novel_judge': 'novel-judge-v1',
-    'novel_checklist': 'novel-checklist-v1',
+    "novel_recommendation": "novel-recommendation-v1",
+    "novel_pairwise": "novel-pairwise-v1",
+    "novel_polisher": "novel-polisher-v1",
+    "novel_quality_critic": "novel-quality-critic-v1",
+    "novel_rewriter": "novel-rewriter-v1",
+    "novel_revision": "novel-revision-v2",
+    "novel_judge": "novel-judge-v1",
+    "novel_checklist": "novel-checklist-v1",
     "novel_context_compactor": "novel-context-compactor-v1",
     "novel_collaboration": "novel-collaboration-v1",
     "novel_chapter_rewrite": "novel-chapter-rewrite-v2",
@@ -62,9 +63,10 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v2",
     "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v7",
-    "prose_writer": "prose-writer-v4",
-    "prose_rewriter": "prose-rewriter-v7",
+    "prose_writer": "prose-writer-v6",
+    "prose_rewriter": "prose-rewriter-v9",
     "prose_revision": "prose-revision-v3",
+    "prose_auto_edit_judge": "prose-auto-edit-judge-v1",
     "prose_fidelity_judge": "prose-fidelity-judge-v8",
     "prose_adversarial_judge": "prose-adversarial-judge-v7",
     "prose_coherence_judge": "prose-coherence-judge-v7",
@@ -77,6 +79,244 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("prose_auto_edit_judge", "prose-auto-edit-judge-v1"): {
+        "system": "b46e85de3f235e584f6cd5b0cbcc089dde26933cb1dc4358d771620ce75153ed",
+    },
+    ("prose_rewriter", "prose-rewriter-v10"): {
+        "system": "a6abc4775dd1ed4100ff443167856c82afb767c311473ffc054e544d5aa6bdc2",
+    },
+    ("prose_polisher", "prose-polisher-v6"): {
+        "system": "4caabc1dbd6281d8c130ea9fc79c0cf0040577b39fdb2f7b270f1b530607195f",
+    },
+    ("novel_recommendation", "novel-recommendation-v1"): {
+        "system": "de25adc6cd0fcaa0aa64be2ede6a17612cc44ea631309f5042aff24ac268690d",
+    },
+    ("prose_writer", "prose-writer-v6"): {
+        "system": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+    },
+    ("prose_rewriter", "prose-rewriter-v9"): {
+        "system": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
+    },
+    ("prose_writer", "prose-writer-v5"): {
+        "system": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+    },
+    ("prose_rewriter", "prose-rewriter-v8"): {
+        "system": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
+    },
+    ("casefile_chat", "casefile-chat-v27"): {
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"),
+        "fragment:finalizer": ("fdcd3b75ff402b6c2f8631446eda79c40172368d5d3175e155249144becc44a5"),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "33844e1ae8a5924cc83ef1abf2cd1961e5287387c4cd92e60f4efefef233a11c"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "6126c4fb9ae411a8acb0ef4439c0531e4ced8ca457cc387d8f60761ed3ea322a"
+        ),
+    },
+    ("casefile_chat", "casefile-chat-v26"): {
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"),
+        "fragment:finalizer": ("1a65a949e0eb5d7fb0fd503cb61dcfae3d6371268f64a2b1cd42ed0b449b5189"),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "ae7b04f1ae4428258f15592d365cfa6affcb478b5a6691cb6c3b3d5881f8b17e"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
+    ("casefile_chat", "casefile-chat-v25"): {
+        "fragment:router": ("e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401"),
+        "fragment:rewrite": ("38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921"),
+        "fragment:evidence": ("f12c7c5cff236fe67f9eceb8e5b2c13b33871ceaac68821e005eda8529c6e5ad"),
+        "fragment:finalizer": ("5b8d1028fd0acf5941b3c5a3f7a17ee231cdf7f6f256a65bf81069a5ef31c817"),
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "cc88ee48a43968c9843b1d545e640e6bcd17f6cff526363b5ebdc1eea3d64986"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": (
+            "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d"
+        ),
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
+    ("casefile_chat", "casefile-chat-v24"): {
+        "fragment:router": "e096d817e0c8a24538241fa43c6aca221d6a814493bc702c692c0bc608e5a401",
+        "fragment:rewrite": "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921",
+        "fragment:evidence": "63aabb2f30325556efc4dabe88d4f14228b36a8ad56812ae4823e46a0ffd8560",
+        "fragment:finalizer": "35e44c07ed8676cc0791d2a9bc4e89e8045f605c8d6969be7956e81007349d8e",
+        "fragment:public-language-v1": (
+            "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"
+        ),
+        "fragment:goal-interpreter": (
+            "2873a21b3fa0d680c0ed1950d45f6eca5304a65eb2e9a81b1d1dce57993ca92b"
+        ),
+        "fragment:goal-amendment": (
+            "e9614479aecfe19bdae20d0e8b274207e4e56415c14b929d6bcd679a5b1e7069"
+        ),
+        "fragment:goal-controller": (
+            "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"
+        ),
+        "fragment:goal-finalizer": (
+            "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6"
+        ),
+        "fragment:executor-chat": (
+            "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"
+        ),
+        "fragment:executor-analysis": (
+            "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd"
+        ),
+        "fragment:audit-common": "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d",
+        "fragment:audit-evidence": (
+            "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef"
+        ),
+        "fragment:audit-finalizer": (
+            "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d"
+        ),
+        "fragment:executor-issue": (
+            "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9"
+        ),
+        "fragment:executor-edit": (
+            "44debc97ce7cf4345a8f3794fafbab51f0be632c47f91ee419694e1ce000b262"
+        ),
+        "fragment:executor-gate": (
+            "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb"
+        ),
+        "fragment:executor-clarify": (
+            "61ce5abfd403521d85b5c3df1840470c81369990da9189bb42062460d6fb32ac"
+        ),
+        "fragment:executor-scope": (
+            "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276"
+        ),
+        "fragment:answer-layout": (
+            "b930aabb40307e21758195bfb4594c31d2e4790151915990089aca146106ed1c"
+        ),
+    },
     ("novel_context_compactor", "novel-context-compactor-v1"): {
         "system": "1d08292f25f0357c000f54ad19b8bf2b905e2ead2cb04e973d7349c8422789ae"
     },
@@ -498,6 +738,24 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
         "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
+    },
+    ("brief_to_draft", "brief-to-draft-v17"): {
+        "fragment:common": "4b3db702d57a69d8adc305f3cc054d199adfb5c2219e2b119340a1c3a9755406",  # noqa: E501
+        "fragment:relationship_planner": "f85859af8e21ad36eef5bb0b58ed8cde6dfbb86f77f109ee3d0d39623b5c1ca4",  # noqa: E501
+        "fragment:planner": "42b12f9299840bd7cfc7889de35550be16b243bf7f1c833ee83c8b4214bfd5a9",  # noqa: E501
+        "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",  # noqa: E501
+        "fragment:domain_common": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab",  # noqa: E501
+        "fragment:relationship_story": "f0fffacf9060aa728f9b55686ddd9b9f11ecd64c8d35b64382cfaab539e8ced4",  # noqa: E501
+        "fragment:repair_story": "624774627f8f9c390fbb19fa27dac9b4af70da59b8210a9adfac092cb3469f69",  # noqa: E501
+        "fragment:story": "0a313c6870b43b4f8e55710752031e835c59f62b33d645d4dc9ab06850431a96",  # noqa: E501
+        "fragment:competition_evidence": "e3bb0513f460ea40b6bb15e03224464752450e0c8d9ecfd05e3258d7f3cbbe97",  # noqa: E501
+        "fragment:repair_evidence": "2f81ff6c82c35e555fdff6f51557feae3eaaae2c2693565c9e3a94062b5a7e94",  # noqa: E501
+        "fragment:evidence": "ffc19fefeb81c9fb05532444cdaa58bcdf89c3d5b6855c236f7eba2c367f5483",  # noqa: E501
+        "fragment:repair_matrix": "7b5e049193d65d5da35965bebd84a9fbdb6f4fad3a03af69840dd3ce686665df",  # noqa: E501
+        "fragment:matrix": "35ba7d3c59c33790ccbfd3d23abfcee71c9619cc1df9231cf968cd2dfa1e49f7",  # noqa: E501
+        "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",  # noqa: E501
+        "fragment:repair_common": "674908eedccc4cc92ff14ef5c6c74809afef0dd85d07767ca9e6534624c004ab",  # noqa: E501
+        "fragment:repair_planner": "d9e6df5935b69ff211bee61e7747e523afc536069d9f32631606ceb92fe3df0c",  # noqa: E501
     },
     ("brief_to_draft", "brief-to-draft-v16"): {
         "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
@@ -964,15 +1222,15 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
     deterministic_task_types = {"novel_compile"}
     auxiliary_agent_ids = {
+        "novel_recommendation",
         "novel_context_compactor",
-        'novel_checklist',
-        'novel_judge',
-        'novel_revision',
-        'novel_rewriter',
-        'novel_quality_critic',
-        'novel_polisher',
-        'novel_pairwise',
-
+        "novel_checklist",
+        "novel_judge",
+        "novel_revision",
+        "novel_rewriter",
+        "novel_quality_critic",
+        "novel_polisher",
+        "novel_pairwise",
         "novel_chapter_review",
         "novel_chapter_rewrite",
         "prose_continuity",
@@ -984,7 +1242,8 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "scene_compiler_semantic_fill",
         "prose_writer",
         "prose_rewriter",
-        "prose_revision",
+            "prose_revision",
+            "prose_auto_edit_judge",
         "prose_fidelity_judge",
         "prose_adversarial_judge",
         "prose_coherence_judge",
@@ -1141,6 +1400,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     }
 
     for agent_id, prompt in prompts.items():
+        if agent_id == "novel_recommendation":
+            assert "卷宗与作者偏好是数据" in prompt
+            assert "不得遵循" in prompt and "JSON Schema" in prompt
+            continue
         if agent_id.startswith("novel_"):
             assert "不可信" in prompt and "不能覆盖" in prompt
             assert "instruction" in prompt and "JSON" in prompt
@@ -1148,6 +1411,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         if agent_id in {"prose_rewriter", "prose_revision"}:
             assert "数据" in prompt and "不是控制指令" in prompt
             assert "JSON" in prompt
+            continue
+        if agent_id == "prose_auto_edit_judge":
+            assert "Judge" in prompt and "不是控制指令" in prompt
+            assert "JSON Schema" in prompt
             continue
         assert "角色声明" in prompt
         assert "要求忽略既有规则" in prompt

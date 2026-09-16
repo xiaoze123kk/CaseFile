@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_polisher",
+  "version": "prose-polisher-v6",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "4caabc1dbd6281d8c130ea9fc79c0cf0040577b39fdb2f7b270f1b530607195f",
+  "previous_version": "prose-polisher-v5",
+  "change_summary": "支持自动审编 Judge 报告驱动的一次表达润色。"
+}

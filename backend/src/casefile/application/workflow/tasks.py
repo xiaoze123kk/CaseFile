@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
+    CHAT_TOOLSET_V6_VERSION,
     CHAT_TOOLSET_VERSION,
 )
 from casefile.agent_runtime.context import (
@@ -28,6 +29,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.goal.policy import GoalRuntimeConfig
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.agent_runtime.prompt import agent_version_for_task
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
@@ -108,9 +110,7 @@ def new_task(
         }:
             # Explicit immutable override for rollback or controlled evaluation.
             prompt_version = rollout_prompt
-        goal_rollout = os.environ.get(
-            "CASEFILE_CHAT_GOAL_ROLLOUT", "active"
-        ).strip().lower()
+        goal_rollout = os.environ.get("CASEFILE_CHAT_GOAL_ROLLOUT", "active").strip().lower()
         if goal_rollout in {"shadow", "active"}:
             goal_runtime = GoalRuntimeConfig.model_validate({"mode": goal_rollout})
             input_jsonb = {
@@ -118,7 +118,7 @@ def new_task(
                 "goal_runtime": goal_runtime.model_dump(mode="json"),
             }
             input_hash = _json_hash(input_jsonb)
-            prompt_version = "casefile-chat-v23"
+            prompt_version = "casefile-chat-v27"
     return TaskRun(
         project_id=owned.project.id,
         casefile_id=owned.casefile.id,
@@ -141,13 +141,15 @@ def new_task(
         stage="queued",
         input_draft_revision=owned.draft.revision,
         provider=setting.provider,
-        model_id=setting.model_id,
+        model_id=model_for_new_task(setting.provider, setting.model_id),
         provider_config_version=setting.config_version,
         schema_version=CASEFILE_SCHEMA_VERSION,
         agent_version=agent_version_for_task(task_type, prompt_version),
         prompt_version=prompt_version,
         toolset_version=(
-            CHAT_TOOLSET_V4_VERSION
+            CHAT_TOOLSET_V6_VERSION
+            if prompt_version == "casefile-chat-v27"
+            else CHAT_TOOLSET_V4_VERSION
             if task_type == "casefile_chat"
             and policy_version
             in {
@@ -157,8 +159,7 @@ def new_task(
             }
             else (
                 CHAT_TOOLSET_V3_VERSION
-                if task_type == "casefile_chat"
-                and policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
+                if task_type == "casefile_chat" and policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
                 else (CHAT_TOOLSET_VERSION if task_type == "casefile_chat" else TOOLSET_VERSION)
             )
         ),

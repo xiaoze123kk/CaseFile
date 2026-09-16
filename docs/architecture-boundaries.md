@@ -1,5 +1,26 @@
 # 架构边界与模块规则
 
+## 当前 DeepSeek 模型策略
+
+新建 DeepSeek 任务统一通过 `agent_runtime/model_policy.py` 选择 `deepseek-flash`
+（当前 DeepSeek-V4.1-Flash）。该策略覆盖 Brief、Chat、Intake、反向解析、创意、小说
+规划、正文生成与协作；正文 generation/quality 使用同一模型，发布新的 v11 runtime。
+`deepseek_transport.py` 在真实 DeepSeek HTTP 请求前拒绝旧 Pro 或旧 Flash 别名，
+避免历史评测入口绕过当前策略；不把 Pro 请求静默改名后仍以旧模型计分。
+旧 TaskRun、不可变 Prompt 和评测描述符不改写；历史参数仅保留离线读取和 Fake 回放。
+未来若要重新使用旧 Pro 资格包，必须先明确新的模型策略和独立资格条件。
+
+## Chat 与 Novel Compile 的内建 Hook
+
+当前两条执行链允许在已明确的校验边界使用内建 Hook；这是对历史 M3.7
+“Hook 插件不属于该阶段”范围的后续扩展，不引入第三方动态插件。
+共享契约位于 `agent_runtime/runtime_hooks.py`，具体策略分别放在
+`chat_completion_hooks.py` 与 `novel_compile_hooks.py`。同步 Hook 只承接纯校验，
+异步 generation Hook 保留原语义；修复、预算、模型调用与业务状态仍由原编排负责。
+Hook 不写数据库、不调用模型、不修改候选，小说文学意见不成为确定性致命门禁。
+本轮提取保持原检查顺序和错误码；后续语义扩展需要新版本与冻结指纹。
+完整落位、扩展与测试说明见 `backend/src/casefile/agent_runtime/HOOKS.md`。
+
 ## N4.5 Prose Rendering 与 Judge Council 冻结边界
 
 N4.5 在 N4.4 `compiler.scene-plan.v2`、匹配的 `compiler.narrative-ir.v1` 与新增
@@ -101,8 +122,26 @@ Rewrite 或 Writer 的一次生成纠偏必须携带失败候选 hash、禁止�
 
 ## 生产正文 runtime v9：LLM 编辑决策与分离交付
 
+`prose-shadow-runtime-v13` 增加默认 `auto_edit`：Writer 后由单次 Judge 选择保留、
+Rewrite 或 Polisher，修改后只允许一次匿名候选选择。文学判断、修改路径和最终稿选择
+全部属于 LLM；服务端仅验证契约、引用、哈希、调用预算、恢复与产物身份。每场最多一次
+修改，不允许 Rewrite 与 Polisher 串联或继续返工；评审或修改基础设施失败时保留 Writer
+初稿并标记审核未完成，产品链继续。`quick_draft` 与 `full_polish` 的历史行为保持不变。
+
+`prose-shadow-runtime-v14` 修正 Judge 动态 Schema 与服务端校验不一致：阶段、问题数组和
+Checklist 引用在请求中收紧，唯一一次协议修复会收到具体的缺失、重复或非法编号；v13
+仍按原协议恢复，避免改变历史请求身份。
+
 本节替代 v8 的无进展处理及早期全量语义失败关闭在产品模式中的行为。Judge 原始评审保持不可变；编辑 LLM 逐项判断意见成立、文学解释、证据不足或规划冲突，自主选择保留、局部修订、完整重写或停止。uncertain 不再直接等同于必须修改。规划冲突的文学严重程度由 LLM 评估，不由服务端规则断言。
 
 每场最多两轮正文修订、三次编辑决策（包含最终耗尽评估），编辑调用复用 Rewrite 传输端口，使用独立 prose_revision 留痕身份，避免误计为正文修订并计入既有 23 次总预算；不使用或扩容 Fidelity/Continuity 的三次 Judge 预算。编辑协议、check 引用完整性、输入/正文哈希及预算由服务端验证。无进展不再发出同条件生成纠偏，而进入有界终局编辑评估；致命残留为 semantic_rejected，不触发基础设施续跑。真正的传输与协议失败仍按各自状态处理。
 
 生产使用 product 模式；仅 LLM 明确 retain 且无 fatal 项时可接受原候选，selection_reason=llm_nonfatal_retained，并绑定编辑报告哈希。不伪造 Judge pass，不进入要求语义通过的可选润色。SceneManifest 分别记录 product_accepted、strict_semantic_pass 和 revision_report_hashes。组件 benchmark 默认 strict，产品保留不能算严格语义成功。历史运行与 Prompt 不覆盖，新策略需要新冻结运行，不能继续旧 v8。
+
+## Brief-to-Draft v17 Skill 与 Hook
+
+v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generation_hooks 定义事件和作用域分派；generation_hook_policy 冻结绑定；generation_validation_hooks 适配现有纯校验器；generation_skills 根据阶段、输入特征和问题码激活资源。资源存放在受跟踪运行时包，不能依赖 docs。
+
+Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
+
+Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。

@@ -1,0 +1,948 @@
+{
+  "schema_version": 1,
+  "release": "agent-skill-runtime-v1",
+  "assembly_version": "stable-prefix-v1",
+  "agents": {
+    "novel_recommendation": {
+      "prompt_version": "novel-recommendation-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_recommendation/role.md",
+        "sha256": "de25adc6cd0fcaa0aa64be2ede6a17612cc44ea631309f5042aff24ac268690d"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "de25adc6cd0fcaa0aa64be2ede6a17612cc44ea631309f5042aff24ac268690d",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "brief_polish": {
+      "prompt_version": "brief-polish-v3",
+      "strategy": "role_skill",
+      "role": {
+        "file": "brief_polish/role.md",
+        "sha256": "89d85841f927df426546c3466902d968750280ff776ee5b57e417966563bd480"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "brief_polish/SKILL.md",
+          "sha256": "2bdd3422f17cd998ec2ba3122946fdd27f889a0c90d86afc6cdf0df0ebe3034a"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "554f15807e88de2096aca4c6ec06d88fb516a5c285fdd5bde4425fb40712629a",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "brief_anchor_extract": {
+      "prompt_version": "brief-anchor-extract-v3",
+      "strategy": "role_skill",
+      "role": {
+        "file": "brief_anchor_extract/role.md",
+        "sha256": "ad9ee33b58bf89ac06ba44626cfeeb6002eaddf38080beedfdf6e6be2c13a8d6"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "brief_anchor_extract/SKILL.md",
+          "sha256": "b0bccdd3efb6c0e6cd705a5950147d9528d3bfee431db4fe50c08898011948ca"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "cbbd4f6da817be6137ec6ae0a782349fe76ad987bf85e0fbf560311d19a10442",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "brief_intake_questions": {
+      "prompt_version": "brief-intake-questions-v3",
+      "strategy": "role_skill",
+      "role": {
+        "file": "brief_intake_questions/role.md",
+        "sha256": "60314bb42ca5699deff2dccd6328aeb3f1315a5eb223f96035fc7f313a574d4a"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "brief_intake_questions/SKILL.md",
+          "sha256": "3f42bb54cfa7621ce2e1752b70f9c460de5857716e986b7084dd7dd5a11f2bd1"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "357cb699b2258d929be6e152582965985e0d0937317e94255a07d6faa9c8d066",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "brief_intake_synthesize": {
+      "prompt_version": "brief-intake-synthesize-v2",
+      "strategy": "role_skill",
+      "role": {
+        "file": "brief_intake_synthesize/role.md",
+        "sha256": "60314bb42ca5699deff2dccd6328aeb3f1315a5eb223f96035fc7f313a574d4a"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "brief_intake_synthesize/SKILL.md",
+          "sha256": "471f0dd2679219dc11e48beec070961471dacd5b3669dd316bbbc3900c75135b"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "6d3887dde3223f7f53f78053e5ed13a36069c92b9adfa56013970c6d142017a6",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "brief_strategy_options": {
+      "prompt_version": "brief-strategy-options-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "brief_strategy_options/role.md",
+        "sha256": "543f7ab6fae831905ce25438552b4d642138cc4fa696b4573597b82a32f57073"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "brief_strategy_options/SKILL.md",
+          "sha256": "88107671d946fd26d855b79244bd0210909bd8f92175f97c078229e29a83e164"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "31e8fa98b451f63a41dba1c3ecd42a591a0bcc8fb6cd710a898eb74014c58f87",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "brief_to_draft": {
+      "prompt_version": "brief-to-draft-v16",
+      "strategy": "prompt_package",
+      "descriptor": {
+        "file": "brief_to_draft/SKILL.md",
+        "sha256": "4dddf2d4df5f7b1ac2940417e811d2c8fbc8f45e9fa616779da5aa7ac5e8b956"
+      },
+      "resources": [
+        {
+          "name": "common",
+          "sha256": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00"
+        },
+        {
+          "name": "planner",
+          "sha256": "6574d31180a710d9683a26a5d7f25e4cf7cf298daf63f07137a63f7b7fa929ab"
+        },
+        {
+          "name": "temporal",
+          "sha256": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640"
+        },
+        {
+          "name": "domain_common",
+          "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+        },
+        {
+          "name": "story",
+          "sha256": "50fbc92ccff865f3cdea31f23c4c821c20217a722e42cb7920e42e1d0480e913"
+        },
+        {
+          "name": "evidence",
+          "sha256": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4"
+        },
+        {
+          "name": "matrix",
+          "sha256": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80"
+        },
+        {
+          "name": "governance",
+          "sha256": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79"
+        }
+      ],
+      "components": {
+        "planner": [
+          "common",
+          "planner"
+        ],
+        "temporal": [
+          "common",
+          "temporal"
+        ],
+        "story": [
+          "common",
+          "domain_common",
+          "story"
+        ],
+        "evidence": [
+          "common",
+          "domain_common",
+          "evidence"
+        ],
+        "matrix": [
+          "matrix"
+        ],
+        "governance": [
+          "common",
+          "domain_common",
+          "governance"
+        ]
+      },
+      "tool_policy": {
+        "planner": "no-tools-v1",
+        "temporal": "no-tools-v1",
+        "story": "no-tools-v1",
+        "evidence": "no-tools-v1",
+        "matrix": "no-tools-v1",
+        "governance": "no-tools-v1"
+      }
+    },
+    "casefile_chat": {
+      "prompt_version": "casefile-chat-v7",
+      "strategy": "prompt_package",
+      "descriptor": {
+        "file": "casefile_chat/SKILL.md",
+        "sha256": "63f4f462fbf29538181b975fcdd9cb720edf219d2810416b8525d13b2f52e8d7"
+      },
+      "resources": [
+        {
+          "name": "shared",
+          "sha256": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671"
+        },
+        {
+          "name": "router",
+          "sha256": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1"
+        },
+        {
+          "name": "rewrite",
+          "sha256": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201"
+        },
+        {
+          "name": "executor-chat",
+          "sha256": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23"
+        },
+        {
+          "name": "executor-analysis",
+          "sha256": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25"
+        },
+        {
+          "name": "executor-issue",
+          "sha256": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a"
+        },
+        {
+          "name": "executor-edit",
+          "sha256": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040"
+        },
+        {
+          "name": "executor-gate",
+          "sha256": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df"
+        },
+        {
+          "name": "executor-clarify",
+          "sha256": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a"
+        },
+        {
+          "name": "executor-scope",
+          "sha256": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2"
+        }
+      ],
+      "components": {
+        "router": [
+          "router"
+        ],
+        "rewrite": [
+          "rewrite"
+        ],
+        "chat": [
+          "shared",
+          "executor-chat"
+        ],
+        "analysis": [
+          "shared",
+          "executor-analysis"
+        ],
+        "issue": [
+          "shared",
+          "executor-issue"
+        ],
+        "edit": [
+          "shared",
+          "executor-edit"
+        ],
+        "gate": [
+          "shared",
+          "executor-gate"
+        ],
+        "clarify": [
+          "shared",
+          "executor-clarify"
+        ],
+        "scope": [
+          "shared",
+          "executor-scope"
+        ]
+      },
+      "tool_policy": {
+        "router": "no-tools-v1",
+        "rewrite": "no-tools-v1",
+        "chat": "chat-read-v3",
+        "analysis": "chat-read-v3",
+        "issue": "chat-issue-v3",
+        "edit": "chat-edit-v3",
+        "gate": "no-tools-v1",
+        "clarify": "no-tools-v1",
+        "scope": "no-tools-v1"
+      }
+    },
+    "casefile_chat_context_compactor": {
+      "prompt_version": "casefile-chat-context-compactor-v1",
+      "strategy": "prompt_package",
+      "descriptor": {
+        "file": "casefile_chat_context_compactor/SKILL.md",
+        "sha256": "f6137a1c170e5e32b04cf3f6e7804ffeb19a7baab78b0fc1d1d7a7f8ac5ebf0f"
+      },
+      "resources": [
+        {
+          "name": "compact",
+          "sha256": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5"
+        }
+      ],
+      "components": {
+        "compact": [
+          "compact"
+        ]
+      },
+      "tool_policy": {
+        "compact": "no-tools-v1"
+      }
+    },
+    "reverse_parse": {
+      "prompt_version": "reverse-parse-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "reverse_parse/role.md",
+        "sha256": "c560553ec28154d0a6cf1bc51df258cba9f275014ab36d27cc9cb44633f021cf"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "reverse_parse/SKILL.md",
+          "sha256": "f253810090f2a867216228912d29537164625a22caf9d5abb2421d1b01030a81"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "d2eaa75d1f9fabde23a0c48318abcc5542fdff1dd110bd60ffe6363878604299",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "idea_generation": {
+      "prompt_version": "idea-generation-v4",
+      "strategy": "role_skill",
+      "role": {
+        "file": "idea_generation/role.md",
+        "sha256": "4dad2848c70f21ad723edd489f135f95ddc052f11162c35837f56542ef6cf0f8"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "idea_generation/SKILL.md",
+          "sha256": "f9bd66cc63d3405a75a6c24d8b8f29879aab6be49b946fc4639921b0749613b4"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "d0d69a92ad29a1ab6773121cf9b9f7f5ee9a7bc1b6c102d7d6b4835fa348b0b6",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "closure_repair": {
+      "prompt_version": "closure-repair-v3",
+      "strategy": "prompt_package",
+      "descriptor": {
+        "file": "closure_repair/SKILL.md",
+        "sha256": "9e8faa2f4396edf9b7fe71672194d7a057ec88831e5b0be0018a30b86e80aad2"
+      },
+      "resources": [
+        {
+          "name": "repair",
+          "sha256": "dcd08b04e2e5ec68034d7dcfef243dcf38e84a9c66da19ec8dd7f5add66c6b2f"
+        }
+      ],
+      "components": {
+        "repair": [
+          "repair"
+        ]
+      },
+      "tool_policy": {
+        "repair": "closure-repair-no-tools-v1"
+      }
+    },
+    "story_planner": {
+      "prompt_version": "story-planner-v3",
+      "strategy": "role_skill",
+      "role": {
+        "file": "story_planner/role.md",
+        "sha256": "b7cf31c7a832093b16beee673d785b87bae05e33d35112273d1e5d8f48e4cc27"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "story_planner/SKILL.md",
+          "sha256": "1d7603c9f19781550f8cbe427e42ddb9a7d5282b2f1b5fcfaa5b0ba018f6f731"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "e3176a472075dfe06055f5a29dd0941f649ca474639c45c23d9fc4a761a03476",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "story_planner_skeleton": {
+      "prompt_version": "story-planner-skeleton-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "story_planner_skeleton/role.md",
+        "sha256": "100613d0c12a769b98334128fa8ea6dcf930173df9b90acc9f59f505a8b0b8ad"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "story_planner_skeleton/SKILL.md",
+          "sha256": "eb2c661ab392ea5eb3081240529219140958e8d0ef41e0c32f6f4b2240e0ba19"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "story_planner_semantic_fill": {
+      "prompt_version": "story-planner-semantic-fill-v2",
+      "strategy": "role_skill",
+      "role": {
+        "file": "story_planner_semantic_fill/role.md",
+        "sha256": "168b31c32f5d9fbccb3904bc6cb00103402825c6a6870edab0a8f9bb5a2511da"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "story_planner_semantic_fill/SKILL.md",
+          "sha256": "f13e14e829068dd1248e5c495bbb820a8ba0b8dd50f4b9bd0d5b25518fdd09c8"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "77b58adafd386ee63631b4792985fba1f7393bb7a28a92715d9df2dce5523b22",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "scene_compiler_semantic_fill": {
+      "prompt_version": "scene-compiler-semantic-fill-v7",
+      "strategy": "role_skill",
+      "role": {
+        "file": "scene_compiler_semantic_fill/role.md",
+        "sha256": "e2a069d1a23628ca166ff0025a0612c659c42b81b7d65c33d24109eac73ec759"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "scene_compiler_semantic_fill/SKILL.md",
+          "sha256": "daa337ba0313c8ca97ab153160ee6aa838c08d6c1a933543400b52c1bf8046f6"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "ca953a07fa4bf5c15fb5b48717e3a3eb3c0964e717aab44be881460dbdd32662",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_writer": {
+      "prompt_version": "prose-writer-v6",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_writer/role.md",
+        "sha256": "d0db0d561dd5047e5e378f0a98f764096934e826ad54dcbb3772144b781e10e8"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_writer/SKILL.md",
+          "sha256": "8affd8ff755c52c14428137c03be66d3bf6fbcfb39b62378849dca9ec30c628a"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "eb36c9d2c1d9f42eedfa09849053d8a7c9c02e0db6ffefd71a1aa0486566ce79",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_rewriter": {
+      "prompt_version": "prose-rewriter-v9",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_rewriter/role.md",
+        "sha256": "e7320025c9707350d76407b3647a4ce29283e66c0a3ae7b70a5beb809bb68daf"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_rewriter/SKILL.md",
+          "sha256": "8ca1821d9d473ec97fb292714d4ba1f964e4cb843f9c4e59f684c26bfe33363f"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "cd4270a9d236cbf6d0907139cfe483ca783c5032d0b91fda54664fe91ba6e2e2",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_fidelity_judge": {
+      "prompt_version": "prose-fidelity-judge-v8",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_fidelity_judge/role.md",
+        "sha256": "1f90a69d81f6f0f049c1df8842b0ac729fb402f0ee1adef9a96ccbf77522af13"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_fidelity_judge/SKILL.md",
+          "sha256": "421562b08ff56ef8c13b4351f0de5df3641f8af2d500145c9f727bde25d1528e"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "38bb66399fd8116ef793cd23f249fa612d50962e20221fd4af92291a85854df9",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_adversarial_judge": {
+      "prompt_version": "prose-adversarial-judge-v7",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_adversarial_judge/role.md",
+        "sha256": "d71536c17432d2a644d0009d63fbc02d4f5570259cd4c9c2a42780d63f2488fd"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_adversarial_judge/SKILL.md",
+          "sha256": "d54b5ed8ac38acfd53d57acce28c5cff915ce8b02e05a636fe03e3d2bee4056a"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "d72b6beaaf9dd2d3ae43bd8c5bb07cad65410e30faf3b2b9da666cd337435844",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_coherence_judge": {
+      "prompt_version": "prose-coherence-judge-v7",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_coherence_judge/role.md",
+        "sha256": "0eead2998f773fe095c781193845f9ae17390b43b0b404ecc2167baa76897dc2"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_coherence_judge/SKILL.md",
+          "sha256": "915b53741ce8562a5bee80fc870c978d786bf94312b601f006aa9928e8a0ca01"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "6d7a8c0c8dc63fac136d88f62cc0e05934be1cb85fed2d7bc20a010690bb8dd3",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_arbiter": {
+      "prompt_version": "prose-arbiter-v7",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_arbiter/role.md",
+        "sha256": "63ec18d4e0b4a3335ae30de4e18ad062dd1263abcf2a928247d9144da893e869"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_arbiter/SKILL.md",
+          "sha256": "4234e5e4b41984dc1e5e6a87948ae0d90fb6f3a66a6ac3e8ed4cb65f833d108d"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "1dcb59fb476bcb9f4c1d9f5786547964595f6139a72e5b9b3a78ff85f99d5069",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_quality_critic": {
+      "prompt_version": "prose-quality-critic-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_quality_critic/role.md",
+        "sha256": "a77ddf8141cbe07e4ca27a0335cc8f144cd30003b83b11c9e85927264d296225"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_quality_critic/SKILL.md",
+          "sha256": "7a71da3205bdfbbd5d263e44381129ac0adf5fed74e86f01b8f6f033bd3004c0"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "90647d6341174462190709666c2c7d84e19956f3b5d8af1564da0ad9130dfca1",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_quality_pairwise": {
+      "prompt_version": "prose-quality-pairwise-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_quality_pairwise/role.md",
+        "sha256": "8dc912ec89fe3bb7f1b04bd52d96a6243208698f4fa33440f569af508c40c399"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_quality_pairwise/SKILL.md",
+          "sha256": "7c16ce87b32e661576593e62c321b9eb98d0228f9c2c6e71bd66aa82ebcc1175"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "a4c266d3f5ae8001625d734c85e2a200297d7e28013a71d7c9d7b58a8c7719fe",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_polisher": {
+      "prompt_version": "prose-polisher-v5",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_polisher/role.md",
+        "sha256": "c7a42793eb81ae1d610060cefd0c4086ed921e149aa15ef0d1344b6dcd284c02"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_polisher/SKILL.md",
+          "sha256": "b7e0302dcccc2ffee3dbda8ef198ba7c6d1eac7ebc01be1b13901638e16a0a93"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "ab8ccfe11025dec0680f11d165f7f14321009628c54bf1b4d89a5ab61be4342a",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "general_mutation_planner": {
+      "prompt_version": "general-mutation-planner-v8",
+      "strategy": "prompt_package",
+      "descriptor": {
+        "file": "general_mutation_planner/SKILL.md",
+        "sha256": "958e8131cd8257edbf3dbcc6119cff4db52f2608a1e382935b733dad4d418bdd"
+      },
+      "resources": [
+        {
+          "name": "planner",
+          "sha256": "d8d6953413b45381dafe09157f62bfd51795f71697234ee581802e1a059f0330"
+        },
+        {
+          "name": "reasons",
+          "sha256": "503d71b3b759a345fcdf26704870a263565b07a477ed5cdd2b639fd130db44a2"
+        }
+      ],
+      "components": {
+        "general_mutation_planner": [
+          "planner",
+          "reasons"
+        ]
+      },
+      "tool_policy": {
+        "general_mutation_planner": "general-mutation-planner-no-tools-v1"
+      }
+    },
+    "prose_continuity": {
+      "prompt_version": "prose-continuity-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "prose_continuity/role.md",
+        "sha256": "5022e18b7c75f23cfd8db86dbc09185609ad40e801da310fad374f073a78b517"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "5022e18b7c75f23cfd8db86dbc09185609ad40e801da310fad374f073a78b517",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_revision": {
+      "prompt_version": "prose-revision-v3",
+      "strategy": "role_only",
+      "role": {
+        "file": "prose_revision/role.md",
+        "sha256": "3e251cadf112f403f34f37cc26bfecc8256ca712ed9282087fab06cca0b06baf"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "3e251cadf112f403f34f37cc26bfecc8256ca712ed9282087fab06cca0b06baf",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "prose_auto_edit_judge": {
+      "prompt_version": "prose-auto-edit-judge-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_auto_edit_judge/role.md",
+        "sha256": "385acf7b6e2fd6972ed41c833b0aa5dd4199a4aad4e5bf665e1ae796392dea52"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_auto_edit_judge/SKILL.md",
+          "sha256": "9d2bf7a6a7ea8264ee5316f4fc1b3e577e7c207b9bcc5a065dc53ba472938420"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "b46e85de3f235e584f6cd5b0cbcc089dde26933cb1dc4358d771620ce75153ed",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_collaboration": {
+      "prompt_version": "novel-collaboration-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_collaboration/role.md",
+        "sha256": "d4ef482368971a1f94f80680554eadafc720cd293f7e59b43dc2cbb0ad2cd6ca"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "d4ef482368971a1f94f80680554eadafc720cd293f7e59b43dc2cbb0ad2cd6ca",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_chapter_rewrite": {
+      "prompt_version": "novel-chapter-rewrite-v2",
+      "strategy": "role_skill",
+      "role": {
+        "file": "novel_chapter_rewrite/role.md",
+        "sha256": "3e70b45169c9cfb43bc88c5b7cf94d9184c2a2b26ac18c66a7b55ecf8fb979c3"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "novel_chapter_rewrite/SKILL.md",
+          "sha256": "cac8128a161269124e5b05d0d689f4c2949a6c68634835b4cf108deaab7a917b"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "50206733a465acfc7df6653a086bbb1db9302719271740b56c4c53cb26489bfa",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_chapter_review": {
+      "prompt_version": "novel-chapter-review-v2",
+      "strategy": "role_skill",
+      "role": {
+        "file": "novel_chapter_review/role.md",
+        "sha256": "d234dcae5252e2c1b671577909e98b4a98b95ba0dd1c79d3677538f805000007"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "novel_chapter_review/SKILL.md",
+          "sha256": "75a8b12eff25f9e54433ea198ddbb1dbd54f80dc5a8ca4dbfb822b7139326f84"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "7ba3f5ab5c24de94309f64f0f3a6a573daa6549530062e79d4e3dca32b80a72f",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_checklist": {
+      "prompt_version": "novel-checklist-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_checklist/role.md",
+        "sha256": "ebe3951845534043368d482a7ca5eefa1f691d1bae882a9335d83b933dfe8819"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "ebe3951845534043368d482a7ca5eefa1f691d1bae882a9335d83b933dfe8819",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_judge": {
+      "prompt_version": "novel-judge-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_judge/role.md",
+        "sha256": "0460c5f603c39b190f73a98b803aab9245bb5e8f93572cb27a234ad03358015a"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "0460c5f603c39b190f73a98b803aab9245bb5e8f93572cb27a234ad03358015a",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_revision": {
+      "prompt_version": "novel-revision-v2",
+      "strategy": "role_skill",
+      "role": {
+        "file": "novel_revision/role.md",
+        "sha256": "a7e0ddbeca80c3bca7837a00b32c6d2894d5f766820eace12c7817acedfefd49"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "novel_revision/SKILL.md",
+          "sha256": "345b476faa73d69a6513b7e6d03cc206170ab534e459699d0c62a8db98bdf7c7"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "925687b40b09c5163db2d7fcbba51ec1dd9b99f1dc64ae235f89144458ddb982",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_rewriter": {
+      "prompt_version": "novel-rewriter-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_rewriter/role.md",
+        "sha256": "bfdd45752c5d3f2768c1156e2a78a8e6d417bf3417ad043badb88a5054a307c2"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "bfdd45752c5d3f2768c1156e2a78a8e6d417bf3417ad043badb88a5054a307c2",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_quality_critic": {
+      "prompt_version": "novel-quality-critic-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_quality_critic/role.md",
+        "sha256": "1c8f66a9f236f627d65ac9d192570beb655bce1879eb805e042b0ba14a2c8d01"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "1c8f66a9f236f627d65ac9d192570beb655bce1879eb805e042b0ba14a2c8d01",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_polisher": {
+      "prompt_version": "novel-polisher-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_polisher/role.md",
+        "sha256": "03c4ca5e6f5013ad1a249d7a629cfc5ebab874e88684a312ede5c083c47d14f5"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "03c4ca5e6f5013ad1a249d7a629cfc5ebab874e88684a312ede5c083c47d14f5",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_pairwise": {
+      "prompt_version": "novel-pairwise-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_pairwise/role.md",
+        "sha256": "05a70b860b9a4402aac4e92060b28bf973baeb5514f1eafd2e5c3f9cb03f5602"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "05a70b860b9a4402aac4e92060b28bf973baeb5514f1eafd2e5c3f9cb03f5602",
+      "tool_policy": "existing-runtime-policy"
+    },
+    "novel_context_compactor": {
+      "prompt_version": "novel-context-compactor-v1",
+      "strategy": "role_only",
+      "role": {
+        "file": "novel_context_compactor/role.md",
+        "sha256": "1d08292f25f0357c000f54ad19b8bf2b905e2ead2cb04e973d7349c8422789ae"
+      },
+      "resources": [],
+      "selected": [],
+      "reasons": {},
+      "assembled_sha256": "1d08292f25f0357c000f54ad19b8bf2b905e2ead2cb04e973d7349c8422789ae",
+      "tool_policy": "existing-runtime-policy"
+    }
+  }
+}

@@ -23,6 +23,7 @@ from casefile.agent_runtime.prompt_package import (
 PROMPT_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.prompts"
 PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
 SUPPORTED_AGENT_IDS: Final = (
+    "novel_recommendation",
     "novel_context_compactor",
     "novel_checklist",
     "novel_judge",
@@ -31,7 +32,6 @@ SUPPORTED_AGENT_IDS: Final = (
     "novel_quality_critic",
     "novel_polisher",
     "novel_pairwise",
-
     "novel_chapter_rewrite",
     "novel_chapter_review",
     "novel_collaboration",
@@ -54,6 +54,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "prose_writer",
     "prose_rewriter",
     "prose_revision",
+    "prose_auto_edit_judge",
     "prose_fidelity_judge",
     "prose_adversarial_judge",
     "prose_coherence_judge",
@@ -114,6 +115,9 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "brief-to-draft-v15": frozenset(
         {"planner", "temporal", "story", "evidence", "matrix", "governance"}
     ),
+    "brief-to-draft-v17": frozenset(
+        {"planner", "temporal", "story", "evidence", "matrix", "governance"}
+    ),
     "brief-to-draft-v16": frozenset(
         {"planner", "temporal", "story", "evidence", "matrix", "governance"}
     ),
@@ -163,6 +167,7 @@ class PromptDefinition:
     component_prompts: dict[str, str] = field(default_factory=dict)
     component_sha256: dict[str, str] = field(default_factory=dict)
     package: PromptPackage | None = None
+    skill_metadata: dict[str, object] = field(default_factory=dict)
 
 
 class PromptRepository:
@@ -248,7 +253,7 @@ class PromptRepository:
                     version_root.joinpath("manifest.json"),
                     f"Prompt manifest {agent_id}/{version_directory}",
                 )
-                if manifest.get("schema_version") == _PACKAGE_SCHEMA_VERSION:
+                if manifest.get("schema_version") in {_PACKAGE_SCHEMA_VERSION, 3}:
                     fragments = _require_object(
                         manifest.get("fragments"), "Prompt Package fragments"
                     )
@@ -371,7 +376,7 @@ class PromptRepository:
             f"Prompt manifest {agent_id}/{version_directory}",
         )
         manifest_label = f"Prompt manifest {agent_id}/{version_directory}"
-        if manifest.get("schema_version") == _PACKAGE_SCHEMA_VERSION:
+        if manifest.get("schema_version") in {_PACKAGE_SCHEMA_VERSION, 3}:
             return self._load_package_manifest(
                 agent_id,
                 version_directory,
@@ -577,8 +582,11 @@ class PromptRepository:
         *,
         expected_version: str | None,
     ) -> PromptDefinition:
-        _require_exact_keys(manifest, _PACKAGE_MANIFEST_KEYS, manifest_label)
-        if manifest["schema_version"] != _PACKAGE_SCHEMA_VERSION:
+        package_keys = _PACKAGE_MANIFEST_KEYS | (
+            {"deferred_fragments"} if manifest.get("schema_version") == 3 else set()
+        )
+        _require_exact_keys(manifest, package_keys, manifest_label)
+        if manifest["schema_version"] not in {_PACKAGE_SCHEMA_VERSION, 3}:
             raise PromptRepositoryError(f"{manifest_label} has unsupported schema_version")
         manifest_agent_id = _require_non_empty_string(
             manifest["agent_id"], f"{manifest_label} agent_id"
@@ -694,6 +702,13 @@ class PromptRepository:
                     f"{manifest_label} component {component_id} tool_policy_id",
                 ),
             )
+        if manifest["schema_version"] == 3:
+            deferred = _require_string_list(
+                manifest["deferred_fragments"], f"{manifest_label} deferred_fragments"
+            )
+            if set(deferred) - set(fragments) or set(deferred) & referenced_fragments:
+                raise PromptRepositoryError("Deferred fragments must exist and not be eager")
+            referenced_fragments.update(deferred)
         unused_fragments = set(fragments) - referenced_fragments
         if unused_fragments:
             raise PromptRepositoryError(
@@ -906,8 +921,28 @@ def packaged_prompt_repository() -> PromptRepository:
 @cache
 def load_prompt(agent_id: str, version: str | None = None) -> PromptDefinition:
     """Load and cache one packaged System Prompt version."""
+    from casefile.agent_runtime.agent_skill_release import bind_prompt
 
-    return packaged_prompt_repository().load(agent_id, version)
+    definition = packaged_prompt_repository().load(agent_id, version)
+    system_prompt, components, metadata = bind_prompt(
+        definition.agent_id,
+        definition.version,
+        definition.system_prompt,
+        definition.component_prompts,
+        definition.package,
+    )
+    return PromptDefinition(
+        agent_id=definition.agent_id,
+        version=definition.version,
+        system_prompt=system_prompt,
+        system_prompt_sha256=definition.system_prompt_sha256,
+        previous_version=definition.previous_version,
+        change_summary=definition.change_summary,
+        component_prompts=components,
+        component_sha256=definition.component_sha256,
+        package=definition.package,
+        skill_metadata=metadata,
+    )
 
 
 def prompt_version_for_task(task_type: str) -> str:

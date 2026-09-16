@@ -12,7 +12,11 @@ from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
     CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
-from casefile.agent_runtime.prose_runtime import PROSE_RUNTIME_VERSION, prose_runtime_binding
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID, model_for_new_task
+from casefile.agent_runtime.prose_runtime import (
+    matches_prose_runtime,
+    prose_runtime_binding,
+)
 from casefile.agent_runtime.scene_compiler import (
     SCENE_COMPILER_PIPELINE_VERSION,
     SCENE_COMPILER_PROMPT_BUNDLE_VERSION,
@@ -148,8 +152,8 @@ class CompilerService:
                     {},
                 )
                 runtime = frozen.get("prose_runtime", {})
-                if runtime != prose_runtime_binding(
-                    runtime.get("scene_count"), frozen.get("prose_mode", "full_polish")
+                if not matches_prose_runtime(
+                    runtime, runtime.get("scene_count"), frozen.get("prose_mode", "full_polish")
                 ):
                     raise ApplicationError(
                         "compiler_resume_version_changed",
@@ -307,7 +311,7 @@ class CompilerService:
         planner_provider: str | None = None,
         scene_compiler_shadow: bool = False,
         prose_renderer_shadow: bool = False,
-        prose_mode: Literal["quick_draft", "full_polish"] = "full_polish",
+        prose_mode: Literal["quick_draft", "auto_edit", "full_polish"] = "full_polish",
         approved_plan_run_id: int | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
@@ -496,7 +500,7 @@ class CompilerService:
                     approved_plan_run_id,
                     manifest_json,
                 )
-            if prose_mode not in {"quick_draft", "full_polish"}:
+            if prose_mode not in {"quick_draft", "auto_edit", "full_polish"}:
                 raise ApplicationError(
                     "compiler_prose_mode_invalid", "请选择有效的生成方式。", status_code=422
                 )
@@ -530,12 +534,12 @@ class CompilerService:
                 input_draft_revision=owned.draft.revision,
                 provider=None if setting is None else setting.provider,
                 model_id=(
-                    "deepseek-v4-pro"
+                    DEEPSEEK_MODEL_ID
                     if prose_renderer_shadow
                     or (scene_compiler_shadow and planner_provider == "deepseek")
                     else None
                     if setting is None
-                    else setting.model_id
+                    else model_for_new_task(setting.provider, setting.model_id)
                 ),
                 provider_config_version=None if setting is None else setting.config_version,
                 schema_version=INPUT_MANIFEST_SCHEMA_ID,
@@ -833,6 +837,40 @@ class CompilerService:
             if main_ready
             else "pending"
         )
+        auto_edit_reports = [
+            artifact.content_jsonb
+            for artifact in artifacts
+            if artifact.schema_id == "compiler.prose-revision-decision.v1"
+            and artifact.content_jsonb.get("decision_stage") in {"review", "selection"}
+        ]
+        latest_auto_edit: dict[str, dict[str, Any]] = {}
+        for report in auto_edit_reports:
+            scene_id = report.get("scene_id")
+            if isinstance(scene_id, str):
+                current = latest_auto_edit.get(scene_id)
+                if current is None or report.get("decision_stage") == "selection":
+                    latest_auto_edit[scene_id] = report
+        auto_edit_incomplete = bool(
+            manifest
+            and any(
+                scene.get("auto_edit_review") == "incomplete"
+                for scene in manifest.content_jsonb.get("scenes", [])
+            )
+        )
+        unresolved_count = sum(
+            len(report.get("unresolved_issues") or []) for report in latest_auto_edit.values()
+        )
+        scene_usage = manifest.content_jsonb.get("scenes", []) if manifest else []
+        usage_summary = {
+            key: sum(int(scene.get("usage", {}).get(key, 0)) for scene in scene_usage)
+            for key in ("input_tokens", "output_tokens", "total_tokens")
+        }
+        usage_summary.update(
+            {
+                key: sum(int(scene.get(key, 0)) for scene in scene_usage)
+                for key in ("physical_request_count", "unknown_usage_count", "latency_ms")
+            }
+        )
         return {
             "compilation": {"status": "succeeded" if main_ready else task.status},
             "prose_shadow": {
@@ -850,13 +888,36 @@ class CompilerService:
                     and task.attempt_count < 2
                     and manifest is not None
                     and manifest.content_jsonb["shadow_status"] == "inconclusive_infrastructure"
-                    and manifest.content_jsonb.get("runtime", {}).get("version")
-                    == PROSE_RUNTIME_VERSION
+                    and matches_prose_runtime(
+                        manifest.content_jsonb.get("runtime", {}),
+                        manifest.content_jsonb.get("runtime", {}).get("scene_count"),
+                        task.input_jsonb.get("prose_mode", "full_polish"),
+                    )
                 ),
                 "completed_scene_count": sum(
                     a.artifact_key.endswith(".accepted") and a.artifact_kind == "scene_render"
                     for a in artifacts
                 ),
+                "review_status": (
+                    "incomplete"
+                    if auto_edit_incomplete
+                    else "completed_with_issues"
+                    if unresolved_count
+                    else "completed"
+                    if auto_edit_reports
+                    else "not_run"
+                ),
+                "unresolved_issue_count": unresolved_count,
+                "prose_usage": usage_summary,
+                "auto_edit_notes": [
+                    {
+                        "scene_id": scene_id,
+                        "decision": report["action"],
+                        "rationale": report["rationale"],
+                        "unresolved_issues": report.get("unresolved_issues") or [],
+                    }
+                    for scene_id, report in latest_auto_edit.items()
+                ],
                 "is_adopted": False,
             },
         }

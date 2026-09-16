@@ -349,11 +349,19 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
         assert empty_draft["content"] is None
         setting = workflow.save_provider_setting(
             actor_id,
+            provider="deepseek",
             api_key="sk-test-workflow-secret",
             model_id="gpt-5.6-sol",
             model_is_custom=False,
         )
         assert setting["masked_api_key"].endswith("cret")
+        workflow.save_provider_setting(
+            actor_id,
+            provider="openai",
+            api_key="sk-test-workflow-secret",
+            model_id="gpt-5.6-sol",
+            model_is_custom=False,
+        )
         source = workflow.create_source(
             actor_id,
             project_id,

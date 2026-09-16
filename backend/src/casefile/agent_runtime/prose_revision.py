@@ -30,11 +30,15 @@ def validate_revision_decision(
     candidate: Any, check_ids: list[str], *, exhausted: bool
 ) -> dict[str, Any]:
     """Shared editorial coverage, fatal-retention and revision-budget validation."""
-    decision = RevisionDecision.model_validate(candidate).model_dump(mode="json")
+    decision = RevisionDecision.model_validate(candidate).model_dump(
+        mode="json", exclude_unset=True
+    )
     expected = set(check_ids)
     actual = [item["check_id"] for item in decision["findings"]]
     if set(actual) != expected or len(actual) != len(expected):
         raise ValueError("finding_binding")
+    if decision["action"] not in {"retain", "local_revision", "full_rewrite", "stop"}:
+        raise ValueError("action")
     if exhausted and decision["action"] not in {"retain", "stop"}:
         raise ValueError("budget")
     if decision["action"] == "retain" and any(

@@ -24,7 +24,13 @@ from casefile.api.app import create_app
 from casefile.application.compiler import CompilerService
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
-from casefile.data_postgres.models import AgentModelCall, CompileArtifact, TaskRun, User
+from casefile.data_postgres.models import (
+    AgentModelCall,
+    AgentStepRun,
+    CompileArtifact,
+    TaskRun,
+    User,
+)
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS, canonical_json_sha256
 from casefile.worker.executors.prose_providers import ProseProviders
 from casefile.worker.executors.prose_store import ProseStore
@@ -70,6 +76,18 @@ def test_quick_draft_skips_reviews_and_is_not_strict_pass(workflow_database):
     prose_calls = [c for c in calls if c.prompt_component_id.startswith("prose_")]
     assert len(prose_calls) == 2
     assert {c.prompt_component_id for c in prose_calls} == {"prose_writer"}
+    manifest_artifact = next(a for a in artifacts if a.artifact_kind == "compile_manifest")
+    with factory() as session:
+        step = session.get(AgentStepRun, manifest_artifact.agent_step_run_id)
+        hook_records = step.diagnostic_jsonb["hooks"]
+    assert {record["handler_id"] for record in hook_records} == {
+        "novel_runtime_binding",
+        "novel_upstream_hashes",
+        "novel_scene_schema",
+        "novel_candidate",
+    }
+    assert all(record["status"] == "succeeded" for record in hook_records)
+    assert "hooks" not in manifest
 
 
 def test_quick_draft_stops_after_two_invalid_generations(workflow_database):
@@ -407,7 +425,7 @@ def _prepare(
             actor,
             provider="deepseek",
             api_key="sk-fake-prose-secret",
-            model_id="deepseek-v4-pro",
+            model_id="deepseek-flash",
             model_is_custom=False,
         )
         saved = CompilerService(session).create_profile(
@@ -555,7 +573,7 @@ def test_serial_shadow_and_exact_rollback(
         and c.target_schema_id == c.response_jsonb["request_payload"]["output_schema_id"]
         for c in calls
     )
-    assert {c.model_id for c in calls} <= {"deepseek-v4-pro", "deepseek-v4-flash"}
+    assert {c.model_id for c in calls} == {"deepseek-flash"}
 
 
 def test_protocol_failure_does_not_fail_main_compile(
@@ -757,7 +775,12 @@ def test_successful_responses_without_usage_remain_unknown(
         result = method(request)
         return SimpleNamespace(
             usage=None,
-            choices=[SimpleNamespace(message=SimpleNamespace(content=result.raw_response))],
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content=result.raw_response),
+                    finish_reason="stop",
+                )
+            ],
         )
 
     with ExitStack() as stack:
@@ -896,9 +919,7 @@ def test_runtime_drift_blocks_before_prose_calls(
     providers = _providers()
     changed = prose_runtime_binding(2)
     changed[drift] = "different-runtime" if drift == "version" else "quick_draft"
-    with patch(
-        "casefile.worker.executors.prose_shadow.prose_runtime_binding", return_value=changed
-    ):
+    with patch("casefile.agent_runtime.prose_runtime.prose_runtime_binding", return_value=changed):
         _run(factory, run, providers, workflow_database[2])
     task, manifest, _ = _result(factory, run)
     assert task.status == "succeeded"

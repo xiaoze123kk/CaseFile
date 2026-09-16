@@ -15,6 +15,7 @@ from casefile.agent_runtime.general_mutation import (
 )
 from casefile.agent_runtime.goal.contracts import GoalDecisionOutput, GoalUnderstandingOutput
 from casefile.agent_runtime.goal.provider import ChatEvidenceCollection
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import (
     CaseFileChatAuditFindingCandidate,
     CaseFileChatCandidateV2,
@@ -32,13 +33,13 @@ from casefile.benchmark.chat_public_language_executor import (
     _EphemeralCredentialProvider,
 )
 from casefile.benchmark.chat_public_language_qualification import (
-    MODEL_ID,
     PROMPT_VERSION,
     load_public_language_suite,
 )
 from casefile.data_postgres.models import AgentModelCall, AgentStepRun, TaskEvent, TaskRun
 
 ROOT = Path(__file__).resolve().parents[3]
+CURRENT_MODEL_ID = DEEPSEEK_MODEL_ID
 
 
 class _RecordingGoalProvider(FakeProvider):
@@ -255,6 +256,7 @@ def test_executor_reaches_public_contract_through_real_http_worker_and_postgres(
         repo_root=ROOT,
         database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
         api_key="ephemeral-test-secret",
+        expected_model_id=CURRENT_MODEL_ID,
         provider_factory=lambda document, secret: _EphemeralCredentialProvider(
             document,
             secret,
@@ -265,7 +267,7 @@ def test_executor_reaches_public_contract_through_real_http_worker_and_postgres(
         row = executor.execute_trial(
             replace(task, expected_body_any=()),
             trial_no=1,
-            model_id=MODEL_ID,
+            model_id=CURRENT_MODEL_ID,
             prompt_version=PROMPT_VERSION,
         )
     finally:
@@ -287,15 +289,11 @@ def test_executor_reaches_public_contract_through_real_http_worker_and_postgres(
 
     with executor.session_factory() as session:
         task_run = session.scalar(
-            select(TaskRun)
-            .where(TaskRun.task_type == "casefile_chat")
-            .order_by(TaskRun.id.desc())
+            select(TaskRun).where(TaskRun.task_type == "casefile_chat").order_by(TaskRun.id.desc())
         )
         assert task_run is not None
         calls = list(
-            session.scalars(
-                select(AgentModelCall).where(AgentModelCall.task_run_id == task_run.id)
-            )
+            session.scalars(select(AgentModelCall).where(AgentModelCall.task_run_id == task_run.id))
         )
         finalizer_call = next(
             call for call in calls if call.prompt_component_id.endswith("_finalizer")
@@ -306,7 +304,7 @@ def test_executor_reaches_public_contract_through_real_http_worker_and_postgres(
         assert finalizer_call.task_attempt_id == finalizer_step.task_attempt_id
         assert finalizer_call.status == "succeeded"
         assert finalizer_call.provider == "deepseek"
-        assert finalizer_call.model_id == MODEL_ID
+        assert finalizer_call.model_id == CURRENT_MODEL_ID
         assert finalizer_call.prompt_version == PROMPT_VERSION
         assert finalizer_call.target_schema_id == "casefile-chat-output-v1"
         assert finalizer_step.status == "succeeded"
@@ -343,6 +341,7 @@ def test_create_event_reaches_public_patch_with_exact_time_and_no_auto_apply(
         repo_root=ROOT,
         database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
         api_key="ephemeral-test-secret",
+        expected_model_id=CURRENT_MODEL_ID,
         provider_factory=lambda document, secret: _EphemeralCredentialProvider(
             document,
             secret,
@@ -353,7 +352,7 @@ def test_create_event_reaches_public_patch_with_exact_time_and_no_auto_apply(
         row = executor.execute_trial(
             task,
             trial_no=1,
-            model_id=MODEL_ID,
+            model_id=CURRENT_MODEL_ID,
             prompt_version=PROMPT_VERSION,
         )
     finally:
@@ -376,9 +375,7 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
 ) -> None:
     del workflow_database
     task = next(
-        item
-        for item in load_chat_goal_suite().tasks
-        if item.task_id == "goal_read_timeline_audit"
+        item for item in load_chat_goal_suite().tasks if item.task_id == "goal_read_timeline_audit"
     )
     provider = _RecordingGoalProvider(
         goal_understanding=GoalUnderstandingOutput.model_validate(
@@ -444,21 +441,21 @@ def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
         repo_root=ROOT,
         database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
         api_key="ephemeral-test-secret",
+        expected_model_id=CURRENT_MODEL_ID,
         provider_factory=lambda document, secret: _EphemeralCredentialProvider(
             document,
             secret,
             provider,
         ),
-        expected_model_id="deepseek-v4-pro",
-        expected_prompt_version="casefile-chat-v23",
+        expected_prompt_version="casefile-chat-v27",
         goal_rollout="active",
     )
     try:
         row = executor.execute_trial(
             _public_task(task),
             trial_no=1,
-            model_id="deepseek-v4-pro",
-            prompt_version="casefile-chat-v23",
+            model_id=CURRENT_MODEL_ID,
+            prompt_version="casefile-chat-v27",
         )
         diagnostic = executor.diagnostic_snapshot()
     finally:
@@ -566,21 +563,21 @@ def test_goal_mutation_proof_survives_untrusted_finalizer_structure(
         repo_root=ROOT,
         database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
         api_key="ephemeral-test-secret",
+        expected_model_id=CURRENT_MODEL_ID,
         provider_factory=lambda document, secret: _EphemeralCredentialProvider(
             document,
             secret,
             provider,
         ),
-        expected_model_id="deepseek-v4-pro",
-        expected_prompt_version="casefile-chat-v23",
+        expected_prompt_version="casefile-chat-v27",
         goal_rollout="active",
     )
     try:
         row = executor.execute_trial(
             _public_task(task),
             trial_no=1,
-            model_id="deepseek-v4-pro",
-            prompt_version="casefile-chat-v23",
+            model_id=CURRENT_MODEL_ID,
+            prompt_version="casefile-chat-v27",
         )
     finally:
         executor.close()
@@ -607,21 +604,21 @@ def test_goal_safety_stop_never_materializes_patch(
         repo_root=ROOT,
         database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
         api_key="ephemeral-test-secret",
+        expected_model_id=CURRENT_MODEL_ID,
         provider_factory=lambda document, secret: _EphemeralCredentialProvider(
             document,
             secret,
             FakeProvider(),
         ),
-        expected_model_id="deepseek-v4-pro",
-        expected_prompt_version="casefile-chat-v23",
+        expected_prompt_version="casefile-chat-v27",
         goal_rollout="active",
     )
     try:
         row = executor.execute_trial(
             _public_task(task),
             trial_no=1,
-            model_id="deepseek-v4-pro",
-            prompt_version="casefile-chat-v23",
+            model_id=CURRENT_MODEL_ID,
+            prompt_version="casefile-chat-v27",
         )
     finally:
         executor.close()
@@ -651,12 +648,13 @@ def test_create_entity_ignores_legacy_finalizer_suggestions_and_uses_planner_pat
             secret,
             _LegacySuggestionCreateEntityProvider(),
         ),
+        expected_model_id=CURRENT_MODEL_ID,
     )
     try:
         row = executor.execute_trial(
             task,
             trial_no=1,
-            model_id=MODEL_ID,
+            model_id=CURRENT_MODEL_ID,
             prompt_version=PROMPT_VERSION,
         )
     finally:
@@ -688,12 +686,13 @@ def test_internal_disclosure_leak_is_projected_to_safe_refusal_without_patch(
             secret,
             _LeakingInternalDisclosureProvider(),
         ),
+        expected_model_id=CURRENT_MODEL_ID,
     )
     try:
         row = executor.execute_trial(
             task,
             trial_no=1,
-            model_id=MODEL_ID,
+            model_id=CURRENT_MODEL_ID,
             prompt_version=PROMPT_VERSION,
         )
     finally:
@@ -728,12 +727,13 @@ def test_raw_json_disclosure_is_blocked_before_router_and_mutation_planner(
             secret,
             provider,
         ),
+        expected_model_id=CURRENT_MODEL_ID,
     )
     try:
         row = executor.execute_trial(
             task,
             trial_no=1,
-            model_id=MODEL_ID,
+            model_id=CURRENT_MODEL_ID,
             prompt_version=PROMPT_VERSION,
         )
     finally:

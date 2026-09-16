@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from casefile.agent_runtime.model_policy import model_for_new_task
 from casefile.agent_runtime.novel_chapter_review import chapter_review_prompt
 from casefile.agent_runtime.novel_collaboration import (
     collaboration_prompt,
@@ -180,7 +181,7 @@ class NovelCollaborationService(NovelEditorService):
                 input_draft_revision=owned.draft.revision,
                 provider_setting_id=setting.id,
                 provider="deepseek",
-                model_id=setting.model_id,
+                model_id=model_for_new_task(setting.provider, setting.model_id),
                 provider_config_version=setting.config_version,
                 schema_version="novel-editor-v1",
                 agent_version=prompt.version,

@@ -4659,7 +4659,7 @@
                 "deepseek"
               ],
               "type": "string",
-              "default": "openai",
+              "default": "deepseek",
               "title": "Provider"
             }
           },
@@ -4788,7 +4788,7 @@
                 "deepseek"
               ],
               "type": "string",
-              "default": "openai",
+              "default": "deepseek",
               "title": "Provider"
             }
           },
@@ -8293,7 +8293,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "focus": {
             "anyOf": [
@@ -8761,7 +8761,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "mode": {
             "type": "string",
@@ -8945,7 +8945,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           }
         },
         "additionalProperties": false,
@@ -9003,7 +9003,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "base_candidate_id": {
             "anyOf": [
@@ -9052,7 +9052,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "polish_mode": {
             "type": "string",
@@ -9086,7 +9086,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "refresh": {
             "type": "boolean",
@@ -9326,6 +9326,7 @@
             "type": "string",
             "enum": [
               "quick_draft",
+              "auto_edit",
               "full_polish"
             ],
             "title": "Prose Mode",
@@ -9799,7 +9800,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "candidate_strategy": {
             "type": "string",
@@ -11500,7 +11501,7 @@
               "deepseek"
             ],
             "title": "Provider",
-            "default": "openai"
+            "default": "deepseek"
           },
           "api_key": {
             "type": "string",
@@ -11513,7 +11514,7 @@
             "maxLength": 160,
             "minLength": 1,
             "title": "Model Id",
-            "default": "gpt-5.6-sol"
+            "default": "deepseek-flash"
           },
           "model_is_custom": {
             "type": "boolean",

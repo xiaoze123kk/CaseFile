@@ -10,8 +10,9 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Final, Literal, Protocol
 
-from openai import OpenAI
-
+from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
+from casefile.agent_runtime.model_call_audit import audited_call
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
     generation_focus,
@@ -21,6 +22,7 @@ from casefile.agent_runtime.prose_generation import (
     validate_generation_result,
 )
 from casefile.agent_runtime.prose_judge import FULL_COUNCIL_POLICY
+from casefile.agent_runtime.prose_schema_identity import LEGACY_RENDER_SCHEMA_HASH
 from casefile.agent_runtime.usage import fake_prose_usage, prose_response_usage
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
@@ -31,9 +33,9 @@ from casefile.domain.narrative_compiler import (
     validate_scene_render,
     validate_semantic_acceptance,
 )
-from casefile_contracts import SceneRender, SceneRenderCandidate
+from casefile_contracts import SceneRenderCandidate
 
-PROSE_POLISHER_MODEL_ID: Final = "deepseek-v4-pro"
+PROSE_POLISHER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_POLISHER_PROMPT_VERSION: Final = "prose-polisher-v5"
 PROSE_POLISHER_REQUEST_PROTOCOL: Final = "prose-polisher-json-object-v5"
 PROSE_POLISHER_COMPONENT_VERSION: Final = "prose-polisher-runtime-v5"
@@ -44,7 +46,7 @@ PROSE_POLISHER_MAX_OUTPUT_TOKENS: Final = 16_384
 PROSE_POLISHER_THINKING_ENABLED: Final = False
 PROSE_POLISHER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
 PROSE_POLISHER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_POLISHER_CANDIDATE_SCHEMA)
-PROSE_POLISHER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
+PROSE_POLISHER_RENDER_SCHEMA_HASH: Final = LEGACY_RENDER_SCHEMA_HASH
 PROSE_POLISHER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
         "component_version": PROSE_POLISHER_COMPONENT_VERSION,
@@ -212,6 +214,7 @@ class DeepSeekProsePolisherProvider:
             else None,
         )
 
+    @audited_call
     def _create_completion(self, request: ProsePolisherRequest) -> Any:
         client = OpenAI(api_key=request.api_key, base_url=self.base_url, max_retries=0)
         try:
@@ -300,6 +303,9 @@ def execute_prose_polisher(
     model_id: str,
     api_key: str,
     recover_call: Callable[[str], ProsePolisherProviderResult | None] | None = None,
+    auto_edit_review: dict[str, Any] | None = None,
+    prompt_version: str = PROSE_POLISHER_PROMPT_VERSION,
+    soft_target_length: bool = False,
 ) -> ProsePolisherExecution:
     """Produce one complete polished Scene after exact semantic/findings validation."""
 
@@ -313,6 +319,9 @@ def execute_prose_polisher(
             quality_findings=quality_findings,
             model_id=model_id,
             api_key=api_key,
+            auto_edit_review=auto_edit_review,
+            prompt_version=prompt_version,
+            soft_target_length=soft_target_length,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -349,6 +358,7 @@ def execute_prose_polisher(
             profile=profile,
             current_render=current_render,
             component_input_hash=request.component_input_hash,
+            enforce_target_length=not soft_target_length,
         ).model_dump(mode="json")
     except (CompilerContractError, ProsePolisherProtocolError) as error:
         return ProsePolisherExecution("protocol_failed", None, call, error_code=str(error))
@@ -364,38 +374,59 @@ def build_prose_polisher_request(
     quality_findings: dict[str, Any],
     model_id: str,
     api_key: str,
+    auto_edit_review: dict[str, Any] | None = None,
+    prompt_version: str = PROSE_POLISHER_PROMPT_VERSION,
+    soft_target_length: bool = False,
 ) -> ProsePolisherRequest:
     """Build the minimal immutable Polisher view from accepted upstream facts."""
 
-    if model_id != PROSE_POLISHER_MODEL_ID:
+    if model_id not in (PROSE_POLISHER_MODEL_ID, "deepseek-v4-pro"):
         raise ProsePolisherProtocolError("prose_polisher_model_id_not_frozen")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
     render = validate_scene_render(
-        current_render, checklist=checklist, profile=profile_json
+        current_render,
+        checklist=checklist,
+        profile=profile_json,
+        enforce_target_length=not soft_target_length,
     ).model_dump(mode="json")
     if render["stage"] not in {"writer", "rewrite_1", "rewrite_2"}:
         raise ProsePolisherProtocolError("prose_polisher_source_stage_invalid")
-    consensus = validate_semantic_acceptance(
-        semantic_consensus,
-        checklist=checklist,
-        render=render,
-        profile=profile_json,
-    ).model_dump(mode="json")
-    findings = validate_quality_findings_report(
-        quality_findings,
-        checklist=checklist,
-        render=render,
-        profile=profile_json,
-        semantic_consensus=consensus,
-    ).model_dump(mode="json")
-    prompt = load_prompt("prose_polisher", PROSE_POLISHER_PROMPT_VERSION)
+    if auto_edit_review is None:
+        consensus = validate_semantic_acceptance(
+            semantic_consensus,
+            checklist=checklist,
+            render=render,
+            profile=profile_json,
+        ).model_dump(mode="json")
+        findings = validate_quality_findings_report(
+            quality_findings,
+            checklist=checklist,
+            render=render,
+            profile=profile_json,
+            semantic_consensus=consensus,
+        ).model_dump(mode="json")
+        review_hashes = {
+            "semantic_consensus_hash": canonical_json_sha256(consensus),
+            "quality_findings_hash": canonical_json_sha256(findings),
+        }
+    else:
+        if (
+            auto_edit_review.get("schema_id") != "compiler.prose-revision-decision.v1"
+            or auto_edit_review.get("decision_stage") != "review"
+            or auto_edit_review.get("action") != "polish"
+            or auto_edit_review.get("scene_id") != render["scene_id"]
+            or auto_edit_review.get("render_hash") != canonical_json_sha256(render)
+        ):
+            raise ProsePolisherProtocolError("prose_polisher_auto_edit_review_invalid")
+        consensus, findings = {}, {}
+        review_hashes = {"auto_edit_review_hash": canonical_json_sha256(auto_edit_review)}
+    prompt = load_prompt("prose_polisher", prompt_version)
     binding = {
         "component_id": "prose_polisher",
         "component_hash": PROSE_POLISHER_COMPONENT_HASH,
         "scene_id": render["scene_id"],
         "source_render_hash": canonical_json_sha256(render),
-        "semantic_consensus_hash": canonical_json_sha256(consensus),
-        "quality_findings_hash": canonical_json_sha256(findings),
+        **review_hashes,
         "checklist_hash": canonical_json_sha256(checklist),
         "profile_hash": canonical_json_sha256(profile_json),
         "prompt_hash": prompt.system_prompt_sha256,
@@ -409,13 +440,18 @@ def build_prose_polisher_request(
             **binding,
             "component_input_hash": component_input_hash,
             "candidate_schema_id": "compiler.scene-render-candidate.v1",
-            "length_contract": generation_length_contract(profile_json),
+            "length_contract": {
+                **generation_length_contract(profile_json),
+                "hard_gate": not soft_target_length,
+                **({"enforcement": "model_guidance"} if soft_target_length else {}),
+            },
         },
         "untrusted_data": {
             "profile": profile_json,
             **generation_view(checklist),
             "current_render": render,
             "quality_findings": findings,
+            **({"auto_edit_review": auto_edit_review} if auto_edit_review else {}),
         },
         "output_schema_id": "compiler.scene-render-candidate.v1",
     }

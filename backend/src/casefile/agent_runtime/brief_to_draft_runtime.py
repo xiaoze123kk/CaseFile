@@ -22,7 +22,7 @@ frozen versions keep resolving to their original spec and behavior.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from pydantic import BaseModel
@@ -53,6 +53,9 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     ResolutionGovernanceIRV2,
 )
 from casefile.agent_runtime.brief_to_draft_v16.contracts import DraftContextPackV6
+from casefile.agent_runtime.brief_to_draft_v17.contracts import DraftContextPackV7
+from casefile.agent_runtime.generation_hook_policy import V17_HOOKS
+from casefile.agent_runtime.generation_hooks import HookBinding
 from casefile.agent_runtime.prompt import (
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
@@ -135,6 +138,8 @@ class BriefToDraftSpec:
     evidence_repair_input_contract_id: str | None = None
     story_feature: StoryFeature | None = None
     compiler_plugins: tuple[CompilerFeature, ...] = ()
+    skill_release: str | None = None
+    hook_bindings: tuple[HookBinding, ...] = ()
 
 
 _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
@@ -318,6 +323,17 @@ _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
         evidence_repair_input_contract_id="brief-to-draft-evidence-repair-input-v2",
     ),
 }
+
+_PIPELINE_SPECS["brief-to-draft-v17"] = replace(
+    _PIPELINE_SPECS["brief-to-draft-v16"],
+    prompt_version="brief-to-draft-v17",
+    agent_version="brief-to-draft-pipeline-v17",
+    context_pack_type=DraftContextPackV7,
+    context_schema_id="draft-context-pack-v7",
+    evidence_repair_input_contract_id="brief-to-draft-evidence-repair-input-v3",
+    skill_release="v17",
+    hook_bindings=V17_HOOKS,
+)
 
 _SPECS = MappingProxyType(_PIPELINE_SPECS)
 

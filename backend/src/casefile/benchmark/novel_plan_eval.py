@@ -1412,8 +1412,8 @@ def main() -> None:
         default="regression",
     )
     parser.add_argument("--mode", choices=("fake", "live"), default="fake")
-    parser.add_argument("--provider", choices=("openai", "deepseek"), default="openai")
-    parser.add_argument("--model", default="fake-story-planner")
+    parser.add_argument("--provider", choices=("openai", "deepseek"), default="deepseek")
+    parser.add_argument("--model", default="deepseek-flash")
     parser.add_argument("--quality-grader-model")
     parser.add_argument(
         "--planner-input-version",

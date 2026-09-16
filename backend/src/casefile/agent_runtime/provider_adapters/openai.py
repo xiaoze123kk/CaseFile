@@ -7,7 +7,6 @@ from typing import Any, cast
 
 from agents import ModelSettings, Tool
 from agents.models.openai_responses import OpenAIResponsesModel
-from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
@@ -41,6 +40,7 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.deepseek_transport import model_checked_async_client as AsyncOpenAI
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
     GeneralMutationPlannerRequest,
@@ -196,9 +196,7 @@ class OpenAIAgentsProvider:
         )
         return SceneFillBatchResult(proposal=proposal, usage=usage)
 
-    def propose_skeleton(
-        self, request: SkeletonProposalRequest
-    ) -> SkeletonProposalResult:
+    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)
@@ -506,6 +504,10 @@ class OpenAIAgentsProvider:
             "casefile-chat-v21",
             "casefile-chat-v22",
             "casefile-chat-v23",
+            "casefile-chat-v24",
+            "casefile-chat-v25",
+            "casefile-chat-v26",
+            "casefile-chat-v27",
         }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
@@ -624,6 +626,10 @@ class OpenAIAgentsProvider:
                     "casefile-chat-v21",
                     "casefile-chat-v22",
                     "casefile-chat-v23",
+                    "casefile-chat-v24",
+                    "casefile-chat-v25",
+                    "casefile-chat-v26",
+                    "casefile-chat-v27",
                 }:
                     raise
                 request.emit(

@@ -1,6 +1,9 @@
 {
   "schema_version": 1,
   "agents": {
+    "novel_recommendation": {
+      "current_version": "novel-recommendation-v1"
+    },
     "brief_polish": {
       "current_version": "brief-polish-v3"
     },
@@ -47,10 +50,10 @@
       "current_version": "scene-compiler-semantic-fill-v7"
     },
     "prose_writer": {
-      "current_version": "prose-writer-v4"
+      "current_version": "prose-writer-v6"
     },
     "prose_rewriter": {
-      "current_version": "prose-rewriter-v7"
+      "current_version": "prose-rewriter-v9"
     },
     "prose_fidelity_judge": {
       "current_version": "prose-fidelity-judge-v8"
@@ -81,6 +84,9 @@
     },
     "prose_revision": {
       "current_version": "prose-revision-v3"
+    },
+    "prose_auto_edit_judge": {
+      "current_version": "prose-auto-edit-judge-v1"
     },
     "novel_collaboration": {
       "current_version": "novel-collaboration-v1"

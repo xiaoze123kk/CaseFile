@@ -14,8 +14,9 @@ v12-v14 默认执行 30 次并轮换五类时间、空间与竞争矩阵场景�
 param(
     [ValidateRange(1, 100)][int]$Repeats = 30,
     [ValidateSet("deepseek", "openai")][string]$Provider = "deepseek",
-    [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15")][string]$PromptVersion = "brief-to-draft-v15",
+    [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15", "brief-to-draft-v16", "brief-to-draft-v17")][string]$PromptVersion = "brief-to-draft-v15",
     [string]$ReportPath = "",
+    [string]$ModelId = "",
     [string]$Scenarios = "",
     [ValidateRange(0, 10)][int]$RepairAttempts = 5
 )
@@ -72,6 +73,7 @@ $reportFile = if ([System.IO.Path]::IsPathRooted($resolvedReportPath)) {
 $env:CASEFILE_RUN_LIVE_ACCEPTANCE = "1"
 $env:CASEFILE_LIVE_ACCEPTANCE_REPEATS = "$Repeats"
 $env:CASEFILE_LIVE_ACCEPTANCE_PROVIDER = $Provider
+$env:CASEFILE_LIVE_ACCEPTANCE_MODEL_ID = $ModelId
 $env:CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION = $PromptVersion
 $env:CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH = $reportFile
 $env:CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS = "$RepairAttempts"

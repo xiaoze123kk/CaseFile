@@ -411,7 +411,7 @@ def test_quality_gate_failure_closes_its_started_step() -> None:
     )
 
     with pytest.raises(ContractValidationError):
-        _quality_gate(request, candidate, recoverable=False)
+        asyncio.run(_quality_gate(request, candidate, recoverable=False))
 
     assert [event_type for event_type, _stage, _payload in events] == [
         "agent.step.started",

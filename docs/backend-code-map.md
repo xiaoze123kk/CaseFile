@@ -1,5 +1,31 @@
 # 后端代码职责地图
 
+## Agent Skill 发布与物理调用审计
+
+`agent_runtime/agent_skill_release.py` 将当前 Prompt 版本绑定到默认
+`agent-skill-runtime-v1`，验证角色、Skill、Prompt Package 组件和工具策略资源；组装后模型
+指令必须与迁移前逐字节一致。历史 Prompt 版本不自动绑定。`skill_assembly.py` 只负责确定性
+资源选择、顺序去重和稳定前缀，不修改消息历史。
+
+`model_call_audit.py` 位于 SDK 的物理 HTTP 发送与响应流边界，记录每次重试的模型、请求指纹、
+前缀/工具/契约哈希、延迟和原始 usage，不记录凭证或模型输入。受控真实冒烟入口为
+`scripts/agent-skill-cost-smoke.ps1`；默认离线，live 模式继承原 20 元预算账本并串行预留。
+
+`agent_runtime/model_policy.py` 是新 DeepSeek 任务模型选择的唯一源头；
+`deepseek_transport.py` 负责 HTTP 发送前的 Flash 检查。公开设置默认 DeepSeek Flash，
+API Schema/OpenAPI、前端设置和普通 benchmark 默认值同步。历史评测模块保留自身
+冻结模型名称，不能把新 Flash 结果冒充旧 Pro 资格。
+
+## Agent Hook 边界
+
+`agent_runtime/runtime_hooks.py` 统一异步与同步 Hook 的契约与分派，
+`generation_hooks.py` 保留旧导出。`chat_completion_hooks.py` 为普通 Chat 与 Goal
+提供有序完成校验；`chat_postprocessing.py` 提取安全补丁物化与原业务事件。
+`novel_compile_hooks.py` 承接小说 runtime 绑定、上游哈希、连续性协议、整本候选与
+场景局部修复保护检查。Loop 不注册 handler，也不承载新增规则。
+ProseStore 在既有产物事务中记录内部 Hook 元数据。详见
+`backend/src/casefile/agent_runtime/HOOKS.md`。
+
 ## 全仓技术债清理
 
 - `application/provider_policy.py` 统一 Provider 白名单与名称归一化，Brief Intake 与 Workflow Agent/Content 直接调用；`workflow_common`、`workflow_service` 既有白名单导出保持兼容，公开错误码、状态码和详情不变。
@@ -19,6 +45,13 @@
 - `benchmark/scene_plan_eval.py` 删除无入口的旧套件执行函数及其私有 trial 包装；现行 `run_suite`、历史输入校验与冻结 Fixture 不变。`benchmark/general_mutation_backend_executor.py` 删除无调用方的旧重复 Apply 探针，现有故障矩阵入口保留。
 
 ## 正文一致性与定向生成修复（runtime v8）
+
+`agent_runtime/prose_auto_edit.py` 实现 runtime v13/v14 的四角色有界编排：首次 Judge 路由到
+retain/rewrite/polish，修改后按冻结种子匿名排列两份候选并由最终 Judge 选稿。Worker
+复用原调用日志、场景 Checkpoint 和不可变修订报告；未解决问题作为编辑建议传给下一场
+Writer，不成为新的故事事实。Provider 层同时限制每场逻辑调用与最多八次实际请求。
+v14 将动态响应 Schema 收紧到当前阶段与 Checklist，并把具体协议错误传入唯一一次修复；
+v13 请求构造继续用于历史任务恢复。
 
 - `backend/src/casefile/agent_runtime/prose_continuity.py`：跨场景审核协议、请求绑定与 Provider 适配，不持有数据库，不改写规划。
 - `backend/src/casefile/agent_runtime/prose_context.py`：生成专用状态投影、去重和变化项，保留完整对象原文，原清单不变。
@@ -510,3 +543,53 @@ Writer、Rewrite、Polisher 在生产生成出口统一执行目标字符范围�
 - `worker/handlers/novel_collaboration.py`：压缩使用既有 `NovelModelJournal`，计入冻结预算和实际用量；校验来源、输出预算及 Prompt hash。只有成功任务发布记忆检查点，失败不前移；新上下文策略不补写历史任务。
 - `prompts/novel_context_compactor/v1`：小说专用记忆协议，仅保留作者偏好、讨论与未解决问题。复用主工作台的治理原则和估算器，不复用其卷宗事实/Patch 专用状态。
 - `tests/unit/test_novel_context.py`、`tests/integration/test_novel_context_runtime.py`：近期完整性、预算、来源、正文保真、真实 PostgreSQL 检查点复用与失败不前移；模型均为 Fake，无真实 Provider 资格结论。
+
+## 聊天工具分类
+
+agent_runtime/chat_tools.py 在统一注册表中以 ChatToolDefinition 绑定工具、副作用类型（read_only / simulation / state_request / write）和业务分类（retrieval / validation / patch_preview / context_management）。chat_tool_catalog 支持组合查询；chat_tool_manifest 仍按冻结路由与工具集版本返回原工具对象。分类不授予权限，不代表并发或重试安全；当前无直接业务写入工具，压缩仅为状态变更请求。
+
+## 聊天业务查询工具 v5
+
+- agent_runtime/chat_queries.py：冻结文档的依赖影响与显式角色认知查询，复用 logical_mutation 图和 v2 传播策略；不预测补丁结果，不补全角色认知。
+- chat_tools.py：三项只读工具与分页、预算、结果账本；casefile-chat-tools-v5 按已有对象读取路由开放，v1-v4 工具范围保持不变。
+- worker/revision_history.py：按任务所有者、Project、CaseFile、Draft 与冻结修订上限查询不可变 DraftOperation；比较结果是操作记录而非净差异。
+- casefile-chat-v24：继承 v23 并新增工具策略与证据说明，默认 Goal 新任务绑定 v24/v5；历史包不变。
+
+## 聊天查询修正 v6
+
+- 默认 Goal 新任务绑定 casefile-chat-v27 / casefile-chat-tools-v6；v24/v5 包与工具参数保留，用于历史回放。
+- Worker 从 TaskRun 绑定 draft_id 与 input_draft_revision；渲染时将可信身份注入 focus.draft_revision_context，覆盖同名非权威输入，Executor、Chat Finalizer 和 Goal Finalizer 共用。
+- v6 的 compare_draft_revisions 不接受模型提供 limit，服务端每页最多 10 条，并按结果字符预算缩小页面；模型仅跟随 next_offset。
+- 三项业务只读查询在同一 ChatToolContext 内按工具名和参数复用成功的有界结果，锁保护重复并发读取；缓存命中保留账本与事件并统计 query_cache_hits，不重新查询或消耗执行预算。失败不缓存、不跨请求复用。其他工具保持原执行方式。
+- v25 Evidence/Finalizer/Goal Finalizer 明确依赖影响不是具体补丁失败证明、卷宗版本号不是稿件修订号，以及认知快照不证明获取过程。
+
+- v26 继承 v25 查询边界，Chat/Goal Finalizer 对逐条历史请求使用修订、路径、前后值表格；工具返回值即为存储证据，不以看似占位为由省略记录。v25 保留首轮真实复测身份。
+
+- v27 消除历史逐条输出与默认300字/禁止表格样式的冲突，最终采用不省略条目的编号列表；冻结修订上限不代表外部不存在更晚版本。
+
+## Brief-to-Draft v17 Skill 与 Hook
+
+v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generation_hooks 定义事件和作用域分派；generation_hook_policy 冻结绑定；generation_validation_hooks 适配现有纯校验器；generation_skills 根据阶段、输入特征和问题码激活资源。资源存放在受跟踪运行时包，不能依赖 docs。
+
+Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
+
+Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。
+
+
+## 小说 Skill 候选与成本冒烟
+
+- `backend/src/casefile/agent_runtime/skill_resources.py`：包内 Skill 描述、资源路径与哈希读取；`generation_skills.py` 复用读取逻辑，v17 阶段策略不变。
+- `backend/src/casefile/agent_runtime/prose_skills.py`：Writer/Rewriter 候选的角色、Schema、Skill 与动态输入组装，版本指纹和资源追踪；`skill_releases/` 保存独立资源发布。旧发布与默认 Registry 不变。
+- `backend/src/casefile/agent_runtime/usage.py`：兼容旧计数并提供原始用量、缺失字段和缓存一致性观测。Writer/Rewriter 结果携带元数据，既有 asdict 产物持久化兼容。
+- `backend/src/casefile/benchmark/prose_cost_budget.py`：人民币预算预留、用量估价与加权缓存统计；`prose_cost_fixtures.py`：冻结公开小样本；`prose_cost_smoke.py`：零网络默认、显式 live、逐尝试落盘和停止，不提供自动续跑或正式资格结论。
+- `backend/tests/unit/test_prose_skills.py`、`test_prose_cost_budget.py` 与 `backend/tests/integration/test_prose_cost_smoke.py` 验证版本隔离、稳定前缀、预算和完整离线调用链；`scripts/prose-cost-smoke.ps1` 为独立入口。
+
+`backend/src/casefile/agent_runtime/prose_model_view.py` 仅在 Writer v6/Rewriter v9 的模型视图中移除已知编译器结构中的纯追踪哈希，不递归裁剪用户对象；完整绑定、原文和业务校验仍使用原始请求。成本报告没有固定缓存命中率门槛。
+
+
+## 小说 Skill 默认发布与质量验收
+
+Writer v6 / Rewriter v9 为新运行默认；`prose_runtime.py` 的 runtime v12 冻结完整 Skill 元数据。
+`matches_prose_runtime` 保留 v11 绑定检查，`prose_shadow.py` 与 `prose_rewrite_supervisor.py` 显式传递冻结的提示词版本，旧任务不跟随当前默认值。
+`backend/src/casefile/benchmark/prose_skill_acceptance.py` 使用 `fixtures/prose_skill_acceptance/v1/` 的干净公开重启案例进行 Writer/Rewriter 对照、真实 Fidelity Judge 和质量问题检查；记录逐物理调用预算，不属于私有正式资格评测。该新样本由可读公开 CaseFile 和既有结构骨架生成，新增线索文案在生成器中显式声明。
+`backend/tests/unit/test_prose_skill_activation.py`、`test_prose_skill_acceptance.py` 与 `backend/tests/integration/test_prose_skill_rollout_runtime.py` 覆盖默认切换、旧运行隔离与干净输入验证。

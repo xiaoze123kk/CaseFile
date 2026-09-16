@@ -237,7 +237,8 @@
             {
               "enum": [
                 "semantic_accepted", "polished_accepted", "polish_semantic_rollback", "judge_budget_preserve_accepted_original",
-                "quality_rollback", "quality_unstable", "llm_nonfatal_retained", "quick_draft_unreviewed"
+                "quality_rollback", "quality_unstable", "llm_nonfatal_retained", "quick_draft_unreviewed",
+                "auto_edit_original", "auto_edit_modified", "auto_edit_unreviewed"
               ]
             },
             {"type": "null"}
@@ -507,6 +508,9 @@
             "retain",
             "local_revision",
             "full_rewrite",
+            "polish",
+            "select_candidate_a",
+            "select_candidate_b",
             "stop"
           ]
         },
@@ -526,6 +530,14 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 3000
+        },
+        "decision_stage": {
+          "enum": ["review", "selection"]
+        },
+        "unresolved_issues": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "maxItems": 40
         }
       }
     },
@@ -564,6 +576,9 @@
             "retain",
             "local_revision",
             "full_rewrite",
+            "polish",
+            "select_candidate_a",
+            "select_candidate_b",
             "stop"
           ]
         },
@@ -583,6 +598,23 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 3000
+        },
+        "decision_stage": {
+          "enum": ["review", "selection"]
+        },
+        "unresolved_issues": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "maxItems": 40
+        },
+        "candidate_mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["candidate_a", "candidate_b"],
+          "properties": {
+            "candidate_a": {"enum": ["original", "modified"]},
+            "candidate_b": {"enum": ["original", "modified"]}
+          }
         }
       }
     },
@@ -619,6 +651,8 @@
         "strict_semantic_pass": {"type": "boolean"},
         "product_accepted": {"type": "boolean"},
         "revision_report_hashes": {"type": "array", "items": {"$ref": "#/$defs/Sha256Hex"}, "uniqueItems": true},
+        "auto_edit_review": {"enum": ["not_run", "completed", "incomplete"]},
+        "unresolved_issue_count": {"type": "integer", "minimum": 0, "maximum": 40},
         "rewrite_count": {"type": "integer", "minimum": 0, "maximum": 2},
         "call_count": {"type": "integer", "minimum": 0, "maximum": 23},
         "physical_request_count": {"type": "integer", "minimum": 0},

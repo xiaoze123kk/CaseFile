@@ -142,6 +142,7 @@ from casefile.worker.input_contracts import (
     required_string as _required_string,
 )
 from casefile.worker.provider_resolution import required_provider_binding
+from casefile.worker.revision_history import read_revision_history
 
 DEFAULT_CONTEXT_HARD_INPUT_TOKENS = 128_000
 
@@ -598,6 +599,20 @@ class ChatRequestRuntime(_ChatComponent):
             toolset_version=task.toolset_version,
             context_policy_version=context_policy_version,
             thread_id=task.agent_thread_id,
+            draft_id=task.draft_id,
+            frozen_draft_revision=task.input_draft_revision,
+            revision_history_resolver=lambda start, end, offset, limit: read_revision_history(
+                self.session_factory,
+                actor_id=task.actor_user_id,
+                project_id=task.project_id,
+                casefile_id=task.casefile_id,
+                draft_id=task.draft_id,
+                frozen_revision=task.input_draft_revision,
+                from_revision=start,
+                to_revision=end,
+                offset=offset,
+                limit=limit,
+            ),
             thread_evidence_resolver=lambda evidence_id: (
                 self._context_runtime._resolve_thread_evidence(
                     task.agent_thread_id,
@@ -1398,6 +1413,10 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v21",
             "casefile-chat-v22",
             "casefile-chat-v23",
+            "casefile-chat-v24",
+            "casefile-chat-v25",
+            "casefile-chat-v26",
+            "casefile-chat-v27",
         }:
             raise RuntimeError(
                 "Context policy "

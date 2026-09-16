@@ -1,0 +1,10 @@
+{
+  "model_id": "deepseek-flash",
+  "verified_at": "2026-09-16T02:30:56.8539540Z",
+  "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+  "cached_per_million": "0.04",
+  "uncached_per_million": "2",
+  "output_per_million": "8",
+  "currency": "CNY",
+  "conversion_basis": "Official CNY peak rates; off-peak estimates use half rates; no FX conversion"
+}

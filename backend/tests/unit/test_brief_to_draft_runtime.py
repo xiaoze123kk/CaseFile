@@ -38,7 +38,7 @@ from casefile.agent_runtime.prompt import V12_GENERATION_AGENT_VERSION
 from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
-VERSIONS = {f"brief-to-draft-v{version}" for version in range(8, 17)}
+VERSIONS = {f"brief-to-draft-v{version}" for version in range(8, 18)}
 
 
 def test_all_component_versions_have_a_frozen_spec() -> None:
@@ -190,7 +190,8 @@ def test_context_pack_builder_uses_spec_context_types() -> None:
 
 def test_repair_input_contract_preserved_for_matrix_versions() -> None:
     for version in sorted(
-        VERSIONS - {"brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v16"}
+        VERSIONS
+        - {"brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v16", "brief-to-draft-v17"}
     ):
         spec: BriefToDraftSpec = resolve_pipeline_spec(version)
         assert spec.evidence_repair_input_contract_id == ("brief-to-draft-evidence-repair-input-v1")

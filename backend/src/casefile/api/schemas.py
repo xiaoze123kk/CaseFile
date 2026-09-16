@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.application.commands import ProjectCreate
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
 from casefile_contracts import PublicRoutingInterpretation
@@ -31,19 +32,18 @@ class ProjectUpdateRequest(StrictRequest):
 
 
 class ProviderSettingRequest(StrictRequest):
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     api_key: str = Field(min_length=8, max_length=512)
-    model_id: str = Field(default="gpt-5.6-sol", min_length=1, max_length=160)
+    model_id: str = Field(default=DEEPSEEK_MODEL_ID, min_length=1, max_length=160)
     model_is_custom: bool = False
 
     @model_validator(mode="after")
     def provider_default_model(self) -> Self:
-        if (
-            self.provider == "deepseek"
-            and self.model_id == "gpt-5.6-sol"
-            and not self.model_is_custom
-        ):
-            self.model_id = "deepseek-v4-flash"
+        if self.provider == "deepseek":
+            self.model_id = DEEPSEEK_MODEL_ID
+            self.model_is_custom = False
+        elif "model_id" not in self.model_fields_set:
+            self.model_id = "gpt-5.6-sol"
         return self
 
 
@@ -109,12 +109,12 @@ class BriefIntakeCandidateAdoptRequest(StrictRequest):
 
 class BriefIntakeQuestionsTaskRequest(StrictRequest):
     expected_intake_revision: int = Field(ge=1)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
 
 
 class BriefIntakeSynthesizeTaskRequest(StrictRequest):
     expected_intake_revision: int = Field(ge=1)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     base_candidate_id: int | None = Field(default=None, ge=1)
     instruction: str | None = Field(default=None, min_length=1, max_length=20_000)
 
@@ -127,20 +127,20 @@ class BriefIntakeSynthesizeTaskRequest(StrictRequest):
 
 class BriefPolishTaskRequest(StrictRequest):
     source_record_id: int = Field(ge=1)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     polish_mode: Literal["proofread", "rewrite", "narrative_enhance"] = "rewrite"
 
 
 class BriefAnchorExtractTaskRequest(StrictRequest):
     expected_brief_revision: int = Field(ge=1)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     mode: Literal["extract", "suggest_author_answer"] = "extract"
     content: dict[str, Any] | None = None
 
 
 class BriefStrategyOptionsTaskRequest(StrictRequest):
     brief_version_id: int = Field(ge=1)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     refresh: bool = False
 
 
@@ -148,7 +148,7 @@ class GenerateTaskRequest(StrictRequest):
     brief_version_id: int = Field(ge=1)
     expected_draft_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     candidate_strategy: Literal[
         "balanced",
         "structure_first",
@@ -218,7 +218,7 @@ class AgentMessageCreateRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
     content: str = Field(min_length=1, max_length=100_000)
-    provider: Literal["openai", "deepseek"] = "openai"
+    provider: Literal["openai", "deepseek"] = "deepseek"
     focus: AgentChatFocus | None = None
     routing_hint: AgentChatRoutingHint | None = None
     delivery_mode: Literal["new_goal", "steer", "follow_up", "replace"] | None = None
@@ -515,7 +515,7 @@ class CompilerProfileVersionCreateRequest(StrictRequest):
 
 
 class CompileRunCreateRequest(StrictRequest):
-    prose_mode: Literal["quick_draft", "full_polish"] = "full_polish"
+    prose_mode: Literal["quick_draft", "auto_edit", "full_polish"] = "full_polish"
     scene_compiler_shadow: bool = False
     approved_plan_run_id: int | None = Field(default=None, ge=1)
     prose_renderer_shadow: bool = False

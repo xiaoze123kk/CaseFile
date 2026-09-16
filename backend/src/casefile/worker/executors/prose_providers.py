@@ -116,6 +116,7 @@ class DurableProseProvider:
         physical_hooks = (
             judge
             and component != "prose_continuity"
+            and not component.startswith("prose_auto_edit_")
             and isinstance(self.sources.judge, DeepSeekProseJudgeProvider)
         )
         if physical_hooks and isinstance(self.sources.judge, DeepSeekProseJudgeProvider):
@@ -176,6 +177,16 @@ class DurableProseProvider:
             request,
             ProseRewriterProviderResult,
             ProseRewriterTransportAttempt,
+        )
+
+    def auto_edit_decide(self, request: Any) -> ProseRewriterProviderResult:
+        return self._invoke(
+            f"prose_auto_edit_{request.input_payload['auto_edit_stage']}",
+            self.sources.rewriter.rewrite_scene,
+            request,
+            ProseRewriterProviderResult,
+            ProseRewriterTransportAttempt,
+            judge=False,
         )
 
     def judge_scene(self, request: Any) -> ProseJudgeProviderResult:
