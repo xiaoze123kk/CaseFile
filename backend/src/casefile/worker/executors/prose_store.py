@@ -14,7 +14,6 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from casefile.agent_runtime.prose_runtime import PROSE_RUNTIME_VERSION
 from casefile.application.task_lease import is_current_task_attempt
 from casefile.data_postgres.models import (
     AgentModelCall,
@@ -117,6 +116,10 @@ class ProseStore:
         with self.factory() as session:
             return sum(self._is_judge(c.prompt_component_id) for c in self._scene_calls(session))
 
+    def physical_request_count(self) -> int:
+        with self.factory() as session:
+            return len(self._scene_calls(session))
+
     def _scene_calls(self, session: Session) -> list[AgentModelCall]:
         return list(
             session.scalars(
@@ -132,7 +135,10 @@ class ProseStore:
     @staticmethod
     def _is_judge(component: str) -> bool:
         return (
-            component == "prose_continuity" or "judge" in component or component == "prose_arbiter"
+            component == "prose_continuity"
+            or "judge" in component
+            or component == "prose_arbiter"
+            or component.startswith("prose_auto_edit_")
         )
 
     @contextmanager
@@ -214,7 +220,7 @@ class ProseStore:
                 if component == "prose_quality_critic"
                 else "compiler.prose-judge-report.v1"
             ),
-            component_version=PROSE_RUNTIME_VERSION,
+            component_version=self.runtime["version"],
             diagnostic_jsonb={"scene_id": self.scene_id, "phase": self.phase},
             usage_jsonb={},
             resumed_from_step_run_id=source,
@@ -292,6 +298,8 @@ class ProseStore:
         self, component: str, request: Any, result_type: Any, transport_type: Any
     ) -> Any:
         prompt_id = "prose_rewriter" if component == "prose_rewrite" else component
+        if component in {"prose_auto_edit_review", "prose_auto_edit_selection"}:
+            prompt_id = "prose_auto_edit_judge"
         if component == "prose_quality_critic" and request.request_kind == "pairwise":
             prompt_id = "prose_quality_pairwise"
         prompt = self.runtime["prompts"][prompt_id]
@@ -331,7 +339,11 @@ class ProseStore:
                     c
                     for c in reversed(prior)
                     if c.response_jsonb is not None
-                    and (c.status != "failed" or c.task_attempt_id == self.attempt_id)
+                    and (
+                        c.status != "failed"
+                        or c.task_attempt_id == self.attempt_id
+                        or self.runtime.get("prose_mode") == "auto_edit"
+                    )
                 ),
                 None,
             )
@@ -367,6 +379,12 @@ class ProseStore:
                 return result_type(**data)
             if any(c.status != "failed" for c in prior):
                 raise ProseResultUnknown("compiler_prose_external_result_unknown")
+            if self.runtime.get("prose_mode") == "auto_edit" and any(
+                c.response_jsonb is None
+                and any("Timeout" in str(issue.get("code", "")) for issue in c.issues_jsonb)
+                for c in prior
+            ):
+                raise ProseResultUnknown("compiler_prose_external_result_unknown")
             step = self._step(session, component, fingerprint, request=request)
             self.current_step_id = step.id
         return None
@@ -378,10 +396,18 @@ class ProseStore:
             if step is None or step.status != "running":
                 raise ProseLeaseLost("compiler_prose_step_not_running")
             calls = self._scene_calls(session)
+            if self.runtime.get("prose_mode") == "auto_edit":
+                stage_calls = [c for c in calls if c.prompt_component_id == step.component_id]
+                if len(calls) >= 8 or len(stage_calls) >= 2:
+                    raise ProseResultUnknown("prose_scene_persisted_budget_exhausted")
             if len(calls) >= self.runtime["limits"]["logical_calls_per_scene"] or (
                 self._is_judge(step.component_id)
                 and sum(self._is_judge(c.prompt_component_id) for c in calls)
-                >= self.runtime["limits"]["judge_calls_per_scene"]
+                >= (
+                    4
+                    if self.runtime.get("prose_mode") == "auto_edit"
+                    else self.runtime["limits"]["judge_calls_per_scene"]
+                )
             ):
                 raise ProseResultUnknown("prose_scene_persisted_budget_exhausted")
             session.add(

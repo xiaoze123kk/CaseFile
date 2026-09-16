@@ -9326,6 +9326,7 @@
             "type": "string",
             "enum": [
               "quick_draft",
+              "auto_edit",
               "full_polish"
             ],
             "title": "Prose Mode",

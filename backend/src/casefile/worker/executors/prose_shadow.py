@@ -11,6 +11,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.novel_compile_hooks import check_novel_boundary
+from casefile.agent_runtime.prose_auto_edit import (
+    auto_edit_protocol_for_runtime,
+    execute_auto_edit,
+)
 from casefile.agent_runtime.prose_context import scene_generation_context
 from casefile.agent_runtime.prose_continuity import ContinuityReview, continuity_request
 from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
@@ -35,6 +39,7 @@ class ProseShadowExecutor:
         self.store = store
         self.provider = DurableProseProvider(providers, store)
         self.hook_records: list[dict[str, Any]] = []
+        self.previous_auto_edit_issues: list[str] = []
         self.scenes: list[dict[str, Any]] = []
         self.ordered: list[dict[str, Any]] = []
         self.source: dict[str, Any] = {
@@ -217,10 +222,37 @@ class ProseShadowExecutor:
                     or render["stage"] != "accepted"
                 ):
                     raise ProseResultUnknown("compiler_prose_checkpoint_binding_mismatch")
+                latest_review = session.scalar(
+                    select(CompileArtifact)
+                    .where(
+                        CompileArtifact.compile_run_id == store.run.id,
+                        CompileArtifact.schema_id == "compiler.prose-revision-decision.v1",
+                        CompileArtifact.content_jsonb["scene_id"].astext == store.scene_id,
+                    )
+                    .order_by(CompileArtifact.id.desc())
+                )
+                self.previous_auto_edit_issues = (
+                    list(latest_review.content_jsonb.get("unresolved_issues") or [])
+                    if latest_review is not None
+                    else []
+                )
+                selected_source = session.scalar(
+                    select(CompileArtifact)
+                    .where(
+                        CompileArtifact.compile_run_id == store.run.id,
+                        CompileArtifact.content_hash == render["previous_render_hash"],
+                        CompileArtifact.artifact_kind == "scene_render",
+                    )
+                    .limit(1)
+                )
                 return (
                     (
                         "finalized_polished"
                         if render["selection_reason"] == "polished_accepted"
+                        or (
+                            selected_source is not None
+                            and selected_source.content_jsonb["stage"] == "polished"
+                        )
                         else "finalized_original"
                     ),
                     render,
@@ -234,7 +266,8 @@ class ProseShadowExecutor:
         )
         continuity_advisories: list[dict[str, Any]] = []
         quick = store.runtime.get("prose_mode") == "quick_draft"
-        if not quick and self.provider.sources.continuity is not None:
+        auto = store.runtime.get("prose_mode") == "auto_edit"
+        if not quick and not auto and self.provider.sources.continuity is not None:
             contexts = []
             ordinal = next(i for i, s in enumerate(self.ordered) if s["scene_id"] == store.scene_id)
             for item in self.ordered[ordinal : ordinal + 2]:
@@ -303,6 +336,8 @@ class ProseShadowExecutor:
             api_key=api_key,
             remaining_scene_call_budget=store.runtime["limits"]["logical_calls_per_scene"],
             continuity_advisories=continuity_advisories,
+            previous_edit_issues=self.previous_auto_edit_issues if auto else None,
+            soft_target_length=auto,
         )
         self.observe("writer", writer)
         if writer.status != "completed" or writer.render is None:
@@ -329,6 +364,40 @@ class ProseShadowExecutor:
                 "prose_manifest",
             )
             return "finalized_original", accepted, None
+        if auto:
+            edited = execute_auto_edit(
+                self.provider,
+                self.provider,
+                self.provider,
+                scene_plan=plan,
+                narrative_ir=narrative,
+                profile=profile,
+                checklist=checklist,
+                previous_scene_render=previous,
+                writer_render=writer.render,
+                model_id=DEEPSEEK_MODEL_ID,
+                api_key=api_key,
+                observe=self.observe,
+                previous_edit_issues=self.previous_auto_edit_issues,
+                protocol_version=auto_edit_protocol_for_runtime(store.runtime.get("version", "")),
+            )
+            if edited.accepted_render is None:
+                return "inconclusive_infrastructure", None, edited.error_code
+            self.previous_auto_edit_issues = list(edited.unresolved_issues)
+            store.artifact(
+                "scene_render",
+                f"compiler.scene_render.{store.scene_id}.accepted",
+                edited.accepted_render,
+                "prose_manifest",
+            )
+            polished_selected = (
+                edited.accepted_render["selection_reason"] == "auto_edit_modified"
+                and edited.modification is not None
+                and edited.modification.render is not None
+                and edited.modification.render["stage"] == "polished"
+            )
+            state = "finalized_polished" if polished_selected else "finalized_original"
+            return state, edited.accepted_render, edited.error_code
         rewrite = execute_bounded_prose_rewrite(
             self.provider,
             self.provider,
@@ -443,6 +512,16 @@ class ProseShadowExecutor:
                 "prose_revision",
                 source_step=self.provider.steps.get(call.request_fingerprint),
             )
+        if name in {"auto_edit_review", "auto_edit_selection"} and execution.report is not None:
+            call = execution.call
+            store.artifact(
+                "validation_report",
+                f"compiler.validation_report.{store.scene_id}.revision.{execution.report['input_hash']}",
+                execution.report,
+                "prose_revision",
+                source_step=self.provider.steps.get(call.request_fingerprint) if call else None,
+            )
+            store.phase = "auto_edit_modify" if name == "auto_edit_review" else "auto_edit_selected"
         render = getattr(execution, "render", None)
         if render is not None:
             call = execution.call

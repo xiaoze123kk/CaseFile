@@ -4,7 +4,7 @@ import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 import type { NovelManuscript } from "./novel-document";
 
 export interface NovelCompileScope { projectId: number; draftId: number; revision: number }
-export type ProseMode = "quick_draft" | "full_polish";
+export type ProseMode = "quick_draft" | "auto_edit" | "full_polish";
 export interface NovelCompileRun {
   prose_mode?: ProseMode;
   compile_run_id: number;
@@ -13,7 +13,14 @@ export interface NovelCompileRun {
   compiler_profile_version_id: number;
   created_at: string;
   execution: TaskView;
-  prose_shadow: { status: string; completed_scene_count?: number; resume_available?: boolean; plan_issues?: string[] };
+  prose_shadow: {
+    status: string; completed_scene_count?: number; resume_available?: boolean; plan_issues?: string[];
+    review_status?: "not_run" | "completed" | "completed_with_issues" | "incomplete";
+    unresolved_issue_count?: number;
+    prose_usage?: { input_tokens: number; output_tokens: number; total_tokens: number;
+      physical_request_count: number; unknown_usage_count: number; latency_ms: number };
+    auto_edit_notes?: { scene_id: string; decision: string; rationale: string; unresolved_issues: string[] }[];
+  };
   stability?: {
     novel_ready: boolean; outcome: string; first_pass_success: boolean;
     repair_attempts: number; repair_successes: number; model_calls: number;
@@ -59,7 +66,7 @@ export async function startNovelCompile(scope: NovelCompileScope, settings: Nove
     actorId: LOCAL_ACTOR_ID, method: "POST",
     body: { mode: "preview", expected_draft_id: scope.draftId, expected_draft_revision: scope.revision,
       compiler_profile_version_id: profile.current_version_id, planner_provider: "deepseek", prose_renderer_shadow: !planningOnly,
-      prose_mode: settings.proseMode ?? "quick_draft",
+      prose_mode: settings.proseMode ?? "auto_edit",
       ...(planningOnly ? { scene_compiler_shadow: true } : {}) },
   });
 }
@@ -77,7 +84,7 @@ export function requestNovelRecommendation(scope: NovelCompileScope, preferences
   });
 }
 
-export function confirmNovelPlan(scope: NovelCompileScope, run: NovelCompileRun, proseMode: ProseMode = "quick_draft") {
+export function confirmNovelPlan(scope: NovelCompileScope, run: NovelCompileRun, proseMode: ProseMode = "auto_edit") {
   return apiRequest<NovelCompileRun>(`/projects/${scope.projectId}/compile-runs`, {
     actorId: LOCAL_ACTOR_ID, method: "POST", body: { mode: "preview", expected_draft_id: scope.draftId,
       expected_draft_revision: scope.revision, compiler_profile_version_id: run.compiler_profile_version_id,
@@ -140,7 +147,7 @@ export async function loadCompiledNovel(projectId: number, run: NovelCompileRun,
   }
   const chapters = compiledChapters(candidate, plan, renders);
   return { title, chapters,
-    id: `compile-${run.compile_run_id}-${artifact.artifact_id}`, sourceLabel: run.prose_mode === "quick_draft" ? "快速初稿 · 未做文学审核" : "小说编译初稿" };
+    id: `compile-${run.compile_run_id}-${artifact.artifact_id}`, sourceLabel: run.prose_mode === "quick_draft" ? "快速初稿 · 未做文学审核" : run.prose_mode === "auto_edit" ? "自动审编稿" : "小说编译初稿" };
 }
 
 export function compiledChapters(candidate: NovelCandidate, plan: NovelPlanIR, renders: SceneRender[]) {

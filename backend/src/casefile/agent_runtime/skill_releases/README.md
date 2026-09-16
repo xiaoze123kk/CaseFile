@@ -1,6 +1,8 @@
 # 小说 Skill 候选发布与成本冒烟
 
-新运行默认启用 `prose-writer-v6` / `prose-rewriter-v9`，冻结为 `prose-shadow-runtime-v12`。
+完整精修继续使用 `prose-writer-v6` / `prose-rewriter-v9`。自动审编使用
+`prose-writer-v6` / `prose-rewriter-v10`，当前冻结为 `prose-shadow-runtime-v14`；v13 保留原
+Judge 协议用于历史任务恢复。
 首轮分层试验 v5/v8 保留不改写。已冻结的 v11 运行继续使用 Writer v4 / Rewriter v7，
 Worker 从运行清单读取版本，不用当前默认值覆盖旧任务。内部 `prompt_version` 参数仍支持显式对照。
 运行清单同时绑定 Skill 资源、Schema 与前缀哈希。切换版本与质量评测结论分别记录。

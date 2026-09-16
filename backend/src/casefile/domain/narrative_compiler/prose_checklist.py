@@ -101,9 +101,7 @@ def build_prose_judge_checklist(
 ) -> dict[str, Any]:
     """Build one complete, provider-independent Checklist from frozen inputs."""
 
-    plan = _validate_model(
-        ScenePlanIRV2, scene_plan, "compiler_prose_checklist_scene_plan_invalid"
-    )
+    plan = _validate_model(ScenePlanIRV2, scene_plan, "compiler_prose_checklist_scene_plan_invalid")
     narrative = _validate_model(
         NarrativeIR, narrative_ir, "compiler_prose_checklist_narrative_ir_invalid"
     )
@@ -218,6 +216,7 @@ def validate_scene_render(
     *,
     checklist: dict[str, Any],
     profile: dict[str, Any],
+    enforce_target_length: bool = True,
 ) -> SceneRender:
     """Validate server-owned render identity, length, stage and block invariants."""
 
@@ -238,9 +237,7 @@ def validate_scene_render(
         "checklist_hash": canonical_json_sha256(checklist_json),
         "profile_hash": checklist_json["source"]["profile_hash"],
         "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
-        "previous_scene_render_hash": checklist_json["source"][
-            "previous_scene_render_hash"
-        ],
+        "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
         "component_input_hash": source["component_input_hash"],
     }:
         raise CompilerContractError("compiler_scene_render_source_mismatch")
@@ -252,10 +249,14 @@ def validate_scene_render(
     character_count = sum(len(block["text"]) for block in value["blocks"])
     if value["character_count"] != character_count:
         raise CompilerContractError("compiler_scene_render_character_count_mismatch")
+    if not enforce_target_length and character_count > 20_000:
+        raise CompilerContractError("compiler_scene_render_resource_limit_exceeded")
     stage = value["stage"]
     length_range = profile_json["prose"]["target_scene_chars"]
-    if stage in {"writer", "rewrite_1", "rewrite_2"} and not (
-        length_range["min"] <= character_count <= length_range["max"]
+    if (
+        enforce_target_length
+        and stage in {"writer", "rewrite_1", "rewrite_2"}
+        and not (length_range["min"] <= character_count <= length_range["max"])
     ):
         raise CompilerContractError("compiler_scene_render_length_out_of_bounds")
     expected_round = {"writer": 0, "rewrite_1": 1, "rewrite_2": 2}.get(stage)
@@ -276,6 +277,7 @@ def normalize_scene_render_candidate(
     checklist: dict[str, Any],
     profile: dict[str, Any],
     component_input_hash: str,
+    enforce_target_length: bool = True,
 ) -> SceneRender:
     """Normalize one model-owned Writer candidate into a server-owned Render."""
 
@@ -287,6 +289,7 @@ def normalize_scene_render_candidate(
         stage="writer",
         round_index=0,
         previous_render_hash=None,
+        enforce_target_length=enforce_target_length,
     )
 
 
@@ -298,6 +301,7 @@ def normalize_scene_rewrite_candidate(
     current_render: dict[str, Any],
     rewrite_round: int,
     component_input_hash: str,
+    enforce_target_length: bool = True,
 ) -> SceneRender:
     """Normalize one full-Scene Rewrite candidate with direct render lineage."""
 
@@ -308,7 +312,10 @@ def normalize_scene_rewrite_candidate(
     except ValidationError as error:
         raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
     current = validate_scene_render(
-        current_render, checklist=checklist_json, profile=profile
+        current_render,
+        checklist=checklist_json,
+        profile=profile,
+        enforce_target_length=enforce_target_length,
     ).model_dump(mode="json")
     expected_stage = "writer" if rewrite_round == 1 else "rewrite_1"
     if current["stage"] != expected_stage or current["round"] != rewrite_round - 1:
@@ -321,6 +328,7 @@ def normalize_scene_rewrite_candidate(
         stage=f"rewrite_{rewrite_round}",
         round_index=rewrite_round,
         previous_render_hash=canonical_json_sha256(current),
+        enforce_target_length=enforce_target_length,
     )
 
 
@@ -331,6 +339,7 @@ def normalize_scene_polish_candidate(
     profile: dict[str, Any],
     current_render: dict[str, Any],
     component_input_hash: str,
+    enforce_target_length: bool = True,
 ) -> SceneRender:
     """Normalize a full-Scene polish with direct semantic-source lineage."""
 
@@ -339,7 +348,10 @@ def normalize_scene_polish_candidate(
     except ValidationError as error:
         raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
     current = validate_scene_render(
-        current_render, checklist=checklist_json, profile=profile
+        current_render,
+        checklist=checklist_json,
+        profile=profile,
+        enforce_target_length=enforce_target_length,
     ).model_dump(mode="json")
     if (
         current["stage"] not in {"writer", "rewrite_1", "rewrite_2"}
@@ -354,6 +366,7 @@ def normalize_scene_polish_candidate(
         stage="polished",
         round_index=current["round"],
         previous_render_hash=canonical_json_sha256(current),
+        enforce_target_length=enforce_target_length,
     )
 
 
@@ -365,6 +378,7 @@ def finalize_scene_render(
     profile: dict[str, Any],
     component_input_hash: str,
     selection_reason: str,
+    enforce_target_length: bool = True,
 ) -> SceneRender:
     """Create the server-owned accepted copy after semantic/quality selection."""
 
@@ -373,10 +387,16 @@ def finalize_scene_render(
     except ValidationError as error:
         raise CompilerContractError("compiler_scene_render_candidate_invalid") from error
     original = validate_scene_render(
-        original_render, checklist=checklist_json, profile=profile
+        original_render,
+        checklist=checklist_json,
+        profile=profile,
+        enforce_target_length=enforce_target_length,
     ).model_dump(mode="json")
     selected = validate_scene_render(
-        selected_render, checklist=checklist_json, profile=profile
+        selected_render,
+        checklist=checklist_json,
+        profile=profile,
+        enforce_target_length=enforce_target_length,
     ).model_dump(mode="json")
     valid_reasons = {
         "quick_draft_unreviewed",
@@ -386,6 +406,9 @@ def finalize_scene_render(
         "polish_semantic_rollback",
         "quality_rollback",
         "quality_unstable",
+        "auto_edit_original",
+        "auto_edit_modified",
+        "auto_edit_unreviewed",
     }
     if (
         original["stage"] not in {"writer", "rewrite_1", "rewrite_2"}
@@ -400,8 +423,17 @@ def finalize_scene_render(
             or selected["previous_render_hash"] != original_hash
         ):
             raise CompilerContractError("compiler_scene_finalize_selection_invalid")
+    elif selection_reason == "auto_edit_modified":
+        if (
+            selected["stage"] not in {"rewrite_1", "polished"}
+            or selected["previous_render_hash"] != original_hash
+        ):
+            raise CompilerContractError("compiler_scene_finalize_selection_invalid")
     elif canonical_json_sha256(selected) != original_hash:
         raise CompilerContractError("compiler_scene_finalize_selection_invalid")
+    final_round = (
+        selected["round"] if selection_reason == "auto_edit_modified" else original["round"]
+    )
     candidate = {
         "schema_id": "compiler.scene-render-candidate.v1",
         "blocks": [{"text": block["text"]} for block in selected["blocks"]],
@@ -412,9 +444,10 @@ def finalize_scene_render(
         profile=profile,
         component_input_hash=component_input_hash,
         stage="accepted",
-        round_index=original["round"],
+        round_index=final_round,
         previous_render_hash=canonical_json_sha256(selected),
         selection_reason=selection_reason,
+        enforce_target_length=enforce_target_length,
     )
 
 
@@ -428,6 +461,7 @@ def _normalize_scene_render_candidate(
     round_index: int,
     previous_render_hash: str | None,
     selection_reason: str | None = None,
+    enforce_target_length: bool = True,
 ) -> SceneRender:
 
     if not isinstance(candidate, dict) or set(candidate) != {"schema_id", "blocks"}:
@@ -467,9 +501,7 @@ def _normalize_scene_render_candidate(
             "checklist_hash": canonical_json_sha256(checklist_json),
             "profile_hash": checklist_json["source"]["profile_hash"],
             "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
-            "previous_scene_render_hash": checklist_json["source"][
-                "previous_scene_render_hash"
-            ],
+            "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
             "component_input_hash": component_input_hash,
         },
         "stage": stage,
@@ -486,7 +518,12 @@ def _normalize_scene_render_candidate(
         "character_count": sum(len(block["text"]) for block in normalized_candidate["blocks"]),
         "selection_reason": selection_reason,
     }
-    return validate_scene_render(render, checklist=checklist_json, profile=profile)
+    return validate_scene_render(
+        render,
+        checklist=checklist_json,
+        profile=profile,
+        enforce_target_length=enforce_target_length,
+    )
 
 
 def validate_prose_judge_report(
@@ -571,9 +608,10 @@ def _validate_previous_scene(
     except ValidationError as error:
         raise CompilerContractError("compiler_prose_checklist_previous_scene_invalid") from error
     expected = scenes[scene_index - 1]
-    if parsed["stage"] != "accepted" or (
-        parsed["scene_id"], parsed["scene_ordinal"]
-    ) != (expected["scene_id"], expected["discourse_order"]):
+    if parsed["stage"] != "accepted" or (parsed["scene_id"], parsed["scene_ordinal"]) != (
+        expected["scene_id"],
+        expected["discourse_order"],
+    ):
         raise CompilerContractError("compiler_prose_checklist_previous_scene_mismatch")
     if parsed["selection_reason"] is None:
         raise CompilerContractError("compiler_prose_checklist_previous_scene_invalid")
@@ -633,9 +671,7 @@ def _scene_context(
             {item for beat in beats for item in beat["prerequisite_beat_ids"]}
         ),
         "beats": beats,
-        "event_refs": _sorted_refs(
-            ref for beat in beats for ref in beat["event_refs"]
-        ),
+        "event_refs": _sorted_refs(ref for beat in beats for ref in beat["event_refs"]),
         "exposure_actions": _stable_unique(
             action for beat in beats for action in beat["exposure_actions"]
         ),
@@ -644,9 +680,7 @@ def _scene_context(
         ),
         "setup_keys": sorted({key for beat in beats for key in beat["setup_keys"]}),
         "payoff_keys": sorted({key for beat in beats for key in beat["payoff_keys"]}),
-        "obligation_keys": sorted(
-            {key for beat in beats for key in beat["obligation_keys"]}
-        ),
+        "obligation_keys": sorted({key for beat in beats for key in beat["obligation_keys"]}),
         "previous_scene_render": previous,
     }
 
@@ -693,9 +727,7 @@ def _build_checks(scene: dict[str, Any], beats: list[dict[str, Any]]) -> list[di
             beat_ids=[beat["beat_id"]],
             basis_refs=beat["basis_refs"],
             event_refs=beat["event_refs"],
-            exposure_entry_keys=(
-                item["entry_key"] for item in beat["exposure_actions"]
-            ),
+            exposure_entry_keys=(item["entry_key"] for item in beat["exposure_actions"]),
         )
         for event_ref in _sorted_refs(beat["event_refs"]):
             add(
@@ -774,9 +806,11 @@ def _build_checks(scene: dict[str, Any], beats: list[dict[str, Any]]) -> list[di
     for beat in beats:
         for prerequisite_id in sorted(beat["prerequisite_beat_ids"]):
             prerequisite = beat_by_id.get(prerequisite_id)
-            basis = beat["basis_refs"] if prerequisite is None else [
-                *prerequisite["basis_refs"], *beat["basis_refs"]
-            ]
+            basis = (
+                beat["basis_refs"]
+                if prerequisite is None
+                else [*prerequisite["basis_refs"], *beat["basis_refs"]]
+            )
             add(
                 kind="causality_ordering",
                 polarity="required",
@@ -792,9 +826,7 @@ def _build_checks(scene: dict[str, Any], beats: list[dict[str, Any]]) -> list[di
         add(
             kind="causality_ordering",
             polarity="required",
-            expectation=_template(
-                "scene_causality", prerequisite_scene_id=prerequisite_scene_id
-            ),
+            expectation=_template("scene_causality", prerequisite_scene_id=prerequisite_scene_id),
             state_refs=["/state_before"],
         )
     add(

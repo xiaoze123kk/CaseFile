@@ -748,6 +748,29 @@
       "assembled_sha256": "3e251cadf112f403f34f37cc26bfecc8256ca712ed9282087fab06cca0b06baf",
       "tool_policy": "existing-runtime-policy"
     },
+    "prose_auto_edit_judge": {
+      "prompt_version": "prose-auto-edit-judge-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_auto_edit_judge/role.md",
+        "sha256": "385acf7b6e2fd6972ed41c833b0aa5dd4199a4aad4e5bf665e1ae796392dea52"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_auto_edit_judge/SKILL.md",
+          "sha256": "9d2bf7a6a7ea8264ee5316f4fc1b3e577e7c207b9bcc5a065dc53ba472938420"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "b46e85de3f235e584f6cd5b0cbcc089dde26933cb1dc4358d771620ce75153ed",
+      "tool_policy": "existing-runtime-policy"
+    },
     "novel_collaboration": {
       "prompt_version": "novel-collaboration-v1",
       "strategy": "role_only",

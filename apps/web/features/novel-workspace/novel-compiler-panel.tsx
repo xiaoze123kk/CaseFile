@@ -14,7 +14,12 @@ import styles from "./novel-compiler.module.css";
 
 const active = (run: NovelCompileRun) => ["queued", "running", "cancelling"].includes(run.execution.status);
 export function novelCompileStatus(run: NovelCompileRun) {
-  if (completedNovelArtifact(run)) return run.prose_mode === "quick_draft" ? "初稿已完成 · 未做文学审核" : "小说已完成";
+  if (completedNovelArtifact(run)) {
+    if (run.prose_mode === "quick_draft") return "初稿已完成 · 未做文学审核";
+    if (run.prose_mode === "auto_edit" && run.prose_shadow.review_status === "incomplete") return "已完成 · 部分审核未完成";
+    if (run.prose_mode === "auto_edit" && run.prose_shadow.review_status === "completed_with_issues") return "已完成 · 有未解决问题";
+    return run.prose_mode === "auto_edit" ? "自动审编已完成" : "小说已完成";
+  }
   if (!run.prose_renderer_shadow && run.execution.status === "succeeded") return run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1") ? "小说方案已就绪" : "本次未生成章节方案";
   if (run.execution.status === "cancelled") return "已停止";
   if (run.execution.status === "cancelling") return "正在停止";
@@ -32,7 +37,7 @@ export function novelCompileStatus(run: NovelCompileRun) {
   if (run.prose_shadow.status === "inconclusive_infrastructure") return "正文生成中断，可重新编译";
   if (run.execution.status === "queued") return "排队中，等待编译服务";
   if (run.execution.status === "succeeded") return "本次未生成完整小说";
-  if (run.artifacts.some((a) => a.schema_id === "compiler.scene-plan.v2")) return run.prose_renderer_shadow ? (run.prose_mode === "quick_draft" ? "正在撰写初稿" : "正在撰写、校验与润色正文") : "正在校验场景方案";
+  if (run.artifacts.some((a) => a.schema_id === "compiler.scene-plan.v2")) return run.prose_renderer_shadow ? (run.prose_mode === "quick_draft" ? "正在撰写初稿" : run.prose_mode === "auto_edit" ? "正在撰写与自动审编" : "正在撰写、校验与润色正文") : "正在校验场景方案";
   if (run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1")) return "正在编排场景";
   return "正在规划小说结构";
 }
@@ -48,7 +53,7 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [preferences, setPreferences] = useState("");
-  const [proseMode, setProseMode] = useState<ProseMode>("quick_draft");
+  const [proseMode, setProseMode] = useState<ProseMode>("auto_edit");
   const [recommendation, setRecommendation] = useState<NovelRecommendation | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [previewLoad, setPreviewLoad] = useState<{ id: number; data?: NovelPlanPreview; error?: string } | null>(null);
@@ -160,8 +165,11 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
       {preview && selectedRun ? <>
         <fieldset className={styles.modeOptions} disabled={busy || runs.some(active)}>
           <legend>正文生成方式</legend>
+          <label><input type="radio" name="prose-mode" value="auto_edit" checked={proseMode === "auto_edit"}
+            onChange={() => setProseMode("auto_edit")} /><span><strong>自动审编（默认）</strong>
+              <span>模型审阅初稿，只选择一次重写或润色，再从两版中选出交付稿。</span></span></label>
           <label><input type="radio" name="prose-mode" value="quick_draft" checked={proseMode === "quick_draft"}
-            onChange={() => setProseMode("quick_draft")} /><span><strong>快速初稿（默认）</strong>
+            onChange={() => setProseMode("quick_draft")} /><span><strong>快速初稿</strong>
             <span>优先写完整本，保留格式校验；不做文学审核与润色，费用较低。</span></span></label>
           <label><input type="radio" name="prose-mode" value="full_polish" checked={proseMode === "full_polish"}
             onChange={() => setProseMode("full_polish")} /><span><strong>完整精修</strong>
@@ -189,7 +197,7 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
           <span /><span /><span />
         </span> : null}
         <div className={styles.runIdentity}><strong role="status">{novelCompileStatus(run)}</strong><small>{new Date(run.created_at).toLocaleString("zh-CN")} · 工作稿版本 {run.execution.input_draft_revision}</small></div>
-        {run.prose_renderer_shadow && run.prose_mode !== "quick_draft" ? <span className={styles.runMode}>完整精修</span> : null}
+        {run.prose_renderer_shadow && run.prose_mode !== "quick_draft" ? <span className={styles.runMode}>{run.prose_mode === "auto_edit" ? "自动审编" : "完整精修"}</span> : null}
         </div>
         <div className={styles.runActions}>
         {run.artifacts.some((a) => a.schema_id === "compiler.novel-plan.v1") ? <button type="button" disabled={busy}
@@ -213,6 +221,23 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
         {run.prose_shadow.plan_issues?.length ? <p role="alert">场景衔接需要调整：{run.prose_shadow.plan_issues.join("；")}</p> : null}
         {run.prose_renderer_shadow && run.prose_shadow.completed_scene_count ? <p>已保存 {run.prose_shadow.completed_scene_count} 个场景，继续时保留已完成正文。</p> : null}
         </div> : null}
+        {run.prose_mode === "auto_edit" && run.prose_shadow.auto_edit_notes?.length ? <details className={styles.runHistory}>
+          <summary>查看模型审编记录{run.prose_shadow.unresolved_issue_count ? ` · ${run.prose_shadow.unresolved_issue_count} 个未解决问题` : ""}</summary>
+          {run.prose_shadow.auto_edit_notes.map((note) => <div key={note.scene_id}>
+            <p><strong>{note.scene_id}</strong> · {note.decision === "retain" ? "保留初稿"
+              : note.decision === "full_rewrite" ? "建议重写"
+              : note.decision === "polish" ? "建议润色" : "模型选稿"}：{note.rationale}</p>
+            {note.unresolved_issues.length ? <ul>{note.unresolved_issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
+          </div>)}
+        </details> : null}
+        {run.prose_shadow.prose_usage ? <p className={styles.runNotes}>
+          正文调用 {run.prose_shadow.prose_usage.physical_request_count} 次
+          {` · 累计调用耗时 ${(run.prose_shadow.prose_usage.latency_ms / 1000).toFixed(1)} 秒`}
+          {` · 已知 Token ${run.prose_shadow.prose_usage.total_tokens.toLocaleString()}`}
+          {run.prose_shadow.prose_usage.unknown_usage_count > 0
+            ? ` · ${run.prose_shadow.prose_usage.unknown_usage_count} 次调用用量未知，未计入 Token 合计`
+            : ""}
+        </p> : null}
         {run.stability && Object.keys(run.stability.failure_stages).length ? <details className={styles.runHistory}>
           <summary>查看运行详情</summary>
           <p>{Object.entries(run.stability.failure_stages).map(([stage, count]) => `${stage}失败 ${count} 次`).join(" · ")}</p>

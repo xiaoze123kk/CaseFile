@@ -24,6 +24,7 @@ from casefile.agent_runtime.prose_generation import (
     validate_generation_result,
 )
 from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
+from casefile.agent_runtime.prose_schema_identity import LEGACY_RENDER_SCHEMA_HASH
 from casefile.agent_runtime.prose_skills import bind_skill_request, completion_body
 from casefile.agent_runtime.usage import (
     fake_prose_usage,
@@ -39,7 +40,7 @@ from casefile.domain.narrative_compiler import (
     validate_prose_judge_report,
     validate_scene_render,
 )
-from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCandidate
+from casefile_contracts import ProseConsensusReport, SceneRenderCandidate
 
 PROSE_REWRITER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v9"
@@ -56,7 +57,7 @@ PROSE_REWRITER_CANDIDATE_SCHEMA_ID: Final = "compiler.scene-render-candidate.v1"
 PROSE_REWRITER_RENDER_SCHEMA_ID: Final = "compiler.scene-render.v1"
 PROSE_REWRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
 PROSE_REWRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_REWRITER_CANDIDATE_SCHEMA)
-PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
+PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = LEGACY_RENDER_SCHEMA_HASH
 PROSE_REWRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
         "component_version": PROSE_REWRITER_COMPONENT_VERSION,
@@ -309,7 +310,9 @@ def execute_prose_rewriter(
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseRewriterProviderResult | None] | None = None,
     revision_decision: dict[str, Any] | None = None,
+    auto_edit_review: dict[str, Any] | None = None,
     prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
+    soft_target_length: bool = False,
 ) -> ProseRewriterExecution:
     """Validate one failed semantic round and produce its complete replacement."""
 
@@ -329,6 +332,8 @@ def execute_prose_rewriter(
             api_key=api_key,
             remaining_scene_call_budget=remaining_scene_call_budget,
             revision_decision=revision_decision,
+            auto_edit_review=auto_edit_review,
+            soft_target_length=soft_target_length,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -364,6 +369,7 @@ def execute_prose_rewriter(
             current_render=current_render,
             rewrite_round=request.rewrite_round,
             component_input_hash=request.component_input_hash,
+            enforce_target_length=not soft_target_length,
         ).model_dump(mode="json")
     except (CompilerContractError, ProseRewriterProtocolError) as error:
         status: Literal["semantic_rejected", "protocol_failed"] = (
@@ -389,8 +395,10 @@ def build_prose_rewriter_request(
     api_key: str,
     remaining_scene_call_budget: int,
     revision_decision: dict[str, Any] | None = None,
+    auto_edit_review: dict[str, Any] | None = None,
     review_only: bool = False,
     prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
+    soft_target_length: bool = False,
 ) -> ProseRewriterRequest:
     """Build the minimal full-Rewrite Provider view after exact validation."""
 
@@ -411,7 +419,10 @@ def build_prose_rewriter_request(
     ).model_dump(mode="json")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
     render_json = validate_scene_render(
-        current_render, checklist=checklist_json, profile=profile_json
+        current_render,
+        checklist=checklist_json,
+        profile=profile_json,
+        enforce_target_length=not soft_target_length,
     ).model_dump(mode="json")
     rewrite_round = render_json["round"] + 1
     expected_stage = "writer" if rewrite_round == 1 else f"rewrite_{rewrite_round - 1}"
@@ -420,36 +431,76 @@ def build_prose_rewriter_request(
         or render_json["stage"] != expected_stage
     ):
         raise ProseRewriterProtocolError("prose_rewriter_source_stage_invalid")
-    consensus_json, reports_json = _validate_review_inputs(
-        consensus=consensus,
-        judge_reports=judge_reports,
-        checklist=checklist_json,
-        render=render_json,
-        profile=profile_json,
-    )
     checks_by_id = {item["check_id"]: item for item in checklist_json["checks"]}
-    assessment_by_id = {item["check_id"]: item for item in reports_json[0]["assessments"]}
-    repair_ids = [
-        item["check_id"] for item in consensus_json["checks"] if item["final_verdict"] != "pass"
-    ]
-    preserve_ids = [
-        item["check_id"] for item in consensus_json["checks"] if item["final_verdict"] == "pass"
-    ]
-    repair_findings = [
-        {
-            "check_id": check_id,
-            "expectation": checks_by_id[check_id]["expectation"],
-            "polarity": checks_by_id[check_id]["polarity"],
-            "final_verdict": next(
-                item["final_verdict"]
-                for item in consensus_json["checks"]
-                if item["check_id"] == check_id
-            ),
-            "judge_rationale": assessment_by_id[check_id]["rationale"],
-            "judge_evidence": assessment_by_id[check_id]["evidence"],
+    if auto_edit_review is None:
+        consensus_json, reports_json = _validate_review_inputs(
+            consensus=consensus,
+            judge_reports=judge_reports,
+            checklist=checklist_json,
+            render=render_json,
+            profile=profile_json,
+        )
+        assessment_by_id = {
+            item["check_id"]: item for item in reports_json[0]["assessments"]
         }
-        for check_id in repair_ids
-    ]
+        repair_ids = [
+            item["check_id"]
+            for item in consensus_json["checks"]
+            if item["final_verdict"] != "pass"
+        ]
+        preserve_ids = [
+            item["check_id"]
+            for item in consensus_json["checks"]
+            if item["final_verdict"] == "pass"
+        ]
+        repair_findings = [
+            {
+                "check_id": check_id,
+                "expectation": checks_by_id[check_id]["expectation"],
+                "polarity": checks_by_id[check_id]["polarity"],
+                "final_verdict": next(
+                    item["final_verdict"]
+                    for item in consensus_json["checks"]
+                    if item["check_id"] == check_id
+                ),
+                "judge_rationale": assessment_by_id[check_id]["rationale"],
+                "judge_evidence": assessment_by_id[check_id]["evidence"],
+            }
+            for check_id in repair_ids
+        ]
+        review_hashes = {
+            "consensus_hash": canonical_json_sha256(consensus_json),
+            "judge_report_hashes": [canonical_json_sha256(item) for item in reports_json],
+        }
+    else:
+        if (
+            auto_edit_review.get("schema_id") != "compiler.prose-revision-decision.v1"
+            or auto_edit_review.get("decision_stage") != "review"
+            or auto_edit_review.get("action") not in {"local_revision", "full_rewrite"}
+            or auto_edit_review.get("scene_id") != render_json["scene_id"]
+            or auto_edit_review.get("render_hash") != canonical_json_sha256(render_json)
+        ):
+            raise ProseRewriterProtocolError("prose_rewriter_auto_edit_review_invalid")
+        findings_by_id = {item["check_id"]: item for item in auto_edit_review["findings"]}
+        if set(findings_by_id) != set(checks_by_id):
+            raise ProseRewriterProtocolError("prose_rewriter_auto_edit_review_invalid")
+        repair_ids = [
+            check_id for check_id, item in findings_by_id.items() if item["severity"] != "none"
+        ]
+        preserve_ids = [check_id for check_id in checks_by_id if check_id not in repair_ids]
+        repair_findings = [
+            {
+                "check_id": check_id,
+                "expectation": checks_by_id[check_id]["expectation"],
+                "polarity": checks_by_id[check_id]["polarity"],
+                "final_verdict": "fail",
+                "judge_rationale": findings_by_id[check_id]["reason"],
+                "judge_evidence": [],
+            }
+            for check_id in repair_ids
+        ]
+        consensus_json, reports_json = {}, ()
+        review_hashes = {"auto_edit_review_hash": canonical_json_sha256(auto_edit_review)}
     preserve_checks = [
         {
             "check_id": check_id,
@@ -470,8 +521,7 @@ def build_prose_rewriter_request(
         "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
         "checklist_hash": canonical_json_sha256(checklist_json),
         "current_render_hash": canonical_json_sha256(render_json),
-        "consensus_hash": canonical_json_sha256(consensus_json),
-        "judge_report_hashes": [canonical_json_sha256(item) for item in reports_json],
+        **review_hashes,
         "prompt_hash": prompt.system_prompt_sha256,
         "model_id": model_id,
         "candidate_schema_hash": PROSE_REWRITER_CANDIDATE_SCHEMA_HASH,
@@ -502,7 +552,8 @@ def build_prose_rewriter_request(
             "min_chars_per_block": generation_floor_chars // block_count,
             "target_chars_per_block": target_chars // block_count,
         },
-        "hard_gate": True,
+        "hard_gate": not soft_target_length,
+        **({"enforcement": "model_guidance"} if soft_target_length else {}),
     }
     payload = {
         "server_bindings": {
@@ -520,6 +571,7 @@ def build_prose_rewriter_request(
             "consensus": consensus_json,
             "repair_findings": repair_findings,
             "preserve_checks": preserve_checks,
+            **({"auto_edit_review": auto_edit_review} if auto_edit_review else {}),
             **({"revision_decision": revision_decision} if revision_decision else {}),
         },
         "output_schema_id": PROSE_REWRITER_CANDIDATE_SCHEMA_ID,

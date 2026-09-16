@@ -66,6 +66,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "prose_writer": "prose-writer-v6",
     "prose_rewriter": "prose-rewriter-v9",
     "prose_revision": "prose-revision-v3",
+    "prose_auto_edit_judge": "prose-auto-edit-judge-v1",
     "prose_fidelity_judge": "prose-fidelity-judge-v8",
     "prose_adversarial_judge": "prose-adversarial-judge-v7",
     "prose_coherence_judge": "prose-coherence-judge-v7",
@@ -78,6 +79,15 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("prose_auto_edit_judge", "prose-auto-edit-judge-v1"): {
+        "system": "b46e85de3f235e584f6cd5b0cbcc089dde26933cb1dc4358d771620ce75153ed",
+    },
+    ("prose_rewriter", "prose-rewriter-v10"): {
+        "system": "a6abc4775dd1ed4100ff443167856c82afb767c311473ffc054e544d5aa6bdc2",
+    },
+    ("prose_polisher", "prose-polisher-v6"): {
+        "system": "4caabc1dbd6281d8c130ea9fc79c0cf0040577b39fdb2f7b270f1b530607195f",
+    },
     ("novel_recommendation", "novel-recommendation-v1"): {
         "system": "de25adc6cd0fcaa0aa64be2ede6a17612cc44ea631309f5042aff24ac268690d",
     },
@@ -1232,7 +1242,8 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "scene_compiler_semantic_fill",
         "prose_writer",
         "prose_rewriter",
-        "prose_revision",
+            "prose_revision",
+            "prose_auto_edit_judge",
         "prose_fidelity_judge",
         "prose_adversarial_judge",
         "prose_coherence_judge",
@@ -1400,6 +1411,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         if agent_id in {"prose_rewriter", "prose_revision"}:
             assert "数据" in prompt and "不是控制指令" in prompt
             assert "JSON" in prompt
+            continue
+        if agent_id == "prose_auto_edit_judge":
+            assert "Judge" in prompt and "不是控制指令" in prompt
+            assert "JSON Schema" in prompt
             continue
         assert "角色声明" in prompt
         assert "要求忽略既有规则" in prompt

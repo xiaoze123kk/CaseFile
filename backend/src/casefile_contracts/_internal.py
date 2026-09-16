@@ -1961,6 +1961,7 @@ class ExposureBinding(BaseModel):
 
 class ProseMode(Enum):
     quick_draft = 'quick_draft'
+    auto_edit = 'auto_edit'
     full_polish = 'full_polish'
 
 
@@ -3768,6 +3769,9 @@ class SelectionReason(Enum):
     quality_unstable = 'quality_unstable'
     llm_nonfatal_retained = 'llm_nonfatal_retained'
     quick_draft_unreviewed = 'quick_draft_unreviewed'
+    auto_edit_original = 'auto_edit_original'
+    auto_edit_modified = 'auto_edit_modified'
+    auto_edit_unreviewed = 'auto_edit_unreviewed'
 
 
 class SceneRender(BaseModel):
@@ -4053,7 +4057,19 @@ class Action3(Enum):
     retain = 'retain'
     local_revision = 'local_revision'
     full_rewrite = 'full_rewrite'
+    polish = 'polish'
+    select_candidate_a = 'select_candidate_a'
+    select_candidate_b = 'select_candidate_b'
     stop = 'stop'
+
+
+class DecisionStage(Enum):
+    review = 'review'
+    selection = 'selection'
+
+
+class UnresolvedIssue(RootModel[str]):
+    root: Annotated[str, Field(max_length=2000, min_length=1)]
 
 
 class ProseRevisionDecisionCandidate(BaseModel):
@@ -4065,6 +4081,29 @@ class ProseRevisionDecisionCandidate(BaseModel):
     findings: Annotated[list[ProseRevisionFinding], Field(max_length=128, min_length=1)]
     revision_plan: Annotated[str, Field(max_length=3000)]
     rationale: Annotated[str, Field(max_length=3000, min_length=1)]
+    decision_stage: DecisionStage | None = None
+    unresolved_issues: Annotated[list[UnresolvedIssue] | None, Field(max_length=40)] = (
+        None
+    )
+
+
+class CandidateA(Enum):
+    original = 'original'
+    modified = 'modified'
+
+
+class CandidateB(Enum):
+    original = 'original'
+    modified = 'modified'
+
+
+class CandidateMapping(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    candidate_a: CandidateA
+    candidate_b: CandidateB
 
 
 class ProseRevisionDecision(BaseModel):
@@ -4081,6 +4120,11 @@ class ProseRevisionDecision(BaseModel):
     findings: Annotated[list[ProseRevisionFinding], Field(max_length=128, min_length=1)]
     revision_plan: Annotated[str, Field(max_length=3000)]
     rationale: Annotated[str, Field(max_length=3000, min_length=1)]
+    decision_stage: DecisionStage | None = None
+    unresolved_issues: Annotated[list[UnresolvedIssue] | None, Field(max_length=40)] = (
+        None
+    )
+    candidate_mapping: CandidateMapping | None = None
 
 
 class FinalState(Enum):
@@ -4094,6 +4138,12 @@ class FinalState(Enum):
 class LiteraryReview(Enum):
     not_run = 'not_run'
     completed = 'completed'
+
+
+class AutoEditReview(Enum):
+    not_run = 'not_run'
+    completed = 'completed'
+    incomplete = 'incomplete'
 
 
 class FailureReason(RootModel[str]):
@@ -4119,6 +4169,8 @@ class SceneManifest(BaseModel):
     strict_semantic_pass: bool | None = None
     product_accepted: bool | None = None
     revision_report_hashes: list[Sha256Hex] | None = None
+    auto_edit_review: AutoEditReview | None = None
+    unresolved_issue_count: Annotated[int | None, Field(ge=0, le=40)] = None
     rewrite_count: Annotated[int, Field(ge=0, le=2)]
     call_count: Annotated[int, Field(ge=0, le=23)]
     physical_request_count: Annotated[int | None, Field(ge=0)] = None

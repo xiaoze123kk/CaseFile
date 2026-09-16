@@ -2469,6 +2469,9 @@ export interface SceneRender {
         | "quality_unstable"
         | "llm_nonfatal_retained"
         | "quick_draft_unreviewed"
+        | "auto_edit_original"
+        | "auto_edit_modified"
+        | "auto_edit_unreviewed"
       )
     | null;
 }
@@ -2696,6 +2699,8 @@ export interface SceneManifest {
   strict_semantic_pass?: boolean;
   product_accepted?: boolean;
   revision_report_hashes?: string[];
+  auto_edit_review?: "not_run" | "completed" | "incomplete";
+  unresolved_issue_count?: number;
   rewrite_count: number;
   call_count: number;
   physical_request_count?: number;
