@@ -333,7 +333,6 @@ def run_development(
     repeats: int = 3,
     workers: int = 4,
 ) -> dict[str, Any]:
-    suite = load_diagnostic_suite(suite_path)
     if (
         repeats != 3
         or candidates != QUALITY_FLASH.config_id
@@ -342,6 +341,7 @@ def run_development(
         raise ValueError("diagnostic_experiment_not_frozen")
     if not api_key:
         raise ValueError("diagnostic_api_key_missing")
+    suite = load_diagnostic_suite(suite_path)
     output.mkdir(parents=True, exist_ok=False)
     source = source_snapshot()
     configs = (QUALITY_FLASH,)
