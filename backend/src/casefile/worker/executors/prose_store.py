@@ -214,13 +214,15 @@ class ProseStore:
                 == "compiler.prose-revision-decision.v1"
                 else "compiler.prose-continuity-review.v1"
                 if component == "prose_continuity"
+                else "casefile.plan-reconciliation.v1"
+                if component == "prose_plan_reconciliation"
                 else "compiler.scene-render.v1"
                 if component in {"prose_writer", "prose_rewrite", "prose_polisher"}
                 else "compiler.prose-quality-report.v1"
                 if component == "prose_quality_critic"
                 else "compiler.prose-judge-report.v1"
             ),
-            component_version=self.runtime["version"],
+            component_version=str(self.runtime["version"]),
             diagnostic_jsonb={"scene_id": self.scene_id, "phase": self.phase},
             usage_jsonb={},
             resumed_from_step_run_id=source,
@@ -292,7 +294,52 @@ class ProseStore:
             )
             session.add(artifact)
             session.flush()
-            return artifact
+        return artifact
+
+    def record_plan_output(
+        self,
+        component: str,
+        content: dict[str, Any],
+        *,
+        identity: str,
+    ) -> int:
+        """Persist a versioned Plan-Execute artifact in the existing step journal."""
+
+        digest = canonical_json_sha256(content)
+        fingerprint = canonical_json_sha256(
+            {
+                "compile_input": self.run.input_hash,
+                "runtime": self.runtime,
+                "identity": identity,
+                "content_hash": digest,
+            }
+        )
+        with self.factory() as session, session.begin():
+            self.lock(session)
+            prior = session.scalar(
+                select(AgentStepRun)
+                .where(
+                    AgentStepRun.task_run_id == self.run.task_run_id,
+                    AgentStepRun.component_id == component,
+                    AgentStepRun.input_hash == fingerprint,
+                    AgentStepRun.output_hash == digest,
+                    AgentStepRun.status.in_(("succeeded", "reused")),
+                )
+                .order_by(AgentStepRun.id.desc())
+            )
+            step = self._step(
+                session,
+                component,
+                fingerprint,
+                source=None if prior is None else prior.id,
+            )
+            step.status = "reused" if prior is not None else "succeeded"
+            step.ir_schema_id = str(content["schema_id"])
+            step.component_version = str(self.runtime["version"])
+            step.output_hash = digest
+            step.output_jsonb = content
+            step.finished_at = datetime.now(UTC)
+            return step.id
 
     def begin_request(
         self, component: str, request: Any, result_type: Any, transport_type: Any

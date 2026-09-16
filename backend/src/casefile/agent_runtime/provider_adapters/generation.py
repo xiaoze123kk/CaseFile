@@ -23,6 +23,7 @@ from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generatio
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
 from casefile.agent_runtime.brief_to_draft_v16.workflow import run_v16_generation
 from casefile.agent_runtime.brief_to_draft_v17.workflow import run_v17_generation
+from casefile.agent_runtime.brief_to_draft_v18.workflow import run_v18_generation
 from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.models import (
     GenerationPlan,
@@ -109,6 +110,7 @@ _BRIEF_TO_DRAFT_RUNNERS = {
     "brief-to-draft-v15": run_v15_generation,
     "brief-to-draft-v16": run_v16_generation,
     "brief-to-draft-v17": run_v17_generation,
+    "brief-to-draft-v18": run_v18_generation,
 }
 
 

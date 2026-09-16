@@ -17,6 +17,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.api.app import create_app
 from casefile.application.chat_public_patches import public_warning_id
 from casefile.application.commands import ProjectCreate
@@ -77,7 +78,7 @@ class PostgresBackendReleaseExecutor:
     def execute_trial(
         self, task: ReleaseTask, *, trial_index: int, model_id: str
     ) -> BackendTrialEvidence:
-        if model_id != "deepseek-v4-pro":
+        if model_id != DEEPSEEK_MODEL_ID:
             raise BackendReleaseContractError("backend_executor_model_invalid")
         document = json.loads(
             (Path(__file__).resolve().parents[4] / task.fixture).read_text(encoding="utf-8")
@@ -876,7 +877,7 @@ class PostgresBackendReleaseExecutor:
             "step_run_persisted": bool(steps),
             "model_call_persisted": bool(calls),
             "exact_model_observed": bool(calls)
-            and all(item.model_id == "deepseek-v4-pro" for item in calls),
+            and all(item.model_id == DEEPSEEK_MODEL_ID for item in calls),
             "model_call_count": len(calls),
             "revision": int(revision or base_revision),
             "event_reason_codes": event_reason_codes,

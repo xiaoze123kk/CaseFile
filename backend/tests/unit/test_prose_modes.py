@@ -2,7 +2,11 @@
 
 import pytest
 
-from casefile.agent_runtime.prose_runtime import prose_runtime_binding
+from casefile.agent_runtime.prose_runtime import (
+    PLAN_EXECUTE_PROSE_RUNTIME_VERSION,
+    matches_prose_runtime,
+    prose_runtime_binding,
+)
 from casefile.api.schemas import CompileRunCreateRequest
 from casefile.domain.narrative_compiler import canonical_json_sha256
 
@@ -32,3 +36,15 @@ def test_mode_freezes_distinct_budgets_and_keeps_legacy_default():
 def test_unknown_mode_is_not_silently_interpreted_as_full():
     with pytest.raises(ValueError, match="compiler_prose_mode_invalid"):
         prose_runtime_binding(2, "unknown")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "mode,per_scene", [("quick_draft", 2), ("auto_edit", 8), ("full_polish", 23)]
+)
+def test_plan_execute_has_distinct_identity_and_preserves_mode_budget(mode, per_scene):
+    binding = prose_runtime_binding(2, mode, runtime_version=PLAN_EXECUTE_PROSE_RUNTIME_VERSION)
+    assert binding["version"] == "prose-shadow-runtime-v15"
+    assert binding["max_logical_calls"] == per_scene * 2 + 1
+    assert binding["prompts"]["prose_writer"]["version"] == "prose-writer-v7"
+    assert binding["prompts"]["prose_rewriter"]["version"] == "prose-rewriter-v11"
+    assert matches_prose_runtime(binding, 2, mode)

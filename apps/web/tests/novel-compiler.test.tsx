@@ -127,6 +127,32 @@ describe("小说编译工作表面", () => {
       body: expect.objectContaining({ prose_mode: mode, approved_plan_run_id: 3 }),
     })));
   });
+  it("显式启用规划跟踪并展示最终对账摘要", async () => {
+    const planned = { ...run("succeeded", "disabled"), prose_renderer_shadow: false,
+      artifacts: [{ artifact_id: 5, schema_id: "compiler.novel-plan.v1", content_hash: "p" },
+        { artifact_id: 6, schema_id: "compiler.narrative-ir.v1", content_hash: "ir" }] };
+    vi.mocked(apiRequest).mockImplementation(async (_url, options) => options.method === "POST" ?
+      { ...run("queued", "pending"), plan_execute: true } : [planned]);
+    vi.mocked(getCompileArtifactContent).mockImplementation(async (_a, _p, _r, id) => ({
+      content_hash: id === 5 ? "p" : "ir", content: id === 5 ? { ...plan, scenes: [] } : { objects: {} },
+    }) as never);
+    render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+    const toggle = await screen.findByRole("checkbox", { name: /增强规划跟踪/ });
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "按这份方案生成小说" }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/projects/7/compile-runs", expect.objectContaining({
+      body: expect.objectContaining({ plan_execute: true, approved_plan_run_id: 3 }),
+    })));
+
+    vi.mocked(apiRequest).mockResolvedValue([{ ...run(), planning_summary: {
+      status: "completed", fulfilled: 3, partial: 1, not_fulfilled: 1, unknown: 0,
+      unresolved_items: ["伏笔尚未回收"], suggested_plan_changes: ["延后揭露怀表来源"],
+    } }]);
+    cleanup();
+    render(<NovelCompilerPanel scope={scope} title="雨夜" hasDraft={false} onLoad={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByText(/计划对账：已落实 3 项/)).toHaveTextContent("未落实 1 项");
+    expect(screen.getByText(/计划调整建议：延后揭露怀表来源/)).toBeInTheDocument();
+  });
   it("快速初稿不显示为审核通过，历史记录保留精修语义", () => {
     expect(novelCompileStatus({ ...run(), prose_mode: "quick_draft" })).toBe("初稿已完成 · 未做文学审核");
     expect(novelCompileStatus(run())).toBe("小说已完成");

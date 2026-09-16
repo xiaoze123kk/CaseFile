@@ -19,6 +19,7 @@ from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
 from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_V6_VERSION
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
@@ -186,7 +187,7 @@ def test_provider_setting_delete_roundtrip(
             json={
                 "provider": "deepseek",
                 "api_key": "sk-deepseek-api-secret",
-                "model_id": "deepseek-v4-flash",
+                "model_id": DEEPSEEK_MODEL_ID,
                 "model_is_custom": False,
             },
         )
@@ -213,7 +214,7 @@ def test_provider_setting_delete_roundtrip(
             json={
                 "provider": "deepseek",
                 "api_key": "sk-deepseek-api-restored",
-                "model_id": "deepseek-v4-flash",
+                "model_id": DEEPSEEK_MODEL_ID,
                 "model_is_custom": False,
             },
         )
@@ -243,6 +244,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             "/api/v1/settings/provider",
             headers=_identity(actor_id),
             json={
+                "provider": "openai",
                 "api_key": "sk-test-api-secret",
                 "model_id": "gpt-5.6-sol",
                 "model_is_custom": False,
@@ -258,7 +260,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "provider": "deepseek",
                 "api_key": "sk-deepseek-api-secret",
-                "model_id": "deepseek-v4-flash",
+                "model_id": DEEPSEEK_MODEL_ID,
                 "model_is_custom": False,
             },
         )
@@ -422,7 +424,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert queued.status_code == 202
         assert queued.json()["provider"] == "deepseek"
-        assert queued.json()["model_id"] == "deepseek-v4-flash"
+        assert queued.json()["model_id"] == DEEPSEEK_MODEL_ID
         task_id = queued.json()["task_run_id"]
 
         assert worker.run_once() is True

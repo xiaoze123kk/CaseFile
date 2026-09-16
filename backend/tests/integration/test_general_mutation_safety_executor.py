@@ -4,6 +4,7 @@ from sqlalchemy import Engine
 
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import GeneralMutationPlannerResult, MutationPlanV2
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
@@ -188,7 +189,7 @@ def _execute_safety_trial(
         provider_factory=lambda document: _SafetyProvider(document, live=live),
     )
     try:
-        return executor.execute_trial(task, trial_index=1, model_id="deepseek-v4-pro")
+        return executor.execute_trial(task, trial_index=1, model_id=DEEPSEEK_MODEL_ID)
     finally:
         executor.close()
 
@@ -214,7 +215,7 @@ def test_safety_executor_uses_router_worker_and_never_applies(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -231,7 +232,7 @@ def test_safety_executor_uses_router_worker_and_never_applies(
     assert evidence.patch_operations[0]["target_collection"] == "entities"
     assert evidence.model_calls
     assert {item["provider"] for item in evidence.model_calls} == {"injected"}
-    assert {item["model_id"] for item in evidence.model_calls} == {"deepseek-v4-pro"}
+    assert {item["model_id"] for item in evidence.model_calls} == {DEEPSEEK_MODEL_ID}
 
 
 def test_safety_executor_blocks_protected_collection_update(
@@ -257,7 +258,7 @@ def test_safety_executor_blocks_protected_collection_update(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -292,7 +293,7 @@ def test_simulation_block_cannot_fall_back_to_legacy_chat_patch(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -329,7 +330,7 @@ def test_explicit_over_budget_batch_is_blocked_before_partial_plan(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -367,7 +368,7 @@ def test_stable_planner_contract_rejection_is_a_safe_block_not_protocol_failure(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -403,7 +404,7 @@ def test_explicit_unknown_id_is_blocked_before_planner_and_closure_repair(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -438,7 +439,7 @@ def test_explicit_system_field_is_blocked_before_planner(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -473,7 +474,7 @@ def test_expected_block_candidate_validation_failure_is_not_infrastructure(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()
@@ -507,7 +508,7 @@ def test_explicit_dependency_cycle_is_blocked_before_planner(
                 delete_enabled=False,
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
     finally:
         executor.close()

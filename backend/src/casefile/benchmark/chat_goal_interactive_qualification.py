@@ -22,6 +22,7 @@ from casefile.agent_runtime.goal.policy import (
     GOAL_RUNTIME_VERSION,
     stable_hash,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.chat_goal_interactive_suite import (
     DEFAULT_DESCRIPTOR,
@@ -37,7 +38,7 @@ from casefile.data_postgres.session import (
 )
 
 ROOT = Path(__file__).resolve().parents[4]
-MODEL_ID = "deepseek-v4-pro"
+MODEL_ID = DEEPSEEK_MODEL_ID
 PROMPT_VERSION = "casefile-chat-v20"
 REPORT_VERSION = "casefile-chat-goal-interactive-qualification-v2"
 GRADER_VERSION = "casefile-chat-goal-interactive-grader-v2"

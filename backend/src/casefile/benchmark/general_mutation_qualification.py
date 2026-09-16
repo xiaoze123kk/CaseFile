@@ -19,6 +19,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_PROMPT_VERSION,
     GENERAL_MUTATION_TRANSPORT_VERSION,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.general_mutation_backend_release import (
     DEFAULT_SUITE as RELEASE_SUITE_PATH,
@@ -64,7 +65,7 @@ from casefile.data_postgres.session import (
 )
 
 QUALIFICATION_VERSION = "casefile-general-mutation-qualification-v1"
-MODEL_ID = "deepseek-v4-pro"
+MODEL_ID = DEEPSEEK_MODEL_ID
 TRIALS_PER_TASK = 5
 ROOT = Path(__file__).resolve().parents[4]
 GATE_POLICY = Path(__file__).with_name("policies") / "general-mutation-gate-v1.json"

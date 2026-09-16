@@ -104,7 +104,7 @@ M3.8 不把 SQLAlchemy、FastAPI、Session 或 TaskRun lease 引入 `agent_runti
 - `backend/src/casefile/benchmark/chat_goal_suite.py`、`chat_goal_qualification.py`：M3.7 24×3 正式资格套件、生产路径评分、逐题追踪与聚合门禁；v2 题目必须与冻结 CaseFile fixture 可解，并用最终状态 Oracle 评分 mutation。
 - `backend/src/casefile/benchmark/chat_goal_interactive_suite.py`：M3.8-07 Interactive Goal v2 的严格私有 Holdout loader、8-family typed oracle/reference、RFC 8785 指纹、路径/泄漏/独立双 attestation 校验；正式 coverage matrix 强制 add/remove obligation、三类 safe point/capability、混合 FIFO、提前 follow-up 拒绝、三类 PatchOperation、至少三个 fixture、Patch/stale/cancel 生命周期。仓库只跟踪 fail-closed descriptor 与 8 题公开 Fake dev suite。
 - `backend/src/casefile/benchmark/chat_goal_interactive_executor.py`：以真实公共 HTTP、后台 Worker、PostgreSQL、continuation 与 Patch Review 路径执行交互 trial；通过默认关闭的 Worker 组合端口在三类 safe point 建立确定性 barrier，并使用已知 TaskRun 的真实 lease claim 隔离同一数据库中的 trial，不新增公共 API 或运行时配置。
-- `backend/src/casefile/benchmark/chat_goal_interactive_qualification.py`：M3.8-07 clean source/独立 `_test` 数据库/精确 Pro 与 Prompt preflight、24×3 逐 trial 编排、证据指纹及 Intent Adherence Under Intervention 聚合门禁。
+- `backend/src/casefile/benchmark/chat_goal_interactive_qualification.py`：M3.8-07 clean source/独立 `_test` 数据库/精确 Flash 与 Prompt preflight、24×3 逐 trial 编排、证据指纹及 Intent Adherence Under Intervention 聚合门禁。
 
 Goal 运行不得绕过 `general_mutation` Binder/Simulation/Closure Repair，也不得直接调用 Apply。Goal Finalizer 只负责作者可见正文，模型生成的引用、finding 与 suggestion 不构成权威结果；结构化结果由 Observation、Completion proof 与 Mutation proof 决定。任何 Goal 失败均在 `_complete_chat()` 前关闭，因此不产生 `AgentPatchSet`。恢复只复用精确 input/upstream/output hash 匹配的 bounded artifact；Mutation 只复用 Planner artifact并重新绑定、模拟。
 
@@ -136,7 +136,7 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 | `backend/src/casefile/data_postgres/models/versioning.py` | `draft_snapshots`、`canon_versions`、`audit_events` ORM。 |
 | `backend/src/casefile/data_postgres/models/exposure.py` | `exposure_plans`、带 v1/v2 payload schema 的不可变 revisions、线性 entries、规范化 entry refs、typed obligations 与 obligation refs ORM。 |
 | `backend/src/casefile/data_postgres/models/workflow.py` | `briefs`、不可变 `brief_versions`、不可变 `source_records`、三类 `task_runs`、`task_attempts` 与不可变 `task_events` ORM。 |
-| `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8–v16 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
+| `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8–v18 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM；Plan-Execute 的计划、调用记录、核对与摘要复用同一不可变步骤日志。 |
 | `backend/src/casefile/data_postgres/models/compiler.py` | N4.1 `compiler_profiles`、不可变 `compiler_profile_versions`、关系型 `compile_runs` 与不可变 `compile_artifacts` ORM；CompileRun 只保存 Build 身份和冻结绑定，不复制执行状态或 Manifest。 |
 | `backend/src/casefile/data_postgres/models/context_states.py` | 追加式不可变 `agent_thread_context_states` ORM：按 thread 冻结 policy/state_kind/消息区间/state_jsonb/输入哈希，供 Rolling Thread Memory 压缩回放与 `context_state` 冻结引用。 |
 | `backend/src/casefile/data_postgres/models/goal_session.py` | M3.8 GoalSession、Revision、Obligation DAG、FIFO Delivery、Observation、TaskRun slice 绑定与 Transition 的关系型 ORM；状态、归属、预算和不可变性由正式列、复合外键、约束与触发器承载。 |
@@ -196,7 +196,7 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 | `backend/src/casefile/agent_runtime/prose_writer.py` | N4.5-04 Provider-neutral 单轮完整 Scene Writer：在 Provider 前精确复验上游与 Checklist，构造最小不可信模型视图，冻结 Prompt/Schema/model/预算指纹，提供 DeepSeek/Fake 适配、exact-hash 恢复和脱敏 transport 审计；不依赖数据库、API 或 Worker。 |
 | `backend/src/casefile/agent_runtime/prose_rewriter.py`、`backend/src/casefile/agent_runtime/prose_rewrite_supervisor.py` | N4.5-05 Provider-neutral 完整 Scene Rewrite 与服务端 bounded supervisor：精确绑定失败的 Fidelity-only Consensus、Judge 证据、当前 Render 和既有通过项，每次只允许一个无工具完整替代候选；v3 将 Profile 字符范围投影为带安全余量的分段生成计划，服务端仍以精确 Unicode 总数执行硬门禁；服务端最多执行 `rewrite_1/rewrite_2` 两轮，每轮重审完整 Checklist，区分语义拒绝、协议失败和基础设施未决，并提供 DeepSeek/Fake、预算与恢复审计边界。 |
 | `backend/src/casefile/agent_runtime/prose_quality_critic.py` | N4.5-06 Provider-neutral Quality Critic：固定 `deepseek-v4-flash`、单轮无工具 findings 与两次相反位置 pairwise 调用，复用服务端 Evidence 目录，隐藏 A/B 来源身份，冻结 Prompt/Schema/input/component fingerprint，提供 DeepSeek/Fake、exact-hash 恢复、usage/latency 与协议/基础设施失败边界；不生成润色正文。v3 正式结果退步后，活动基线恢复为 Pairwise v1；Pairwise v2 Prompt 仅保留历史回放。 |
-| `backend/src/casefile/agent_runtime/prose_polisher.py` | N4.5-06 Provider-neutral Polisher：固定 `deepseek-v4-pro` 单轮无重试输出完整 Scene candidate；Provider 前证明原稿 Semantic pass 与 findings 精确绑定，冻结 Prompt/Schema/input/component fingerprint，服务端规范化为与原稿直接相连、同 round 的 `polished` Render，并提供 DeepSeek/Fake、exact-hash 恢复与脱敏审计。活动基线为 v2：Profile 字符范围只作模型质量指导，不因偏离范围被服务端拒绝；Schema、身份/lineage、hash、Evidence、预算与完整 Preservation Council 仍失败关闭。Polisher v3 Prompt/component 仅保留历史回放。 |
+| `backend/src/casefile/agent_runtime/prose_polisher.py` | N4.5-06 Provider-neutral Polisher：固定 `deepseek-flash` 单轮无重试输出完整 Scene candidate；Provider 前证明原稿 Semantic pass 与 findings 精确绑定，冻结 Prompt/Schema/input/component fingerprint，服务端规范化为与原稿直接相连、同 round 的 `polished` Render，并提供 DeepSeek/Fake、exact-hash 恢复与脱敏审计。活动基线为 v2：Profile 字符范围只作模型质量指导，不因偏离范围被服务端拒绝；Schema、身份/lineage、hash、Evidence、预算与完整 Preservation Council 仍失败关闭。Polisher v3 Prompt/component 仅保留历史回放。 |
 | `backend/src/casefile/agent_runtime/prose_polish_supervisor.py` | N4.5-06 服务端 Quality/Polish 闭环：依次运行 findings、Polisher、完整三角色 Preservation Council（必要时单次 Arbiter）与匿名双位置 Pairwise；Preservation 非 pass 时不调用 Pairwise 并以 `polish_semantic_rollback` 精确回滚，只有稳定无维度回退的 polished 胜出才形成最终 accepted 润色稿，其余结果精确采用原稿。 |
 | `backend/src/casefile/agent_runtime/story_planner.py`、`story_planner_prompt.py` | Story Planner Provider-neutral 请求、最多三次结构修复和版本化无工具 Prompt 渲染；ScenePurpose 错误只允许强类型最小补丁，其他结构错误保留完整候选修复，语义错误不进入 repair。 |
 | `backend/src/casefile/worker/executors/story_planner.py` | 默认 v1 Story Planner 与显式未激活 Constraint-First 版本的执行器；后者按 `skeleton_proposal`/`semantic_fill` 独立 input hash 持久化 ModelCall，崩溃后只恢复 exact-match 成功输出。 |
@@ -215,9 +215,9 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 | `backend/src/casefile/agent_runtime/chat_intent.py` | CaseFile Chat 的确定性意图规则、Route 建议权限、显式编辑目标 Manifest 与 General Mutation abstention 判定；未绑定代词、未决二选一、字段/值缺失和非唯一删除均在 Provider 前要求澄清。 |
 | `backend/src/casefile/agent_runtime/public_language.py` | CaseFile Chat v16 面向作者文字的确定性公开语言门禁；统一检查保留字段、工程术语、内部 ID、JSON Pointer、原始 JSON 与当前敏感值，并向 Qualification 暴露不保留正文的稳定规则 ID 探针。 |
 | `backend/src/casefile/agent_runtime/general_mutation.py`、`general_mutation_prompt.py` | M3.4 runtime-private General Mutation Planner 严格输出契约、预算/依赖 DAG/保护集合规则与不可变 Prompt Package 渲染；不访问数据库或应用服务。 |
-| `backend/src/casefile/benchmark/chat_public_language_qualification.py`、`chat_public_language_executor.py` | M3.6 Public Language 正式资格：冻结 16×3 普通问答、分析、审计、Create/Update/Delete、关联修改、内部信息诱导与正常近邻任务；在 clean revision、独立 `_test` PostgreSQL、精确 `deepseek-v4-pro` 上经公共 HTTP/Worker/Simulation/Apply 验证契约、泄漏、敏感值、Patch 安全、误拦与模型能力。真实凭据只从本地加密设置读入内存，测试库仅保存非密钥 canary，报告不保存正文或凭据。 |
+| `backend/src/casefile/benchmark/chat_public_language_qualification.py`、`chat_public_language_executor.py` | M3.6 Public Language 正式资格：冻结 16×3 普通问答、分析、审计、Create/Update/Delete、关联修改、内部信息诱导与正常近邻任务；在 clean revision、独立 `_test` PostgreSQL、精确 `deepseek-flash` 上经公共 HTTP/Worker/Simulation/Apply 验证契约、泄漏、敏感值、Patch 安全、误拦与模型能力。真实凭据只从本地加密设置读入内存，测试库仅保存非密钥 canary，报告不保存正文或凭据。 |
 | `backend/src/casefile/benchmark/closure_repair_lineage.py` | 对 repair domain、Closure policy、VerificationEngine、V3 Prompt/Schema、Application/Worker 与 Provider contract 生成统一 repair runtime fingerprint。 |
-| `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Kernel Regression：给定 Plan 后冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；只报告 kernel failure/escape，不冒充 Safety 或 Pro Capability。 |
+| `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Kernel Regression：给定 Plan 后冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；只报告 kernel failure/escape，不冒充 Safety 或 Flash Capability。 |
 | `backend/src/casefile/benchmark/general_mutation_capability.py` | General Mutation Outcome-first Provider Dev Capability：以自然语言作者任务驱动正式 Planner、Binder、Simulation，Reference Plan 仅证明题目可解，正交评分最终 CaseFile 状态、Safety 与 Scope，并区分能力、协议和基础设施失败。 |
 | `backend/src/casefile/benchmark/general_mutation_safety.py`、`general_mutation_safety_executor.py` | M3.4-07d Safety / Abstention：在隔离 PostgreSQL 上运行真实 Router/Worker/Provider，按持久化拒绝、真实澄清问题、PatchOperation Oracle、Draft revision 与调用身份区分正确阻断、安全失败关闭、错误放行和基础设施失败；不执行 Apply。 |
 | `backend/src/casefile/benchmark/general_mutation_backend_release.py`、`general_mutation_backend_executor.py` | M3.4-07e Backend Release：冻结 15×3 release cohort 和 20 项 Fault Matrix，经真实 HTTP、Queue、Worker、PostgreSQL、Pending PatchSet 与显式 Apply/Undo/Redo 验证 Create/Update/Delete、Delete impact hash、并发、幂等、篡改和事务恢复；任何 Safety、生命周期或基础设施失败均失败关闭。 |
@@ -333,7 +333,7 @@ TaskRun 失败由 `worker/finalization.py` 在 lease/Attempt fencing 后委派 `
 | `backend/tests/integration/test_multiple_draft_migration.py`、`test_multiple_drafts.py` | 验证旧数据升级回填 Current Draft、复合外键与 Draft 内对象 ID 唯一，以及并发激活、归档/锁定门禁和编辑/快照/验证/来源/审计隔离。 |
 | `backend/tests/integration/test_application_task_lifecycle.py` | 在真实 `_test` PostgreSQL 验证 TaskRun Prompt 版本、queued/running/orphan 取消、lease 恢复、Provider 配置冻结与不可变事件。 |
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、候选采用、工作台验证/来源/审计读模型、SSE 恢复与完成门禁闭环。 |
-| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8–v16 验收（默认版本读取 Prompt Registry）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 轮换三种候选策略；v11–v14 轮换五类时间/空间/竞争矩阵场景，v15 额外加入 2×8+ 与 3×8+ 两档密集竞争矩阵场景（共七类）并对 30 次发布验收强制 Evidence 语义 SLO（首次通过率 ≥ 90%、最多一次定向修复后 ≥ 98%）；v16 另执行实体关系覆盖门禁；报告按持久化步骤产物重放 Evidence 图/矩阵语义校验，统计首次通过率、修复恢复率、issue 计数与矩阵规模，并检查步骤/模型调用持久化、SSE、诊断、候选语义和 Draft/Canon 未自动写入边界。 |
+| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8–v18 验收（默认版本读取 Prompt Registry）：从本地开发库复制已加密凭据到一次性 `_test` 库；DeepSeek 验收只复用凭据，模型固定为 `deepseek-flash`，不继承历史保存的 Pro model_id。通过 API 与 Worker 轮换三种候选策略；v11–v14 轮换五类时间/空间/竞争矩阵场景，v15 额外加入 2×8+ 与 3×8+ 两档密集竞争矩阵场景（共七类）并对 30 次发布验收强制 Evidence 语义 SLO（首次通过率 ≥ 90%、最多一次定向修复后 ≥ 98%）；v16 另执行实体关系覆盖门禁；报告按持久化步骤产物重放 Evidence 图/矩阵语义校验，统计首次通过率、修复恢复率、issue 计数与矩阵规模，并检查步骤/模型调用持久化、SSE、诊断、候选语义和 Draft/Canon 未自动写入边界。 |
 
 ## 66 表清单
 
@@ -583,6 +583,14 @@ v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generati
 Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
 
 Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。
+
+## Plan-Execute 与 Nag Reminder（Brief v18 / Prose runtime v13）
+
+`agent_runtime/plan_execute.py` 定义执行目标、调用级核对、计划上下文、Nag 状态重放和最终对账的数据库无关契约。服务端只绑定来源、范围、依赖、JSON Pointer 证据与遗漏次数；文学目标、正文判断和调整建议仍由 LLM 负责。一次有效的“未落实”或“需要调整”会重置漏答计数，但不会冒充目标完成。
+
+Brief-to-Draft v18 在 Blueprint 同次产生来源绑定的执行目标，Story 与 Evidence 分支各自维护计数；连续两次相关成功产物缺少有效核对时，下一次已有调用携带 Nag，不新增调用或修复预算。原质量门禁通过后最多执行一次最终对账；已发送但结果不确定的对账在恢复时标为不可用，不再次发送。默认 Registry 继续使用 v16。
+
+小说编译的显式 `plan_execute` 开关冻结 `prose-shadow-runtime-v15`。运行时从已确认 ScenePlan 显式字段派生逐场及 setup/payoff 目标，Writer v7 与 Rewriter v11 返回正文和独立核对，逐场调用记录及最终对账/摘要写入不可变 AgentStepRun 日志。审核调用不增加 Nag 计数；未来范围不会催办；最终对账失败不改变正文原交付状态。生产默认仍为 runtime v14。
 
 
 ## 小说 Skill 候选与成本冒烟

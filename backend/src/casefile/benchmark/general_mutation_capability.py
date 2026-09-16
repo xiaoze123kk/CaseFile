@@ -33,6 +33,7 @@ from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     MutationPlanV2,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.agent_mutation import (
     GeneralMutationBindingError,
@@ -315,7 +316,7 @@ def run_capability_benchmark(
         "provider": provider_name,
         "model_id": model_id,
         "formal_capability": (
-            not injected_provider and provider_name == "deepseek" and model_id == "deepseek-v4-pro"
+            not injected_provider and provider_name == "deepseek" and model_id == DEEPSEEK_MODEL_ID
         ),
         "release_gate_eligible": False,
         "trials_per_task": trials,
@@ -875,7 +876,7 @@ def _saved_credential(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run General Mutation capability dev suite")
     parser.add_argument("--provider", choices=("deepseek", "openai"), default="deepseek")
-    parser.add_argument("--model", default="deepseek-v4-pro")
+    parser.add_argument("--model", default=DEEPSEEK_MODEL_ID)
     parser.add_argument("--api-key")
     parser.add_argument("--saved-credential", action="store_true")
     parser.add_argument("--actor-id", type=int, default=1)
@@ -903,7 +904,7 @@ def main() -> None:
             actor_id=args.actor_id,
             database_url=args.database_url,
         )
-        if args.model == "deepseek-v4-pro":
+        if args.model == DEEPSEEK_MODEL_ID:
             model_id = saved_model
     if not api_key:
         raise SystemExit("general_mutation_capability_credential_missing")

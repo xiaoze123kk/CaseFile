@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import rfc8785
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.general_mutation_evidence import (
     EvidenceIndexError,
     build_evidence_index,
@@ -75,7 +76,7 @@ def _reports(tmp_path: Path, *, holdout_infra: int = 0) -> tuple[Path, list[tupl
             "source_clean": True,
             "runtime_fingerprint": "b" * 64,
             "provider": "deepseek",
-            "model_id": "deepseek-v4-pro",
+            "model_id": DEEPSEEK_MODEL_ID,
             "prompt_version": "prompt-v1",
             "prompt_fingerprint": "p" * 64,
             "plan_contract_version": "plan-v1",
@@ -135,7 +136,7 @@ def _reports(tmp_path: Path, *, holdout_infra: int = 0) -> tuple[Path, list[tupl
                 {
                     **common,
                     "provider": "deepseek",
-                    "model_id": "deepseek-v4-pro",
+                    "model_id": DEEPSEEK_MODEL_ID,
                     "trials_per_task": 5,
                     "suite": {"suite_fingerprint": "cap", "task_count": 40},
                     "lineage": _lineage(),
@@ -153,7 +154,7 @@ def _reports(tmp_path: Path, *, holdout_infra: int = 0) -> tuple[Path, list[tupl
                 {
                     **common,
                     "provider": "deepseek",
-                    "model_id": "deepseek-v4-pro",
+                    "model_id": DEEPSEEK_MODEL_ID,
                     "trials_per_task": 5,
                     "suite": {"suite_fingerprint": "hold", "task_count": 24},
                     "lineage": {
@@ -178,7 +179,7 @@ def _reports(tmp_path: Path, *, holdout_infra: int = 0) -> tuple[Path, list[tupl
                 {
                     **common,
                     "provider": "deepseek",
-                    "model_id": "deepseek-v4-pro",
+                    "model_id": DEEPSEEK_MODEL_ID,
                     "trials_per_task": 5,
                     "suite": {"suite_fingerprint": "safe", "task_count": 25},
                     "lineage": {
@@ -199,7 +200,7 @@ def _reports(tmp_path: Path, *, holdout_infra: int = 0) -> tuple[Path, list[tupl
                 {
                     "source": {"revision": revision},
                     "provider": "deepseek",
-                    "model_id": "deepseek-v4-pro",
+                    "model_id": DEEPSEEK_MODEL_ID,
                     "trials_per_task": 3,
                     "trial_count": 45,
                     "suite_fingerprint": "release",
@@ -246,7 +247,7 @@ def test_evidence_index_allows_infra_triggered_full_holdout_rerun(tmp_path: Path
         {
             "git": {"revision": "a" * 40, "dirty": False},
             "provider": "deepseek",
-            "model_id": "deepseek-v4-pro",
+            "model_id": DEEPSEEK_MODEL_ID,
             "trials_per_task": 5,
             "suite": {"suite_fingerprint": "hold", "task_count": 24},
             "lineage": {**_lineage(), "reference_fingerprint": "hold-reference"},

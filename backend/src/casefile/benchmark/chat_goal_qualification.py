@@ -17,6 +17,7 @@ from casefile.agent_runtime.goal.policy import (
     GOAL_RUNTIME_VERSION,
     stable_hash,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.chat_goal_suite import (
     ChatGoalBenchmarkTask,
@@ -29,7 +30,7 @@ from casefile.benchmark.chat_public_language_qualification import PublicLanguage
 from casefile.data_postgres.session import create_database_engine, current_database_revision
 
 ROOT = Path(__file__).resolve().parents[4]
-MODEL_ID = "deepseek-v4-pro"
+MODEL_ID = DEEPSEEK_MODEL_ID
 PROMPT_VERSION = "casefile-chat-v17"
 REPORT_VERSION = "casefile-chat-goal-qualification-report-v1"
 FIXTURE = "fixtures/casefiles/general_mutation_dev_v2.casefile.json"

@@ -17,6 +17,7 @@ from typing import Any
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.provider_adapters.deepseek import DeepSeekAgentsProvider
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
@@ -145,7 +146,7 @@ def validate_suite() -> dict[str, Any]:
     if (
         not isinstance(formal_qualification, dict)
         or formal_qualification.get("provider") != "deepseek"
-        or formal_qualification.get("model_id") != "deepseek-v4-pro"
+        or formal_qualification.get("model_id") != DEEPSEEK_MODEL_ID
         or formal_qualification.get("quality_grader_provider") != rubric["judge_provider"]
         or formal_qualification.get("quality_grader_model_id") != rubric["judge_model_id"]
         or formal_qualification.get("trials_per_task") != 3
@@ -420,7 +421,8 @@ def run_suite(
             or quality_grader_model != qualification["quality_grader_model_id"]
         ):
             raise ValueError(
-                "Formal ScenePlan qualification requires the exact Pro generator and Flash G3 judge"
+                "Formal ScenePlan qualification requires the exact Flash generator "
+                "and Flash G3 judge"
             )
 
     prompt = load_prompt("scene_compiler_semantic_fill", SCENE_SEMANTIC_FILL_PROMPT_VERSION)

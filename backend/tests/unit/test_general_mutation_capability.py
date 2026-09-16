@@ -15,6 +15,7 @@ from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerResult,
     MutationPlanV2,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.general_mutation_capability import (
     _calibration_gate,
     _dev_gate,
@@ -96,7 +97,7 @@ def capability_report() -> dict[str, Any]:
     suite = load_capability_suite()
     with reuse_document_findings():
         return run_capability_benchmark(
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             api_key="test-key-not-sent",
             trials=1,
             provider=OrderedReferenceProvider(suite),
@@ -123,7 +124,7 @@ def test_general_mutation_07a_and_07b_gates_require_complete_frozen_7_by_5() -> 
         suite_path=V1_SUITE
     )
     report = run_capability_benchmark(
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         api_key="test-key-not-sent",
         trials=1,
         provider=OrderedReferenceProvider(suite),
@@ -149,7 +150,7 @@ def test_general_mutation_07b_gate_counts_transcript_fallback_events() -> None:
         suite_path=V1_SUITE
     )
     report = run_capability_benchmark(
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         api_key="test-key-not-sent",
         trials=1,
         provider=FallbackReferenceProvider(suite),

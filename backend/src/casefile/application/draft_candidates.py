@@ -333,6 +333,12 @@ class DraftCandidateService:
             "candidate_strategy": candidate_strategy.value,
             "candidate_strategy_version": candidate_strategy_version,
             "candidate_strategy_label": CANDIDATE_STRATEGY_LABELS[candidate_strategy],
+            "planning_summary": (
+                task.result_jsonb.get("planning_summary")
+                if isinstance(task.result_jsonb, dict)
+                and isinstance(task.result_jsonb.get("planning_summary"), dict)
+                else None
+            ),
             "attempt_count": task.attempt_count,
             "created_at": _time(task.created_at),
             "completed_at": _time(task.completed_at),

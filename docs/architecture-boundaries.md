@@ -85,7 +85,7 @@ M3.7 Goal Controller 是 `casefile_chat` 的单任务编排层，不是新的通
 | `scripts/test-startup.ps1` | 通过隔离临时目录验证启动超时、故障识别、备份完整性、未知数据保护和端口冲突；不停止真实 Docker。 |
 | `scripts/dev.ps1` | 从仓库根目录启动 `apps/web` 本地开发服务器；API 与 Worker 仍按各自入口启动。 |
 | `scripts/benchmark.ps1` | `brief_to_draft` Provider 级 Benchmark CLI 入口，支持 fake/openai/deepseek、重复运行和可选 JSON 报告；失败或环境阻断会返回非零状态，运行时发布验收另走 API/Worker/PostgreSQL 集成测试。 |
-| `scripts/acceptance-brief-to-draft-v8.ps1` | 显式触发真实 Provider 的组件化 Brief-to-Draft 运行时验收；兼容 v8–v14、默认验证 v14，仅使用当前本地配置凭据的密文副本和隔离 `*_test` 数据库，轮换五类时间/空间/竞争矩阵场景并验证 API、Worker、持久化、SSE 与未自动采用边界。 |
+| `scripts/acceptance-brief-to-draft-v8.ps1` | 显式触发真实 Provider 的组件化 Brief-to-Draft 运行时验收；兼容 v8–v18，仅使用当前本地配置凭据的密文副本和隔离 `*_test` 数据库，轮换时间、空间与竞争矩阵场景并验证 API、Worker、持久化、SSE 与未自动采用边界。 |
 | `scripts/test-a-path-e2e.ps1` | 在隔离 `*_test` 数据库和零成本 FakeProvider 上自启动 Next.js、FastAPI 与独立 Worker，执行 A 路径 Playwright 浏览器黄金测试并核对候选显式采用边界。 |
 | `scripts/generate-contracts.ps1` | 从根目录跨语言 Schema 生成 Python/TypeScript 契约包。 |
 | `scripts/check-contracts.ps1` | 检查根目录跨语言契约生成漂移和 Fixture 往返。 |
@@ -147,6 +147,12 @@ v17 继续复用固定 PipelineStage 图，默认 Registry 保持 v16。generati
 Prompt Package schema 3 通过 deferred_fragments 声明按需片段，历史 schema 2 不变。Skill manifest 引用资源哈希、契约和内建处理器；每次模型调用独立激活并在 finally 清理，不注册会话全局状态。Hook 不拥有修复调度、模型调用、数据库或候选写入权限。
 
 Worker 在现有 AgentStepRun 诊断中保存 execution 元数据，内部 hook 事件不进入公共 SSE 或推进阶段；v17 步骤指纹绑定实际材料和执行策略。Blueprint、时间、Evidence 变化按依赖使下游失效；最终编译和质量门禁重跑。说明与扩展示例见 backend/src/casefile/agent_runtime/brief_to_draft_v17/README.md。
+
+## Plan-Execute 边界
+
+执行目标是冻结业务计划的附属产物，不是第二套文学计划。LLM 负责目标内容、正文落实判断和调整建议；服务端只验证目标来源、适用范围、依赖、证据引用、预算、调用顺序和恢复重放。Nag 只注入下一次原本就会发生的相关生成或修订调用，不能新增调用、扩大修复预算、提前推进未来目标或自动修改上游计划。
+
+调用级 `plan_checkin` 只证明模型回应了目标，不直接证明目标已经落实。最终对账可给出 fulfilled、partial、not_fulfilled、unknown；非致命文学遗漏和对账不可用不会升级为产品致命门禁，产品完成状态与严格质量结论继续分开报告。Brief v18 与小说 runtime v15 均为显式启用版本，当前生产默认不切换。
 
 
 ## Chat 子任务局部查证修正（policy v2）

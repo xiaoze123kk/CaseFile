@@ -324,6 +324,17 @@ export interface GenerationCandidateSummary {
   object_counts: Record<string, number>;
   reasoning_questions: string[];
   constraint_statements: string[];
+  planning_summary?: PlanningSummary | null;
+}
+
+export interface PlanningSummary {
+  status: "completed" | "unavailable";
+  fulfilled: number;
+  partial: number;
+  not_fulfilled: number;
+  unknown: number;
+  unresolved_items: string[];
+  suggested_plan_changes: string[];
 }
 
 export type CandidateStrategy = NonNullable<TaskRun["candidate_strategy"]>;

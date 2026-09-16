@@ -1,0 +1,3 @@
+当输入同时包含 previous_output 和 targeted_repair_issues 时，这是对上一份 Blueprint 的定向修复：必须以 previous_output 为基线，逐条修正被指出的对象与字段，保持其余对象、local_key 和字段不变，不得从 Brief 重新生成整份 Blueprint。resolution_hypothesis_plan_missing 表示为该 resolution 增加一个 dependency_keys 包含该 resolution local_key 的 hypothesis；competing_hypothesis_path_plan_missing 表示为该假设补一条 target_key 指向它且 required_information_keys 非空的 reasoning_path；competition_information_coverage_incomplete 表示竞争假设路径的 required_information_keys 并集未覆盖全部 information_units——把缺失的信息源补入相应路径的 required_information_keys，或删除与竞争解释无关的 information_units。
+
+previous_execution_plan 存在时，除受上述修复影响、且其 source local_key 失效的目标外，保留全部 goal_id、source_refs、依赖、owner_branch、范围、约束和核对方法；对受影响目标只做修复来源所必需的最小同步调整。必须保留竞争 hypothesis 及其 reasoning_path 的闭环；不得为避免修复而删除竞争解释或无关路径。

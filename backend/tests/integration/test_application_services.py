@@ -78,10 +78,10 @@ def test_provider_credential_deletion_blocks_active_tasks_and_erases_material(
 
         with factory() as session:
             setting_before = session.scalar(
-                select(UserProviderSetting).where(
-                    UserProviderSetting.user_id == actor_id,
-                    UserProviderSetting.provider == "openai",
-                )
+                    select(UserProviderSetting).where(
+                        UserProviderSetting.user_id == actor_id,
+                        UserProviderSetting.provider == "deepseek",
+                    )
             )
             assert setting_before is not None
             setting_id = setting_before.id
@@ -283,7 +283,8 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
         with engine.connect() as connection:
             ciphertext = connection.execute(
                 select(UserProviderSetting.secret_ciphertext).where(
-                    UserProviderSetting.user_id == actor_id
+                    UserProviderSetting.user_id == actor_id,
+                    UserProviderSetting.provider == "deepseek",
                 )
             ).scalar_one()
             snapshot_json, snapshot_hash = connection.execute(

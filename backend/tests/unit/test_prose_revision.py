@@ -6,6 +6,7 @@ import pytest
 from test_prose_rewriter import _judge_candidate, _request
 from test_prose_rewriter import rewrite_case as source_rewrite_case
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider
 from casefile.agent_runtime.prose_revision import execute_revision_decision
 from casefile.agent_runtime.prose_rewrite_supervisor import execute_bounded_prose_rewrite
@@ -64,7 +65,7 @@ def _run(case, provider, judge, mode="product", observe=lambda *_: None):
         checklist=case["checklist"],
         previous_scene_render=None,
         initial_render=case["render"],
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         api_key="fake",
         remaining_scene_call_budget=12,
         llm_revision=True,

@@ -7,6 +7,15 @@ from types import SimpleNamespace
 from typing import Any, Literal
 
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
+from casefile.agent_runtime.plan_execute import (
+    ExecutionPlan,
+    PlanCallRecord,
+    PlanCheckin,
+    PlanContext,
+    PlanningSummary,
+    PlanReconciliationReport,
+    SceneProsePlanOutput,
+)
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
@@ -27,6 +36,8 @@ from casefile.agent_runtime.prose_rewriter import (
     PROSE_REWRITER_CANDIDATE_SCHEMA,
     PROSE_REWRITER_COMPONENT_HASH,
     PROSE_REWRITER_MAX_OUTPUT_TOKENS,
+    PROSE_REWRITER_PLAN_PROMPT_VERSION,
+    PROSE_REWRITER_PLAN_SCHEMA,
     PROSE_REWRITER_PROMPT_VERSION,
 )
 from casefile.agent_runtime.prose_skills import assemble_skill
@@ -34,6 +45,8 @@ from casefile.agent_runtime.prose_writer import (
     PROSE_WRITER_CANDIDATE_SCHEMA,
     PROSE_WRITER_COMPONENT_HASH,
     PROSE_WRITER_MAX_OUTPUT_TOKENS,
+    PROSE_WRITER_PLAN_PROMPT_VERSION,
+    PROSE_WRITER_PLAN_SCHEMA,
     PROSE_WRITER_PROMPT_VERSION,
 )
 from casefile.domain.narrative_compiler import canonical_json_sha256
@@ -67,6 +80,7 @@ LEGACY_SCHEMA_HASHES = {
     "Schema_12": "78f3cc8dbdbec01e826a052abe3c97924fcada0215d99ee89ed7c8f7a5de9c93",
     "Schema_5": "da72e78ae43940d5fec0a04e4539b38979aea801aebdda266e9d28b8ba8e60ae",
 }
+PLAN_EXECUTE_PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v15"
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -91,22 +105,65 @@ def prose_runtime_binding(
         "prose-shadow-runtime-v12",
         AUTO_EDIT_LEGACY_RUNTIME_VERSION,
         PROSE_RUNTIME_VERSION,
+        PLAN_EXECUTE_PROSE_RUNTIME_VERSION,
     }:
         raise ValueError("compiler_prose_runtime_version_unsupported")
     legacy = runtime_version == "prose-shadow-runtime-v11"
+    plan_execute = runtime_version == PLAN_EXECUTE_PROSE_RUNTIME_VERSION
     quick = prose_mode == "quick_draft"
     auto = prose_mode == "auto_edit"
-    if auto and runtime_version not in {AUTO_EDIT_LEGACY_RUNTIME_VERSION, PROSE_RUNTIME_VERSION}:
+    if auto and runtime_version not in {
+        AUTO_EDIT_LEGACY_RUNTIME_VERSION,
+        PROSE_RUNTIME_VERSION,
+        PLAN_EXECUTE_PROSE_RUNTIME_VERSION,
+    }:
         raise ValueError("compiler_prose_runtime_version_unsupported")
+    schema_models: list[type[Any]] = [
+        NovelProfileV2,
+        ProseJudgeChecklist,
+        SceneRender,
+        ProseJudgeReport,
+        ProseConsensusReport,
+        ProseQualityReport,
+        ProseRevisionDecision,
+        ProseRevisionDecisionCandidate,
+        CompileManifest,
+        NovelCandidate,
+    ]
+    if plan_execute:
+        schema_models.extend(
+            [
+                ExecutionPlan,
+                PlanContext,
+                PlanCheckin,
+                PlanCallRecord,
+                PlanReconciliationReport,
+                PlanningSummary,
+                SceneProsePlanOutput,
+            ]
+        )
     versions = {
         "prose_continuity": "prose-continuity-v1",
-        "prose_writer": "prose-writer-v4" if legacy else PROSE_WRITER_PROMPT_VERSION,
+        "prose_writer": (
+            "prose-writer-v4"
+            if legacy
+            else PROSE_WRITER_PLAN_PROMPT_VERSION
+            if plan_execute
+            else PROSE_WRITER_PROMPT_VERSION
+        ),
         "prose_fidelity_judge": load_prompt("prose_fidelity_judge").version,
         "prose_adversarial_judge": load_prompt("prose_adversarial_judge").version,
         "prose_coherence_judge": load_prompt("prose_coherence_judge").version,
         "prose_arbiter": load_prompt("prose_arbiter").version,
-        "prose_rewriter": "prose-rewriter-v7" if legacy else PROSE_REWRITER_PROMPT_VERSION,
+        "prose_rewriter": (
+            "prose-rewriter-v7"
+            if legacy
+            else PROSE_REWRITER_PLAN_PROMPT_VERSION
+            if plan_execute
+            else PROSE_REWRITER_PROMPT_VERSION
+        ),
         "prose_revision": "prose-revision-v3",
+        **({"prose_plan_reconciliation": "prose-plan-reconciliation-v1"} if plan_execute else {}),
         "prose_quality_critic": "prose-quality-critic-v1",
         "prose_quality_pairwise": "prose-quality-pairwise-v1",
         "prose_polisher": "prose-polisher-v5",
@@ -114,7 +171,9 @@ def prose_runtime_binding(
     if auto:
         versions.update(
             prose_auto_edit_judge="prose-auto-edit-judge-v1",
-            prose_rewriter="prose-rewriter-v10",
+            prose_rewriter=PROSE_REWRITER_PLAN_PROMPT_VERSION
+            if plan_execute
+            else "prose-rewriter-v10",
             prose_polisher="prose-polisher-v6",
         )
     binding: dict[str, Any] = {
@@ -122,25 +181,16 @@ def prose_runtime_binding(
         "prose_mode": prose_mode,
         "scene_count": scene_count,
         "max_logical_calls": (
-            None if scene_count is None else (2 if quick else 8 if auto else 23) * scene_count
+            None
+            if scene_count is None
+            else (2 if quick else 8 if auto else 23) * scene_count + (1 if plan_execute else 0)
         ),
         "schema_hashes": (
             LEGACY_SCHEMA_HASHES
             if runtime_version in {"prose-shadow-runtime-v11", "prose-shadow-runtime-v12"}
             else {
                 model.__name__: canonical_json_sha256(model.model_json_schema())
-                for model in (
-                    NovelProfileV2,
-                    ProseJudgeChecklist,
-                    SceneRender,
-                    ProseJudgeReport,
-                    ProseConsensusReport,
-                    ProseQualityReport,
-                    ProseRevisionDecision,
-                    ProseRevisionDecisionCandidate,
-                    CompileManifest,
-                    NovelCandidate,
-                )
+                for model in schema_models
             }
         ),
         "provider": "deepseek",
@@ -199,6 +249,7 @@ def prose_runtime_binding(
             "other_network_retries": 0,
             "logical_calls_per_scene": 2 if quick else 8 if auto else 23,
             "physical_requests_per_scene": 2 if quick else 8 if auto else 23,
+            **({"plan_reconciliation_calls": 1, "nag_threshold": 2} if plan_execute else {}),
             "cost_limit": None,
         },
     }
@@ -212,8 +263,14 @@ def prose_runtime_binding(
                 schema,
             )[1]
             for name, schema in (
-                ("prose_writer", PROSE_WRITER_CANDIDATE_SCHEMA),
-                ("prose_rewriter", PROSE_REWRITER_CANDIDATE_SCHEMA),
+                (
+                    "prose_writer",
+                    PROSE_WRITER_PLAN_SCHEMA if plan_execute else PROSE_WRITER_CANDIDATE_SCHEMA,
+                ),
+                (
+                    "prose_rewriter",
+                    PROSE_REWRITER_PLAN_SCHEMA if plan_execute else PROSE_REWRITER_CANDIDATE_SCHEMA,
+                ),
             )
         }
     if runtime_version in {"prose-shadow-runtime-v11", "prose-shadow-runtime-v12"}:

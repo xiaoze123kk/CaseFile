@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_rewriter",
+  "version": "prose-rewriter-v11",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "5bd2ed49076249bd2775085a38fa6393f676bd749846f15d36f0676e9668c0f8",
+  "previous_version": "prose-rewriter-v10",
+  "change_summary": "Plan-Execute：修订正文与独立计划核对同次返回，支持运行时 Nag 提醒。"
+}
