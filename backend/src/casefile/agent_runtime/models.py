@@ -609,6 +609,7 @@ class GenerationResult:
     candidate: dict[str, Any]
     usage: dict[str, Any]
     tools: ToolMetrics
+    planning_summary: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

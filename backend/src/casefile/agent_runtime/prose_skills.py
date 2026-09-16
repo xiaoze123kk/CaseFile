@@ -17,8 +17,12 @@ SKILL_RELEASES = {
     "prose-rewriter-v8": "scene-revision",
     "prose-writer-v6": "scene-writing",
     "prose-rewriter-v9": "scene-revision",
+    "prose-writer-v7": "scene-writing-plan-execute",
+    "prose-rewriter-v10": "scene-revision-plan-execute",
 }
-PROJECTED_RELEASES = frozenset({"prose-writer-v6", "prose-rewriter-v9"})
+PROJECTED_RELEASES = frozenset(
+    {"prose-writer-v6", "prose-rewriter-v9", "prose-writer-v7", "prose-rewriter-v10"}
+)
 
 
 def compact_json(value: Any) -> str:

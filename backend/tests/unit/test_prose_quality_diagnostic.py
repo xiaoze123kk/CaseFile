@@ -7,14 +7,22 @@ from pathlib import Path
 
 import pytest
 
-from casefile.agent_runtime.prose_quality_config import QUALITY_PRO_DIAGNOSTIC, QUALITY_V2
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
+from casefile.agent_runtime.prose_quality_config import (
+    QUALITY_DIAGNOSTIC_FLASH,
+    QUALITY_FLASH,
+    QUALITY_V2,
+)
 from casefile.agent_runtime.prose_quality_critic import (
     FakeProseQualityCriticProvider,
     execute_mirrored_pairwise_quality,
 )
 from casefile.benchmark.prose_quality_diagnostic import Audit, run_development, write_new
 from casefile.benchmark.prose_quality_diagnostic_report import quality_row, summarize_quality
-from casefile.benchmark.prose_quality_diagnostic_suite import load_diagnostic_suite
+from casefile.benchmark.prose_quality_diagnostic_suite import (
+    DEFAULT_SUITE,
+    load_diagnostic_suite,
+)
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS
 
 
@@ -53,7 +61,7 @@ def test_public_suite_all_bindings_and_semantic_review():
 def test_live_diagnostic_refuses_nonflash_candidate(tmp_path: Path):
     with pytest.raises(ValueError, match="diagnostic_experiment_not_frozen"):
         run_development(
-            suite_path=Path("fixtures/prose_quality_benchmark/diagnostic_v1/suite.json"),
+            suite_path=DEFAULT_SUITE,
             output=tmp_path / "attempt",
             api_key="fake",
             candidates=QUALITY_V2.config_id,
@@ -63,9 +71,9 @@ def test_live_diagnostic_refuses_nonflash_candidate(tmp_path: Path):
 def test_default_fingerprint_compatible_and_pro_is_explicit():
     task = load_diagnostic_suite()["quality_tasks"][0]
     default = execute(task, model_id=QUALITY_V2.pairwise_model)
-    explicit = execute(task, model_id=QUALITY_V2.pairwise_model, config=QUALITY_V2)
+    explicit = execute(task, model_id=QUALITY_FLASH.pairwise_model, config=QUALITY_FLASH)
     pro = execute(
-        task, model_id=QUALITY_PRO_DIAGNOSTIC.pairwise_model, config=QUALITY_PRO_DIAGNOSTIC
+        task, model_id=QUALITY_DIAGNOSTIC_FLASH.pairwise_model, config=QUALITY_DIAGNOSTIC_FLASH
     )
     assert default.status == explicit.status == pro.status == "completed"
     assert default.calls[0].request_fingerprint == explicit.calls[0].request_fingerprint
@@ -83,7 +91,7 @@ def test_default_fingerprint_compatible_and_pro_is_explicit():
         task,
         provider,
         model_id="deepseek-v4-pro",
-        config=replace(QUALITY_PRO_DIAGNOSTIC, findings_model="deepseek-v4-pro"),
+        config=replace(QUALITY_DIAGNOSTIC_FLASH, findings_model="deepseek-reasoner"),
     )
     assert invalid.status == "protocol_failed" and provider.call_count == 0
 
@@ -111,7 +119,7 @@ def test_recovery_cannot_cross_model_config():
         task,
         provider,
         model_id="deepseek-v4-pro",
-        config=QUALITY_PRO_DIAGNOSTIC,
+        config=QUALITY_DIAGNOSTIC_FLASH,
         recover_call=lambda _: baseline.calls[0],
     )
     assert result.status == "protocol_failed"
@@ -121,7 +129,7 @@ def test_recovery_cannot_cross_model_config():
 def test_selection_uses_worst_repeat_and_keeps_fixed_denominator():
     suite = load_diagnostic_suite()
     rows = []
-    for config in (QUALITY_V2, QUALITY_PRO_DIAGNOSTIC):
+    for config in (QUALITY_V2, QUALITY_DIAGNOSTIC_FLASH):
         for repeat in range(3):
             for task in suite["quality_tasks"]:
                 gold = task["gold"]["overall_preference"]
@@ -146,7 +154,7 @@ def test_selection_uses_worst_repeat_and_keeps_fixed_denominator():
             and row["task_id"] in {"quality_01", "quality_02"}
         ):
             row["mirrored"] = False
-    assert summarize_quality(degraded)["selected"] == QUALITY_PRO_DIAGNOSTIC.config_id
+    assert summarize_quality(degraded)["selected"] == QUALITY_DIAGNOSTIC_FLASH.config_id
     missing = [r for r in rows if r["task_id"] != "quality_01"]
     assert summarize_quality(missing)["selected"] is None
     assert (
@@ -267,10 +275,10 @@ def test_frozen_findings_reuse_keeps_full_council_and_exact_rollback(semantic_fa
         original_render=task["original_render"],
         semantic_consensus=task["semantic_consensus"],
         quality_model_id="deepseek-v4-flash",
-        generation_model_id="deepseek-v4-pro",
+        generation_model_id=DEEPSEEK_MODEL_ID,
         api_key="fake",
         frozen_findings=findings.report,
-        quality_config=QUALITY_PRO_DIAGNOSTIC,
+        quality_config=QUALITY_DIAGNOSTIC_FLASH,
     )
     assert judge.count == 3
     assert result.findings.call is None

@@ -3,11 +3,11 @@
   "suite_id": "scene-plan-capability-v2",
   "source_suite": {
     "path": "../v1/suite.json",
-    "hash": "e9469df7e831421482203bc2c40ba559a0219721041c5a80cf217009e26dcadf"
+    "hash": "7f59ee9dc5a1e4fc322c47b85d3b272bad723ed42656fa99d2881c93e3f297b6"
   },
   "formal_qualification": {
     "provider": "deepseek",
-    "model_id": "deepseek-v4-pro",
+    "model_id": "deepseek-flash",
     "quality_grader_provider": "deepseek",
     "quality_grader_model_id": "deepseek-v4-flash",
     "trials_per_task": 3

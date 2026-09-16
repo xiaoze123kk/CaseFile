@@ -19,6 +19,7 @@ from casefile.agent_runtime import (
     OpenAIAgentsProvider,
 )
 from casefile.agent_runtime.closure_repair import ClosureRepairProviderResult
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark import closure_repair_capability
 from casefile.benchmark.closure_repair_capability import (
     CapabilityContractError,
@@ -194,7 +195,7 @@ def test_controlled_experiment_comparison_locks_eval_and_lists_contract_changes(
         "suite_fingerprint": "s",
         "grader_version": "g",
         "provider": "deepseek",
-        "model_id": "deepseek-v4-pro",
+        "model_id": DEEPSEEK_MODEL_ID,
         "trials_per_task": 3,
         "closure_policy_version": "logical-mutation-v1",
         "repair_policy_version": "closure-repair-v1",

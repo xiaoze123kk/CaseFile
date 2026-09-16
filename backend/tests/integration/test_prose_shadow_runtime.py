@@ -90,6 +90,89 @@ def test_quick_draft_skips_reviews_and_is_not_strict_pass(workflow_database):
     assert "hooks" not in manifest
 
 
+def test_plan_execute_quick_draft_records_checkins_nag_state_and_final_summary(
+    workflow_database,
+):
+    class PlanningWriter:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def write_scene(self, request):
+            self.call_count += 1
+            context = request.input_payload["untrusted_data"]["plan_context"]
+            text = "调查者依照场景计划核对现场记录，没有提前泄露后续答案。" * 16
+            candidate = {
+                "schema_id": "compiler.scene-prose-plan-output.v1",
+                "artifact": {
+                    "schema_id": "compiler.scene-render-candidate.v1",
+                    "blocks": [{"text": text}],
+                },
+                "plan_checkin": {
+                    "schema_id": "casefile.plan-checkin-candidate.v1",
+                    "branch": "scene_prose",
+                    "items": [
+                        {
+                            "goal_id": goal["goal_id"],
+                            "status": "fulfilled",
+                            "evidence_paths": ["/blocks/0/text"],
+                            "reason": "正文已执行当前计划目标。",
+                        }
+                        for goal in context["applicable_goals"]
+                    ],
+                },
+            }
+            return FakeProseWriterProvider(candidates=(candidate,)).write_scene(request)
+
+    class PlanningReconciler:
+        def write_scene(self, request):
+            candidate = {
+                "schema_id": "casefile.plan-reconciliation.v1",
+                "plan_hash": canonical_json_sha256(request.input_payload["execution_plan"]),
+                "items": [
+                    {
+                        "goal_id": goal["goal_id"],
+                        "status": "fulfilled",
+                        "evidence_refs": [
+                            f"/evidence/accepted_scenes/{goal['applies_from'] - 1}/text_excerpt"
+                        ],
+                        "reason": "对应场景正文提供了落实依据。",
+                        "suggested_plan_change": None,
+                    }
+                    for goal in request.input_payload["execution_plan"]["goals"]
+                ],
+            }
+            return FakeProseWriterProvider(candidates=(candidate,)).write_scene(request)
+
+    factory, project, run, _ = _prepare(
+        workflow_database,
+        prose_mode="quick_draft",
+        plan_execute=True,
+    )
+    providers = replace(
+        _providers(),
+        writer=PlanningWriter(),
+        plan_reconciliation=PlanningReconciler(),
+    )
+    _run(factory, run, providers, workflow_database[2])
+    task, manifest, _ = _result(factory, run)
+    assert task.status == "succeeded" and manifest["shadow_status"] == "succeeded"
+    with factory() as session:
+        view = CompilerService(session).get_run(
+            workflow_database[1], project, run["compile_run_id"]
+        )
+        steps = list(
+            session.scalars(
+                select(AgentStepRun).where(AgentStepRun.task_run_id == run["task_run_id"])
+            )
+        )
+    assert view["plan_execute"] is True
+    assert view["planning_summary"]["status"] == "completed"
+    assert view["planning_summary"]["fulfilled"] >= 2
+    assert sum(step.component_id == "prose_plan_checkin" for step in steps) == 2
+    assert sum(step.component_id == "prose_plan_call_record" for step in steps) == 2
+    assert any(step.component_id == "prose_plan_reconciliation_report" for step in steps)
+
+
 def test_quick_draft_stops_after_two_invalid_generations(workflow_database):
     factory, _, run, _ = _prepare(workflow_database, prose_mode="quick_draft")
     invalid = {"schema_id": "compiler.scene-render-candidate.v1", "blocks": [{"text": "过短"}]}
@@ -411,6 +494,7 @@ def _prepare(
     *,
     planning_only: bool = False,
     prose_mode: str = "full_polish",
+    plan_execute: bool = False,
 ) -> tuple[Any, int, dict[str, Any], dict[str, Any]]:
     engine, actor, key = database
     factory, project, draft_id, _ = _prepare_compilable_project(engine, actor, key)
@@ -446,6 +530,7 @@ def _prepare(
         "prose_renderer_shadow": not planning_only,
         "scene_compiler_shadow": planning_only,
         "prose_mode": prose_mode,
+        "plan_execute": plan_execute,
     }
     with TestClient(create_app(engine.url.render_as_string(hide_password=False))) as client:
         response = client.post(

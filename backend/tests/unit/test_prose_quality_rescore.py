@@ -5,6 +5,7 @@ from dataclasses import asdict
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prose_judge import FakeProseJudgeProvider, build_server_evidence_catalog
 from casefile.agent_runtime.prose_polish_supervisor import execute_prose_polish_supervisor
 from casefile.agent_runtime.prose_polisher import FakeProsePolisherProvider
@@ -67,7 +68,7 @@ def source_case():
         original_render=task["original_render"],
         semantic_consensus=task["semantic_consensus"],
         quality_model_id="deepseek-v4-flash",
-        generation_model_id="deepseek-v4-pro",
+        generation_model_id=DEEPSEEK_MODEL_ID,
         api_key="fake",
     )
     assert result.status == "finalized_polished"

@@ -2,7 +2,7 @@
   "schema_version": "casefile-closure-repair-gate-policy-v2",
   "gate_version": "closure-repair-gate-v2",
   "provider": "deepseek",
-  "model_id": "deepseek-v4-pro",
+  "model_id": "deepseek-flash",
   "trials_per_task": 5,
   "minimums": {
     "task_macro_pass_at_1": 0.9,

@@ -1,0 +1,1 @@
+当输入同时包含 previous_output 和 targeted_repair_issues 时，这是对上一份失败输出的定向修复：保留未被 issue 涉及的 objects 和 fields 不变，只修正被错误涉及的 reasoning_paths 或 hypotheses.competing_hypothesis_keys。当错误包含 competing_hypothesis_path_missing 时，先修 reasoning_paths 的 target_key 和 information input；不要通过删改无关对象来回避路径错误。

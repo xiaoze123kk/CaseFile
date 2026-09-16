@@ -11,6 +11,7 @@ from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerResult,
     MutationPlanV2,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.general_mutation_backend_executor import (
     PostgresBackendReleaseExecutor,
 )
@@ -104,7 +105,7 @@ def test_backend_executor_drives_http_worker_apply_undo_redo(
                 },
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
         failed = {
             key: value
@@ -145,7 +146,7 @@ def test_backend_executor_drives_http_worker_apply_undo_redo(
                 },
             ),
             trial_index=1,
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
         )
         delete_failed = {
             key: value

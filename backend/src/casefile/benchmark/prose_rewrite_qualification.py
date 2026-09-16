@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
@@ -45,8 +46,8 @@ from casefile.benchmark.prose_rewrite_eval import (
 )
 
 # Historical suite identity; live non-Flash requests are rejected at transport.
-PROSE_REWRITER_MODEL_ID = "deepseek-v4-pro"
-PROSE_COUNCIL_MODEL_ID = "deepseek-v4-pro"
+PROSE_REWRITER_MODEL_ID = DEEPSEEK_MODEL_ID
+PROSE_COUNCIL_MODEL_ID = DEEPSEEK_MODEL_ID
 
 REPORT_VERSION: Final = "casefile.prose-rewrite-qualification-report.v1"
 EXECUTOR_VERSION: Final = "prose-rewrite-qualification-executor-v1"

@@ -65,6 +65,18 @@ from casefile.agent_runtime.brief_to_draft_v17.contracts import (
     PlannerInputV7,
     TemporalPlannerInputV5,
 )
+from casefile.agent_runtime.brief_to_draft_v18.contracts import (
+    BlueprintPlanOutputV1,
+    DomainDraftInputV8,
+    EvidencePlanOutputV1,
+    EvidenceRepairInputV4,
+    GovernanceDraftInputV8,
+    MatrixEvaluationInputV4,
+    PlannerInputV8,
+    PlanReconciliationInputV1,
+    StoryPlanOutputV1,
+    TemporalPlannerInputV6,
+)
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
@@ -115,6 +127,7 @@ from casefile.agent_runtime.models import (
     ChatTaskUnderstandingOutput,
     QueryRewriteOutput,
 )
+from casefile.agent_runtime.plan_execute import PlanReconciliationReport
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 
@@ -168,6 +181,13 @@ class RenderedPrompt:
 
 INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
     {
+        "brief-to-draft-planner-input-v8": PlannerInputV8,
+        "brief-to-draft-temporal-input-v6": TemporalPlannerInputV6,
+        "brief-to-draft-domain-input-v8": DomainDraftInputV8,
+        "brief-to-draft-governance-input-v8": GovernanceDraftInputV8,
+        "brief-to-draft-evidence-repair-input-v4": EvidenceRepairInputV4,
+        "brief-to-draft-matrix-evaluation-input-v4": MatrixEvaluationInputV4,
+        "brief-to-draft-reconciliation-input-v1": PlanReconciliationInputV1,
         "brief-to-draft-planner-input-v7": PlannerInputV7,
         "brief-to-draft-temporal-input-v5": TemporalPlannerInputV5,
         "brief-to-draft-domain-input-v7": DomainDraftInputV7,
@@ -217,6 +237,10 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
     {
+        "brief-to-draft-blueprint-plan-output-v1": BlueprintPlanOutputV1,
+        "brief-to-draft-story-plan-output-v1": StoryPlanOutputV1,
+        "brief-to-draft-evidence-plan-output-v1": EvidencePlanOutputV1,
+        "casefile-plan-reconciliation-v1": PlanReconciliationReport,
         "case-blueprint-v1": CaseBlueprintV1,
         "story-world-ir-v1": StoryWorldIRV1,
         "story-world-ir-v2": StoryWorldIRV2,
@@ -405,6 +429,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("brief-to-draft-pipeline-v15", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v16", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v17", TOOLSET_VERSION),
+        ("brief-to-draft-pipeline-v18", TOOLSET_VERSION),
         ("casefile-single-agent-v2", TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V3_VERSION),

@@ -13,6 +13,9 @@ from casefile.agent_runtime.prose_judge import (
     ProseJudgeProviderResult,
     ProseJudgeTransportAttempt,
 )
+from casefile.agent_runtime.prose_plan_reconciliation import (
+    DeepSeekPlanReconciliationProvider,
+)
 from casefile.agent_runtime.prose_polisher import (
     DeepSeekProsePolisherProvider,
     ProsePolisherProvider,
@@ -49,6 +52,7 @@ class ProseProviders:
     quality: ProseQualityCriticProvider
     polisher: ProsePolisherProvider
     continuity: ProseWriterProvider | None = None
+    plan_reconciliation: ProseWriterProvider | None = None
 
     @classmethod
     def deepseek(cls) -> ProseProviders:
@@ -59,6 +63,7 @@ class ProseProviders:
             DeepSeekProseQualityCriticProvider(),
             DeepSeekProsePolisherProvider(),
             DeepSeekContinuityProvider(),
+            DeepSeekPlanReconciliationProvider(),
         )
 
 
@@ -164,6 +169,17 @@ class DurableProseProvider:
             ProseWriterProviderResult,
             ProseWriterTransportAttempt,
             judge=True,
+        )
+
+    def reconcile_plan(self, request: Any) -> ProseWriterProviderResult:
+        if self.sources.plan_reconciliation is None:
+            raise ProseCouncilProtocolError("prose_plan_reconciliation_provider_missing")
+        return self._invoke(
+            "prose_plan_reconciliation",
+            self.sources.plan_reconciliation.write_scene,
+            request,
+            ProseWriterProviderResult,
+            ProseWriterTransportAttempt,
         )
 
     def rewrite_scene(self, request: Any) -> ProseRewriterProviderResult:

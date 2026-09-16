@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark import general_mutation_qualification as qualification
 from casefile.benchmark.general_mutation_qualification import QualificationError
 
@@ -41,13 +42,13 @@ def test_formal_qualification_writes_failed_index_when_stage_raises(
     manifest = {
         "source_revision": revision,
         "runtime_fingerprint": "b" * 64,
-        "model_id": "deepseek-v4-pro",
+        "model_id": DEEPSEEK_MODEL_ID,
     }
     monkeypatch.setattr(qualification, "qualification_preflight", lambda **_kwargs: manifest)
     monkeypatch.setattr(
         qualification,
         "_saved_credential",
-        lambda **_kwargs: ("not-a-real-key", "deepseek-v4-pro"),
+        lambda **_kwargs: ("not-a-real-key", DEEPSEEK_MODEL_ID),
     )
     monkeypatch.setattr(
         qualification,

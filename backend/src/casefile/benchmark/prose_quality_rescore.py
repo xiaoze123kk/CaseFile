@@ -12,8 +12,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prose_judge import FULL_COUNCIL_POLICY
-from casefile.agent_runtime.prose_quality_config import QUALITY_PRO_DIAGNOSTIC
+from casefile.agent_runtime.prose_quality_config import QUALITY_DIAGNOSTIC_FLASH
 from casefile.agent_runtime.prose_quality_critic import (
     FakeProseQualityCriticProvider,
     execute_mirrored_pairwise_quality,
@@ -51,8 +52,8 @@ def pairwise(case: dict[str, Any], provider: Any, api_key: str) -> Any:
         original_render=case["original"],
         polished_render=case["polished"],
         preservation_consensus=case["preservation"],
-        config=QUALITY_PRO_DIAGNOSTIC,
-        model_id=QUALITY_PRO_DIAGNOSTIC.pairwise_model,
+        config=QUALITY_DIAGNOSTIC_FLASH,
+        model_id=QUALITY_DIAGNOSTIC_FLASH.pairwise_model,
         api_key=api_key,
         reverse_first=case["repeat"] % 2 == 1,
     )
@@ -127,7 +128,7 @@ def validate_case(task: dict[str, Any], saved: dict[str, Any], repeat: int) -> d
     for new, old in zip(preflight.calls, baseline["calls"], strict=True):
         old_payload, new_payload = old["request_payload"], new.request_payload
         if (
-            old["model_id"] != "deepseek-v4-flash"
+            old["model_id"] != DEEPSEEK_MODEL_ID
             or old["prompt_hash"] != new.prompt_hash
             or old_payload["untrusted_data"] != new_payload["untrusted_data"]
             or old_payload["quality_dimensions"] != new_payload["quality_dimensions"]
@@ -237,7 +238,7 @@ def run(*, source_root: Path, output: Path, api_key: str, workers: int = 4) -> d
             "source_root": str(source_root.resolve()),
             "source_artifacts": hashes,
             "source": source,
-            "config": asdict(QUALITY_PRO_DIAGNOSTIC),
+            "config": asdict(QUALITY_DIAGNOSTIC_FLASH),
             "case_count": 72,
             "expected_calls": 144,
             "qualified": False,

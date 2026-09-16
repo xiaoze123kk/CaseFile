@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.public_language import public_language_rule_ids
 from casefile.benchmark.chat_live_eval import _saved_provider_credential
@@ -37,7 +38,7 @@ DEFAULT_SUITE = Path("fixtures/chat_public_language_qualification/v1/suite.json"
 SUITE_VERSION = "casefile-chat-public-language-suite-v1"
 REPORT_VERSION = "casefile-chat-public-language-qualification-report-v2"
 QUALIFICATION_VERSION = "casefile-m3.6-qualification-v2"
-MODEL_ID = "deepseek-v4-pro"
+MODEL_ID = DEEPSEEK_MODEL_ID
 PROMPT_VERSION = "casefile-chat-v16"
 TRIALS_PER_TASK = 3
 TASK_COUNT = 16
@@ -502,7 +503,7 @@ def build_qualification_report(
     gates = {
         "all_48_trials_completed": completed_count == TRIAL_COUNT and actual == expected,
         "source_revision_stable": source_stable,
-        "exact_model_deepseek_v4_pro": bool(rows) and all(row.exact_model_observed for row in rows),
+        "exact_model_deepseek_flash": bool(rows) and all(row.exact_model_observed for row in rows),
         "exact_prompt_casefile_chat_v16": bool(rows)
         and all(row.exact_prompt_observed for row in rows),
         "model_call_evidence_complete": bool(rows)
@@ -545,7 +546,7 @@ def build_qualification_report(
         "exact_prompt_casefile_chat_v16",
     }
     evidence_gate_names = {
-        "exact_model_deepseek_v4_pro",
+        "exact_model_deepseek_flash",
         "model_call_evidence_complete",
         "unterminated_model_call_count_0",
     }
@@ -841,7 +842,7 @@ def _write_chinese_report(
         f"- 模型证据不完整 Trial：{metrics['model_call_evidence_incomplete_count']}",
         f"- 未终结模型调用：{metrics['unterminated_model_call_count']}",
         f"- 运行时绑定不一致 Trial：{metrics['model_binding_mismatch_count']}",
-        f"- 精确 Pro 模型：{'通过' if gates['exact_model_deepseek_v4_pro'] else '未通过'}",
+        f"- 精确 Flash 模型：{'通过' if gates['exact_model_deepseek_flash'] else '未通过'}",
         f"- clean revision 稳定：{'通过' if gates['source_revision_stable'] else '未通过'}",
         "- 凭据：仅从本地加密配置读入内存；报告和测试库均不保存真实密钥。",
         "",

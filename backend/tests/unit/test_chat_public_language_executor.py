@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 from casefile.agent_runtime.goal.provider import GoalUnderstandingRequest
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.benchmark.chat_public_language_executor import (
     PUBLIC_SENSITIVE_CANARY,
@@ -38,7 +39,7 @@ def _chat_request() -> CaseFileChatRequest:
         message="先分析，再审计。",
         editable_fields_by_collection={},
         input_hash="a" * 64,
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         api_key=PUBLIC_SENSITIVE_CANARY,
         max_turns=4,
         emit=lambda *_args, **_kwargs: None,

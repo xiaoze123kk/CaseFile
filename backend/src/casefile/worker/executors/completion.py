@@ -350,6 +350,8 @@ class CompletionExecutor:
                     "cost_usage": cost_usage,
                 }
             )
+            if result.planning_summary is not None:
+                summary["planning_summary"] = result.planning_summary
             now = datetime.now(UTC)
             attempt.status = "succeeded"
             attempt.candidate_jsonb = candidate

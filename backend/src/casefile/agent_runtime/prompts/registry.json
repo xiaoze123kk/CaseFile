@@ -82,6 +82,9 @@
     "prose_continuity": {
       "current_version": "prose-continuity-v1"
     },
+    "prose_plan_reconciliation": {
+      "current_version": "prose-plan-reconciliation-v1"
+    },
     "prose_revision": {
       "current_version": "prose-revision-v3"
     },

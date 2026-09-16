@@ -27,18 +27,20 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     StoryWorldIRV1,
 )
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
+    _bind_brief_execution_plan,
     _build_context_pack,
     _with_temporal_plan,
     register_pipeline_stage,
     registered_pipeline_stage_ids,
     run_v8_generation,
 )
+from casefile.agent_runtime.brief_to_draft_v18.contracts import BriefExecutionPlanCandidate
 from casefile.agent_runtime.models import CandidateStrategy, GenerationRequest
 from casefile.agent_runtime.prompt import V12_GENERATION_AGENT_VERSION
 from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
-VERSIONS = {f"brief-to-draft-v{version}" for version in range(8, 18)}
+VERSIONS = {f"brief-to-draft-v{version}" for version in range(8, 19)}
 
 
 def test_all_component_versions_have_a_frozen_spec() -> None:
@@ -48,6 +50,22 @@ def test_all_component_versions_have_a_frozen_spec() -> None:
 def test_unknown_pipeline_version_fails_closed() -> None:
     with pytest.raises(ValueError, match="Unsupported brief-to-draft pipeline version"):
         resolve_pipeline_spec("brief-to-draft-v7")
+
+
+def test_v18_execution_plan_schema_rejects_novel_only_owner_branch() -> None:
+    goal = {
+        "goal_id": "watch_clue",
+        "objective": "保持怀表线索",
+        "verification": "Story 中出现怀表",
+        "source_refs": ["watch"],
+    }
+    assert BriefExecutionPlanCandidate.model_validate(
+        {"goals": [{**goal, "owner_branch": "story_world"}]}
+    ).goals[0].owner_branch == "story_world"
+    with pytest.raises(ValueError, match="owner_branch"):
+        BriefExecutionPlanCandidate.model_validate(
+            {"goals": [{**goal, "owner_branch": "scene_prose"}]}
+        )
 
 
 def test_specs_bind_prompt_component_sets() -> None:
@@ -62,6 +80,11 @@ def test_specs_bind_prompt_component_sets() -> None:
     assert resolve_pipeline_spec("brief-to-draft-v14").prompt_components == temporal
     assert resolve_pipeline_spec("brief-to-draft-v15").prompt_components == temporal | {"matrix"}
     assert resolve_pipeline_spec("brief-to-draft-v16").prompt_components == temporal | {"matrix"}
+    assert resolve_pipeline_spec("brief-to-draft-v17").prompt_components == temporal | {"matrix"}
+    assert resolve_pipeline_spec("brief-to-draft-v18").prompt_components == temporal | {
+        "matrix",
+        "reconciliation",
+    }
 
 
 def test_specs_bind_ordered_execution_graphs() -> None:
@@ -101,6 +124,8 @@ def test_specs_bind_ordered_execution_graphs() -> None:
         assert resolve_pipeline_spec(version).stages == temporal
     assert resolve_pipeline_spec("brief-to-draft-v15").stages == v15
     assert resolve_pipeline_spec("brief-to-draft-v16").stages == v15
+    assert resolve_pipeline_spec("brief-to-draft-v17").stages == v15
+    assert resolve_pipeline_spec("brief-to-draft-v18").stages == (*v15, "plan_reconciliation")
 
 
 def test_feature_flags_translate_the_historical_version_branches() -> None:
@@ -141,6 +166,19 @@ def test_feature_flags_translate_the_historical_version_branches() -> None:
         relationship_coverage=True,
         blueprint_repair_budget=2,
     )
+    assert flags["brief-to-draft-v17"] == flags["brief-to-draft-v16"]
+    assert flags["brief-to-draft-v18"] == FeatureFlags(
+        v2_context=True,
+        temporal_plan=True,
+        competition_matrix=True,
+        governance_v2=True,
+        matrix_evaluation=True,
+        language_gate=True,
+        explicit_targets=True,
+        relationship_coverage=True,
+        plan_execute=True,
+        blueprint_repair_budget=2,
+    )
 
 
 def test_specs_bind_story_evidence_and_governance_schemas() -> None:
@@ -178,6 +216,8 @@ def test_context_pack_builder_uses_spec_context_types() -> None:
         "brief-to-draft-v14": "draft-context-pack-v4",
         "brief-to-draft-v15": "draft-context-pack-v5",
         "brief-to-draft-v16": "draft-context-pack-v6",
+        "brief-to-draft-v17": "draft-context-pack-v7",
+        "brief-to-draft-v18": "draft-context-pack-v8",
     }
     for version, schema_id in expected_schema_ids.items():
         context = _build_context_pack(
@@ -191,12 +231,24 @@ def test_context_pack_builder_uses_spec_context_types() -> None:
 def test_repair_input_contract_preserved_for_matrix_versions() -> None:
     for version in sorted(
         VERSIONS
-        - {"brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v16", "brief-to-draft-v17"}
+        - {
+            "brief-to-draft-v8",
+            "brief-to-draft-v9",
+            "brief-to-draft-v16",
+            "brief-to-draft-v17",
+            "brief-to-draft-v18",
+        }
     ):
         spec: BriefToDraftSpec = resolve_pipeline_spec(version)
         assert spec.evidence_repair_input_contract_id == ("brief-to-draft-evidence-repair-input-v1")
     assert resolve_pipeline_spec("brief-to-draft-v16").evidence_repair_input_contract_id == (
         "brief-to-draft-evidence-repair-input-v2"
+    )
+    assert resolve_pipeline_spec("brief-to-draft-v17").evidence_repair_input_contract_id == (
+        "brief-to-draft-evidence-repair-input-v3"
+    )
+    assert resolve_pipeline_spec("brief-to-draft-v18").evidence_repair_input_contract_id == (
+        "brief-to-draft-evidence-repair-input-v4"
     )
     assert resolve_pipeline_spec("brief-to-draft-v8").evidence_repair_input_contract_id is None
     assert resolve_pipeline_spec("brief-to-draft-v9").evidence_repair_input_contract_id is None
@@ -323,6 +375,30 @@ def test_compiler_plugin_mutates_document_before_validation() -> None:
 
     assert plugin.calls == 1
     assert candidate["title"].endswith("-plugin")
+
+
+def test_v18_projects_brief_goal_ranges_onto_each_single_branch_phase() -> None:
+    blueprint_json = _fake_v8_output(CaseBlueprintV1)
+    _add_fake_v10_matrix_plan(CaseBlueprintV1, blueprint_json)
+    blueprint = CaseBlueprintV1.model_validate(blueprint_json)
+    source_ref = blueprint.entities[0].local_key
+    plan = _bind_brief_execution_plan(
+        {
+            "goals": [
+                {
+                    "goal_id": "late_story_goal",
+                    "objective": "保持故事事实一致",
+                    "verification": "Story 输出包含来源事实",
+                    "owner_branch": "story_world",
+                    "source_refs": [source_ref],
+                    "applies_from": 3,
+                    "applies_until": 7,
+                }
+            ]
+        },
+        blueprint,
+    )
+    assert [(goal.applies_from, goal.applies_until) for goal in plan.goals] == [(1, 1)]
 
 
 def test_run_v8_generation_invokes_story_and_compiler_hooks() -> None:

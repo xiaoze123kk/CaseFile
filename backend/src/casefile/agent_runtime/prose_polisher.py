@@ -369,7 +369,7 @@ def build_prose_polisher_request(
 ) -> ProsePolisherRequest:
     """Build the minimal immutable Polisher view from accepted upstream facts."""
 
-    if model_id not in (PROSE_POLISHER_MODEL_ID, "deepseek-v4-pro"):
+    if model_id != PROSE_POLISHER_MODEL_ID:
         raise ProsePolisherProtocolError("prose_polisher_model_id_not_frozen")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
     render = validate_scene_render(

@@ -11,13 +11,30 @@ from sqlalchemy.exc import SQLAlchemyError
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.novel_compile_hooks import check_novel_boundary
+from casefile.agent_runtime.plan_execute import (
+    ExecutionPlan,
+    NagLedger,
+    PlanCheckin,
+    bind_checkin,
+    build_plan_call_record,
+    derive_scene_execution_plan,
+    planning_summary,
+    validate_reconciliation,
+)
 from casefile.agent_runtime.prose_context import scene_generation_context
 from casefile.agent_runtime.prose_continuity import ContinuityReview, continuity_request
 from casefile.agent_runtime.prose_judge import FIDELITY_ONLY_POLICY
+from casefile.agent_runtime.prose_plan_reconciliation import execute_plan_reconciliation
 from casefile.agent_runtime.prose_polish_supervisor import execute_prose_polish_supervisor
 from casefile.agent_runtime.prose_rewrite_supervisor import execute_bounded_prose_rewrite
+from casefile.agent_runtime.prose_runtime import PLAN_EXECUTE_PROSE_RUNTIME_VERSION
 from casefile.agent_runtime.prose_writer import execute_prose_writer
-from casefile.data_postgres.models import CompileArtifact, TaskRun, UserProviderSetting
+from casefile.data_postgres.models import (
+    AgentStepRun,
+    CompileArtifact,
+    TaskRun,
+    UserProviderSetting,
+)
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_prose_judge_checklist,
@@ -42,6 +59,11 @@ class ProseShadowExecutor:
             "narrative_ir_hash": None,
             "profile_hash": None,
         }
+        self.execution_plan: ExecutionPlan | None = None
+        self.plan_ledger = NagLedger()
+        self.plan_checkins: list[PlanCheckin] = []
+        self.planning_summary: dict[str, Any] | None = None
+        self._active_plan_sequence: int | None = None
 
     def execute(self, manifest: dict[str, Any]) -> CompileArtifact:
         store = self.store
@@ -118,6 +140,14 @@ class ProseShadowExecutor:
             )
             check_novel_boundary("prose_plan", {"plan": plan}, records=self.hook_records)
             self.ordered = sorted(plan["scenes"], key=lambda s: s["discourse_order"])
+            if self._plan_execute_enabled:
+                self.execution_plan = derive_scene_execution_plan(plan)
+                store.record_plan_output(
+                    "prose_execution_plan",
+                    self.execution_plan.model_dump(mode="json"),
+                    identity="compiler.prose_execution_plan",
+                )
+                self._restore_plan_state(artifacts)
             # Validate the full upstream closure before the first prose request.
             build_prose_judge_checklist(
                 scene_plan=plan,
@@ -181,6 +211,8 @@ class ProseShadowExecutor:
         artifact = store.artifact(
             "novel_candidate", "compiler.novel_candidate", candidate, "prose_manifest"
         )
+        if self._plan_execute_enabled:
+            self._reconcile_plan(accepted, api_key)
         return self._manifest("succeeded", None, candidate_hash=artifact.content_hash)
 
     def _scene(
@@ -291,6 +323,12 @@ class ProseShadowExecutor:
             # Writer resolve them from the same frozen context. Protocol and
             # reference-binding failures above remain fail-closed.
             continuity_advisories = [issue.model_dump(mode="json") for issue in review.issues]
+        plan_context = None
+        if self._plan_execute_enabled:
+            if self.execution_plan is None:
+                raise ProseResultUnknown("compiler_prose_execution_plan_missing")
+            self._active_plan_sequence = int(checklist["scene_ordinal"])
+            plan_context = self._current_scene_plan_context().model_dump(mode="json")
         writer = execute_prose_writer(
             self.provider,
             prompt_version=store.runtime["prompts"]["prose_writer"]["version"],
@@ -303,10 +341,49 @@ class ProseShadowExecutor:
             api_key=api_key,
             remaining_scene_call_budget=store.runtime["limits"]["logical_calls_per_scene"],
             continuity_advisories=continuity_advisories,
+            plan_context=plan_context,
         )
         self.observe("writer", writer)
         if writer.status != "completed" or writer.render is None:
             return "inconclusive_infrastructure", None, writer.error_code
+        if self._plan_execute_enabled:
+            if self.execution_plan is None or writer.call is None:
+                raise ProseResultUnknown("compiler_prose_plan_checkin_binding_missing")
+            call_key = f"{store.scene_id}:{writer.call.request_fingerprint}"
+            checkin = bind_checkin(
+                writer.plan_checkin,
+                plan=self.execution_plan,
+                branch="scene_prose",
+                sequence_no=int(checklist["scene_ordinal"]),
+                artifact=writer.render,
+                call_key=call_key,
+            )
+            self.plan_ledger.record_success(
+                call_key=call_key,
+                plan=self.execution_plan,
+                branch="scene_prose",
+                sequence_no=int(checklist["scene_ordinal"]),
+                checkin=checkin,
+            )
+            store.record_plan_output(
+                "prose_plan_call_record",
+                build_plan_call_record(
+                    plan=self.execution_plan,
+                    branch="scene_prose",
+                    sequence_no=int(checklist["scene_ordinal"]),
+                    artifact=writer.render,
+                    call_key=call_key,
+                    checkin=checkin,
+                ).model_dump(mode="json"),
+                identity=call_key,
+            )
+            if checkin is not None:
+                self.plan_checkins.append(checkin)
+                store.record_plan_output(
+                    "prose_plan_checkin",
+                    checkin.model_dump(mode="json"),
+                    identity=call_key,
+                )
         if quick:
             accepted = finalize_scene_render(
                 writer.render,
@@ -346,6 +423,11 @@ class ProseShadowExecutor:
             observe=self.observe,
             llm_revision=True,
             delivery_mode="product",
+            plan_context_provider=(
+                lambda: self._current_scene_plan_context().model_dump(mode="json")
+                if self._plan_execute_enabled
+                else None
+            ),
         )
         if rewrite.status == "product_accepted" and rewrite.final_render is not None:
             accepted = finalize_scene_render(
@@ -408,6 +490,8 @@ class ProseShadowExecutor:
 
     def observe(self, name: str, execution: Any) -> None:
         store = self.store
+        if name == "rewrite" and self._plan_execute_enabled:
+            self._record_rewrite_checkin(execution)
         store.boundary()
         error = execution.error_code if execution.status != "completed" else None
         # An invalid Arbiter response is a protocol error, not a legal uncertain verdict.
@@ -514,6 +598,180 @@ class ProseShadowExecutor:
                 )
         if error and name == "semantic":
             raise ProseResultUnknown(error)
+
+    @property
+    def _plan_execute_enabled(self) -> bool:
+        return self.store.runtime.get("version") == PLAN_EXECUTE_PROSE_RUNTIME_VERSION
+
+    def _restore_plan_state(self, artifacts: dict[str, CompileArtifact]) -> None:
+        if self.execution_plan is None:
+            return
+        with self.store.factory() as session:
+            rows = list(
+                session.scalars(
+                    select(AgentStepRun)
+                    .where(
+                        AgentStepRun.task_run_id == self.store.run.task_run_id,
+                        AgentStepRun.component_id == "prose_plan_call_record",
+                        AgentStepRun.status.in_(("succeeded", "reused")),
+                        AgentStepRun.output_jsonb.is_not(None),
+                    )
+                    .order_by(AgentStepRun.id)
+                )
+            )
+        from casefile.agent_runtime.plan_execute import PlanCallRecord
+
+        by_scene: dict[str, list[PlanCallRecord]] = {}
+        for row in rows:
+            try:
+                record = PlanCallRecord.model_validate(row.output_jsonb)
+            except ValueError:
+                continue
+            if record.plan_hash != canonical_json_sha256(
+                self.execution_plan.model_dump(mode="json")
+            ):
+                continue
+            scene_id = record.call_key.split(":", 1)[0]
+            by_scene.setdefault(scene_id, []).append(record)
+        accepted_scene_ids = {
+            str(artifact.content_jsonb.get("scene_id"))
+            for artifact in artifacts.values()
+            if artifact.artifact_kind == "scene_render"
+            and artifact.content_jsonb.get("stage") == "accepted"
+        }
+        for scene in self.ordered:
+            scene_id = str(scene["scene_id"])
+            if scene_id not in accepted_scene_ids:
+                continue
+            restored = by_scene.get(scene_id, [])
+            if not restored:
+                self.plan_ledger.record_success(
+                    call_key=f"{scene_id}:accepted_without_checkin",
+                    plan=self.execution_plan,
+                    branch="scene_prose",
+                    sequence_no=int(scene["discourse_order"]),
+                    checkin=None,
+                )
+            for record in restored:
+                self.plan_ledger.record_success(
+                    call_key=record.call_key,
+                    plan=self.execution_plan,
+                    branch="scene_prose",
+                    sequence_no=record.sequence_no,
+                    checkin=record.checkin,
+                )
+                if record.checkin is not None:
+                    self.plan_checkins.append(record.checkin)
+
+    def _current_scene_plan_context(self) -> Any:
+        if self.execution_plan is None or self._active_plan_sequence is None:
+            raise ProseResultUnknown("compiler_prose_execution_plan_missing")
+        return self.plan_ledger.context(
+            self.execution_plan,
+            branch="scene_prose",
+            sequence_no=self._active_plan_sequence,
+        )
+
+    def _record_rewrite_checkin(self, execution: Any) -> None:
+        if (
+            self.execution_plan is None
+            or self._active_plan_sequence is None
+            or execution.status != "completed"
+            or execution.render is None
+            or execution.call is None
+        ):
+            return
+        call_key = f"{self.store.scene_id}:{execution.call.request_fingerprint}"
+        checkin = bind_checkin(
+            execution.plan_checkin,
+            plan=self.execution_plan,
+            branch="scene_prose",
+            sequence_no=self._active_plan_sequence,
+            artifact=execution.render,
+            call_key=call_key,
+        )
+        self.plan_ledger.record_success(
+            call_key=call_key,
+            plan=self.execution_plan,
+            branch="scene_prose",
+            sequence_no=self._active_plan_sequence,
+            checkin=checkin,
+        )
+        self.store.record_plan_output(
+            "prose_plan_call_record",
+            build_plan_call_record(
+                plan=self.execution_plan,
+                branch="scene_prose",
+                sequence_no=self._active_plan_sequence,
+                artifact=execution.render,
+                call_key=call_key,
+                checkin=checkin,
+            ).model_dump(mode="json"),
+            identity=call_key,
+        )
+        if checkin is not None:
+            self.plan_checkins.append(checkin)
+            self.store.record_plan_output(
+                "prose_plan_checkin",
+                checkin.model_dump(mode="json"),
+                identity=call_key,
+            )
+
+    def _reconcile_plan(self, accepted: list[dict[str, Any]], api_key: str) -> None:
+        if self.execution_plan is None:
+            raise ProseResultUnknown("compiler_prose_execution_plan_missing")
+        self.store.scene_id = "__novel__"
+        self.store.phase = "plan_reconciliation"
+        report = None
+        result = None
+        try:
+            report, result = execute_plan_reconciliation(
+                self.provider,
+                plan=self.execution_plan,
+                accepted_scenes=accepted,
+                checkins=self.plan_checkins,
+                model_id=DEEPSEEK_MODEL_ID,
+                api_key=api_key,
+            )
+            if report is not None and result is not None:
+                report = validate_reconciliation(
+                    report,
+                    plan=self.execution_plan,
+                    evidence=result.request_payload,
+                )
+                self.store.finish_steps(
+                    error_code=None,
+                    outputs={
+                        result.request_fingerprint: canonical_json_sha256(
+                            report.model_dump(mode="json")
+                        )
+                    },
+                )
+                self.store.record_plan_output(
+                    "prose_plan_reconciliation_report",
+                    report.model_dump(mode="json"),
+                    identity=result.request_fingerprint,
+                )
+            elif result is not None:
+                self.provider.record_protocol_failure(
+                    result.request_fingerprint,
+                    {"code": "compiler_prose_plan_reconciliation_protocol_failed"},
+                )
+                self.store.finish_steps(
+                    error_code="compiler_prose_plan_reconciliation_protocol_failed"
+                )
+        except (ProseLeaseLost, TaskCancellationRequested, SQLAlchemyError):
+            raise
+        except Exception:
+            report = None
+            self.store.finish_steps(error_code="compiler_prose_plan_reconciliation_unavailable")
+        summary = planning_summary(report).model_dump(mode="json")
+        self.planning_summary = summary
+        self.store.record_plan_output(
+            "prose_planning_summary",
+            {"schema_id": "casefile.planning-summary.v1", **summary},
+            identity="compiler.prose_planning_summary",
+        )
 
     def _scene_manifest(
         self, scene: dict[str, Any], state: str, reason: str | None

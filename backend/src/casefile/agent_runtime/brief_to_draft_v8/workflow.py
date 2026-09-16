@@ -129,12 +129,27 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
 from casefile.agent_runtime.brief_to_draft_v15.matrix import (
     evaluate_evidence_matrix,
 )
+from casefile.agent_runtime.brief_to_draft_v18.contracts import (
+    BlueprintPlanOutputV1,
+    EvidencePlanOutputV1,
+    StoryPlanOutputV1,
+)
 from casefile.agent_runtime.generation_skills import SkillLoader
 from casefile.agent_runtime.generation_validation_hooks import (
     run_stage_hooks,
     validate_generation_artifact,
 )
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
+from casefile.agent_runtime.plan_execute import (
+    ExecutionPlan,
+    NagLedger,
+    PlanCheckin,
+    PlanReconciliationReport,
+    bind_checkin,
+    bind_execution_plan,
+    planning_summary,
+    validate_reconciliation,
+)
 from casefile.agent_runtime.prompt_package import (
     PromptPackageError,
     RenderedPrompt,
@@ -246,6 +261,10 @@ class PipelineContext:
     linked: LinkedDraftV1 | None = None
     candidate: dict[str, Any] | None = None
     result: GenerationResult | None = None
+    execution_plan: ExecutionPlan | None = None
+    plan_ledger: NagLedger = field(default_factory=NagLedger)
+    plan_checkins: list[PlanCheckin] = field(default_factory=list)
+    plan_call_counts: dict[str, int] = field(default_factory=dict)
 
     @property
     def features(self) -> FeatureFlags:
@@ -341,17 +360,66 @@ class PipelineContext:
             )
         if self.spec.story_feature is not None and component_id == "story_world":
             input_payload.update(self.spec.story_feature.domain_input_fields(self.request))
+        plan_branch = (
+            component_id
+            if self.features.plan_execute
+            and component_id in {"story_world", "evidence_logic"}
+            else None
+        )
+        plan_sequence = 1
+        if plan_branch is not None:
+            if self.execution_plan is None:
+                raise RuntimeError("plan-execute domain drafting requires an execution plan")
+            execution_plan = self.execution_plan
+            input_payload["plan_context"] = self.plan_ledger.context(
+                execution_plan,
+                branch=cast(Any, plan_branch),
+                sequence_no=plan_sequence,
+            ).model_dump(mode="json")
+        resolved_output_type: type[BaseModel] = output_type
+        if plan_branch == "story_world":
+            resolved_output_type = StoryPlanOutputV1
+        elif plan_branch == "evidence_logic":
+            resolved_output_type = EvidencePlanOutputV1
         output, usage = await _model_step(
             self.request,
             self.call_component,
             component_id=component_id,
             prompt_component=prompt_component,
             stage="domain_drafting",
-            output_type=output_type,
+            output_type=resolved_output_type,
             input_payload=input_payload,
             input_contract_id=input_contract_id,
         )
-        return output_type.model_validate(output), usage
+        if plan_branch is None:
+            return output_type.model_validate(output), usage
+        self.plan_call_counts[plan_branch] = self.plan_call_counts.get(plan_branch, 0) + 1
+        call_key = f"{plan_branch}:{self.plan_call_counts[plan_branch]}:{_json_hash(output)}"
+        if plan_branch == "story_world":
+            wrapped: StoryPlanOutputV1 | EvidencePlanOutputV1 = (
+                StoryPlanOutputV1.model_validate(output)
+            )
+        else:
+            wrapped = EvidencePlanOutputV1.model_validate(output)
+        artifact = wrapped.artifact.model_dump(mode="json")
+        checkin = bind_checkin(
+            wrapped.plan_checkin,
+            plan=execution_plan,
+            branch=cast(Any, plan_branch),
+            sequence_no=plan_sequence,
+            artifact=artifact,
+            call_key=call_key,
+        )
+        self.plan_ledger.record_success(
+            call_key=call_key,
+            plan=execution_plan,
+            branch=cast(Any, plan_branch),
+            sequence_no=plan_sequence,
+            checkin=checkin,
+        )
+        if checkin is not None:
+            self.plan_checkins.append(checkin)
+        return output_type.model_validate(artifact), usage
 
     async def draft_temporal_plan(
         self,
@@ -428,17 +496,29 @@ class _BlueprintPlannerStage:
             ]
             if planner_repairs:
                 planner_input["targeted_repair_issues"] = planner_repairs
+        planner_output_type: type[BaseModel] = (
+            BlueprintPlanOutputV1 if ctx.features.plan_execute else CaseBlueprintV1
+        )
         planner_output, planner_usage = await _model_step(
             ctx.request,
             ctx.call_component,
             component_id="case_blueprint_planner",
             prompt_component="planner",
             stage="planning",
-            output_type=CaseBlueprintV1,
+            output_type=planner_output_type,
             input_payload=planner_input,
         )
         ctx.usage_records.append(planner_usage)
-        ctx.blueprint = CaseBlueprintV1.model_validate(planner_output)
+        if ctx.features.plan_execute:
+            wrapped_plan = BlueprintPlanOutputV1.model_validate(planner_output)
+            ctx.blueprint = wrapped_plan.blueprint
+            ctx.execution_plan = _bind_brief_execution_plan(
+                wrapped_plan.execution_plan,
+                ctx.blueprint,
+            )
+            _emit_execution_plan(ctx)
+        else:
+            ctx.blueprint = CaseBlueprintV1.model_validate(planner_output)
         blueprint_path_issues = (
             await validate_generation_artifact(
                 ctx.request,
@@ -499,7 +579,7 @@ class _BlueprintPlannerStage:
                 component_id="case_blueprint_planner",
                 prompt_component="planner",
                 stage="planning",
-                output_type=CaseBlueprintV1,
+                output_type=planner_output_type,
                 input_payload={
                     "context_pack": ctx.context_pack.model_dump(mode="json"),
                     "targeted_repair_issues": combined_issues,
@@ -508,10 +588,32 @@ class _BlueprintPlannerStage:
                         if ctx.features.relationship_coverage
                         else {}
                     ),
+                    **(
+                        {
+                            "previous_execution_plan": {
+                                "schema_id": "casefile.execution-plan-candidate.v1",
+                                "goals": [
+                                    goal.model_dump(mode="json")
+                                    for goal in ctx.execution_plan.goals
+                                ],
+                            }
+                        }
+                        if ctx.features.plan_execute and ctx.execution_plan is not None
+                        else {}
+                    ),
                 },
             )
             ctx.usage_records.append(repaired_usage)
-            ctx.blueprint = CaseBlueprintV1.model_validate(repaired_output)
+            if ctx.features.plan_execute:
+                wrapped_plan = BlueprintPlanOutputV1.model_validate(repaired_output)
+                ctx.blueprint = wrapped_plan.blueprint
+                ctx.execution_plan = _bind_brief_execution_plan(
+                    wrapped_plan.execution_plan,
+                    ctx.blueprint,
+                )
+                _emit_execution_plan(ctx)
+            else:
+                ctx.blueprint = CaseBlueprintV1.model_validate(repaired_output)
         remaining_blueprint_issues = [
             *await validate_generation_artifact(
                 ctx.request,
@@ -1015,6 +1117,83 @@ class _CompileQualityGateStage:
         raise RuntimeError("brief-to-draft v8 quality gate exhausted")
 
 
+class _PlanReconciliationStage:
+    stage_id = "plan_reconciliation"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        if not ctx.features.plan_execute:
+            return
+        if ctx.execution_plan is None or ctx.candidate is None or ctx.result is None:
+            raise RuntimeError("plan reconciliation requires a completed candidate and plan")
+        evidence = {
+            "final_candidate": ctx.candidate,
+            "checkins": [item.model_dump(mode="json") for item in ctx.plan_checkins],
+        }
+        report: PlanReconciliationReport | None = None
+        previous_reconciliation = ctx.request.reusable_steps.get("plan_reconciliation")
+        if isinstance(previous_reconciliation, dict) and previous_reconciliation.get("sent"):
+            ctx.request.emit(
+                "agent.plan_reconciliation.unavailable",
+                "plan_reconciliation",
+                {
+                    "component_id": "plan_reconciliation",
+                    "reason": "previous_send_result_unknown",
+                    "resumed_from_step_run_id": previous_reconciliation.get("step_run_id"),
+                },
+            )
+            self._finish(ctx, report)
+            return
+        try:
+            output, usage = await _model_step(
+                ctx.request,
+                ctx.call_component,
+                component_id="plan_reconciliation",
+                prompt_component="reconciliation",
+                stage="plan_reconciliation",
+                output_type=PlanReconciliationReport,
+                input_payload={
+                    "execution_plan": ctx.execution_plan.model_dump(mode="json"),
+                    **evidence,
+                },
+                input_contract_id="brief-to-draft-reconciliation-input-v1",
+            )
+            report = validate_reconciliation(
+                PlanReconciliationReport.model_validate(output),
+                plan=ctx.execution_plan,
+                evidence=evidence,
+            )
+            ctx.usage_records.append(usage)
+        except Exception as error:
+            ctx.request.emit(
+                "agent.plan_reconciliation.unavailable",
+                "plan_reconciliation",
+                {
+                    "component_id": "plan_reconciliation",
+                    "error_type": type(error).__name__,
+                },
+            )
+        self._finish(ctx, report)
+
+    @staticmethod
+    def _finish(ctx: PipelineContext, report: PlanReconciliationReport | None) -> None:
+        if ctx.result is None:
+            raise RuntimeError("plan reconciliation requires a generation result")
+        summary = planning_summary(report).model_dump(mode="json")
+        _deterministic_step(
+            ctx.request,
+            "planning_summary",
+            "plan_reconciliation",
+            summary,
+            schema_id="casefile.planning-summary.v1",
+        )
+        ctx.result = GenerationResult(
+            candidate=ctx.result.candidate,
+            usage=_merge_usage(ctx.usage_records),
+            tools=ctx.result.tools,
+            planning_summary=summary,
+        )
+
+
 _PIPELINE_STAGES: dict[str, PipelineStage] = {
     stage.stage_id: stage
     for stage in (
@@ -1024,6 +1203,7 @@ _PIPELINE_STAGES: dict[str, PipelineStage] = {
         _DomainDraftStage(),
         _ResolutionGovernanceStage(),
         _CompileQualityGateStage(),
+        _PlanReconciliationStage(),
     )
 }
 
@@ -1135,6 +1315,60 @@ def _build_context_pack(
     return context_type.model_validate(payload)
 
 
+def _bind_brief_execution_plan(
+    candidate: Any,
+    blueprint: CaseBlueprintV1,
+) -> ExecutionPlan:
+    blueprint_json = blueprint.model_dump(mode="json")
+    allowed_refs = {
+        item["local_key"]
+        for collection in BLUEPRINT_COLLECTIONS
+        for item in blueprint_json.get(collection, [])
+    }
+    candidate_payload = (
+        candidate.model_dump(mode="json") if isinstance(candidate, BaseModel) else candidate
+    )
+    plan = bind_execution_plan(
+        candidate_payload,
+        source_schema_id="case-blueprint-v1",
+        source_plan=blueprint_json,
+        allowed_source_refs=allowed_refs,
+    )
+    if any(
+        goal.owner_branch not in {"story_world", "evidence_logic"}
+        for goal in plan.goals
+    ):
+        raise ValueError("brief_execution_plan_scope_invalid")
+    # Brief-to-Draft has one execution phase per branch.  Planner-authored
+    # ordinal ranges are projected onto that single phase; the literary goal,
+    # dependencies, source refs and reveal constraints remain unchanged.
+    return ExecutionPlan.model_validate(
+        {
+            **plan.model_dump(mode="json"),
+            "goals": [
+                {
+                    **goal.model_dump(mode="json"),
+                    "applies_from": 1,
+                    "applies_until": 1,
+                }
+                for goal in plan.goals
+            ],
+        }
+    )
+
+
+def _emit_execution_plan(ctx: PipelineContext) -> None:
+    if ctx.execution_plan is None:
+        raise RuntimeError("execution plan is missing")
+    _deterministic_step(
+        ctx.request,
+        "planning_execution_plan",
+        "planning",
+        ctx.execution_plan.model_dump(mode="json"),
+        schema_id="casefile.execution-plan.v1",
+    )
+
+
 def _with_temporal_plan(
     story: StoryWorldIRV3,
     plan: TemporalPlanV1,
@@ -1198,7 +1432,7 @@ async def _model_step(
         definition = load_prompt("brief_to_draft", request.prompt_version)
         if definition.package is None:
             raise PromptRepositoryError("Skill requires a Prompt Package")
-        async with SkillLoader().activate(
+        async with SkillLoader(spec.skill_release).activate(
             definition.package,
             prompt_component,
             input_payload,

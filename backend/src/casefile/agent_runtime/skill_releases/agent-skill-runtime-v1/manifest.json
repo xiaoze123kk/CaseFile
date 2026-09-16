@@ -735,6 +735,29 @@
       "assembled_sha256": "5022e18b7c75f23cfd8db86dbc09185609ad40e801da310fad374f073a78b517",
       "tool_policy": "existing-runtime-policy"
     },
+    "prose_plan_reconciliation": {
+      "prompt_version": "prose-plan-reconciliation-v1",
+      "strategy": "role_skill",
+      "role": {
+        "file": "prose_plan_reconciliation/role.md",
+        "sha256": "8c72564a61f3d6bbd673a9e31507f6826e11e3dc7904c4ce9dca984ad280e8fc"
+      },
+      "resources": [
+        {
+          "name": "method",
+          "file": "prose_plan_reconciliation/SKILL.md",
+          "sha256": "cb80903eff785066029fd80ad726225f83eefcd30f8cdf46807b193d7a2f5720"
+        }
+      ],
+      "selected": [
+        "method"
+      ],
+      "reasons": {
+        "method": "stage_required"
+      },
+      "assembled_sha256": "e333f8602d99aae44e219edcd5827708ac43691e65b946a5dc17b53173a86dd0",
+      "tool_policy": "existing-runtime-policy"
+    },
     "prose_revision": {
       "prompt_version": "prose-revision-v3",
       "strategy": "role_only",

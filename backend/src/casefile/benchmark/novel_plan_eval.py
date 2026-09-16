@@ -323,7 +323,9 @@ def run_suite(
             or model_id != qualification["planner_model_id"]
             or quality_grader_model != qualification["quality_grader_model_id"]
         ):
-            raise ValueError("Formal Capability Planner and G3 grader must use exact Pro model IDs")
+            raise ValueError(
+                "Formal Capability Planner and G3 grader must use exact Flash model IDs"
+            )
     first_task_id = str(suite["tasks"][0]["task_id"])
     constraint_first_prompts = None
     if planner_input_version == "v4":

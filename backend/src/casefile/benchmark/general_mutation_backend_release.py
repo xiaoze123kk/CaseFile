@@ -15,6 +15,7 @@ from typing import Any, Literal, Protocol, cast
 import rfc8785
 from sqlalchemy.engine import make_url
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.source_identity import GitIdentityUnavailable, read_git_identity
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -22,7 +23,7 @@ DEFAULT_SUITE = Path("fixtures/general_mutation_benchmark/release/v1/suite.json"
 SUITE_VERSION = "casefile-general-mutation-backend-release-suite-v1"
 REPORT_VERSION = "casefile-general-mutation-backend-release-report-v2"
 HARNESS_VERSION = "general-mutation-backend-release-v2"
-MODEL_ID = "deepseek-v4-pro"
+MODEL_ID = DEEPSEEK_MODEL_ID
 TRIALS_PER_TASK = 3
 
 FAULT_MATRIX = (

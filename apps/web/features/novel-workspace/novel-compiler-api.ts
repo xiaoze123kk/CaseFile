@@ -1,5 +1,5 @@
 import type { NarrativeIR, NovelCandidate, NovelPlanIR, NovelProfileV2, NovelRecommendation, SceneRender } from "@casefile/contracts";
-import { apiRequest, getCompileArtifactContent, type TaskView } from "@/lib/api-client";
+import { apiRequest, getCompileArtifactContent, type PlanningSummary, type TaskView } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 import type { NovelManuscript } from "./novel-document";
 
@@ -10,10 +10,12 @@ export interface NovelCompileRun {
   compile_run_id: number;
   draft_id: number;
   prose_renderer_shadow: boolean;
+  plan_execute?: boolean;
   compiler_profile_version_id: number;
   created_at: string;
   execution: TaskView;
   prose_shadow: { status: string; completed_scene_count?: number; resume_available?: boolean; plan_issues?: string[] };
+  planning_summary?: (PlanningSummary & { schema_id?: string }) | null;
   stability?: {
     novel_ready: boolean; outcome: string; first_pass_success: boolean;
     repair_attempts: number; repair_successes: number; model_calls: number;
@@ -77,11 +79,17 @@ export function requestNovelRecommendation(scope: NovelCompileScope, preferences
   });
 }
 
-export function confirmNovelPlan(scope: NovelCompileScope, run: NovelCompileRun, proseMode: ProseMode = "quick_draft") {
+export function confirmNovelPlan(
+  scope: NovelCompileScope,
+  run: NovelCompileRun,
+  proseMode: ProseMode = "quick_draft",
+  planExecute = false,
+) {
   return apiRequest<NovelCompileRun>(`/projects/${scope.projectId}/compile-runs`, {
     actorId: LOCAL_ACTOR_ID, method: "POST", body: { mode: "preview", expected_draft_id: scope.draftId,
       expected_draft_revision: scope.revision, compiler_profile_version_id: run.compiler_profile_version_id,
-      planner_provider: "deepseek", prose_renderer_shadow: true, prose_mode: proseMode, approved_plan_run_id: run.compile_run_id },
+      planner_provider: "deepseek", prose_renderer_shadow: true, prose_mode: proseMode,
+      plan_execute: planExecute, approved_plan_run_id: run.compile_run_id },
   });
 }
 

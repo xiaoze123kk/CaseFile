@@ -22,6 +22,7 @@ from test_goal_session_steering import _decision, _finish, _understanding
 from casefile.agent_runtime.chat_preview import AnswerPreview
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.goal.provider import GoalFinalizerRequest
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.api.app import create_app
@@ -93,7 +94,7 @@ def main() -> None:
             actor,
             provider="deepseek",
             api_key="sk-feedback-test-only",
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             model_is_custom=False,
         )
     worker = Worker(

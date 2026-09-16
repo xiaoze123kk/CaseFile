@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_judge import (
     DeepSeekProseJudgeProvider,
@@ -169,7 +170,7 @@ def test_mocked_exact_adapters_run_fixed_24_once_and_can_qualify(
     }
     assert report["logical_model_call_count"] == 64
     assert report["physical_transport_attempt_count"] == 64
-    assert report["model_id"] == "deepseek-v4-pro"
+    assert report["model_id"] == DEEPSEEK_MODEL_ID
     assert report["rewriter_prompt_version"] == qualification.PROSE_REWRITER_PROMPT_VERSION
     assert report["judge_prompt_version"] == load_prompt("prose_fidelity_judge").version
     assert report["council_policy_id"] == "fidelity-only-v1"

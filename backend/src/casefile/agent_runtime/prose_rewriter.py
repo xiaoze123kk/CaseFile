@@ -15,6 +15,11 @@ from pydantic import ValidationError
 from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
 from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
+from casefile.agent_runtime.plan_execute import (
+    PlanCheckinCandidate,
+    PlanContext,
+    SceneProsePlanOutput,
+)
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
     generation_focus,
@@ -43,6 +48,7 @@ from casefile_contracts import ProseConsensusReport, SceneRender, SceneRenderCan
 
 PROSE_REWRITER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_REWRITER_PROMPT_VERSION: Final = "prose-rewriter-v9"
+PROSE_REWRITER_PLAN_PROMPT_VERSION: Final = "prose-rewriter-v10"
 PROSE_REWRITER_REQUEST_PROTOCOL: Final = "prose-rewriter-json-object-v7"
 PROSE_REWRITER_COMPONENT_VERSION: Final = "prose-rewriter-runtime-v7"
 PROSE_REWRITER_LENGTH_POLICY_VERSION: Final = "prose-rewriter-length-contract-v2"
@@ -56,6 +62,9 @@ PROSE_REWRITER_CANDIDATE_SCHEMA_ID: Final = "compiler.scene-render-candidate.v1"
 PROSE_REWRITER_RENDER_SCHEMA_ID: Final = "compiler.scene-render.v1"
 PROSE_REWRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
 PROSE_REWRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_REWRITER_CANDIDATE_SCHEMA)
+PROSE_REWRITER_PLAN_SCHEMA_ID: Final = "compiler.scene-prose-plan-output.v1"
+PROSE_REWRITER_PLAN_SCHEMA: Final = SceneProsePlanOutput.model_json_schema()
+PROSE_REWRITER_PLAN_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_REWRITER_PLAN_SCHEMA)
 PROSE_REWRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
 PROSE_REWRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
@@ -165,6 +174,7 @@ class ProseRewriterExecution:
     call: ProseRewriterProviderResult | None
     failed_call: ProseRewriterFailedCall | None = None
     error_code: str | None = None
+    plan_checkin: PlanCheckinCandidate | None = None
 
 
 class DeepSeekProseRewriterProvider:
@@ -233,9 +243,10 @@ class DeepSeekProseRewriterProvider:
         )
 
     def completion_body(self, request: ProseRewriterRequest) -> dict[str, Any]:
+        _, schema, _ = _rewriter_candidate_contract(request.prompt_version)
         return completion_body(
             request,
-            request.input_payload.get("response_schema", PROSE_REWRITER_CANDIDATE_SCHEMA),
+            request.input_payload.get("response_schema", schema),
             (
                 "请按系统职责完成本次任务。"
                 if request.prompt_version.startswith("novel-")
@@ -309,6 +320,7 @@ def execute_prose_rewriter(
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseRewriterProviderResult | None] | None = None,
     revision_decision: dict[str, Any] | None = None,
+    plan_context: dict[str, Any] | None = None,
     prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
 ) -> ProseRewriterExecution:
     """Validate one failed semantic round and produce its complete replacement."""
@@ -329,6 +341,7 @@ def execute_prose_rewriter(
             api_key=api_key,
             remaining_scene_call_budget=remaining_scene_call_budget,
             revision_decision=revision_decision,
+            plan_context=plan_context,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -357,22 +370,35 @@ def execute_prose_rewriter(
         validate_generation_result(provider, call, request, "prose_rewrite")
         if call.candidate is None:
             raise ProseRewriterProtocolError("prose_rewriter_empty_or_invalid_json")
+        plan_checkin = None
+        candidate = call.candidate
+        if request.prompt_version == PROSE_REWRITER_PLAN_PROMPT_VERSION:
+            wrapped = SceneProsePlanOutput.model_validate(candidate)
+            candidate = wrapped.artifact.model_dump(mode="json")
+            try:
+                plan_checkin = (
+                    None
+                    if wrapped.plan_checkin is None
+                    else PlanCheckinCandidate.model_validate(wrapped.plan_checkin)
+                )
+            except ValueError:
+                plan_checkin = None
         render = normalize_scene_rewrite_candidate(
-            call.candidate,
+            candidate,
             checklist=checklist,
             profile=profile,
             current_render=current_render,
             rewrite_round=request.rewrite_round,
             component_input_hash=request.component_input_hash,
         ).model_dump(mode="json")
-    except (CompilerContractError, ProseRewriterProtocolError) as error:
+    except (CompilerContractError, ProseRewriterProtocolError, ValidationError) as error:
         status: Literal["semantic_rejected", "protocol_failed"] = (
             "semantic_rejected"
             if str(error) == "prose_generation_no_progress"
             else "protocol_failed"
         )
         return ProseRewriterExecution(status, None, call, error_code=str(error))
-    return ProseRewriterExecution("completed", render, call)
+    return ProseRewriterExecution("completed", render, call, plan_checkin=plan_checkin)
 
 
 def build_prose_rewriter_request(
@@ -389,12 +415,13 @@ def build_prose_rewriter_request(
     api_key: str,
     remaining_scene_call_budget: int,
     revision_decision: dict[str, Any] | None = None,
+    plan_context: dict[str, Any] | None = None,
     review_only: bool = False,
     prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
 ) -> ProseRewriterRequest:
     """Build the minimal full-Rewrite Provider view after exact validation."""
 
-    if model_id not in (PROSE_REWRITER_MODEL_ID, "deepseek-v4-pro"):
+    if model_id != PROSE_REWRITER_MODEL_ID:
         raise ProseRewriterProtocolError("prose_rewriter_model_id_not_frozen")
     if (
         not isinstance(remaining_scene_call_budget, int)
@@ -410,6 +437,11 @@ def build_prose_rewriter_request(
         previous_scene_render=previous_scene_render,
     ).model_dump(mode="json")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
+    parsed_plan_context = (
+        None if plan_context is None else PlanContext.model_validate(plan_context)
+    )
+    if prompt_version == PROSE_REWRITER_PLAN_PROMPT_VERSION and parsed_plan_context is None:
+        raise ProseRewriterProtocolError("prose_rewriter_plan_context_missing")
     render_json = validate_scene_render(
         current_render, checklist=checklist_json, profile=profile_json
     ).model_dump(mode="json")
@@ -459,6 +491,9 @@ def build_prose_rewriter_request(
         for check_id in preserve_ids
     ]
     prompt = load_prompt("prose_rewriter", prompt_version)
+    candidate_schema_id, candidate_schema, candidate_schema_hash = (
+        _rewriter_candidate_contract(prompt.version)
+    )
     binding = {
         "component_id": "prose_rewriter",
         "component_hash": PROSE_REWRITER_COMPONENT_HASH,
@@ -474,10 +509,12 @@ def build_prose_rewriter_request(
         "judge_report_hashes": [canonical_json_sha256(item) for item in reports_json],
         "prompt_hash": prompt.system_prompt_sha256,
         "model_id": model_id,
-        "candidate_schema_hash": PROSE_REWRITER_CANDIDATE_SCHEMA_HASH,
+        "candidate_schema_hash": candidate_schema_hash,
         "render_schema_hash": PROSE_REWRITER_RENDER_SCHEMA_HASH,
         "remaining_scene_call_budget": remaining_scene_call_budget,
     }
+    if parsed_plan_context is not None:
+        binding["plan_context"] = parsed_plan_context.model_dump(mode="json")
     component_input_hash = canonical_json_sha256(binding)
     length_range = profile_json["prose"]["target_scene_chars"]
     min_chars = length_range["min"]
@@ -521,8 +558,13 @@ def build_prose_rewriter_request(
             "repair_findings": repair_findings,
             "preserve_checks": preserve_checks,
             **({"revision_decision": revision_decision} if revision_decision else {}),
+            **(
+                {"plan_context": parsed_plan_context.model_dump(mode="json")}
+                if parsed_plan_context is not None
+                else {}
+            ),
         },
-        "output_schema_id": PROSE_REWRITER_CANDIDATE_SCHEMA_ID,
+        "output_schema_id": candidate_schema_id,
     }
     input_hash = canonical_json_sha256(payload)
     fingerprint = canonical_json_sha256(
@@ -555,7 +597,21 @@ def build_prose_rewriter_request(
             rewrite_round=rewrite_round,
             remaining_scene_call_budget=remaining_scene_call_budget,
         ),
+        candidate_schema,
+    )
+
+
+def _rewriter_candidate_contract(prompt_version: str) -> tuple[str, dict[str, Any], str]:
+    if prompt_version == PROSE_REWRITER_PLAN_PROMPT_VERSION:
+        return (
+            PROSE_REWRITER_PLAN_SCHEMA_ID,
+            PROSE_REWRITER_PLAN_SCHEMA,
+            PROSE_REWRITER_PLAN_SCHEMA_HASH,
+        )
+    return (
+        PROSE_REWRITER_CANDIDATE_SCHEMA_ID,
         PROSE_REWRITER_CANDIDATE_SCHEMA,
+        PROSE_REWRITER_CANDIDATE_SCHEMA_HASH,
     )
 
 

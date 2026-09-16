@@ -9331,6 +9331,11 @@
             "title": "Prose Mode",
             "default": "full_polish"
           },
+          "plan_execute": {
+            "type": "boolean",
+            "title": "Plan Execute",
+            "default": false
+          },
           "scene_compiler_shadow": {
             "type": "boolean",
             "title": "Scene Compiler Shadow",

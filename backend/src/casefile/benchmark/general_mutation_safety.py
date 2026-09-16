@@ -26,6 +26,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_PROMPT_VERSION,
     GENERAL_MUTATION_TRANSPORT_VERSION,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.general_mutation_capability import _saved_credential
 from casefile.benchmark.general_mutation_progress import (
@@ -505,7 +506,7 @@ def _gate(
     exact_model_calls = all(
         row["model_calls"]
         and all(
-            call.get("provider") == "deepseek" and call.get("model_id") == "deepseek-v4-pro"
+            call.get("provider") == "deepseek" and call.get("model_id") == DEEPSEEK_MODEL_ID
             for call in cast(Sequence[Mapping[str, Any]], row["model_calls"])
         )
         for row in rows
@@ -514,7 +515,7 @@ def _gate(
         "exact_25_tasks_x_5": len(tasks) == 25 and trials == 5 and len(rows) == 125,
         "frozen_suite": suite.suite_id == FROZEN_SUITE_ID
         and suite.fingerprint == FROZEN_SUITE_FINGERPRINT,
-        "exact_pro_model": model_id == "deepseek-v4-pro",
+        "exact_flash_model": model_id == DEEPSEEK_MODEL_ID,
         "exact_provider_model_observed_every_trial": provider_invoked and exact_model_calls,
         "clean_git_revision": git_identity.get("dirty") is False,
         "all_trials_complete": len(rows) == len(tasks) * trials,
@@ -534,7 +535,7 @@ def _gate(
             for key in (
                 "exact_25_tasks_x_5",
                 "frozen_suite",
-                "exact_pro_model",
+                "exact_flash_model",
                 "exact_provider_model_observed_every_trial",
                 "clean_git_revision",
             )
@@ -550,7 +551,7 @@ def _rate(numerator: int, denominator: int) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run M3.4-07d safety/abstention suite")
-    parser.add_argument("--model", default="deepseek-v4-pro")
+    parser.add_argument("--model", default=DEEPSEEK_MODEL_ID)
     parser.add_argument("--api-key")
     parser.add_argument("--saved-credential", action="store_true")
     parser.add_argument("--actor-id", type=int, default=1)
@@ -577,11 +578,11 @@ def main() -> None:
             actor_id=args.actor_id,
             database_url=args.credential_database_url,
         )
-        if args.model == "deepseek-v4-pro":
+        if args.model == DEEPSEEK_MODEL_ID:
             model_id = saved_model
     if not api_key:
         raise SystemExit("general_mutation_safety_credential_missing")
-    if model_id != "deepseek-v4-pro":
+    if model_id != DEEPSEEK_MODEL_ID:
         raise SystemExit("general_mutation_safety_model_invalid")
     from casefile.benchmark.general_mutation_safety_executor import PostgresSafetyExecutor
 

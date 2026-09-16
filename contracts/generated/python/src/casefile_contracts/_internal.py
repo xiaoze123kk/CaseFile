@@ -1983,6 +1983,7 @@ class CompileInputManifest(BaseModel):
     ]
     prose_mode: ProseMode | None = None
     prose_renderer_shadow: bool = False
+    plan_execute: bool = False
     approved_novel_plan: CompilerArtifactRef | None = None
     prose_runtime: dict[str, Any] | None = None
 

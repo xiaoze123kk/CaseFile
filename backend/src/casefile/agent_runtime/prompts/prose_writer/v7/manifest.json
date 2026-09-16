@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_writer",
+  "version": "prose-writer-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "913744841dd5f274272529cba03f036625e0ca84e2cffdf8a5585c4080fbca2e",
+  "previous_version": "prose-writer-v6",
+  "change_summary": "增加场景执行目标、核对记录与 Nag reminder 响应。"
+}

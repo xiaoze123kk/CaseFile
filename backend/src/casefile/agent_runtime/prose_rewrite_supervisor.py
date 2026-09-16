@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
@@ -75,13 +76,11 @@ def _execute_bounded_prose_rewrite(
     llm_revision: bool = False,
     delivery_mode: Literal["strict", "product"] = "strict",
     prompt_version: str = PROSE_REWRITER_PROMPT_VERSION,
+    plan_context_provider: Callable[[], dict[str, Any] | None] | None = None,
 ) -> ProseRewriteSupervisorExecution:
     """Review an initial Writer render and allow at most two complete rewrites."""
 
-    if model_id not in (PROSE_REWRITER_MODEL_ID, "deepseek-v4-pro") or model_id not in (
-        PROSE_COUNCIL_MODEL_ID,
-        "deepseek-v4-pro",
-    ):
+    if model_id != PROSE_REWRITER_MODEL_ID or model_id != PROSE_COUNCIL_MODEL_ID:
         return _terminal(
             "protocol_failed",
             (),
@@ -245,6 +244,7 @@ def _execute_bounded_prose_rewrite(
             api_key=api_key,
             remaining_scene_call_budget=remaining,
             revision_decision=decision.report if decision else None,
+            plan_context=plan_context_provider() if plan_context_provider else None,
         )
         observe("rewrite", rewrite_execution)
         remaining -= _rewrite_call_count(rewrite_execution)

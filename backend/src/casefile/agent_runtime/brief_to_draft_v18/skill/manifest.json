@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "release": "v18",
+  "prompt_version": "brief-to-draft-v18",
+  "descriptor_sha256": "6b051216f0bc9ecba6608311b94f2ecf5e2524561e6f1ce47769d9ce6d99e68c",
+  "policy_version": "brief-to-draft-plan-execute-v1",
+  "components": {
+    "planner": {
+      "base": ["common", "planner"],
+      "input_contract_id": "brief-to-draft-planner-input-v8",
+      "output_schema_id": "brief-to-draft-blueprint-plan-output-v1",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "planner"},
+        {"handler_id": "select_repairs", "version": "1", "event": "BeforeRepair", "component": "planner"}
+      ],
+      "conditional_resources": [{"condition": "always", "resource": "relationship_planner"}], "repair_resources": ["repair_common", "repair_planner"], "issue_resources": {"resolution_hypothesis_plan_missing": "repair_planner", "competing_hypothesis_path_plan_missing": "repair_planner", "competition_information_coverage_incomplete": "repair_planner"}
+    },
+    "temporal": {
+      "base": ["common", "temporal"],
+      "input_contract_id": "brief-to-draft-temporal-input-v6",
+      "output_schema_id": "temporal-plan-v1",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "temporal"},
+        {"handler_id": "select_repairs", "version": "1", "event": "BeforeRepair", "component": "temporal"}
+      ],
+      "conditional_resources": [], "repair_resources": ["repair_common"], "issue_resources": {}
+    },
+    "story": {
+      "base": ["common", "domain_common", "story"],
+      "input_contract_id": "brief-to-draft-domain-input-v8",
+      "output_schema_id": "brief-to-draft-story-plan-output-v1",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "story"},
+        {"handler_id": "select_repairs", "version": "1", "event": "BeforeRepair", "component": "story"}
+      ],
+      "conditional_resources": [{"condition": "has_entities", "resource": "relationship_story"}], "repair_resources": ["repair_common", "repair_story"], "issue_resources": {}
+    },
+    "evidence": {
+      "base": ["common", "domain_common", "evidence"],
+      "input_contract_id": "brief-to-draft-domain-input-v8",
+      "output_schema_id": "brief-to-draft-evidence-plan-output-v1",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "evidence"},
+        {"handler_id": "select_repairs", "version": "1", "event": "BeforeRepair", "component": "evidence"}
+      ],
+      "conditional_resources": [{"condition": "has_competition", "resource": "competition_evidence"}], "repair_resources": ["repair_common", "repair_evidence"], "issue_resources": {"competing_hypothesis_path_missing": "repair_evidence"}
+    },
+    "matrix": {
+      "base": ["matrix"],
+      "input_contract_id": "brief-to-draft-matrix-evaluation-input-v4",
+      "output_schema_id": "matrix-evaluation-v1",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "matrix"},
+        {"handler_id": "select_repairs", "version": "1", "event": "BeforeRepair", "component": "matrix"}
+      ],
+      "conditional_resources": [], "repair_resources": ["repair_common", "repair_matrix"], "issue_resources": {}
+    },
+    "governance": {
+      "base": ["common", "domain_common", "governance"],
+      "input_contract_id": "brief-to-draft-governance-input-v8",
+      "output_schema_id": "resolution-governance-ir-v2",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "governance"},
+        {"handler_id": "select_repairs", "version": "1", "event": "BeforeRepair", "component": "governance"}
+      ],
+      "conditional_resources": [], "repair_resources": ["repair_common"], "issue_resources": {}
+    },
+    "reconciliation": {
+      "base": ["common", "reconciliation"],
+      "input_contract_id": "brief-to-draft-reconciliation-input-v1",
+      "output_schema_id": "casefile-plan-reconciliation-v1",
+      "hooks": [
+        {"handler_id": "select_resources", "version": "1", "event": "BeforeComponent", "component": "reconciliation"}
+      ],
+      "conditional_resources": [], "repair_resources": [], "issue_resources": {}
+    }
+  },
+  "resources": {
+    "common": "ddd4a7783a534d699098fa3909a128027ce7be6a37bd07d2a3bde692643790a0", "relationship_planner": "f85859af8e21ad36eef5bb0b58ed8cde6dfbb86f77f109ee3d0d39623b5c1ca4", "planner": "53b68028c985ace67b0a2877bb36699609b6827f0adf9df836a684ad024baad2", "temporal": "cecbe2f3407a4aba34157c38eebc09a77c7438f555c7d14b5c46dd79e6821b09", "domain_common": "42f7f7de949be1a2ee1cad5d3dd337d444143d47aa5ac2fcb5c6f1355625e959", "relationship_story": "f0fffacf9060aa728f9b55686ddd9b9f11ecd64c8d35b64382cfaab539e8ced4", "repair_story": "51a88342d294dff157b26517e65019d0a1b1f0c90302a202e0280e8ad4efe97d", "story": "c356c8543ff9e2bf9d4bcced3bb226f7abd0768d58627bfe74f9696a28321afa", "competition_evidence": "e3bb0513f460ea40b6bb15e03224464752450e0c8d9ecfd05e3258d7f3cbbe97", "repair_evidence": "cb6d8c4d3ba4755ce710957b79bd8c9503aa6dc2bd61d300920b5fa04c657dbf", "evidence": "97c902ac7784a3e901e6aee507579cb6ab5cca1873d835a4b93eb7574fd7f7aa", "repair_matrix": "7b5e049193d65d5da35965bebd84a9fbdb6f4fad3a03af69840dd3ce686665df", "matrix": "5c05d0364cd68dfcb782a2ee06738fe00da1afeadc7042db23bbba3d50948f20", "governance": "ffda6915abeab322907f66896b1d40287f4b76ec06172ab915ecdcb6bbcc2674", "reconciliation": "ec2b66acbbcccc6effda03bc0b2270160d3444d0fdb3e03f1b5b969b37df125b", "repair_common": "b047cfa22556f95a22b2d6585f372f119b7781a95760fad45f31a5687b3cbff4", "repair_planner": "2fb46ddd7eea24ac8609067d2986e2b7870d439ace92aabd5af64d9a8d47c7e7"
+  }
+}

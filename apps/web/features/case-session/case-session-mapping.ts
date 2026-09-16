@@ -467,6 +467,12 @@ export function mapWorkbenchCandidateView(
     (sum, count) => sum + count,
     0,
   );
+  const planning = view.planning_summary;
+  const planningNote = !planning
+    ? ""
+    : planning.status === "unavailable"
+      ? " 计划对账未完成。"
+      : ` 计划对账：已落实 ${planning.fulfilled} 项，部分落实 ${planning.partial} 项，未落实 ${planning.not_fulfilled} 项，无法判断 ${planning.unknown} 项。`;
   return {
     ...base,
     id: `draft-${view.task_run_id}`,
@@ -483,7 +489,7 @@ export function mapWorkbenchCandidateView(
     candidateStrategy: view.candidate_strategy,
     focusLabel: view.candidate_strategy_label,
     title: view.title,
-    summary: `共 ${totalObjects} 个对象，已通过结构与引用校验。${
+    summary: `共 ${totalObjects} 个对象，已通过结构与引用校验。${planningNote}${
       differenceNote ? ` ${differenceNote}。` : ""
     }`,
     reasoningQuestion:

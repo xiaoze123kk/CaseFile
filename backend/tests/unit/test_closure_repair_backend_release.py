@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.closure_repair_backend_release import (
     FAULT_MATRIX,
     BackendReleaseContractError,
@@ -105,7 +106,7 @@ class _Executor:
     def execute_trial(
         self, task: EvalTask, *, trial_index: int, repair_model: str
     ) -> BackendTrialEvidence:
-        assert repair_model == "deepseek-v4-pro"
+        assert repair_model == DEEPSEEK_MODEL_ID
         value = _evidence(task, trial_index)
         return value if self.mutate is None else self.mutate(value)
 

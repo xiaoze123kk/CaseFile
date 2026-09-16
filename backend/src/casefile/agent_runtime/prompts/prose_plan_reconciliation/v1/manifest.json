@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_plan_reconciliation",
+  "version": "prose-plan-reconciliation-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "e333f8602d99aae44e219edcd5827708ac43691e65b946a5dc17b53173a86dd0",
+  "previous_version": null,
+  "change_summary": "新增全书执行目标最终对账。"
+}

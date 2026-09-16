@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.agent_runtime.scene_compiler import (
     SceneFillBatchRequest,
@@ -144,7 +145,7 @@ def test_live_runtime_path_uses_provider_and_formal_contract_is_fail_closed() ->
         suite_kind="capability",
         mode="live",
         provider_name="deepseek",
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         repeats=1,
         task_ids=("scene_decomposition__basic",),
         provider_factory=FakeProvider,
@@ -162,7 +163,7 @@ def test_live_runtime_path_uses_provider_and_formal_contract_is_fail_closed() ->
             suite_kind="capability",
             mode="live",
             provider_name="deepseek",
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             repeats=1,
             provider_factory=FakeProvider,
             api_key_override="test-only",
@@ -173,7 +174,7 @@ def test_live_runtime_path_uses_provider_and_formal_contract_is_fail_closed() ->
             suite_kind="capability",
             mode="live",
             provider_name="deepseek",
-            model_id="deepseek-v4-pro",
+            model_id=DEEPSEEK_MODEL_ID,
             quality_grader_model=None,
             repeats=3,
             provider_factory=FakeProvider,
@@ -206,7 +207,7 @@ def test_live_g3_flash_judge_scores_candidate_against_blind_reference(
         suite_kind="capability",
         mode="live",
         provider_name="deepseek",
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         quality_grader_model="deepseek-v4-flash",
         repeats=1,
         task_ids=("scene_decomposition__basic",),

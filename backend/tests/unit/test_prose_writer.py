@@ -11,8 +11,10 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime.plan_execute import NagLedger, derive_scene_execution_plan
 from casefile.agent_runtime.prose_writer import (
     PROSE_WRITER_MODEL_ID,
+    PROSE_WRITER_PLAN_PROMPT_VERSION,
     DeepSeekProseWriterProvider,
     FakeProseWriterProvider,
     ProseWriterInfrastructureError,
@@ -102,6 +104,64 @@ def test_writer_candidate_is_normalized_with_server_owned_identity(
     assert render["source"]["component_input_hash"] == (
         execution.call.component_input_hash if execution.call else None
     )
+
+
+def test_plan_execute_writer_returns_independent_checkin(writer_case: dict[str, Any]) -> None:
+    plan = derive_scene_execution_plan(writer_case["plan"])
+    context = NagLedger().context(plan, branch="scene_prose", sequence_no=1)
+    candidate = {
+        "schema_id": "compiler.scene-prose-plan-output.v1",
+        "artifact": writer_case["candidate"],
+        "plan_checkin": {
+            "schema_id": "casefile.plan-checkin-candidate.v1",
+            "branch": "scene_prose",
+            "items": [
+                {
+                    "goal_id": goal.goal_id,
+                    "status": "fulfilled",
+                    "evidence_paths": ["/blocks/0/text"],
+                    "reason": "正文已执行当前场景安排。",
+                }
+                for goal in context.applicable_goals
+            ],
+        },
+    }
+    execution = execute_prose_writer(
+        FakeProseWriterProvider(candidates=(candidate,)),
+        scene_plan=writer_case["plan"],
+        narrative_ir=writer_case["narrative"],
+        profile=writer_case["profile"],
+        checklist=writer_case["checklist"],
+        previous_scene_render=None,
+        model_id=PROSE_WRITER_MODEL_ID,
+        api_key="fake-secret",
+        remaining_scene_call_budget=23,
+        plan_context=context.model_dump(mode="json"),
+        prompt_version=PROSE_WRITER_PLAN_PROMPT_VERSION,
+    )
+    assert execution.status == "completed"
+    assert execution.plan_checkin is not None
+    assert {item.goal_id for item in execution.plan_checkin.items} == {
+        goal.goal_id for goal in context.applicable_goals
+    }
+
+    candidate["plan_checkin"] = {"branch": 42, "items": "invalid"}
+    invalid_checkin = execute_prose_writer(
+        FakeProseWriterProvider(candidates=(candidate,)),
+        scene_plan=writer_case["plan"],
+        narrative_ir=writer_case["narrative"],
+        profile=writer_case["profile"],
+        checklist=writer_case["checklist"],
+        previous_scene_render=None,
+        model_id=PROSE_WRITER_MODEL_ID,
+        api_key="fake-secret",
+        remaining_scene_call_budget=23,
+        plan_context=context.model_dump(mode="json"),
+        prompt_version=PROSE_WRITER_PLAN_PROMPT_VERSION,
+    )
+    assert invalid_checkin.status == "completed"
+    assert invalid_checkin.render is not None
+    assert invalid_checkin.plan_checkin is None
 
 
 def test_normalization_drops_only_whitespace_blocks(writer_case: dict[str, Any]) -> None:

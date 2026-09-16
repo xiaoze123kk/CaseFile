@@ -3,7 +3,7 @@
 from collections import Counter
 from typing import Any
 
-from casefile.agent_runtime.prose_quality_config import QUALITY_PRO_DIAGNOSTIC, QUALITY_V2
+from casefile.agent_runtime.prose_quality_config import QUALITY_DIAGNOSTIC_FLASH, QUALITY_V2
 from casefile.domain.narrative_compiler import QUALITY_DIMENSIONS
 
 
@@ -43,7 +43,7 @@ def quality_row(
 
 def summarize_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
     results: dict[str, Any] = {}
-    for config in (QUALITY_V2, QUALITY_PRO_DIAGNOSTIC):
+    for config in (QUALITY_V2, QUALITY_DIAGNOSTIC_FLASH):
         selected = [r for r in rows if r["candidate"] == config.config_id]
         repetitions = []
         for repeat in range(3):

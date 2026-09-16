@@ -178,9 +178,9 @@ Vitest 并发上限设为 4，限制同时启动的 jsdom 实例及内存占用�
 ## 小说编译器接入
 
 - `apps/web/features/novel-workspace/novel-compiler-api.ts`：真实 Compiler Profile v2/CompileRun HTTP 适配，按 Project/Draft 隔离记录，以当前 Draft revision 发起显式正文预览；只读取完整成功 Candidate，核对同次编译已接受 SceneRender 与 NovelPlan 章节及 merged_text 后载入独立初稿。
-- `apps/web/features/novel-workspace/novel-compiler-panel.tsx`、`novel-compiler.module.css`：桌面小说编译配置、后台记录轮询恢复、任务停止、失败与完整结果入口；区分结构与正文状态，不产生模拟进度。默认中文限知第三人称、线性叙述、自动规划披露顺序，使用现有 DeepSeek 配置与服务端校验/润色链路。
+- `apps/web/features/novel-workspace/novel-compiler-panel.tsx`、`novel-compiler.module.css`：桌面小说编译配置、后台记录轮询恢复、任务停止、失败与完整结果入口；区分结构与正文状态，不产生模拟进度。默认中文限知第三人称、线性叙述、自动规划披露顺序，使用现有 DeepSeek 配置与服务端校验/润色链路。方案确认区可显式启用实验性的增强规划跟踪；完成后只展示落实数量、未解决项和计划调整建议，对账不可用不覆盖正文状态。
 - `novel-workspace.tsx`：真实已采用工作稿由宿主提供 compileScope；导入和编译结果共用本地备份/替换路径，失败不覆盖旧稿。`novel-workspace-panels.tsx` 导出既有原生 Dialog 供编译窗口复用。
-- `apps/web/tests/novel-compiler.test.tsx`：编译请求与版本绑定、工作稿隔离、正文成功门禁、章节保真、任务恢复/停止及读取失败后恢复测试。
+- `apps/web/tests/novel-compiler.test.tsx`：编译请求与版本绑定、工作稿隔离、正文成功门禁、章节保真、规划跟踪显式启用与对账摘要、任务恢复/停止及读取失败后恢复测试。
 
 本节更新前文“尚未对接完整小说产物”的状态：已接入完整正文编译与显式载入。小说专用对话改写服务仍未提供，不将卷宗 Agent Patch/Apply 当作正文协作接口。
 

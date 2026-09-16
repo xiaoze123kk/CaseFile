@@ -14,6 +14,7 @@ from casefile.agent_runtime.constraint_first_story_planner import (
 )
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID, model_for_new_task
 from casefile.agent_runtime.prose_runtime import (
+    PLAN_EXECUTE_PROSE_RUNTIME_VERSION,
     PROSE_RUNTIME_VERSION,
     matches_prose_runtime,
     prose_runtime_binding,
@@ -36,6 +37,7 @@ from casefile.application.workflow_views import task_view
 from casefile.data_postgres.compiler_repository import CompilerRepository
 from casefile.data_postgres.models import (
     AgentModelCall,
+    AgentStepRun,
     AuditEvent,
     CanonVersion,
     CompilerProfile,
@@ -313,6 +315,7 @@ class CompilerService:
         scene_compiler_shadow: bool = False,
         prose_renderer_shadow: bool = False,
         prose_mode: Literal["quick_draft", "full_polish"] = "full_polish",
+        plan_execute: bool = False,
         approved_plan_run_id: int | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
@@ -506,10 +509,17 @@ class CompilerService:
                     "compiler_prose_mode_invalid", "请选择有效的生成方式。", status_code=422
                 )
             manifest_json["prose_mode"] = prose_mode
+            manifest_json["plan_execute"] = plan_execute
             if prose_renderer_shadow:
                 manifest_json["prose_renderer_shadow"] = True
                 manifest_json["prose_runtime"] = prose_runtime_binding(
-                    profile.payload_jsonb["structure"]["target_scenes"], prose_mode
+                    profile.payload_jsonb["structure"]["target_scenes"],
+                    prose_mode,
+                    runtime_version=(
+                        PLAN_EXECUTE_PROSE_RUNTIME_VERSION
+                        if plan_execute
+                        else PROSE_RUNTIME_VERSION
+                    ),
                 )
             input_hash = canonical_json_sha256(manifest_json)
             task = TaskRun(
@@ -856,7 +866,7 @@ class CompilerService:
                     and manifest is not None
                     and manifest.content_jsonb["shadow_status"] == "inconclusive_infrastructure"
                     and manifest.content_jsonb.get("runtime", {}).get("version")
-                    == PROSE_RUNTIME_VERSION
+                    in {PROSE_RUNTIME_VERSION, PLAN_EXECUTE_PROSE_RUNTIME_VERSION}
                 ),
                 "completed_scene_count": sum(
                     a.artifact_key.endswith(".accepted") and a.artifact_kind == "scene_render"
@@ -886,6 +896,16 @@ class CompilerService:
                 )
             )
         )
+        planning_step = self.session.scalar(
+            select(AgentStepRun)
+            .where(
+                AgentStepRun.task_run_id == task.id,
+                AgentStepRun.component_id == "prose_planning_summary",
+                AgentStepRun.status.in_(("succeeded", "reused")),
+                AgentStepRun.output_jsonb.is_not(None),
+            )
+            .order_by(AgentStepRun.id.desc())
+        )
         return {
             "compile_run_id": run.id,
             "task_run_id": run.task_run_id,
@@ -901,6 +921,7 @@ class CompilerService:
             "compiler_version": run.compiler_version,
             "prose_renderer_shadow": run.prose_renderer_shadow,
             "prose_mode": task.input_jsonb.get("prose_mode", "full_polish"),
+            "plan_execute": bool(task.input_jsonb.get("plan_execute", False)),
             **shadow,
             "stability": compiler_stability(
                 task_status=task.status,
@@ -912,6 +933,9 @@ class CompilerService:
             ),
             "input_hash": run.input_hash,
             "execution": task_view(task),
+            "planning_summary": (
+                None if planning_step is None else planning_step.output_jsonb
+            ),
             "artifacts": [
                 {
                     "artifact_id": artifact.id,

@@ -49,6 +49,7 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
   const [refresh, setRefresh] = useState(0);
   const [preferences, setPreferences] = useState("");
   const [proseMode, setProseMode] = useState<ProseMode>("quick_draft");
+  const [planExecute, setPlanExecute] = useState(false);
   const [recommendation, setRecommendation] = useState<NovelRecommendation | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [previewLoad, setPreviewLoad] = useState<{ id: number; data?: NovelPlanPreview; error?: string } | null>(null);
@@ -166,11 +167,14 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
           <label><input type="radio" name="prose-mode" value="full_polish" checked={proseMode === "full_polish"}
             onChange={() => setProseMode("full_polish")} /><span><strong>完整精修</strong>
             <span>逐场审核、必要修订与润色，耗时和费用较高。</span></span></label>
+          <label><input type="checkbox" checked={planExecute}
+            onChange={(event) => setPlanExecute(event.target.checked)} /><span><strong>增强规划跟踪（实验）</strong>
+            <span>逐场携带相关计划，连续遗漏时提醒，并在全书完成后给出计划落实摘要。</span></span></label>
         </fieldset>
         {selectedRun.execution.input_draft_revision !== revision ? <p role="alert">工作稿已更新，这份方案仅供查看。请重新推荐后再生成正文。</p> :
           <button type="button" className={styles.confirm} disabled={busy || runs.some(active) || selectedRun.execution.status !== "succeeded"}
             onClick={() => void action(async () => {
-              const run = await confirmNovelPlan(scope, selectedRun, proseMode);
+              const run = await confirmNovelPlan(scope, selectedRun, proseMode, planExecute);
               if (mounted.current) setRuns((items) => [run, ...items]);
             })}>按这份方案生成小说</button>}
         <NovelPlanOutline preview={preview} />
@@ -212,6 +216,15 @@ export function NovelCompilerPanel({ scope, title, hasDraft, onLoad, onClose }: 
         {!completedNovelArtifact(run) ? <div className={styles.runNotes}>
         {run.prose_shadow.plan_issues?.length ? <p role="alert">场景衔接需要调整：{run.prose_shadow.plan_issues.join("；")}</p> : null}
         {run.prose_renderer_shadow && run.prose_shadow.completed_scene_count ? <p>已保存 {run.prose_shadow.completed_scene_count} 个场景，继续时保留已完成正文。</p> : null}
+        </div> : null}
+        {run.planning_summary ? <div className={styles.runNotes}>
+          {run.planning_summary.status === "completed" ? <p>
+            计划对账：已落实 {run.planning_summary.fulfilled} 项，部分落实 {run.planning_summary.partial} 项，
+            未落实 {run.planning_summary.not_fulfilled} 项，无法判断 {run.planning_summary.unknown} 项。
+          </p> : <p>计划对账未完成，正文交付状态不受影响。</p>}
+          {run.planning_summary.suggested_plan_changes?.length ? <p>
+            计划调整建议：{run.planning_summary.suggested_plan_changes.join("；")}
+          </p> : null}
         </div> : null}
         {run.stability && Object.keys(run.stability.failure_stages).length ? <details className={styles.runHistory}>
           <summary>查看运行详情</summary>

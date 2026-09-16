@@ -138,6 +138,7 @@ from casefile.agent_runtime.story_planner import (
     StoryPlannerRequest,
 )
 from casefile.contracts import validate_casefile
+from casefile.domain.narrative_compiler import canonical_json_sha256
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
 )
@@ -1574,7 +1575,16 @@ class FakeProvider:
                     },
                 )
                 if output_type.__name__ == "MatrixEvaluationOutputV1":
-                    output = _fake_matrix_evaluation_output(json.loads(input_text))
+                    payload = _fake_component_payload(input_text)
+                    output = _fake_matrix_evaluation_output(payload)
+                elif output_type.__name__ in {
+                    "BlueprintPlanOutputV1",
+                    "StoryPlanOutputV1",
+                    "EvidencePlanOutputV1",
+                    "PlanReconciliationReport",
+                }:
+                    payload = _fake_component_payload(input_text)
+                    output = _fake_plan_execute_output(output_type, payload)
                 else:
                     output = _fake_v8_output(output_type)
                     if resolve_pipeline_spec(request.prompt_version).features.competition_matrix:
@@ -2051,6 +2061,116 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             output["schema_id"] = "resolution-governance-ir-v2"
         return output
     raise ProviderProtocolError(f"Fake v8 component is unsupported: {output_type.__name__}")
+
+
+def _fake_plan_execute_output(
+    output_type: type[BaseModel],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    if output_type.__name__ == "BlueprintPlanOutputV1":
+        from casefile.agent_runtime.brief_to_draft_v8.ir import CaseBlueprintV1
+
+        blueprint = _fake_v8_output(CaseBlueprintV1)
+        _add_fake_v10_matrix_plan(CaseBlueprintV1, blueprint)
+        return {
+            "schema_id": "brief-to-draft-blueprint-plan-output-v1",
+            "blueprint": blueprint,
+            "execution_plan": {
+                "schema_id": "casefile.execution-plan-candidate.v1",
+                "goals": [
+                    {
+                        "goal_id": "story_discovery",
+                        "objective": "在故事世界中建立记录者发现关键记录的事件",
+                        "verification": "Story artifact 包含 discovery 事件及 author 参与者",
+                        "owner_branch": "story_world",
+                        "source_refs": ["author", "discovery"],
+                        "depends_on_goal_ids": [],
+                        "preserve_constraints": ["不得提前确认最终答案"],
+                        "applies_from": 1,
+                        "applies_until": 1,
+                    },
+                    {
+                        "goal_id": "evidence_competition",
+                        "objective": "用关键记录支撑并区分两个竞争解释",
+                        "verification": "Evidence artifact 包含 record 及两条假设路径",
+                        "owner_branch": "evidence_logic",
+                        "source_refs": ["record", "hypothesis", "alternative_hypothesis"],
+                        "depends_on_goal_ids": [],
+                        "preserve_constraints": [],
+                        "applies_from": 1,
+                        "applies_until": 1,
+                    },
+                ],
+            },
+        }
+    if output_type.__name__ == "StoryPlanOutputV1":
+        from casefile.agent_runtime.brief_to_draft_v12.contracts import StoryWorldIRV3
+
+        artifact = _fake_v8_output(StoryWorldIRV3)
+        return {
+            "schema_id": "brief-to-draft-story-plan-output-v1",
+            "artifact": artifact,
+            "plan_checkin": {
+                "schema_id": "casefile.plan-checkin-candidate.v1",
+                "branch": "story_world",
+                "items": [
+                    {
+                        "goal_id": goal["goal_id"],
+                        "status": "fulfilled",
+                        "evidence_paths": ["/events/0"],
+                        "reason": "发现事件已进入 Story artifact。",
+                    }
+                    for goal in payload.get("plan_context", {}).get("applicable_goals", [])
+                ],
+            },
+        }
+    if output_type.__name__ == "EvidencePlanOutputV1":
+        from casefile.agent_runtime.brief_to_draft_v8.ir import EvidenceLogicIRV2
+
+        artifact = _fake_v8_output(EvidenceLogicIRV2)
+        return {
+            "schema_id": "brief-to-draft-evidence-plan-output-v1",
+            "artifact": artifact,
+            "plan_checkin": {
+                "schema_id": "casefile.plan-checkin-candidate.v1",
+                "branch": "evidence_logic",
+                "items": [
+                    {
+                        "goal_id": goal["goal_id"],
+                        "status": "fulfilled",
+                        "evidence_paths": ["/information_units/0"],
+                        "reason": "关键记录已进入 Evidence artifact。",
+                    }
+                    for goal in payload.get("plan_context", {}).get("applicable_goals", [])
+                ],
+            },
+        }
+    if output_type.__name__ == "PlanReconciliationReport":
+        return {
+            "schema_id": "casefile.plan-reconciliation.v1",
+            "plan_hash": canonical_json_sha256(payload["execution_plan"]),
+            "items": [
+                {
+                    "goal_id": goal["goal_id"],
+                    "status": "fulfilled",
+                    "evidence_refs": ["/final_candidate/title"],
+                    "reason": "最终候选已形成并保留计划要求。",
+                    "suggested_plan_change": None,
+                }
+                for goal in payload["execution_plan"]["goals"]
+            ],
+        }
+    raise ProviderProtocolError(f"Fake Plan-Execute output is unsupported: {output_type.__name__}")
+
+
+def _fake_component_payload(input_text: str) -> dict[str, Any]:
+    payload_text = input_text.strip()
+    if not payload_text.startswith("{"):
+        _, payload_text = payload_text.split("\n", 1)
+    parsed = json.loads(payload_text)
+    if not isinstance(parsed, dict):
+        raise ProviderProtocolError("Fake component input must be a JSON object")
+    return parsed
 
 
 def _fake_matrix_evaluation_output(payload: dict[str, Any]) -> dict[str, Any]:
