@@ -30,6 +30,7 @@ from casefile.agent_runtime.chat_execution import (
 )
 from casefile.agent_runtime.chat_intent import route_allows_suggestions
 from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V6_VERSION
+from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.benchmark.chat_live_eval import (
     _provider,
     _resolved_api_key,
@@ -296,6 +297,10 @@ def run_live_chat_outcome_eval(
     existing_rows: tuple[dict[str, Any], ...] | list[dict[str, Any]] = (),
     on_trial: Callable[[dict[str, Any]], None] | None = None,
     prompt_version: str = "casefile-chat-v12",
+    request_transform: Callable[[CaseFileChatRequest], CaseFileChatRequest] | None = None,
+    before_trial: Callable[[ChatOutcomeTask, int], None] | None = None,
+    trial_grader: Callable[..., ChatOutcomeTrialVerdict] | None = None,
+    retain_candidate: bool = False,
 ) -> ChatOutcomeLiveReport:
     if not tasks:
         raise ValueError("tasks must not be empty")
@@ -306,9 +311,7 @@ def run_live_chat_outcome_eval(
         task.task_id: [] for task in tasks
     }
     rows: list[dict[str, Any]] = [dict(row) for row in existing_rows]
-    completed = {
-        (str(row.get("task_id")), int(row.get("trial_no", 0))) for row in rows
-    }
+    completed = {(str(row.get("task_id")), int(row.get("trial_no", 0))) for row in rows}
     verdict_fields = ChatOutcomeTrialVerdict.__dataclass_fields__
     for row in rows:
         task_id = str(row.get("task_id"))
@@ -318,14 +321,8 @@ def run_live_chat_outcome_eval(
         if isinstance(values.get("failures"), list):
             values["failures"] = tuple(values["failures"])
         verdicts_by_task[task_id].append(ChatOutcomeTrialVerdict(**values))
-    dangerous_expected = sum(
-        trials for task in tasks if task.dangerous_pair is not None
-    )
-    dangerous_misses = sum(
-        bool(row.get("danger_miss"))
-        for row in rows
-        if isinstance(row, dict)
-    )
+    dangerous_expected = sum(trials for task in tasks if task.dangerous_pair is not None)
+    dangerous_misses = sum(bool(row.get("danger_miss")) for row in rows if isinstance(row, dict))
     input_tokens_total = sum(int(row.get("input_tokens", 0)) for row in rows)
     output_tokens_total = sum(int(row.get("output_tokens", 0)) for row in rows)
 
@@ -333,6 +330,8 @@ def run_live_chat_outcome_eval(
         for trial_no in range(1, trials + 1):
             if (task.task_id, trial_no) in completed:
                 continue
+            if before_trial is not None:
+                before_trial(task, trial_no)
             events: list[dict[str, Any]] = []
 
             def emit(
@@ -351,10 +350,12 @@ def run_live_chat_outcome_eval(
             )
             provider = provider_factory()
             route = None
+            resolved_protocol = request.toolset_version
             actual_intent = "unresolved"
             route_source = "unresolved"
             tool_calls = 0
             tool_metrics: dict[str, Any] = {}
+            retained_candidate: dict[str, Any] | None = None
             input_tokens = 0
             output_tokens = 0
             error_kind: str | None = None
@@ -394,6 +395,9 @@ def run_live_chat_outcome_eval(
                             "validation": resolved.validation,
                         },
                     )
+                if request_transform is not None:
+                    resolved = request_transform(resolved)
+                resolved_protocol = resolved.toolset_version
                 route = resolved.route
                 understanding = resolved.task_understanding
                 if understanding is not None:
@@ -417,7 +421,9 @@ def run_live_chat_outcome_eval(
                     if execution.result.tool_ledger
                     else None
                 )
-                verdict = grade_chat_outcome(
+                if retain_candidate:
+                    retained_candidate = result.candidate.model_dump(mode="json")
+                verdict = (trial_grader or grade_chat_outcome)(
                     task,
                     result.candidate,
                     allow_suggestions=allow_suggestions,
@@ -432,14 +438,10 @@ def run_live_chat_outcome_eval(
                     repair_history = [
                         dict(item) for item in retained_repairs if isinstance(item, dict)
                     ]
-                retained_materializations = getattr(
-                    error, "safe_patch_materializations", None
-                )
+                retained_materializations = getattr(error, "safe_patch_materializations", None)
                 if isinstance(retained_materializations, list):
                     safe_patch_materializations = [
-                        dict(item)
-                        for item in retained_materializations
-                        if isinstance(item, dict)
+                        dict(item) for item in retained_materializations if isinstance(item, dict)
                     ]
                 retained_usage = getattr(error, "usage", None)
                 if isinstance(retained_usage, dict):
@@ -500,9 +502,7 @@ def run_live_chat_outcome_eval(
                 if event.get("event_type") == "model.output_protocol_selected"
             ]
             if protocol_events:
-                last_output_protocol = str(
-                    protocol_events[-1].get("payload", {}).get("protocol")
-                )
+                last_output_protocol = str(protocol_events[-1].get("payload", {}).get("protocol"))
             last_attempt_by_stage: dict[str, int] = {}
             for event in events:
                 event_type = event.get("event_type")
@@ -556,9 +556,7 @@ def run_live_chat_outcome_eval(
                         }
                     )
             ledger_events = [
-                event
-                for event in events
-                if event.get("event_type") == "model.tool_ledger.frozen"
+                event for event in events if event.get("event_type") == "model.tool_ledger.frozen"
             ]
             if ledger_hash is None and ledger_events:
                 value = ledger_events[-1].get("payload", {}).get("ledger_hash")
@@ -578,47 +576,58 @@ def run_live_chat_outcome_eval(
                     dangerous_misses += 1
             verdicts_by_task[task.task_id].append(verdict)
             row = {
-                    "task_id": task.task_id,
-                    "trial_no": trial_no,
-                    "danger_miss": danger_miss,
-                    "elapsed_ms": round((time.perf_counter() - started) * 1000),
-                    "event_count": len(events),
-                    "event_summary": _event_summary(events),
-                    "last_event_type": events[-1]["event_type"] if events else None,
-                    "last_event_stage": events[-1]["stage"] if events else None,
-                    "protocol": request.toolset_version,
-                    "attempt_no": attempts,
-                    "tool_metrics": tool_metrics,
-                    "tool_calls": tool_calls,
-                    "input_tokens": input_tokens,
-                    "output_tokens": output_tokens,
-                    "error_kind": error_kind,
-                    "error_code": error_code,
-                    "error_class": error_class,
-                    "error_stage": error_stage,
-                    "validation_issues": validation_issues,
-                    "repair_plan": repair_plan,
-                    "repair_history": repair_history,
-                    "safe_patch_materializations": safe_patch_materializations,
-                    "ledger_hash": ledger_hash,
-                    "last_output_protocol": last_output_protocol,
-                    "output_protocol_history": output_protocol_history,
-                    "output_validation_history": output_validation_history,
-                    "tool_agent_calls": sum(
-                        event.get("event_type") == "model.tool_agent.started"
-                        for event in events
-                    ),
-                    "finalizer_attempts": sum(
-                        event.get("event_type") == "model.finalizer.started"
-                        for event in events
-                    ),
-                    "total_model_calls": sum(
-                        event.get("event_type")
-                        in {"model.tool_agent.started", "model.started"}
-                        for event in events
-                    ),
-                    **verdict.as_dict(),
-                }
+                "task_id": task.task_id,
+                "trial_no": trial_no,
+                "danger_miss": danger_miss,
+                "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                "event_count": len(events),
+                "event_summary": _event_summary(events),
+                "delegation_trace": [
+                    event
+                    for event in events
+                    if str(event.get("event_type", "")).startswith(
+                        ("model.delegation.", "model.subagent.")
+                    )
+                ],
+                "last_event_type": events[-1]["event_type"] if events else None,
+                "last_event_stage": events[-1]["stage"] if events else None,
+                "protocol": resolved_protocol,
+                "attempt_no": attempts,
+                "tool_metrics": tool_metrics,
+                "tool_calls": tool_calls,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "error_kind": error_kind,
+                "error_code": error_code,
+                "error_class": error_class,
+                "error_stage": error_stage,
+                "validation_issues": validation_issues,
+                "repair_plan": repair_plan,
+                "repair_history": repair_history,
+                "safe_patch_materializations": safe_patch_materializations,
+                "ledger_hash": ledger_hash,
+                "last_output_protocol": last_output_protocol,
+                "output_protocol_history": output_protocol_history,
+                "output_validation_history": output_validation_history,
+                "tool_agent_calls": sum(
+                    event.get("event_type") == "model.tool_agent.started" for event in events
+                ),
+                "finalizer_attempts": sum(
+                    event.get("event_type") == "model.finalizer.started" for event in events
+                ),
+                "total_model_calls": sum(
+                    event.get("event_type")
+                    in {
+                        "model.tool_agent.started",
+                        "model.subagent.started",
+                        "model.started",
+                    }
+                    for event in events
+                ),
+                **verdict.as_dict(),
+            }
+            if retain_candidate:
+                row["candidate"] = retained_candidate
             rows.append(row)
             if on_trial is not None:
                 on_trial(row)
@@ -639,10 +648,7 @@ def run_live_chat_outcome_eval(
     trial_window = min(RELEASE_PASS_K, trials)
     pass_at_k = round(
         sum(
-            any(
-                verdict.passed
-                for verdict in verdicts_by_task[task.task_id][:trial_window]
-            )
+            any(verdict.passed for verdict in verdicts_by_task[task.task_id][:trial_window])
             for task in tasks
         )
         / task_count,
@@ -650,10 +656,7 @@ def run_live_chat_outcome_eval(
     )
     safety_pass_at_k = round(
         sum(
-            all(
-                verdict.safety_passed
-                for verdict in verdicts_by_task[task.task_id][:trial_window]
-            )
+            all(verdict.safety_passed for verdict in verdicts_by_task[task.task_id][:trial_window])
             for task in tasks
         )
         / task_count,
@@ -677,11 +680,7 @@ def run_live_chat_outcome_eval(
         6,
     )
     final_trials = [
-        next(
-            verdict
-            for verdict in verdicts_by_task[task.task_id][:trial_window]
-            if verdict.passed
-        )
+        next(verdict for verdict in verdicts_by_task[task.task_id][:trial_window] if verdict.passed)
         for task in tasks
         if any(verdict.passed for verdict in verdicts_by_task[task.task_id][:trial_window])
     ]
@@ -703,15 +702,9 @@ def run_live_chat_outcome_eval(
         if expected_reference_total
         else 1.0
     )
-    final_reference_valid_total = sum(
-        verdict.reference_valid_count for verdict in final_trials
-    )
-    final_reference_total = sum(
-        verdict.reference_total_count for verdict in final_trials
-    )
-    final_expected_reference_hits = sum(
-        verdict.expected_reference_hits for verdict in final_trials
-    )
+    final_reference_valid_total = sum(verdict.reference_valid_count for verdict in final_trials)
+    final_reference_total = sum(verdict.reference_total_count for verdict in final_trials)
+    final_expected_reference_hits = sum(verdict.expected_reference_hits for verdict in final_trials)
     final_expected_reference_total = sum(
         verdict.expected_reference_total for verdict in final_trials
     )
@@ -753,12 +746,8 @@ def run_live_chat_outcome_eval(
         "pass_at_k_ge_0.85": pass_at_k >= PASS_AT_K_TARGET,
         "safety_pass_all_k_1.0": safety_pass_at_k >= SAFETY_PASS_AT_K_TARGET,
         "unsafe_trial_rate_0": unsafe_trial_rate == 0.0,
-        "final_reference_precision_ge_0.95": (
-            final_reference_precision >= MICRO_PRECISION_TARGET
-        ),
-        "final_reference_recall_ge_0.90": (
-            final_reference_recall >= MICRO_RECALL_TARGET
-        ),
+        "final_reference_precision_ge_0.95": (final_reference_precision >= MICRO_PRECISION_TARGET),
+        "final_reference_recall_ge_0.90": (final_reference_recall >= MICRO_RECALL_TARGET),
         "suggestion_legality_1.0": suggestion_legality >= SUGGESTION_LEGALITY_TARGET,
         "forbidden_reference_rate_0": forbidden_reference_rate == 0.0,
         "unnecessary_suggestion_rate_0": unnecessary_suggestion_rate == 0.0,
@@ -914,9 +903,7 @@ def main() -> None:
         prompt_version=arguments.prompt_version,
     )
     partial_path = (
-        None
-        if arguments.report_path is None
-        else Path(f"{arguments.report_path}.partial.json")
+        None if arguments.report_path is None else Path(f"{arguments.report_path}.partial.json")
     )
     if arguments.resume and partial_path is None:
         raise SystemExit("--resume requires --report-path")
@@ -925,9 +912,7 @@ def main() -> None:
         partial = json.loads(partial_path.read_text(encoding="utf-8"))
         if partial.get("suite_fingerprint") != fingerprint:
             raise SystemExit("partial report fingerprint mismatch; refusing to resume")
-        checkpoint_rows = [
-            dict(row) for row in partial.get("rows", []) if isinstance(row, dict)
-        ]
+        checkpoint_rows = [dict(row) for row in partial.get("rows", []) if isinstance(row, dict)]
 
     def provider_factory() -> Any:
         provider, _ = _provider(provider_name, api_key)

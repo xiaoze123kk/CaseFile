@@ -13,6 +13,11 @@ from typing import Any, Final, Literal, Protocol
 from casefile.agent_runtime.deepseek_transport import model_checked_client as OpenAI
 from casefile.agent_runtime.model_call_audit import audited_call
 from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
+from casefile.agent_runtime.plan_execute import (
+    PlanCheckinCandidate,
+    PlanContext,
+    SceneProsePlanOutput,
+)
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.prose_generation import (
     generation_focus,
@@ -35,6 +40,7 @@ from casefile_contracts import SceneRenderCandidate
 
 PROSE_WRITER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v6"
+PROSE_WRITER_PLAN_PROMPT_VERSION: Final = "prose-writer-v7"
 PROSE_WRITER_REQUEST_PROTOCOL: Final = "prose-writer-json-object-v4"
 PROSE_WRITER_COMPONENT_VERSION: Final = "prose-writer-runtime-v4"
 PROSE_WRITER_MAX_TURNS: Final = 1
@@ -48,6 +54,9 @@ PROSE_WRITER_RENDER_SCHEMA_ID: Final = "compiler.scene-render.v1"
 PROSE_WRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
 PROSE_WRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_WRITER_CANDIDATE_SCHEMA)
 PROSE_WRITER_RENDER_SCHEMA_HASH: Final = LEGACY_RENDER_SCHEMA_HASH
+PROSE_WRITER_PLAN_SCHEMA_ID: Final = "compiler.scene-prose-plan-output.v1"
+PROSE_WRITER_PLAN_SCHEMA: Final = SceneProsePlanOutput.model_json_schema()
+PROSE_WRITER_PLAN_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_WRITER_PLAN_SCHEMA)
 PROSE_WRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
         "component_version": PROSE_WRITER_COMPONENT_VERSION,
@@ -157,6 +166,7 @@ class ProseWriterExecution:
     call: ProseWriterProviderResult | None
     failed_call: ProseWriterFailedCall | None = None
     error_code: str | None = None
+    plan_checkin: PlanCheckinCandidate | None = None
 
 
 class DeepSeekProseWriterProvider:
@@ -232,7 +242,8 @@ class DeepSeekProseWriterProvider:
         )
 
     def completion_body(self, request: ProseWriterRequest) -> dict[str, Any]:
-        return completion_body(request, PROSE_WRITER_CANDIDATE_SCHEMA, generation_focus(request))
+        _, schema, _ = _writer_candidate_contract(request.prompt_version)
+        return completion_body(request, schema, generation_focus(request))
 
     @audited_call
     def _create_completion(self, request: ProseWriterRequest) -> Any:
@@ -306,6 +317,7 @@ def execute_prose_writer(
     remaining_scene_call_budget: int,
     recover_call: Callable[[str], ProseWriterProviderResult | None] | None = None,
     continuity_advisories: list[dict[str, Any]] | None = None,
+    plan_context: dict[str, Any] | None = None,
     prompt_version: str = PROSE_WRITER_PROMPT_VERSION,
     soft_target_length: bool = False,
     previous_edit_issues: list[str] | None = None,
@@ -327,6 +339,7 @@ def execute_prose_writer(
             continuity_advisories=continuity_advisories,
             soft_target_length=soft_target_length,
             previous_edit_issues=previous_edit_issues,
+            plan_context=plan_context,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -368,8 +381,21 @@ def execute_prose_writer(
         validate_generation_result(provider, call, request, "prose_writer")
         if call.candidate is None:
             raise ProseWriterProtocolError("prose_writer_empty_or_invalid_json")
+        plan_checkin = None
+        candidate = call.candidate
+        if request.prompt_version == PROSE_WRITER_PLAN_PROMPT_VERSION:
+            wrapped = SceneProsePlanOutput.model_validate(candidate)
+            candidate = wrapped.artifact.model_dump(mode="json")
+            try:
+                plan_checkin = (
+                    None
+                    if wrapped.plan_checkin is None
+                    else PlanCheckinCandidate.model_validate(wrapped.plan_checkin)
+                )
+            except ValueError:
+                plan_checkin = None
         render = normalize_scene_render_candidate(
-            call.candidate,
+            candidate,
             checklist=checklist,
             profile=profile,
             component_input_hash=request.component_input_hash,
@@ -382,7 +408,12 @@ def execute_prose_writer(
             call=call,
             error_code=str(error),
         )
-    return ProseWriterExecution(status="completed", render=render, call=call)
+    return ProseWriterExecution(
+        status="completed",
+        render=render,
+        call=call,
+        plan_checkin=plan_checkin,
+    )
 
 
 def build_prose_writer_request(
@@ -396,13 +427,14 @@ def build_prose_writer_request(
     api_key: str,
     remaining_scene_call_budget: int,
     continuity_advisories: list[dict[str, Any]] | None = None,
+    plan_context: dict[str, Any] | None = None,
     prompt_version: str = PROSE_WRITER_PROMPT_VERSION,
     soft_target_length: bool = False,
     previous_edit_issues: list[str] | None = None,
 ) -> ProseWriterRequest:
     """Build the minimal Provider view after exact authoritative input validation."""
 
-    if model_id not in (PROSE_WRITER_MODEL_ID, "deepseek-v4-pro"):
+    if model_id != PROSE_WRITER_MODEL_ID:
         raise ProseWriterProtocolError("prose_writer_model_id_not_frozen")
     if (
         not isinstance(remaining_scene_call_budget, int)
@@ -419,29 +451,36 @@ def build_prose_writer_request(
     ).model_dump(mode="json")
     profile_json = validate_novel_profile_v2(profile).model_dump(mode="json")
     advisories = _validated_continuity_advisories(continuity_advisories)
+    parsed_plan_context = None if plan_context is None else PlanContext.model_validate(plan_context)
+    if prompt_version == PROSE_WRITER_PLAN_PROMPT_VERSION and parsed_plan_context is None:
+        raise ProseWriterProtocolError("prose_writer_plan_context_missing")
     prompt = load_prompt("prose_writer", prompt_version)
-    component_input_hash = canonical_json_sha256(
-        {
-            "component_id": "prose_writer",
-            "component_version": PROSE_WRITER_COMPONENT_VERSION,
-            "component_hash": PROSE_WRITER_COMPONENT_HASH,
-            "scene_id": checklist_json["scene_id"],
-            "scene_ordinal": checklist_json["scene_ordinal"],
-            "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
-            "narrative_ir_hash": checklist_json["source"]["narrative_ir_hash"],
-            "profile_hash": checklist_json["source"]["profile_hash"],
-            "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
-            "checklist_hash": canonical_json_sha256(checklist_json),
-            "prompt_version": prompt.version,
-            "prompt_hash": prompt.system_prompt_sha256,
-            "model_id": model_id,
-            "candidate_schema_hash": PROSE_WRITER_CANDIDATE_SCHEMA_HASH,
-            "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
-            "remaining_scene_call_budget": remaining_scene_call_budget,
-            "continuity_advisories": advisories,
-            **({"soft_target_length": True} if soft_target_length else {}),
-        }
+    candidate_schema_id, candidate_schema, candidate_schema_hash = _writer_candidate_contract(
+        prompt.version
     )
+    component_binding = {
+        "component_id": "prose_writer",
+        "component_version": PROSE_WRITER_COMPONENT_VERSION,
+        "component_hash": PROSE_WRITER_COMPONENT_HASH,
+        "scene_id": checklist_json["scene_id"],
+        "scene_ordinal": checklist_json["scene_ordinal"],
+        "scene_plan_hash": checklist_json["source"]["scene_plan_hash"],
+        "narrative_ir_hash": checklist_json["source"]["narrative_ir_hash"],
+        "profile_hash": checklist_json["source"]["profile_hash"],
+        "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
+        "checklist_hash": canonical_json_sha256(checklist_json),
+        "prompt_version": prompt.version,
+        "prompt_hash": prompt.system_prompt_sha256,
+        "model_id": model_id,
+        "candidate_schema_hash": candidate_schema_hash,
+        "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
+        "remaining_scene_call_budget": remaining_scene_call_budget,
+        "continuity_advisories": advisories,
+        **({"soft_target_length": True} if soft_target_length else {}),
+    }
+    if parsed_plan_context is not None:
+        component_binding["plan_context"] = parsed_plan_context.model_dump(mode="json")
+    component_input_hash = canonical_json_sha256(component_binding)
     payload: dict[str, Any] = {
         "server_bindings": {
             "component_id": "prose_writer",
@@ -453,8 +492,8 @@ def build_prose_writer_request(
             "narrative_ir_hash": checklist_json["source"]["narrative_ir_hash"],
             "profile_hash": checklist_json["source"]["profile_hash"],
             "previous_scene_render_hash": checklist_json["source"]["previous_scene_render_hash"],
-            "candidate_schema_id": PROSE_WRITER_CANDIDATE_SCHEMA_ID,
-            "candidate_schema_hash": PROSE_WRITER_CANDIDATE_SCHEMA_HASH,
+            "candidate_schema_id": candidate_schema_id,
+            "candidate_schema_hash": candidate_schema_hash,
             "render_schema_id": PROSE_WRITER_RENDER_SCHEMA_ID,
             "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
             "max_writer_calls": PROSE_WRITER_MAX_CALLS,
@@ -469,17 +508,23 @@ def build_prose_writer_request(
             **generation_view(checklist_json),
             "profile": profile_json,
         },
-        "output_schema_id": PROSE_WRITER_CANDIDATE_SCHEMA_ID,
+        "output_schema_id": candidate_schema_id,
     }
     if advisories:
         payload["untrusted_data"]["continuity_advisories"] = advisories
     if previous_edit_issues:
-        if not soft_target_length or len(previous_edit_issues) > 40 or any(
-            not isinstance(issue, str) or not 1 <= len(issue) <= 2000
-            for issue in previous_edit_issues
+        if (
+            not soft_target_length
+            or len(previous_edit_issues) > 40
+            or any(
+                not isinstance(issue, str) or not 1 <= len(issue) <= 2000
+                for issue in previous_edit_issues
+            )
         ):
             raise ProseWriterProtocolError("prose_previous_edit_issues_invalid")
         payload["untrusted_data"]["previous_edit_issues"] = previous_edit_issues
+    if parsed_plan_context is not None:
+        payload["untrusted_data"]["plan_context"] = parsed_plan_context.model_dump(mode="json")
     input_hash = canonical_json_sha256(payload)
     fingerprint = canonical_json_sha256(
         {
@@ -510,7 +555,17 @@ def build_prose_writer_request(
             request_fingerprint=fingerprint,
             remaining_scene_call_budget=remaining_scene_call_budget,
         ),
+        candidate_schema,
+    )
+
+
+def _writer_candidate_contract(prompt_version: str) -> tuple[str, dict[str, Any], str]:
+    if prompt_version == PROSE_WRITER_PLAN_PROMPT_VERSION:
+        return PROSE_WRITER_PLAN_SCHEMA_ID, PROSE_WRITER_PLAN_SCHEMA, PROSE_WRITER_PLAN_SCHEMA_HASH
+    return (
+        PROSE_WRITER_CANDIDATE_SCHEMA_ID,
         PROSE_WRITER_CANDIDATE_SCHEMA,
+        PROSE_WRITER_CANDIDATE_SCHEMA_HASH,
     )
 
 
@@ -598,6 +653,8 @@ __all__ = [
     "PROSE_WRITER_MODEL_ID",
     "PROSE_WRITER_NETWORK_RETRIES",
     "PROSE_WRITER_PROMPT_VERSION",
+    "PROSE_WRITER_PLAN_PROMPT_VERSION",
+    "PROSE_WRITER_PLAN_SCHEMA",
     "PROSE_WRITER_RENDER_SCHEMA_HASH",
     "PROSE_WRITER_RENDER_SCHEMA_ID",
     "PROSE_WRITER_REQUEST_PROTOCOL",

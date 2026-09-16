@@ -85,8 +85,8 @@ def execute_prose_polish_supervisor(
         return _terminal("protocol_failed", None, None, None, None, None, None, str(error))
     if (
         quality_model_id not in (PROSE_QUALITY_MODEL_ID, "deepseek-v4-flash")
-        or generation_model_id not in (PROSE_POLISHER_MODEL_ID, "deepseek-v4-pro")
-        or generation_model_id not in (PROSE_COUNCIL_MODEL_ID, "deepseek-v4-pro")
+        or generation_model_id != PROSE_POLISHER_MODEL_ID
+        or generation_model_id != PROSE_COUNCIL_MODEL_ID
     ):
         return _terminal(
             "protocol_failed",

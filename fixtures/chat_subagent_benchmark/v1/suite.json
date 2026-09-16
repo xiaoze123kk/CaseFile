@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "suite_version": "casefile-chat-subagent-v1",
+  "cases": [
+    {"case_id": "simple-01", "category": "simple", "base_task_id": "golden-entity-question"},
+    {"case_id": "simple-02", "category": "simple", "base_task_id": "golden-event-question"},
+    {"case_id": "simple-03", "category": "simple", "base_task_id": "golden-claim-evidence"},
+    {"case_id": "simple-04", "category": "simple", "base_task_id": "golden-issue-explanation"},
+    {"case_id": "simple-05", "category": "simple", "base_task_id": "boundary-empty-casefile-question"},
+    {"case_id": "simple-06", "category": "simple", "base_task_id": "boundary-large-casefile"},
+    {"case_id": "simple-07", "category": "simple", "base_task_id": "adversarial-dangling-object-ref"},
+    {"case_id": "simple-08", "category": "simple", "base_task_id": "adversarial-unnecessary-question"},
+
+    {"case_id": "investigation-01", "category": "investigation", "base_task_id": "golden-analysis-inspect", "message": "查清当前焦点人物与卷宗里哪些对象直接相关，并说明依据。"},
+    {"case_id": "investigation-02", "category": "investigation", "base_task_id": "golden-analysis-inspect", "message": "围绕当前焦点人物，核对其涉及的事件与关系，区分事实和推断。"},
+    {"case_id": "investigation-03", "category": "investigation", "base_task_id": "golden-analysis-inspect", "message": "追踪当前焦点人物的关联线索，列出已证实内容和仍未知的部分。"},
+    {"case_id": "investigation-04", "category": "investigation", "base_task_id": "golden-evidence-chain", "message": "把当前结论对应的证据链串起来，说明每一步由什么记录支持。"},
+    {"case_id": "investigation-05", "category": "investigation", "base_task_id": "golden-evidence-chain", "message": "查证当前结论从事件到证据再到推理路径的完整依据，不足处明确标出。"},
+    {"case_id": "investigation-06", "category": "investigation", "base_task_id": "golden-evidence-chain", "message": "核对支持当前结论的对象和事件，区分直接证据与推断。"},
+    {"case_id": "investigation-07", "category": "investigation", "base_task_id": "adversarial-unnecessary-analysis", "message": "分析指定范围，只引用真实存在的对象；如果没有足够信息就明确说明。"},
+    {"case_id": "investigation-08", "category": "investigation", "base_task_id": "adversarial-unnecessary-analysis", "message": "核对指定范围内是否有可支持结论的记录，不要为了完整而补造关系。"},
+
+    {"case_id": "audit-01", "category": "audit", "base_task_id": "golden-audit-fractured-alliance"},
+    {"case_id": "audit-02", "category": "audit", "base_task_id": "golden-audit-fractured-alliance", "message": "专项复查证词与关系状态是否自相矛盾，并绑定真实证据。"},
+    {"case_id": "audit-03", "category": "audit", "base_task_id": "golden-audit-restart-loop"},
+    {"case_id": "audit-04", "category": "audit", "base_task_id": "golden-audit-restart-loop", "message": "专项核对第七次重启的原因链，区分确定冲突、疑点和信息不足。"},
+    {"case_id": "audit-05", "category": "audit", "base_task_id": "golden-audit-vanishing-route"},
+    {"case_id": "audit-06", "category": "audit", "base_task_id": "golden-audit-vanishing-route", "message": "专项复查航线事件、结论和描述是否一致，只报告证据支持的问题。"},
+    {"case_id": "audit-07", "category": "audit", "base_task_id": "golden-audit-clean-no-op"},
+    {"case_id": "audit-08", "category": "audit", "base_task_id": "golden-audit-clean-no-op", "message": "复查这份卷宗是否存在证据链问题；没有问题时不要制造发现。"}
+  ]
+}

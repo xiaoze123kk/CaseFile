@@ -3,8 +3,8 @@
   "suite_id": "novel-plan-capability-v3",
   "formal_qualification": {
     "provider": "deepseek",
-    "planner_model_id": "deepseek-v4-pro",
-    "quality_grader_model_id": "deepseek-v4-pro",
+    "planner_model_id": "deepseek-flash",
+    "quality_grader_model_id": "deepseek-flash",
     "trials_per_task": 3
   },
   "promotion_gate": {

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "prompt_version": "prose-rewriter-v11",
+  "role_sha256": "5bd2ed49076249bd2775085a38fa6393f676bd749846f15d36f0676e9668c0f8",
+  "schema_sha256": "a9daa6ce1f80b17248bf9ca9bc885e2cdf75287bcf061cf7b867b0d7f282701a",
+  "tool_policy": "no-tools-json-object-v1",
+  "skill": "scene-revision-plan-execute",
+  "order": [
+    "skill"
+  ],
+  "resources": {
+    "skill": {
+      "file": "SKILL.md",
+      "sha256": "d58cdbe685513b10e13b93cae3a598fd351e566a6598a41768543c50dcd5ba60"
+    }
+  },
+  "model_view": "prose-model-view-v1"
+}

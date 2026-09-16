@@ -15,6 +15,7 @@ from application_services_test_support import (
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.closure_repair_backend_executor import (
@@ -49,7 +50,7 @@ def test_backend_executor_fault_matrix_uses_real_postgres_seams(
                 actor_id,
                 provider="deepseek",
                 api_key="backend-fault-dummy-key",
-                model_id="deepseek-v4-pro",
+                model_id=DEEPSEEK_MODEL_ID,
                 model_is_custom=False,
             )
             thread = workflow.create_agent_thread(

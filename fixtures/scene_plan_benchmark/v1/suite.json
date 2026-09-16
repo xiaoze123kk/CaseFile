@@ -3,7 +3,7 @@
   "suite_id": "scene-plan-capability-v1",
   "formal_qualification": {
     "provider": "deepseek",
-    "model_id": "deepseek-v4-pro",
+    "model_id": "deepseek-flash",
     "trials_per_task": 3
   },
   "grader_versions": {

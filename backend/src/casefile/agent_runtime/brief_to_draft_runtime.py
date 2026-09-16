@@ -54,6 +54,7 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
 )
 from casefile.agent_runtime.brief_to_draft_v16.contracts import DraftContextPackV6
 from casefile.agent_runtime.brief_to_draft_v17.contracts import DraftContextPackV7
+from casefile.agent_runtime.brief_to_draft_v18.contracts import DraftContextPackV8
 from casefile.agent_runtime.generation_hook_policy import V17_HOOKS
 from casefile.agent_runtime.generation_hooks import HookBinding
 from casefile.agent_runtime.prompt import (
@@ -73,6 +74,7 @@ _V12_PROMPT_COMPONENTS = frozenset({"planner", "temporal", "story", "evidence", 
 _V15_PROMPT_COMPONENTS = frozenset(
     {"planner", "temporal", "story", "evidence", "matrix", "governance"}
 )
+_V18_PROMPT_COMPONENTS = frozenset({*_V15_PROMPT_COMPONENTS, "reconciliation"})
 
 _STAGES_LEGACY = (
     "context_pack",
@@ -95,6 +97,7 @@ _STAGES_V15 = (
     "resolution_governance",
     "compile_quality_gate",
 )
+_STAGES_V18 = (*_STAGES_V15, "plan_reconciliation")
 
 EvidenceOutputType = type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2]
 GovernanceOutputType = type[ResolutionGovernanceIRV1] | type[ResolutionGovernanceIRV2]
@@ -113,6 +116,7 @@ class FeatureFlags:
     language_gate: bool = False
     explicit_targets: bool = False
     relationship_coverage: bool = False
+    plan_execute: bool = False
     blueprint_repair_budget: int = 1
 
 
@@ -334,6 +338,18 @@ _PIPELINE_SPECS["brief-to-draft-v17"] = replace(
     skill_release="v17",
     hook_bindings=V17_HOOKS,
 )
+_PIPELINE_SPECS["brief-to-draft-v18"] = replace(
+    _PIPELINE_SPECS["brief-to-draft-v17"],
+    prompt_version="brief-to-draft-v18",
+    agent_version="brief-to-draft-pipeline-v18",
+    context_pack_type=DraftContextPackV8,
+    context_schema_id="draft-context-pack-v8",
+    prompt_components=_V18_PROMPT_COMPONENTS,
+    stages=_STAGES_V18,
+    features=replace(_PIPELINE_SPECS["brief-to-draft-v17"].features, plan_execute=True),
+    evidence_repair_input_contract_id="brief-to-draft-evidence-repair-input-v4",
+    skill_release="v18",
+)
 
 _SPECS = MappingProxyType(_PIPELINE_SPECS)
 
@@ -361,6 +377,14 @@ def schema_id_for_component(
 ) -> str | None:
     """Resolve the structured-output schema bound to a pipeline component."""
 
+    if spec.features.plan_execute and component_id == "case_blueprint_planner":
+        return "brief-to-draft-blueprint-plan-output-v1"
+    if spec.features.plan_execute and component_id == "story_world":
+        return "brief-to-draft-story-plan-output-v1"
+    if spec.features.plan_execute and component_id == "evidence_logic":
+        return "brief-to-draft-evidence-plan-output-v1"
+    if component_id == "plan_reconciliation":
+        return "casefile-plan-reconciliation-v1"
     if component_id == "story_world":
         return spec.story_schema_id
     if component_id == "evidence_logic":

@@ -30,7 +30,7 @@ if ((Test-Path -LiteralPath $outputPath) -and (Get-ChildItem -LiteralPath $outpu
 
 Push-Location $repoRoot
 try {
-    Write-Host "[M3.3] Preflight: clean commit, frozen fingerprints, Pro model, *_test database"
+    Write-Host "[M3.3] Preflight: clean commit, frozen fingerprints, Flash model, *_test database"
     & uv run --project backend python -m casefile.benchmark.closure_repair_qualification `
         --repo-root $repoRoot `
         --holdout-suite $holdoutPath `

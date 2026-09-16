@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
@@ -206,7 +207,7 @@ class PostgresBackendReleaseExecutor:
     def execute_trial(
         self, task: EvalTask, *, trial_index: int, repair_model: str
     ) -> BackendTrialEvidence:
-        if repair_model != "deepseek-v4-pro":
+        if repair_model != DEEPSEEK_MODEL_ID:
             raise BackendReleaseContractError("backend_executor_repair_model_invalid")
         document = json.loads(Path(str(task.input["document"])).read_text(encoding="utf-8"))
         primary = task.input["primary_mutation"]
@@ -827,7 +828,7 @@ class PostgresBackendReleaseExecutor:
 
     def _inject_stale_resume(self) -> tuple[bool, dict[str, Any]]:
         actor_id = self._create_actor("fault_stale_resume", 1)
-        project_id, task_run_id = self._prepare_generation(actor_id, "deepseek-v4-pro")
+        project_id, task_run_id = self._prepare_generation(actor_id, DEEPSEEK_MODEL_ID)
         worker = Worker(
             self.session_factory,
             config=WorkerConfig(worker_id=f"fault-resume-{task_run_id}"),

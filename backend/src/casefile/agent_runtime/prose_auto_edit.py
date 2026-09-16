@@ -44,7 +44,7 @@ def auto_edit_protocol_for_runtime(runtime_version: str) -> str:
 
     if runtime_version == "prose-shadow-runtime-v13":
         return AUTO_EDIT_PROTOCOL_V1
-    if runtime_version == "prose-shadow-runtime-v14":
+    if runtime_version in {"prose-shadow-runtime-v14", "prose-shadow-runtime-v15"}:
         return AUTO_EDIT_PROTOCOL
     raise CompilerContractError("compiler_prose_runtime_version_unsupported")
 
@@ -88,6 +88,8 @@ def execute_auto_edit(
     observe: Callable[[str, Any], None] | None = None,
     previous_edit_issues: list[str] | None = None,
     protocol_version: str = AUTO_EDIT_PROTOCOL,
+    rewrite_prompt_version: str = AUTO_EDIT_REWRITER_PROMPT_VERSION,
+    plan_context_provider: Callable[[], dict[str, Any] | None] | None = None,
 ) -> AutoEditExecution:
     """Run one model-owned edit choice and at most one model-owned candidate selection."""
 
@@ -162,7 +164,8 @@ def execute_auto_edit(
             api_key=api_key,
             remaining_scene_call_budget=4,
             auto_edit_review=review.report,
-            prompt_version=AUTO_EDIT_REWRITER_PROMPT_VERSION,
+            prompt_version=rewrite_prompt_version,
+            plan_context=plan_context_provider() if plan_context_provider else None,
             soft_target_length=True,
         )
         if observe:

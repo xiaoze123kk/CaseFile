@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.api.app import create_app
 from casefile.api.dependencies import get_actor_user_id, get_session
 from casefile.application.workflow_views import task_view
@@ -20,7 +21,7 @@ def projected_task(task_type: str, status: str) -> dict:
     task = SimpleNamespace(
         id=21, project_id=8, task_type=task_type, prompt_version="v22", status=status,
         stage="completed", provider=None if task_type == "novel_compile" else "deepseek",
-        model_id=None if task_type == "novel_compile" else "deepseek-v4-pro",
+        model_id=None if task_type == "novel_compile" else DEEPSEEK_MODEL_ID,
         input_draft_revision=4, input_brief_revision=None, input_source_record_id=None,
         brief_intake_id=None, input_brief_intake_revision=None,
         base_brief_intake_candidate_id=None, agent_thread_id=None, input_message_id=None,

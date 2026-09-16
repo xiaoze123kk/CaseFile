@@ -455,7 +455,7 @@ def test_resume_rejects_incompatible_fingerprint(tmp_path: Path) -> None:
         )
 
 
-def test_live_capability_requires_pro_models_and_three_trials() -> None:
+def test_live_capability_requires_flash_models_and_three_trials() -> None:
     with pytest.raises(ValueError, match="exactly 3"):
         run_suite(
             suite_kind="capability",
@@ -468,13 +468,13 @@ def test_live_capability_requires_pro_models_and_three_trials() -> None:
             resume=False,
         )
 
-    with pytest.raises(ValueError, match="exact Pro model IDs"):
+    with pytest.raises(ValueError, match="exact Flash model IDs"):
         run_suite(
             suite_kind="capability",
             mode="live",
             provider_name="deepseek",
-            model_id="deepseek-v4-pro-preview",
-            quality_grader_model="deepseek-v4-pro-preview",
+            model_id="deepseek-reasoner",
+            quality_grader_model="deepseek-reasoner",
             repeats=3,
             checkpoint_path=None,
             resume=False,

@@ -30,7 +30,7 @@ if ((Test-Path -LiteralPath $outputPath) -and (Get-ChildItem -LiteralPath $outpu
 
 Push-Location $repoRoot
 try {
-    Write-Host "[M3.4-07f] Preflight: clean revision, private Holdout, exact Pro model, *_test DB"
+    Write-Host "[M3.4-07f] Preflight: clean revision, private Holdout, exact Flash model, *_test DB"
     & uv run --project backend python -m casefile.benchmark.general_mutation_qualification `
         --repo-root $repoRoot `
         --holdout-suite $holdoutPath `

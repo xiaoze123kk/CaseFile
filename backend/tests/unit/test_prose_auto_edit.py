@@ -185,6 +185,56 @@ def test_auto_edit_judge_failure_keeps_writer_and_marks_review_incomplete(
     assert result.error_code == "judge_unavailable"
 
 
+def test_auto_edit_plan_execute_rewrite_preserves_checkin(auto_case: dict[str, Any]) -> None:
+    from casefile.agent_runtime.plan_execute import NagLedger, derive_scene_execution_plan
+    from casefile.agent_runtime.prose_rewriter import (
+        PROSE_REWRITER_PLAN_PROMPT_VERSION,
+        FakeProseRewriterProvider,
+    )
+
+    plan = derive_scene_execution_plan(auto_case["plan"])
+    context = NagLedger().context(plan, branch="scene_prose", sequence_no=1)
+    wrapped = {
+        "schema_id": "compiler.scene-prose-plan-output.v1",
+        "artifact": {
+            "schema_id": "compiler.scene-render-candidate.v1",
+            "blocks": [{"text": auto_case["render"]["blocks"][0]["text"] + "修改稿"}],
+        },
+        "plan_checkin": {
+            "schema_id": "casefile.plan-checkin-candidate.v1",
+            "branch": "scene_prose",
+            "items": [
+                {
+                    "goal_id": goal.goal_id,
+                    "status": "fulfilled",
+                    "evidence_paths": ["/blocks/0/text"],
+                    "reason": "落实目标",
+                }
+                for goal in context.applicable_goals
+            ],
+        },
+    }
+    provider = DecisionProvider("full_rewrite")
+    execution = execute_auto_edit(
+        provider,
+        FakeProseRewriterProvider(candidates=(wrapped,)),
+        provider,
+        scene_plan=auto_case["plan"],
+        narrative_ir=auto_case["narrative"],
+        profile=auto_case["profile"],
+        checklist=auto_case["checklist"],
+        previous_scene_render=None,
+        writer_render=auto_case["render"],
+        model_id="deepseek-flash",
+        api_key="test",
+        rewrite_prompt_version=PROSE_REWRITER_PLAN_PROMPT_VERSION,
+        plan_context_provider=lambda: context.model_dump(mode="json"),
+    )
+    assert execution.status == "completed"
+    assert execution.accepted_render["selection_reason"] == "auto_edit_modified"
+    assert execution.modification.plan_checkin is not None
+
+
 def test_auto_edit_protocol_retry_is_bounded(auto_case):
     class InvalidProvider(DecisionProvider):
         def auto_edit_decide(self, request):
@@ -274,8 +324,12 @@ def test_auto_edit_protocol_is_selected_from_frozen_runtime():
         auto_edit_module.auto_edit_protocol_for_runtime("prose-shadow-runtime-v14")
         == auto_edit_module.AUTO_EDIT_PROTOCOL
     )
-    with pytest.raises(CompilerContractError, match="runtime_version_unsupported"):
+    assert (
         auto_edit_module.auto_edit_protocol_for_runtime("prose-shadow-runtime-v15")
+        == auto_edit_module.AUTO_EDIT_PROTOCOL
+    )
+    with pytest.raises(CompilerContractError, match="runtime_version_unsupported"):
+        auto_edit_module.auto_edit_protocol_for_runtime("prose-shadow-runtime-v999")
 
 
 @pytest.mark.parametrize(

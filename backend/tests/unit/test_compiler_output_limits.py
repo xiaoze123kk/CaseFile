@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from casefile.agent_runtime.constraint_first_story_planner import SkeletonProposalRequest
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.provider_adapters.deepseek import DeepSeekAgentsProvider
 from casefile.agent_runtime.story_planner import (
     COMPILER_JSON_MAX_OUTPUT_TOKENS,
@@ -30,7 +31,7 @@ def invoke(raw: str, finish: str, on_response=lambda *_: None):
         planning_problem={},
         model_view={},
         input_hash="a" * 64,
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         api_key="test-secret",
         on_response=on_response,
     )

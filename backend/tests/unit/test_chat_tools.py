@@ -14,6 +14,8 @@ from agents import RunContextWrapper
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,
+    CHAT_TOOLSET_V7_VERSION,
+    CHAT_TOOLSET_V8_VERSION,
     CHAT_TOOLSET_VERSION,
     LEGACY_CHAT_TOOLSET_VERSION,
     ChatToolCategory,
@@ -25,6 +27,7 @@ from casefile.agent_runtime.chat_tools import (
     get_casefile_object,
     get_related_objects,
     get_validation_issues,
+    investigate_case,
     list_casefile_collections,
     list_casefile_records,
     page_casefile_records,
@@ -43,7 +46,7 @@ FIXTURE_ROOT = Path(__file__).resolve().parents[3] / "fixtures" / "casefiles"
 
 def test_tool_catalog_filters_effect_and_purpose_without_granting_write_access() -> None:
     definitions = chat_tool_catalog()
-    assert len(definitions) == 12
+    assert len(definitions) == 14
     assert len({entry.tool.name for entry in definitions}) == len(definitions)
     assert chat_tool_catalog(effect=ChatToolEffect.WRITE) == ()
     assert [
@@ -158,6 +161,166 @@ def test_manifest_only_exposes_route_selected_tools() -> None:
     ] == []
 
 
+def test_v7_delegation_tools_are_route_scoped_and_old_versions_are_unchanged() -> None:
+    analysis = RouteDecision(
+        execution_profile={
+            "primary_intent": "analysis",
+            "toolset": ["search_casefile"],
+            "max_tool_calls": 12,
+        },
+    )
+    audit = RouteDecision(
+        execution_profile={
+            "primary_intent": "logic_audit",
+            "toolset": ["search_casefile"],
+            "max_tool_calls": 48,
+        },
+    )
+
+    assert [tool.name for tool in chat_tool_manifest(analysis)] == ["search_casefile"]
+    assert [
+        tool.name for tool in chat_tool_manifest(analysis, toolset_version=CHAT_TOOLSET_V7_VERSION)
+    ] == ["search_casefile", "investigate_case"]
+    assert [
+        tool.name for tool in chat_tool_manifest(audit, toolset_version=CHAT_TOOLSET_V7_VERSION)
+    ] == ["search_casefile", "investigate_case", "audit_case"]
+    assert [
+        tool.name for tool in chat_tool_manifest(analysis, toolset_version=CHAT_TOOLSET_V8_VERSION)
+    ] == ["search_casefile", "investigate_case"]
+    assert [
+        tool.name for tool in chat_tool_manifest(audit, toolset_version=CHAT_TOOLSET_V8_VERSION)
+    ] == ["search_casefile", "investigate_case", "audit_case"]
+
+
+def test_investigate_case_runs_two_tasks_once_and_preserves_result_order() -> None:
+    request = make_request(toolset=["search_casefile"], max_tool_calls=12)
+    context = ChatToolContext(request=request, route=request.route)
+    context.metrics.retrieved_object_ids.append("object:person_1")
+    started: list[str] = []
+
+    async def runner(_role: str, tasks: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+        started.extend(str(task["question"]) for task in tasks)
+        await asyncio.sleep(0)
+        return {
+            "valid": True,
+            "tasks": [
+                {
+                    "ordinal": index,
+                    "status": "completed",
+                    "conclusion": task["question"],
+                }
+                for index, task in enumerate(tasks, start=1)
+            ],
+            "_usage_records": [{"input_tokens": 10, "output_tokens": 5}],
+            "_metrics": {
+                "calls": 2,
+                "valid_calls": 2,
+                "successful_calls": 2,
+                "retrieved_object_ids": ["object:person_1"],
+                "retrieved_evidence_ids": [],
+            },
+        }
+
+    context.subagent_runner = runner  # type: ignore[assignment]
+    result = json.loads(
+        invoke(
+            investigate_case,
+            context,
+            {
+                "tasks": [
+                    {
+                        "question": "查甲",
+                        "scope": "人物甲",
+                        "object_ids": ["object:person_1"],
+                        "evidence_gap": "甲是否在场",
+                        "preserve_constraints": [],
+                    },
+                    {
+                        "question": "查乙",
+                        "scope": "人物乙",
+                        "object_ids": ["object:person_1"],
+                        "evidence_gap": "甲是否知情",
+                        "preserve_constraints": [],
+                    },
+                ]
+            },
+        )
+    )
+
+    assert started == ["查甲", "查乙"]
+    assert [item["conclusion"] for item in result["tasks"]] == ["查甲", "查乙"]
+    assert context.subagent_tasks_reserved == 2
+    assert context.metrics.calls == 3
+    assert context.metrics.successful_calls == 3
+    assert context.metrics.retrieved_object_ids == ["object:person_1"]
+    assert context.subagent_usage_records == [{"input_tokens": 10, "output_tokens": 5}]
+
+
+def test_subagent_task_budget_rejects_second_delegation() -> None:
+    request = make_request(toolset=["search_casefile"], max_tool_calls=12)
+    context = ChatToolContext(request=request, route=request.route)
+
+    async def runner(_role: str, _tasks: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+        return {"valid": True, "tasks": [], "_usage_records": [], "_metrics": {}}
+
+    context.subagent_runner = runner  # type: ignore[assignment]
+    context.metrics.retrieved_object_ids.append("object:person_1")
+    arguments = {
+        "tasks": [
+            {
+                "question": "查甲",
+                "scope": "人物甲",
+                "object_ids": ["object:person_1"],
+                "evidence_gap": "甲是否在场",
+                "preserve_constraints": [],
+            },
+            {
+                "question": "查乙",
+                "scope": "人物乙",
+                "object_ids": ["object:person_1"],
+                "evidence_gap": "甲是否知情",
+                "preserve_constraints": [],
+            },
+        ]
+    }
+    first = json.loads(invoke(investigate_case, context, arguments))
+    second = json.loads(invoke(investigate_case, context, arguments))
+
+    assert first["valid"] is True
+    assert second["valid"] is False
+    assert second["reason_code"] == "subagent_task_budget_exhausted"
+
+
+def test_unlocated_delegation_does_not_start_child_or_reserve_child_budget() -> None:
+    request = make_request(toolset=["search_casefile"], max_tool_calls=12)
+    context = ChatToolContext(request=request, route=request.route)
+
+    async def runner(_role: str, _tasks: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+        raise AssertionError("unlocated task must not invoke the child model")
+
+    context.subagent_runner = runner  # type: ignore[assignment]
+    result = json.loads(
+        invoke(
+            investigate_case,
+            context,
+            {
+                "tasks": [
+                    {
+                        "question": "查甲",
+                        "scope": "人物甲",
+                        "object_ids": ["object:person_1"],
+                        "evidence_gap": "是否在场",
+                        "preserve_constraints": [],
+                    }
+                ]
+            },
+        )
+    )
+    assert result["reason_code"] == "subagent_requires_located_objects_and_evidence_gap"
+    assert context.subagent_tasks_reserved == 0
+    assert context.metrics.subagent_tasks == 0
+
+
 def test_search_finds_exact_id_substring_and_chinese_bigram_overlap() -> None:
     casefile = make_casefile()
 
@@ -187,6 +350,16 @@ def test_search_tool_records_retrieved_ids_and_emits_completed_events() -> None:
     assert events[0][0] == "tool.started"
     assert events[-1][0] == "tool.completed"
     assert events[-1][2]["result_count"] >= 1
+
+
+def test_object_tool_records_model_visible_object_id() -> None:
+    request = make_request(toolset=["get_casefile_object"], max_tool_calls=1)
+    context = ChatToolContext(request=request, route=request.route)
+
+    output = json.loads(invoke(get_casefile_object, context, {"object_id": "object:person_1"}))
+
+    assert output["object_id"] == "object:person_1"
+    assert context.metrics.retrieved_object_ids == ["object:person_1"]
 
 
 def test_budget_gate_rejects_tool_calls_once_exhausted() -> None:

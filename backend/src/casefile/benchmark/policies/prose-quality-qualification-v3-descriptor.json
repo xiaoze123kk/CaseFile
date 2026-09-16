@@ -46,7 +46,7 @@
   },
   "loader_version": "prose-quality-suite-loader-v3",
   "quality_model_id": "deepseek-v4-flash",
-  "generation_model_id": "deepseek-v4-pro",
+  "generation_model_id": "deepseek-flash",
   "quality_component_hash": "7d9f9d51aa6e726ff3ca55472581661792208e4e3cd7118caed44ee7ccf076f5",
   "polisher_component_hash": "257ba467bdf3ec1e65f271774cbe33598be4d164787d89817b9ade49b97ba372",
   "polisher_prompt_version": "prose-polisher-v3",

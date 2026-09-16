@@ -855,24 +855,42 @@ class OpenAIAgentsProvider:
                     component_id: str,
                     schema_id: str,
                 ) -> tuple[dict[str, Any], dict[str, Any]]:
-                    return await _run_auxiliary_agent(
-                        request,
-                        model=model,
-                        model_settings=ModelSettings(
-                            reasoning=Reasoning(effort="medium"),
-                            verbosity="low",
-                            include_usage=True,
-                            parallel_tool_calls=False,
-                        ),
-                        instructions=instructions,
-                        input_text=input_text,
-                        output_type=output_type,
-                        stage=stage,
-                        structured_output=True,
-                        tracing_disabled=False,
-                        component_id=component_id,
-                        schema_id=schema_id,
-                    )
+                    one_shot_client = None
+                    component_model = model
+                    if component_id == "plan_reconciliation":
+                        one_shot_client = AsyncOpenAI(
+                            api_key=request.api_key,
+                            max_retries=0,
+                        )
+                        component_model = OpenAIResponsesModel(
+                            model=request.model_id,
+                            openai_client=one_shot_client,
+                        )
+                    try:
+                        return await _run_auxiliary_agent(
+                            request,
+                            model=component_model,
+                            model_settings=ModelSettings(
+                                reasoning=Reasoning(effort="medium"),
+                                verbosity="low",
+                                include_usage=True,
+                                parallel_tool_calls=False,
+                            ),
+                            instructions=instructions,
+                            input_text=input_text,
+                            output_type=output_type,
+                            stage=stage,
+                            structured_output=True,
+                            tracing_disabled=False,
+                            component_id=component_id,
+                            schema_id=schema_id,
+                            max_protocol_attempts=(
+                                1 if component_id == "plan_reconciliation" else 3
+                            ),
+                        )
+                    finally:
+                        if one_shot_client is not None:
+                            await one_shot_client.close()
 
                 runner = _brief_to_draft_runner(request.prompt_version)
                 return cast(

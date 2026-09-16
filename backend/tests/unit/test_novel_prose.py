@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.novel_prose import (
     evidence,
     select_pair,
@@ -142,7 +143,7 @@ def test_real_polisher_adapter_builds_chapter_request_without_compiler_profile(m
 
     monkeypatch.setattr(prose_polisher, "OpenAI", Client)
     result = ChapterProseProvider().invoke(
-        "polisher", {"candidate": "原稿"}, "fake", "deepseek-v4-pro"
+        "polisher", {"candidate": "原稿"}, "fake", DEEPSEEK_MODEL_ID
     )
     assert result.finish_reason == "length"
     assert len(requests) == 1
@@ -211,11 +212,11 @@ def test_all_role_adapters_preserve_inputs_and_frozen_prompt(monkeypatch, phase,
         "instruction": "修订",
         "prose_prompt_versions": current_prompt_versions(),
     }
-    result = ChapterProseProvider().invoke(phase, payload, "fake", "deepseek-v4-pro")
+    result = ChapterProseProvider().invoke(phase, payload, "fake", DEEPSEEK_MODEL_ID)
     prompt = phase_prompt(phase, payload)
     assert len(calls) == 1 and options[0]["max_retries"] == 0
     assert calls[0]["response_format"] == {"type": "json_object"}
-    assert calls[0]["model"] == result.model_id == "deepseek-v4-pro"
+    assert calls[0]["model"] == result.model_id == DEEPSEEK_MODEL_ID
     sent = json.loads(calls[0]["messages"][1]["content"])
     assert sent["untrusted_data"] == payload
     assert result.request_payload == sent

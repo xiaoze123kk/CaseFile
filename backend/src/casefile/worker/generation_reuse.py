@@ -20,6 +20,7 @@ def reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[
         "story_world",
         "evidence_logic",
         "resolution_governance",
+        "plan_reconciliation",
     )
     failed_steps = previous_attempt_failed_steps(session, task)
     invalidated: set[str] = set()
@@ -43,9 +44,12 @@ def reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[
             invalidated = set(reusable_components)
         elif "temporal_structure_planner" in invalidated:
             invalidated.add("story_world")
-            if task.prompt_version == "brief-to-draft-v17":
+            if task.prompt_version in {"brief-to-draft-v17", "brief-to-draft-v18"}:
                 invalidated.update({"evidence_logic", "resolution_governance"})
-        if task.prompt_version == "brief-to-draft-v17" and "evidence_logic" in invalidated:
+        if (
+            task.prompt_version in {"brief-to-draft-v17", "brief-to-draft-v18"}
+            and "evidence_logic" in invalidated
+        ):
             invalidated.add("resolution_governance")
 
     rows = session.scalars(
@@ -73,6 +77,21 @@ def reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[
             "schema_id": row.ir_schema_id,
             "output": row.output_jsonb,
         }
+    if task.prompt_version == "brief-to-draft-v18" and "plan_reconciliation" not in reusable:
+        reconciliation_attempt = session.scalar(
+            select(AgentStepRun)
+            .where(
+                AgentStepRun.task_run_id == task.id,
+                AgentStepRun.component_version == task.prompt_version,
+                AgentStepRun.component_id == "plan_reconciliation",
+            )
+            .order_by(AgentStepRun.id.desc())
+        )
+        if reconciliation_attempt is not None:
+            reusable["plan_reconciliation"] = {
+                "sent": True,
+                "step_run_id": reconciliation_attempt.id,
+            }
     return reusable
 
 

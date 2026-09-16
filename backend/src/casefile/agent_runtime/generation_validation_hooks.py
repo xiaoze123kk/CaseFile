@@ -53,6 +53,7 @@ async def _prerequisites(event: HookInput) -> HookResult:
         "domain_draft": ("context_pack", "blueprint", "temporal_plan"),
         "resolution_governance": ("blueprint", "evidence"),
         "compile_quality_gate": ("blueprint", "story", "evidence", "governance"),
+        "plan_reconciliation": ("blueprint", "story", "evidence", "governance"),
     }
     missing = [name for name in required[event.stage] if not event.payload.get(name)]
     return HookResult(
@@ -81,7 +82,7 @@ async def validate_generation_artifact(
     *args: Any,
     **kwargs: Any,
 ) -> list[dict[str, Any]]:
-    if request.prompt_version != "brief-to-draft-v17":
+    if request.prompt_version not in {"brief-to-draft-v17", "brief-to-draft-v18"}:
         return VALIDATORS[validator_id](*args, **kwargs)
     records: list[dict[str, Any]] = []
     try:
@@ -105,7 +106,7 @@ async def validate_generation_artifact(
 
 
 async def run_stage_hooks(request: GenerationRequest, stage: str, event: str, context: Any) -> None:
-    if request.prompt_version != "brief-to-draft-v17":
+    if request.prompt_version not in {"brief-to-draft-v17", "brief-to-draft-v18"}:
         return
     records: list[dict[str, Any]] = []
     try:

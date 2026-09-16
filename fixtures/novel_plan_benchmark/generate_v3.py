@@ -24,7 +24,7 @@ V2 = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(V2)
 
 FORMAL_PROVIDER = "deepseek"
-FORMAL_MODEL_ID = "deepseek-v4-pro"
+FORMAL_MODEL_ID = "deepseek-flash"
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:

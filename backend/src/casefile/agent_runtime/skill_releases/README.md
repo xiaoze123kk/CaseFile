@@ -7,6 +7,10 @@ Judge 协议用于历史任务恢复。
 Worker 从运行清单读取版本，不用当前默认值覆盖旧任务。内部 `prompt_version` 参数仍支持显式对照。
 运行清单同时绑定 Skill 资源、Schema 与前缀哈希。切换版本与质量评测结论分别记录。
 
+显式启用 Plan-Execute 时使用 `prose-shadow-runtime-v15`、Writer v7 / Rewriter v11，
+支持快速初稿、自动审编和完整精修。Rewriter v10 与 runtime v13/v14 的历史定义保留；
+v15 自动审编沿用现行 Judge 协议，修订调用同时返回正文与计划核对，不增加场景修改轮数。
+
 ## 职责与组装
 
 - `prompts/` 内角色指令继续由 PromptRepository 校验，旧发布不改写。

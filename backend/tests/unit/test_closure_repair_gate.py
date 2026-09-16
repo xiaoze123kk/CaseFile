@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.closure_repair_capability import (
     CapabilityContractError,
 )
@@ -58,7 +59,7 @@ def _report(*, task_rate: float = 1.0, dirty: bool = False) -> dict[str, Any]:
         "status": "completed",
         "source": {"dirty": dirty},
         "provider": "deepseek",
-        "model_id": "deepseek-v4-pro",
+        "model_id": DEEPSEEK_MODEL_ID,
         "trials_per_task": 3,
         "task_count": 18,
         "trial_count": 54,

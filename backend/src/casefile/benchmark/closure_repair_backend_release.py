@@ -17,6 +17,7 @@ from casefile.agent_runtime import (
     CLOSURE_REPAIR_PROMPT_VERSION,
     CLOSURE_REPAIR_SCHEMA_ID,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.closure_repair_gate import (
     CLOSURE_REPAIR_GATE_V2,
     evaluate_backend_shadow_gate,
@@ -31,7 +32,7 @@ BACKEND_RELEASE_VERSION = "closure-repair-backend-release-v2"
 BACKEND_RELEASE_REPORT_VERSION = "casefile-closure-repair-backend-release-report-v2"
 PRIMARY_PROVIDER = "deterministic-fixture"
 REPAIR_PROVIDER = "deepseek"
-REPAIR_MODEL = "deepseek-v4-pro"
+REPAIR_MODEL = DEEPSEEK_MODEL_ID
 TRIALS_PER_TASK = 3
 
 FAULT_MATRIX = (

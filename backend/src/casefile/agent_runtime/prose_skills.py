@@ -18,9 +18,17 @@ SKILL_RELEASES = {
     "prose-writer-v6": "scene-writing",
     "prose-rewriter-v9": "scene-revision",
     "prose-rewriter-v10": "scene-revision",
+    "prose-writer-v7": "scene-writing-plan-execute",
+    "prose-rewriter-v11": "scene-revision-plan-execute",
 }
 PROJECTED_RELEASES = frozenset(
-    {"prose-writer-v6", "prose-rewriter-v9", "prose-rewriter-v10"}
+    {
+        "prose-writer-v6",
+        "prose-rewriter-v9",
+        "prose-rewriter-v10",
+        "prose-writer-v7",
+        "prose-rewriter-v11",
+    }
 )
 
 

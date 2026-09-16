@@ -51,6 +51,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "story_planner_semantic_fill",
     "scene_compiler_semantic_fill",
     "prose_continuity",
+    "prose_plan_reconciliation",
     "prose_writer",
     "prose_rewriter",
     "prose_revision",
@@ -109,6 +110,17 @@ _PACKAGE_COMPONENT_KEYS = frozenset(
     }
 )
 _PACKAGE_COMPONENT_IDS_BY_VERSION = {
+    "brief-to-draft-v18": frozenset(
+        {
+            "planner",
+            "temporal",
+            "story",
+            "evidence",
+            "matrix",
+            "governance",
+            "reconciliation",
+        }
+    ),
     "brief-to-draft-v12": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
     "brief-to-draft-v13": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
     "brief-to-draft-v14": frozenset({"planner", "temporal", "story", "evidence", "governance"}),

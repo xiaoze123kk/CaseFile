@@ -84,6 +84,7 @@ _STRUCTURAL_FAILURE_LAYERS = {
     "description_gate",
     "frozen_context",
 }
+_DEEPSEEK_ACCEPTANCE_MODEL_ID = "deepseek-flash"
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +204,7 @@ class LiveAcceptanceConfig:
     test_database_url: str
     master_key: str
     provider: str
+    model_id: str
     prompt_version: str
     repeats: int
     report_path: Path | None
@@ -295,13 +297,14 @@ def test_scenario_filter_narrows_rotation_and_rejects_unknown_ids() -> None:
 
 
 def test_evidence_competition_observed_reads_persisted_evidence_steps() -> None:
-    def step(component_id: str, hypotheses: object) -> Any:
+    def step(component_id: str, hypotheses: object, *, wrapped: bool = False) -> Any:
         class FakeStep:
             def __init__(self) -> None:
                 self.component_id = component_id
-                self.output_jsonb = (
+                artifact = (
                     {"hypotheses": hypotheses} if not isinstance(hypotheses, str) else hypotheses
                 )
+                self.output_jsonb = {"artifact": artifact} if wrapped else artifact
 
         return FakeStep()
 
@@ -316,6 +319,18 @@ def test_evidence_competition_observed_reads_persisted_evidence_steps() -> None:
                     {"target_resolution_key": "resolution"},
                     {"target_resolution_key": "resolution"},
                 ],
+            )
+        ]
+    )
+    assert _evidence_competition_observed(
+        [
+            step(
+                "evidence_logic",
+                [
+                    {"target_resolution_key": "resolution"},
+                    {"target_resolution_key": "resolution"},
+                ],
+                wrapped=True,
             )
         ]
     )
@@ -514,6 +529,7 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
             config.source_database_url,
             engine,
             provider=config.provider,
+            model_id=config.model_id,
             structural_repair_attempts=config.repair_attempts,
         )
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
@@ -603,17 +619,44 @@ def _live_config() -> LiveAcceptanceConfig:
             f"Live acceptance prompt version {prompt_version!r} is not a packaged "
             "brief_to_draft version."
         )
+    provider = os.getenv("CASEFILE_LIVE_ACCEPTANCE_PROVIDER", "deepseek").strip()
+    try:
+        model_id = _acceptance_model_id(
+            provider,
+            os.getenv("CASEFILE_LIVE_ACCEPTANCE_MODEL_ID", "").strip(),
+        )
+    except ValueError as error:
+        pytest.fail(str(error))
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
         test_database_url=test_database_url,
         master_key=master_key,
-        provider=os.getenv("CASEFILE_LIVE_ACCEPTANCE_PROVIDER", "deepseek").strip(),
+        provider=provider,
+        model_id=model_id,
         prompt_version=prompt_version,
         repeats=repeats,
         report_path=Path(report_value) if report_value else None,
         scenario_filter=os.getenv("CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER", "").strip(),
         repair_attempts=repair_attempts,
     )
+
+
+def _acceptance_model_id(provider: str, configured_model_id: str) -> str:
+    """Freeze DeepSeek acceptance to the current model policy."""
+
+    if provider != "deepseek":
+        return configured_model_id
+    if configured_model_id and configured_model_id != _DEEPSEEK_ACCEPTANCE_MODEL_ID:
+        raise ValueError("Brief-to-Draft DeepSeek acceptance is frozen to deepseek-flash.")
+    return _DEEPSEEK_ACCEPTANCE_MODEL_ID
+
+
+def test_deepseek_live_acceptance_model_is_frozen_to_flash() -> None:
+    assert _acceptance_model_id("deepseek", "") == _DEEPSEEK_ACCEPTANCE_MODEL_ID
+    assert _acceptance_model_id("deepseek", "deepseek-flash") == _DEEPSEEK_ACCEPTANCE_MODEL_ID
+    assert _acceptance_model_id("openai", "gpt-5.6-sol") == "gpt-5.6-sol"
+    with pytest.raises(ValueError, match="deepseek-flash"):
+        _acceptance_model_id("deepseek", "deepseek-v4-pro")
 
 
 def _reset_test_database(database_url: str, *, teardown: bool = False) -> None:
@@ -642,6 +685,7 @@ def _copy_configured_provider_setting(
     target_engine: Engine,
     *,
     provider: str,
+    model_id: str,
     structural_repair_attempts: int = 5,
 ) -> tuple[int, str]:
     source_engine = create_engine(source_database_url)
@@ -694,10 +738,8 @@ def _copy_configured_provider_setting(
         setting = UserProviderSetting(
             user_id=user_id,
             provider=provider,
-            model_id=os.getenv("CASEFILE_LIVE_ACCEPTANCE_MODEL_ID", "").strip()
-            or str(row["model_id"]),
-            model_is_custom=bool(os.getenv("CASEFILE_LIVE_ACCEPTANCE_MODEL_ID"))
-            or bool(row["model_is_custom"]),
+            model_id=model_id or str(row["model_id"]),
+            model_is_custom=bool(model_id) or bool(row["model_is_custom"]),
             config_version=max(1, int(row["config_version"])),
             secret_ciphertext=ciphertext,
             secret_nonce=nonce,
@@ -734,7 +776,12 @@ def _run_acceptance_suite(
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
     scenarios: tuple[AcceptanceScenario, ...]
-    if prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16", "brief-to-draft-v17"}:
+    if prompt_version in {
+        "brief-to-draft-v15",
+        "brief-to-draft-v16",
+        "brief-to-draft-v17",
+        "brief-to-draft-v18",
+    }:
         scenarios = _V15_SCENARIOS
     elif prompt_version in {
         "brief-to-draft-v11",
@@ -941,6 +988,8 @@ def _evidence_competition_observed(steps: list[Any]) -> bool:
         output = getattr(step, "output_jsonb", None)
         if not isinstance(output, dict):
             continue
+        if isinstance(output.get("artifact"), dict):
+            output = output["artifact"]
         hypotheses = output.get("hypotheses")
         if not isinstance(hypotheses, list):
             continue
@@ -993,14 +1042,20 @@ def _successful_task_violations(
         "brief-to-draft-v15",
         "brief-to-draft-v16",
         "brief-to-draft-v17",
+        "brief-to-draft-v18",
     }:
         expected_components.add("temporal_structure_planner")
     if task.get("prompt_version") in {
         "brief-to-draft-v15",
         "brief-to-draft-v16",
         "brief-to-draft-v17",
+        "brief-to-draft-v18",
     } and (_evidence_competition_observed(steps)):
         expected_components.add("evidence_matrix")
+    if task.get("prompt_version") == "brief-to-draft-v18":
+        expected_components.update(
+            {"planning_execution_plan", "plan_reconciliation", "planning_summary"}
+        )
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
     if component_ids != expected_components:
         violations.append("component_step_coverage_incomplete")
@@ -1036,7 +1091,7 @@ def _successful_task_violations(
     business_steps = [step for step in steps if step.ir_schema_id != "generation-hook-report-v1"]
     if {step.component_id for step in business_steps} != expected_components:
         violations.append("agent_step_runs_not_persisted")
-    if task.get("prompt_version") == "brief-to-draft-v17":
+    if task.get("prompt_version") in {"brief-to-draft-v17", "brief-to-draft-v18"}:
         hook_steps = [step for step in steps if step.ir_schema_id == "generation-hook-report-v1"]
         if not hook_steps or any(
             not step.diagnostic_jsonb.get("execution", {}).get("hooks") for step in hook_steps
@@ -1049,6 +1104,7 @@ def _successful_task_violations(
             "evidence_logic",
             "evidence_matrix",
             "resolution_governance",
+            "plan_reconciliation",
         }
         if any(
             not step.diagnostic_jsonb.get("execution", {}).get("resources")
@@ -1091,6 +1147,7 @@ def _scenario_candidate_violations(
             "brief-to-draft-v15",
             "brief-to-draft-v16",
             "brief-to-draft-v17",
+            "brief-to-draft-v18",
         }:
             required = {"approximate", "relative"}
             return (
@@ -1318,7 +1375,12 @@ def _evidence_quality_for_task(
     denominator.
     """
 
-    is_v15 = prompt_version in {"brief-to-draft-v15", "brief-to-draft-v16", "brief-to-draft-v17"}
+    is_v15 = prompt_version in {
+        "brief-to-draft-v15",
+        "brief-to-draft-v16",
+        "brief-to-draft-v17",
+        "brief-to-draft-v18",
+    }
     with factory() as session:
         steps = list(
             session.scalars(select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id))

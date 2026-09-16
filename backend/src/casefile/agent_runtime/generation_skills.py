@@ -97,18 +97,32 @@ SKILL_HANDLERS = {
 class SkillLoader:
     """Read immutable package metadata; keep activation state out of the loader."""
 
-    def __init__(self, root: Traversable | None = None) -> None:
-        self.root = root or files("casefile.agent_runtime.brief_to_draft_v17").joinpath("skill")
+    def __init__(
+        self,
+        release: str = "v17",
+        root: Traversable | None = None,
+    ) -> None:
+        if not release.startswith("v") or not release[1:].isdigit():
+            raise ValueError("Unsupported Skill release")
+        self.release = release
+        self.root = root or files(
+            f"casefile.agent_runtime.brief_to_draft_{release}"
+        ).joinpath("skill")
         self.manifest_text = self.root.joinpath("manifest.json").read_text(encoding="utf-8")
         self.manifest = json.loads(self.manifest_text)
-        if self.manifest["schema_version"] != 1 or self.manifest["release"] != "v17":
+        if self.manifest["schema_version"] != 1 or self.manifest["release"] != release:
             raise ValueError("Unsupported Skill release")
         self.dispatcher = HookDispatcher(SKILL_HANDLERS)
 
     def discover(self) -> SkillDescriptor:
         content = read_skill_resource(self.root, "SKILL.md", self.manifest["descriptor_sha256"])
         name, description = skill_metadata(content)
-        return SkillDescriptor(name, description, "v17", sha256(content.encode()).hexdigest())
+        return SkillDescriptor(
+            name,
+            description,
+            self.release,
+            sha256(content.encode()).hexdigest(),
+        )
 
     def validate(self, package: PromptPackage) -> None:
         self.discover()

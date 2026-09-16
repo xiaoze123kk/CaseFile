@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime.plan_execute import NagLedger, derive_scene_execution_plan
 from casefile.agent_runtime.prose_judge import (
     FIDELITY_ONLY_POLICY,
     PROSE_COUNCIL_MODEL_ID,
@@ -23,6 +24,7 @@ from casefile.agent_runtime.prose_rewrite_supervisor import (
 )
 from casefile.agent_runtime.prose_rewriter import (
     PROSE_REWRITER_MODEL_ID,
+    PROSE_REWRITER_PLAN_PROMPT_VERSION,
     DeepSeekProseRewriterProvider,
     FakeProseRewriterProvider,
     ProseRewriterInfrastructureError,
@@ -215,6 +217,52 @@ def test_full_candidate_becomes_rewrite_1_with_direct_hash_lineage(
     assert execution.render is not None
     assert (execution.render["stage"], execution.render["round"]) == ("rewrite_1", 1)
     assert execution.render["previous_render_hash"] == canonical_json_sha256(rewrite_case["render"])
+
+
+def test_plan_execute_rewriter_returns_artifact_and_independent_checkin(
+    rewrite_case: dict[str, Any],
+) -> None:
+    review = _failed_review(rewrite_case)
+    plan = derive_scene_execution_plan(rewrite_case["plan"])
+    context = NagLedger().context(plan, branch="scene_prose", sequence_no=1)
+    wrapped = {
+        "schema_id": "compiler.scene-prose-plan-output.v1",
+        "artifact": deepcopy(rewrite_case["candidate"]),
+        "plan_checkin": {
+            "schema_id": "casefile.plan-checkin-candidate.v1",
+            "branch": "scene_prose",
+            "items": [
+                {
+                    "goal_id": goal.goal_id,
+                    "status": "fulfilled",
+                    "evidence_paths": ["/blocks/0/text"],
+                    "reason": "修订正文已落实当前目标。",
+                }
+                for goal in context.applicable_goals
+            ],
+        },
+    }
+    execution = execute_prose_rewriter(
+        FakeProseRewriterProvider(candidates=(wrapped,)),
+        scene_plan=rewrite_case["plan"],
+        narrative_ir=rewrite_case["narrative"],
+        profile=rewrite_case["profile"],
+        checklist=rewrite_case["checklist"],
+        previous_scene_render=None,
+        current_render=rewrite_case["render"],
+        consensus=review.consensus,
+        judge_reports=review.judge_reports,
+        model_id=PROSE_REWRITER_MODEL_ID,
+        api_key="fake",
+        remaining_scene_call_budget=22,
+        prompt_version=PROSE_REWRITER_PLAN_PROMPT_VERSION,
+        plan_context=context.model_dump(mode="json"),
+    )
+    assert execution.status == "completed"
+    assert execution.plan_checkin is not None
+    assert {item.goal_id for item in execution.plan_checkin.items} == {
+        goal.goal_id for goal in context.applicable_goals
+    }
 
 
 @pytest.mark.parametrize("mutation", ("passed", "wrong_render", "wrong_policy", "wrong_reports"))

@@ -21,7 +21,7 @@ def test_worker_uses_frozen_writer_version(workflow_database, monkeypatch, legac
     if legacy:
         with patch(
             "casefile.application.compiler.service.prose_runtime_binding",
-            side_effect=lambda count, mode: prose_runtime_binding(
+            side_effect=lambda count, mode, **_kwargs: prose_runtime_binding(
                 count, mode, runtime_version="prose-shadow-runtime-v11"
             ),
         ):

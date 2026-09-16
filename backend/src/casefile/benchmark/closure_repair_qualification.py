@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy.engine import make_url
 
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.benchmark.closure_repair_backend_release import run_backend_release_eval
 from casefile.benchmark.closure_repair_capability import (
     DEFAULT_CAPABILITY_RELATIVE,
@@ -30,7 +31,7 @@ from casefile.benchmark.closure_repair_holdout import (
 from casefile.benchmark.closure_repair_lineage import repair_runtime_fingerprint
 from casefile.benchmark.source_identity import GitIdentityUnavailable, read_git_identity
 
-MODEL_ID = "deepseek-v4-pro"
+MODEL_ID = DEEPSEEK_MODEL_ID
 TRIALS_PER_TASK = 5
 QUALIFICATION_VERSION = "closure-repair-qualification-v2"
 _GATE_POLICY = Path(__file__).with_name("policies") / "closure-repair-gate-v2.json"

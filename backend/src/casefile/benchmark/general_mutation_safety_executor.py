@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 
 from casefile.agent_runtime import DeepSeekAgentsProvider
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.commands import ProjectCreate
@@ -134,7 +135,7 @@ class PostgresSafetyExecutor:
     def execute_trial(
         self, task: SafetyTask, *, trial_index: int, model_id: str
     ) -> SafetyTrialEvidence:
-        if model_id != "deepseek-v4-pro":
+        if model_id != DEEPSEEK_MODEL_ID:
             raise ValueError("general_mutation_safety_model_invalid")
         document = json.loads((ROOT / Path(task.fixture)).read_text(encoding="utf-8"))
         provider = self.provider_factory(document)

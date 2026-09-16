@@ -13,6 +13,7 @@ from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.constraint_first_story_planner import (
     execute_constraint_first_story_planner,
 )
+from casefile.agent_runtime.model_policy import DEEPSEEK_MODEL_ID
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     PlanningSat,
@@ -188,7 +189,7 @@ def test_planner_input_v2_projects_and_reproves_authoritative_constraints() -> N
         prompt_version="story-planner-v3",
         prompt_sha256="b" * 64,
         provider="deepseek",
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         provider_config_version=1,
     )
     v2_component = story_planner_component_fingerprint(
@@ -196,7 +197,7 @@ def test_planner_input_v2_projects_and_reproves_authoritative_constraints() -> N
         prompt_version="story-planner-v3",
         prompt_sha256="b" * 64,
         provider="deepseek",
-        model_id="deepseek-v4-pro",
+        model_id=DEEPSEEK_MODEL_ID,
         provider_config_version=1,
     )
     assert v1_component["planner_input_schema_id"] == "compiler.story-planner-input.v1"

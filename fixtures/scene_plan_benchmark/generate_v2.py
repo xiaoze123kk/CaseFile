@@ -175,7 +175,7 @@ def main() -> None:
         },
         "formal_qualification": {
             "provider": "deepseek",
-            "model_id": "deepseek-v4-pro",
+            "model_id": "deepseek-flash",
             "quality_grader_provider": "deepseek",
             "quality_grader_model_id": "deepseek-v4-flash",
             "trials_per_task": 3,

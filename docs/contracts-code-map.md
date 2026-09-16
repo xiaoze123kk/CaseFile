@@ -1,5 +1,12 @@
 # 跨语言契约与 Fixture
 
+`fixtures/chat_subagent_benchmark/v3/` 是 v2 的时间字段与分类格式纠错版，保留旧版输入，
+不继承通用事件时间；审计与查证标签分别定义，合法格式变体在付费运行前校准。
+
+`fixtures/chat_subagent_benchmark/v2/` 保存显式对齐题面/评分的 Chat 分工评测：人工规格、
+24 题物化输入、参考候选和分工适用性标注。新建的 16 份卷宗有 51～81 个对象，明确区分
+世界事实、人物误信、证据不足和修复授权。v1 保持历史冻结，不能将两个版本成绩直接比较。
+
 `compiler/prose-continuity-review.schema.json` 定义持久化跨场景审核报告：来源输入哈希、当前场景、pass/blocked 及涉及场景和局部规划调整意见。该报告不替代正文 Fidelity 报告，不产生批准方案的新版本。运行时 Schema 镜像由统一生成入口同步。
 
 ## Chat 增强反馈协议
