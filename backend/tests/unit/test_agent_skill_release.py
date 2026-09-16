@@ -20,7 +20,7 @@ def test_all_active_prompts_are_skill_bound_and_byte_compatible() -> None:
         for item in definitions
         if item.version == repository.current_version(item.agent_id)
     }
-    assert len(active) == 39
+    assert len(active) == 40
     for agent_id, original in active.items():
         selected = load_prompt(agent_id, original.version)
         assert selected.system_prompt == original.system_prompt

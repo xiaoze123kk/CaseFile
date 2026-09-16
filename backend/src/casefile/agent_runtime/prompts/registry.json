@@ -85,6 +85,9 @@
     "prose_revision": {
       "current_version": "prose-revision-v3"
     },
+    "prose_auto_edit_judge": {
+      "current_version": "prose-auto-edit-judge-v1"
+    },
     "novel_collaboration": {
       "current_version": "novel-collaboration-v1"
     },

@@ -1,0 +1,8 @@
+{
+  "agent_id": "prose_auto_edit_judge",
+  "version": "prose-auto-edit-judge-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "b46e85de3f235e584f6cd5b0cbcc089dde26933cb1dc4358d771620ce75153ed",
+  "previous_version": null,
+  "change_summary": "新增有界自动审编的路径选择与匿名终稿选择协议。"
+}

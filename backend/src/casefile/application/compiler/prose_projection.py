@@ -71,6 +71,25 @@ def project_prose_scene(
         )
 
     renders = [a for a in items if a.artifact_kind == "scene_render"]
+    auto_edit_unreviewed = any(
+        a.content_jsonb.get("selection_reason") == "auto_edit_unreviewed" for a in renders
+    )
+    revision_reports = [a for a in items if a.schema_id == "compiler.prose-revision-decision.v1"]
+    auto_reports = [
+        a
+        for a in revision_reports
+        if a.content_jsonb.get("decision_stage") in {"review", "selection"}
+    ]
+    final_auto_report = next(
+        (a for a in reversed(auto_reports) if a.content_jsonb.get("decision_stage") == "selection"),
+        None,
+    )
+    issue_report = final_auto_report or (auto_reports[-1] if auto_reports else None)
+    unresolved_issue_count = len(
+        issue_report.content_jsonb.get("unresolved_issues") or []
+        if issue_report is not None
+        else []
+    )
     return {
         "scene_id": scene["scene_id"],
         "scene_ordinal": scene["discourse_order"],
@@ -95,15 +114,46 @@ def project_prose_scene(
             (a.content_hash for a in renders if a.content_jsonb["stage"] == "accepted"), None
         ),
         "rewrite_count": sum(a.content_jsonb["stage"].startswith("rewrite_") for a in renders),
-        "literary_review": "completed" if hashes("prose-consensus-report") else "not_run",
+        "literary_review": (
+            "completed"
+            if hashes("prose-consensus-report")
+            or (
+                auto_reports
+                and not auto_edit_unreviewed
+                and (
+                    final_auto_report is not None
+                    or auto_reports[-1].content_jsonb.get("action") == "retain"
+                )
+            )
+            else "not_run"
+        ),
         "strict_semantic_pass": any(
             a.content_jsonb["stage"] == "accepted"
             and a.content_jsonb["selection_reason"]
-            not in {"llm_nonfatal_retained", "quick_draft_unreviewed"}
+            not in {
+                "llm_nonfatal_retained",
+                "quick_draft_unreviewed",
+                "auto_edit_unreviewed",
+            }
+            and (
+                issue_report is None
+                or all(f["severity"] == "none" for f in issue_report.content_jsonb["findings"])
+            )
             for a in renders
         ),
         "product_accepted": any(a.content_jsonb["stage"] == "accepted" for a in renders),
         "revision_report_hashes": hashes("prose-revision-decision"),
+        "auto_edit_review": (
+            "incomplete"
+            if auto_edit_unreviewed
+            else "not_run"
+            if not auto_reports
+            else "completed"
+            if final_auto_report is not None
+            or auto_reports[-1].content_jsonb.get("action") == "retain"
+            else "incomplete"
+        ),
+        "unresolved_issue_count": unresolved_issue_count,
         "failure_reason": reason,
         **scene_usage(session, task_id, scene["scene_id"], recovered),
     }

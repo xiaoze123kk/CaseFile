@@ -21,6 +21,7 @@ from casefile.agent_runtime.prose_generation import (
     prepare_generation_result,
     validate_generation_result,
 )
+from casefile.agent_runtime.prose_schema_identity import LEGACY_RENDER_SCHEMA_HASH
 from casefile.agent_runtime.prose_skills import bind_skill_request, completion_body
 from casefile.agent_runtime.usage import fake_prose_usage, response_usage_details
 from casefile.domain.narrative_compiler import (
@@ -30,7 +31,7 @@ from casefile.domain.narrative_compiler import (
     validate_novel_profile_v2,
     validate_prose_judge_checklist,
 )
-from casefile_contracts import SceneRender, SceneRenderCandidate
+from casefile_contracts import SceneRenderCandidate
 
 PROSE_WRITER_MODEL_ID: Final = DEEPSEEK_MODEL_ID
 PROSE_WRITER_PROMPT_VERSION: Final = "prose-writer-v6"
@@ -46,7 +47,7 @@ PROSE_WRITER_CANDIDATE_SCHEMA_ID: Final = "compiler.scene-render-candidate.v1"
 PROSE_WRITER_RENDER_SCHEMA_ID: Final = "compiler.scene-render.v1"
 PROSE_WRITER_CANDIDATE_SCHEMA: Final = SceneRenderCandidate.model_json_schema()
 PROSE_WRITER_CANDIDATE_SCHEMA_HASH: Final = canonical_json_sha256(PROSE_WRITER_CANDIDATE_SCHEMA)
-PROSE_WRITER_RENDER_SCHEMA_HASH: Final = canonical_json_sha256(SceneRender.model_json_schema())
+PROSE_WRITER_RENDER_SCHEMA_HASH: Final = LEGACY_RENDER_SCHEMA_HASH
 PROSE_WRITER_COMPONENT_HASH: Final = canonical_json_sha256(
     {
         "component_version": PROSE_WRITER_COMPONENT_VERSION,
@@ -306,6 +307,8 @@ def execute_prose_writer(
     recover_call: Callable[[str], ProseWriterProviderResult | None] | None = None,
     continuity_advisories: list[dict[str, Any]] | None = None,
     prompt_version: str = PROSE_WRITER_PROMPT_VERSION,
+    soft_target_length: bool = False,
+    previous_edit_issues: list[str] | None = None,
 ) -> ProseWriterExecution:
     """Validate frozen inputs, execute at most one Writer call, and normalize it."""
 
@@ -322,6 +325,8 @@ def execute_prose_writer(
             api_key=api_key,
             remaining_scene_call_budget=remaining_scene_call_budget,
             continuity_advisories=continuity_advisories,
+            soft_target_length=soft_target_length,
+            previous_edit_issues=previous_edit_issues,
         )
         recovered = recover_call(request.request_fingerprint) if recover_call else None
         try:
@@ -368,6 +373,7 @@ def execute_prose_writer(
             checklist=checklist,
             profile=profile,
             component_input_hash=request.component_input_hash,
+            enforce_target_length=not soft_target_length,
         ).model_dump(mode="json")
     except (CompilerContractError, ProseWriterProtocolError) as error:
         return ProseWriterExecution(
@@ -391,6 +397,8 @@ def build_prose_writer_request(
     remaining_scene_call_budget: int,
     continuity_advisories: list[dict[str, Any]] | None = None,
     prompt_version: str = PROSE_WRITER_PROMPT_VERSION,
+    soft_target_length: bool = False,
+    previous_edit_issues: list[str] | None = None,
 ) -> ProseWriterRequest:
     """Build the minimal Provider view after exact authoritative input validation."""
 
@@ -431,6 +439,7 @@ def build_prose_writer_request(
             "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
             "remaining_scene_call_budget": remaining_scene_call_budget,
             "continuity_advisories": advisories,
+            **({"soft_target_length": True} if soft_target_length else {}),
         }
     )
     payload: dict[str, Any] = {
@@ -449,7 +458,11 @@ def build_prose_writer_request(
             "render_schema_id": PROSE_WRITER_RENDER_SCHEMA_ID,
             "render_schema_hash": PROSE_WRITER_RENDER_SCHEMA_HASH,
             "max_writer_calls": PROSE_WRITER_MAX_CALLS,
-            "length_contract": generation_length_contract(profile_json),
+            "length_contract": {
+                **generation_length_contract(profile_json),
+                "hard_gate": not soft_target_length,
+                **({"enforcement": "model_guidance"} if soft_target_length else {}),
+            },
             "remaining_scene_call_budget": remaining_scene_call_budget,
         },
         "untrusted_data": {
@@ -460,6 +473,13 @@ def build_prose_writer_request(
     }
     if advisories:
         payload["untrusted_data"]["continuity_advisories"] = advisories
+    if previous_edit_issues:
+        if not soft_target_length or len(previous_edit_issues) > 40 or any(
+            not isinstance(issue, str) or not 1 <= len(issue) <= 2000
+            for issue in previous_edit_issues
+        ):
+            raise ProseWriterProtocolError("prose_previous_edit_issues_invalid")
+        payload["untrusted_data"]["previous_edit_issues"] = previous_edit_issues
     input_hash = canonical_json_sha256(payload)
     fingerprint = canonical_json_sha256(
         {

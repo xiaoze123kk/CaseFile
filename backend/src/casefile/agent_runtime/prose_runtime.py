@@ -51,7 +51,22 @@ from casefile_contracts import (
     SceneRender,
 )
 
-PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v12"
+PROSE_RUNTIME_VERSION = "prose-shadow-runtime-v14"
+AUTO_EDIT_LEGACY_RUNTIME_VERSION = "prose-shadow-runtime-v13"
+LEGACY_SCHEMA_HASHES = {
+    "CompileManifest": "f4044a41e7badb2c222b21cc8ac67376a12baa4c93f0b9f75299d58b96a70b34",
+    "NovelCandidate": "1145749f2504f790535c0289c1bff8615b3a76164971598defb36800dbdb03d6",
+    "ProseConsensusReport": "852c8ceec6238c019eec96008b0632da533cfe0481698857119c0996b0e6bbbe",
+    "ProseJudgeReport": "4f50e4a935d94b4ecd8f9f02e37c7e06994961ee1901a40d3cae7a576719637e",
+    "ProseQualityReport": "19376f04182908e6cb2fa2513745b14c9d9d0f765214dd6c1eeb549b060c4b0c",
+    "ProseRevisionDecision": "7ecd3e649bb18b4a7446b5af3f19339fea8ec590e81370e324a146da6a6136b1",
+    "ProseRevisionDecisionCandidate": (
+        "3b24097e8b12fda8d82b858ec34ca7b20ee6706bc8584449213280776c3194c4"
+    ),
+    "SceneRender": "71992688c6e2cd2e72cf3ca3fe24915a33b290d30753f154902ad1b19911181c",
+    "Schema_12": "78f3cc8dbdbec01e826a052abe3c97924fcada0215d99ee89ed7c8f7a5de9c93",
+    "Schema_5": "da72e78ae43940d5fec0a04e4539b38979aea801aebdda266e9d28b8ba8e60ae",
+}
 ComponentObserver = Callable[[str, Any], None]
 
 
@@ -59,7 +74,7 @@ def ignore_component(_name: str, _execution: Any) -> None:
     """Default observer keeps component benchmarks independent of persistence."""
 
 
-ProseMode = Literal["quick_draft", "full_polish"]
+ProseMode = Literal["quick_draft", "auto_edit", "full_polish"]
 
 
 def prose_runtime_binding(
@@ -69,12 +84,20 @@ def prose_runtime_binding(
     runtime_version: str = PROSE_RUNTIME_VERSION,
 ) -> dict[str, Any]:
     """Freeze executable policies and prompt contents without credentials."""
-    if prose_mode not in {"quick_draft", "full_polish"}:
+    if prose_mode not in {"quick_draft", "auto_edit", "full_polish"}:
         raise ValueError("compiler_prose_mode_invalid")
-    if runtime_version not in {"prose-shadow-runtime-v11", PROSE_RUNTIME_VERSION}:
+    if runtime_version not in {
+        "prose-shadow-runtime-v11",
+        "prose-shadow-runtime-v12",
+        AUTO_EDIT_LEGACY_RUNTIME_VERSION,
+        PROSE_RUNTIME_VERSION,
+    }:
         raise ValueError("compiler_prose_runtime_version_unsupported")
     legacy = runtime_version == "prose-shadow-runtime-v11"
     quick = prose_mode == "quick_draft"
+    auto = prose_mode == "auto_edit"
+    if auto and runtime_version not in {AUTO_EDIT_LEGACY_RUNTIME_VERSION, PROSE_RUNTIME_VERSION}:
+        raise ValueError("compiler_prose_runtime_version_unsupported")
     versions = {
         "prose_continuity": "prose-continuity-v1",
         "prose_writer": "prose-writer-v4" if legacy else PROSE_WRITER_PROMPT_VERSION,
@@ -88,26 +111,38 @@ def prose_runtime_binding(
         "prose_quality_pairwise": "prose-quality-pairwise-v1",
         "prose_polisher": "prose-polisher-v5",
     }
-    binding = {
+    if auto:
+        versions.update(
+            prose_auto_edit_judge="prose-auto-edit-judge-v1",
+            prose_rewriter="prose-rewriter-v10",
+            prose_polisher="prose-polisher-v6",
+        )
+    binding: dict[str, Any] = {
         "version": runtime_version,
         "prose_mode": prose_mode,
         "scene_count": scene_count,
-        "max_logical_calls": None if scene_count is None else (2 if quick else 23) * scene_count,
-        "schema_hashes": {
-            model.__name__: canonical_json_sha256(model.model_json_schema())
-            for model in (
-                NovelProfileV2,
-                ProseJudgeChecklist,
-                SceneRender,
-                ProseJudgeReport,
-                ProseConsensusReport,
-                ProseQualityReport,
-                ProseRevisionDecision,
-                ProseRevisionDecisionCandidate,
-                CompileManifest,
-                NovelCandidate,
-            )
-        },
+        "max_logical_calls": (
+            None if scene_count is None else (2 if quick else 8 if auto else 23) * scene_count
+        ),
+        "schema_hashes": (
+            LEGACY_SCHEMA_HASHES
+            if runtime_version in {"prose-shadow-runtime-v11", "prose-shadow-runtime-v12"}
+            else {
+                model.__name__: canonical_json_sha256(model.model_json_schema())
+                for model in (
+                    NovelProfileV2,
+                    ProseJudgeChecklist,
+                    SceneRender,
+                    ProseJudgeReport,
+                    ProseConsensusReport,
+                    ProseQualityReport,
+                    ProseRevisionDecision,
+                    ProseRevisionDecisionCandidate,
+                    CompileManifest,
+                    NovelCandidate,
+                )
+            }
+        ),
         "provider": "deepseek",
         "generation_model": DEEPSEEK_MODEL_ID,
         "quality_model": DEEPSEEK_MODEL_ID,
@@ -144,23 +179,26 @@ def prose_runtime_binding(
             "thinking_enabled": False,
         },
         "limits": {
-            "continuity_reviews_per_scene": 0 if quick else 1,
+            "continuity_reviews_per_scene": 0 if quick or auto else 1,
             "continuity_counts_toward_judge_budget": True,
             "scene_checkpoint_policy": "accepted-prefix-v1",
             "generation_repairs_per_call": 1,
             "generation_policy": "prose-generation-repair-v5",
-            "generation_length_policy": "hard-range-before-judging",
-            "judge_calls_per_scene": 0 if quick else 3,
+            "generation_length_policy": (
+                "soft-target-resource-bounds-v1" if auto else "hard-range-before-judging"
+            ),
+            "judge_calls_per_scene": 0 if quick else 2 if auto else 3,
             "protocol_repairs_per_call": 1,
             "judge_evidence_per_check": 64,
-            "rewrite_rounds": 0 if quick else 2,
-            "revision_decisions_per_scene": 0 if quick else 3,
+            "rewrite_rounds": 0 if quick else 1 if auto else 2,
+            "revision_decisions_per_scene": 0 if quick else 2 if auto else 3,
             "delivery_mode": "product",
             "no_progress_policy": "semantic-exhaustion-no-transport-resume",
             "arbiter_per_round": 1,
             "judge_network_retries": 0,
             "other_network_retries": 0,
-            "logical_calls_per_scene": 2 if quick else 23,
+            "logical_calls_per_scene": 2 if quick else 8 if auto else 23,
+            "physical_requests_per_scene": 2 if quick else 8 if auto else 23,
             "cost_limit": None,
         },
     }
@@ -178,6 +216,8 @@ def prose_runtime_binding(
                 ("prose_rewriter", PROSE_REWRITER_CANDIDATE_SCHEMA),
             )
         }
+    if runtime_version in {"prose-shadow-runtime-v11", "prose-shadow-runtime-v12"}:
+        binding["limits"].pop("physical_requests_per_scene", None)
     return binding
 
 

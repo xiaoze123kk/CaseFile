@@ -74,7 +74,14 @@ def generation_focus(request: Any) -> str:
         + json.dumps(
             {
                 "assignment": data.get("current_assignment"),
-                "length": generation_length_contract(data["profile"]),
+                "length": (
+                    request.input_payload["server_bindings"]["length_contract"]
+                    if request.input_payload.get("server_bindings", {})
+                    .get("length_contract", {})
+                    .get("hard_gate")
+                    is False
+                    else generation_length_contract(data["profile"])
+                ),
                 "repair_issue": request.input_payload.get("generation_repair", {}).get("issue"),
                 "repair_directive": request.input_payload.get("generation_repair", {}).get(
                     "repair_directive"
@@ -103,6 +110,11 @@ def generation_issue(candidate: Any, request: Any, component: str) -> dict[str, 
             return None  # Other structural failures go through the full validator.
         parsed = candidate
     data = request.input_payload["untrusted_data"]
+    if (
+        request.input_payload.get("server_bindings", {}).get("length_contract", {}).get("hard_gate")
+        is False
+    ):
+        return None
     blocks = [b for b in parsed["blocks"] if b["text"].strip()]
     previous = data.get("scene_context", data["checklist"].get("scene_context", {})).get(
         "previous_scene_render"

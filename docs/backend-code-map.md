@@ -46,6 +46,13 @@ ProseStore 在既有产物事务中记录内部 Hook 元数据。详见
 
 ## 正文一致性与定向生成修复（runtime v8）
 
+`agent_runtime/prose_auto_edit.py` 实现 runtime v13/v14 的四角色有界编排：首次 Judge 路由到
+retain/rewrite/polish，修改后按冻结种子匿名排列两份候选并由最终 Judge 选稿。Worker
+复用原调用日志、场景 Checkpoint 和不可变修订报告；未解决问题作为编辑建议传给下一场
+Writer，不成为新的故事事实。Provider 层同时限制每场逻辑调用与最多八次实际请求。
+v14 将动态响应 Schema 收紧到当前阶段与 Checklist，并把具体协议错误传入唯一一次修复；
+v13 请求构造继续用于历史任务恢复。
+
 - `backend/src/casefile/agent_runtime/prose_continuity.py`：跨场景审核协议、请求绑定与 Provider 适配，不持有数据库，不改写规划。
 - `backend/src/casefile/agent_runtime/prose_context.py`：生成专用状态投影、去重和变化项，保留完整对象原文，原清单不变。
 - `backend/src/casefile/domain/narrative_compiler/prose_checklist.py` 的 `scene_plan_review_context`：复用状态回放构建未来场景审核上下文，不伪造已接受正文。
